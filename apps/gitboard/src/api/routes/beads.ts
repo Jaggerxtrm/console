@@ -6,38 +6,40 @@ import { Hono } from "hono";
 import { ProjectScanner } from "../../core/project-scanner.ts";
 import { BeadsReader } from "../../core/beads-reader.ts";
 import { DoltClient } from "../../core/dolt-client.ts";
-import type { BeadIssue, Memory, Interaction } from "../../types/beads.ts";
+import { readIssuesFromJsonl } from "../../core/jsonl-reader.ts";
+import type { BeadIssue } from "../../types/beads.ts";
 
-// Cache for project scanner
-let scanner: ProjectScanner | null = null;
+// Singleton scanner with lazy initialization
+let scannerInstance: ProjectScanner | null = null;
+let scannerInitialized = false;
 
 // Cache for dolt clients by port
 const doltClients: Map<number, DoltClient> = new Map();
 
-function getScanner(): ProjectScanner {
-  if (!scanner) {
-    // In container: use mounted projects directory
-    // On host: use HOME directory
+async function getScanner(): Promise<ProjectScanner> {
+  if (!scannerInstance) {
     const searchPath = process.env.XDG_PROJECTS_DIR || 
                        (process.env.HOME ? `${process.env.HOME}/projects` : "/home");
-    scanner = new ProjectScanner({
+    scannerInstance = new ProjectScanner({
       searchPath,
       maxDepth: 5,
       excludePatterns: ["node_modules", ".git", "Library", "Applications", ".cargo", ".npm", ".rustup"],
     });
   }
-  return scanner;
+  
+  // Ensure cache is populated
+  if (!scannerInitialized) {
+    await scannerInstance.scanDirectory();
+    scannerInitialized = true;
+  }
+  
+  return scannerInstance;
 }
 
 function getDoltClient(port: number): DoltClient {
   if (!doltClients.has(port)) {
-    // In container: connect to host via host.docker.internal
-    // On host: connect to localhost
     const host = process.env.XDG_PROJECTS_DIR ? "host.docker.internal" : "127.0.0.1";
-    doltClients.set(port, new DoltClient({
-      host,
-      port,
-    }));
+    doltClients.set(port, new DoltClient({ host, port }));
   }
   return doltClients.get(port)!;
 }
@@ -47,8 +49,8 @@ export const beadsRoutes = new Hono();
 // Get all discovered projects
 beadsRoutes.get("/projects", async (c) => {
   try {
-    const scn = getScanner();
-    const projects = await scn.scanDirectory();
+    const scanner = await getScanner();
+    const projects = await scanner.scanDirectory();
     return c.json({ projects });
   } catch (error) {
     console.error("[api] Error scanning projects:", error);
@@ -65,18 +67,25 @@ beadsRoutes.get("/projects/:id/issues", async (c) => {
     const search = c.req.query("search");
     const limit = parseInt(c.req.query("limit") || "100");
 
-    // Try to get real data from dolt
-    const issues = await getIssuesFromDolt(projectId, {
-      status,
-      priority,
-      search,
-      limit,
-    });
+    const scanner = await getScanner();
+    let issues = await getIssues(scanner, projectId);
 
-    // Add project_id to each issue
-    const issuesWithProject = issues.map(i => ({ ...i, project_id: projectId }));
+    // Apply filters
+    if (status) {
+      issues = issues.filter(i => status.includes(i.status));
+    }
+    if (priority) {
+      issues = issues.filter(i => priority.includes(i.priority));
+    }
+    if (search) {
+      const s = search.toLowerCase();
+      issues = issues.filter(i => 
+        i.title.toLowerCase().includes(s) || 
+        i.description?.toLowerCase().includes(s)
+      );
+    }
 
-    return c.json({ issues: issuesWithProject });
+    return c.json({ issues: issues.slice(0, limit).map(i => ({ ...i, project_id: projectId })) });
   } catch (error) {
     console.error("[api] Error getting issues:", error);
     return c.json({ error: "Failed to get issues" }, 500);
@@ -89,10 +98,17 @@ beadsRoutes.get("/projects/:id/issues/closed", async (c) => {
     const projectId = c.req.param("id");
     const limit = parseInt(c.req.query("limit") || "50");
 
-    const issues = await getClosedIssuesFromDolt(projectId, limit);
-    const issuesWithProject = issues.map(i => ({ ...i, project_id: projectId }));
+    const scanner = await getScanner();
+    const issues = (await getIssues(scanner, projectId))
+      .filter(i => i.status === "closed")
+      .sort((a, b) => 
+        new Date(b.closed_at || b.updated_at).getTime() - 
+        new Date(a.closed_at || a.updated_at).getTime()
+      )
+      .slice(0, limit)
+      .map(i => ({ ...i, project_id: projectId }));
 
-    return c.json({ issues: issuesWithProject });
+    return c.json({ issues });
   } catch (error) {
     console.error("[api] Error getting closed issues:", error);
     return c.json({ error: "Failed to get closed issues" }, 500);
@@ -103,43 +119,36 @@ beadsRoutes.get("/projects/:id/issues/closed", async (c) => {
 beadsRoutes.get("/projects/:id/memories", async (c) => {
   try {
     const projectId = c.req.param("id");
-
-    const scn = getScanner();
-    const project = scn.getProject(projectId);
+    const scanner = await getScanner();
+    const project = scanner.getProject(projectId);
 
     if (!project) {
       return c.json({ error: "Project not found" }, 404);
     }
 
-    // Read memories from knowledge.jsonl
     const reader = new BeadsReader({} as any);
-    const knowledgePath = `${project.beadsPath}/knowledge.jsonl`;
-    const memories = await reader.getMemories(knowledgePath);
+    const memories = await reader.getMemories(`${project.beadsPath}/knowledge.jsonl`);
 
     return c.json({ memories: memories.map(m => ({ ...m, project_id: projectId })) });
-  } catch (error) {
-    console.error("[api] Error getting memories:", error);
+  } catch {
     return c.json({ memories: [] });
   }
 });
 
-// Get interactions (agent sessions) for a project
+// Get interactions for a project
 beadsRoutes.get("/projects/:id/interactions", async (c) => {
   try {
     const projectId = c.req.param("id");
     const issueId = c.req.query("issue_id");
-
-    const scn = getScanner();
-    const project = scn.getProject(projectId);
+    const scanner = await getScanner();
+    const project = scanner.getProject(projectId);
 
     if (!project) {
       return c.json({ error: "Project not found" }, 404);
     }
 
     const reader = new BeadsReader({} as any);
-    const interactionsPath = `${project.beadsPath}/interactions.jsonl`;
-    let interactions = await reader.getInteractions(interactionsPath);
-
+    let interactions = await reader.getInteractions(`${project.beadsPath}/interactions.jsonl`);
     interactions = interactions.map(i => ({ ...i, project_id: projectId }));
 
     if (issueId) {
@@ -147,8 +156,7 @@ beadsRoutes.get("/projects/:id/interactions", async (c) => {
     }
 
     return c.json({ interactions });
-  } catch (error) {
-    console.error("[api] Error getting interactions:", error);
+  } catch {
     return c.json({ interactions: [] });
   }
 });
@@ -157,27 +165,51 @@ beadsRoutes.get("/projects/:id/interactions", async (c) => {
 beadsRoutes.get("/projects/:id/stats", async (c) => {
   try {
     const projectId = c.req.param("id");
-    const stats = await getStatsFromDolt(projectId);
-    return c.json({ stats });
+    const scanner = await getScanner();
+    const issues = await getIssues(scanner, projectId);
+
+    return c.json({
+      stats: {
+        total: issues.filter(i => i.status !== "closed").length,
+        open: issues.filter(i => i.status === "open").length,
+        in_progress: issues.filter(i => i.status === "in_progress").length,
+        blocked: issues.filter(i => i.status === "blocked").length,
+        closed: issues.filter(i => i.status === "closed").length,
+        by_priority: {
+          p0: issues.filter(i => i.priority === 0).length,
+          p1: issues.filter(i => i.priority === 1).length,
+          p2: issues.filter(i => i.priority === 2).length,
+          p3: issues.filter(i => i.priority === 3).length,
+          p4: issues.filter(i => i.priority === 4).length,
+        },
+        by_type: {
+          bug: issues.filter(i => i.issue_type === "bug").length,
+          feature: issues.filter(i => i.issue_type === "feature").length,
+          task: issues.filter(i => i.issue_type === "task").length,
+          epic: issues.filter(i => i.issue_type === "epic").length,
+          chore: issues.filter(i => i.issue_type === "chore").length,
+        },
+      }
+    });
   } catch (error) {
     console.error("[api] Error getting stats:", error);
     return c.json({ error: "Failed to get stats" }, 500);
   }
 });
 
-// Health check for dolt connection
+// Health check
 beadsRoutes.get("/projects/:id/connection", async (c) => {
   try {
     const projectId = c.req.param("id");
-    const scn = getScanner();
-    const project = scn.getProject(projectId);
+    const scanner = await getScanner();
+    const project = scanner.getProject(projectId);
 
     if (!project) {
       return c.json({ status: "not_found", error: "Project not found" });
     }
 
     if (!project.doltPort) {
-      return c.json({ status: "no_dolt", error: "No dolt server configured" });
+      return c.json({ status: "jsonl_fallback", note: "Reading from JSONL files" });
     }
 
     const client = getDoltClient(project.doltPort);
@@ -190,131 +222,31 @@ beadsRoutes.get("/projects/:id/connection", async (c) => {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
-    return c.json({ status: "error", error: message });
+    return c.json({ status: "jsonl_fallback", note: "Dolt unavailable, reading from JSONL", error: message });
   }
 });
 
 /**
- * Get issues from dolt database
+ * Get issues - try dolt first, fallback to JSONL
  */
-async function getIssuesFromDolt(
-  projectId: string,
-  filters: {
-    status?: BeadIssue["status"][];
-    priority?: BeadIssue["priority"][];
-    search?: string;
-    limit?: number;
-  }
-): Promise<BeadIssue[]> {
-  const scn = getScanner();
-  const project = scn.getProject(projectId);
+async function getIssues(scanner: ProjectScanner, projectId: string): Promise<BeadIssue[]> {
+  const project = scanner.getProject(projectId);
 
-  if (!project || !project.doltPort) {
-    console.log(`[api] No dolt connection for project ${projectId}, returning empty`);
+  if (!project) {
+    console.log(`[api] Project ${projectId} not found`);
     return [];
   }
 
-  const client = getDoltClient(project.doltPort);
-
-  try {
-    return await client.getIssues({
-      status: filters.status,
-      priority: filters.priority,
-      search: filters.search,
-      limit: filters.limit ?? 100,
-    });
-  } catch (error) {
-    console.error(`[api] Dolt query failed for ${projectId}:`, error);
-    return [];
-  }
-}
-
-/**
- * Get closed issues from dolt database
- */
-async function getClosedIssuesFromDolt(
-  projectId: string,
-  limit: number
-): Promise<BeadIssue[]> {
-  const scn = getScanner();
-  const project = scn.getProject(projectId);
-
-  if (!project || !project.doltPort) {
-    return [];
+  // Try dolt first
+  if (project.doltPort) {
+    try {
+      const client = getDoltClient(project.doltPort);
+      return await client.getIssues({ limit: 1000 });
+    } catch (error) {
+      console.log(`[api] Dolt failed for ${projectId}, falling back to JSONL:`, error);
+    }
   }
 
-  const client = getDoltClient(project.doltPort);
-
-  try {
-    return await client.getClosedIssues(limit);
-  } catch (error) {
-    console.error(`[api] Dolt query failed for ${projectId}:`, error);
-    return [];
-  }
-}
-
-/**
- * Get stats from dolt database
- */
-async function getStatsFromDolt(projectId: string): Promise<{
-  total: number;
-  open: number;
-  in_progress: number;
-  blocked: number;
-  closed: number;
-  by_priority: Record<string, number>;
-  by_type: Record<string, number>;
-}> {
-  const scn = getScanner();
-  const project = scn.getProject(projectId);
-
-  if (!project || !project.doltPort) {
-    return {
-      total: 0,
-      open: 0,
-      in_progress: 0,
-      blocked: 0,
-      closed: 0,
-      by_priority: { p0: 0, p1: 0, p2: 0, p3: 0, p4: 0 },
-      by_type: { bug: 0, feature: 0, task: 0, epic: 0, chore: 0 },
-    };
-  }
-
-  const client = getDoltClient(project.doltPort);
-
-  try {
-    const stats = await client.getStats();
-
-    // Get priority and type breakdown
-    const issues = await client.getIssues({ limit: 1000 });
-
-    const by_priority = {
-      p0: issues.filter(i => i.priority === 0).length,
-      p1: issues.filter(i => i.priority === 1).length,
-      p2: issues.filter(i => i.priority === 2).length,
-      p3: issues.filter(i => i.priority === 3).length,
-      p4: issues.filter(i => i.priority === 4).length,
-    };
-
-    const by_type = {
-      bug: issues.filter(i => i.issue_type === "bug").length,
-      feature: issues.filter(i => i.issue_type === "feature").length,
-      task: issues.filter(i => i.issue_type === "task").length,
-      epic: issues.filter(i => i.issue_type === "epic").length,
-      chore: issues.filter(i => i.issue_type === "chore").length,
-    };
-
-    return { ...stats, by_priority, by_type };
-  } catch (error) {
-    console.error(`[api] Dolt stats query failed for ${projectId}:`, error);
-    return {
-      total: 0,
-      open: 0,
-      in_progress: 0,
-      blocked: 0,
-      closed: 0,
-      by_priority: { p0: 0, p1: 0, p2: 0, p3: 0, p4: 0 },
-      by_type: { bug: 0, feature: 0, task: 0, epic: 0, chore: 0 },
-    };
-  }
+  // Fallback to JSONL
+  return readIssuesFromJsonl(project.beadsPath);
 }

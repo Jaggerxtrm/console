@@ -22,6 +22,7 @@ const DEFAULT_CONFIG: ProjectScannerConfig = {
 export class ProjectScanner {
   private config: ProjectScannerConfig;
   private projectCache: Map<string, BeadsProject> = new Map();
+  private nameToId: Map<string, string> = new Map();
 
   constructor(config: Partial<ProjectScannerConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -31,7 +32,7 @@ export class ProjectScanner {
    * Scan all configured paths for beads projects
    */
   async scanAll(): Promise<BeadsProject[]> {
-    const projects: BeadsProject[] = [];
+    const projects: BeadProject[] = [];
 
     const pathsToScan = this.config.scanPaths?.length 
       ? this.config.scanPaths 
@@ -47,6 +48,7 @@ export class ProjectScanner {
     // Update cache
     for (const project of projects) {
       this.projectCache.set(project.id, project);
+      this.nameToId.set(project.name, project.id);
     }
 
     return projects;
@@ -54,8 +56,6 @@ export class ProjectScanner {
 
   /**
    * Scan for projects - main entry point
-   * If searchPath is provided in config, scans that path
-   * Otherwise scans all scanPaths
    */
   async scanDirectory(): Promise<BeadsProject[]> {
     return this.scanAll();
@@ -79,7 +79,7 @@ export class ProjectScanner {
         if (project) projects.push(project);
       }
 
-      // Recurse into subdirectories (but skip excluded patterns)
+      // Recurse into subdirectories
       for (const entry of entries) {
         if (!entry.isDirectory()) continue;
         if (this.config.excludePatterns.includes(entry.name)) continue;
@@ -102,7 +102,6 @@ export class ProjectScanner {
     const beadsPath = join(repoPath, ".beads");
 
     try {
-      // Read metadata.json
       const metadataPath = join(beadsPath, "metadata.json");
       const metadataContent = await readFile(metadataPath, "utf-8");
       const metadata = JSON.parse(metadataContent);
@@ -114,7 +113,6 @@ export class ProjectScanner {
 
       try {
         const configContent = await readFile(configPath, "utf-8");
-        // Simple YAML parsing for dolt.port
         const portMatch = configContent.match(/port:\s*(\d+)/);
         if (portMatch) doltPort = parseInt(portMatch[1]);
         
@@ -133,7 +131,7 @@ export class ProjectScanner {
         doltDatabase,
         status: doltPort ? "active" : "idle",
         lastScanned: new Date().toISOString(),
-        issueCount: 0, // Will be populated by reader
+        issueCount: 0,
       };
 
       return project;
@@ -143,10 +141,18 @@ export class ProjectScanner {
   }
 
   /**
-   * Get cached project by ID
+   * Get cached project by ID or name
    */
-  getProject(id: string): BeadsProject | undefined {
-    return this.projectCache.get(id);
+  getProject(idOrName: string): BeadsProject | undefined {
+    // Try by ID first
+    let project = this.projectCache.get(idOrName);
+    if (project) return project;
+
+    // Try by name
+    const id = this.nameToId.get(idOrName);
+    if (id) return this.projectCache.get(id);
+
+    return undefined;
   }
 
   /**
