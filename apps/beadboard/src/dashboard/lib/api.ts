@@ -4,12 +4,8 @@
 
 import type { BeadIssue, BeadsProject, Memory, Interaction } from "../types/beads.ts";
 
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:3001";
-
-interface ApiResponse<T> {
-  data?: T;
-  error?: string;
-}
+// Use relative URLs so we hit the same server that serves the frontend
+const API_BASE = "";
 
 export const api = {
   // Projects
