@@ -1,0 +1,9 @@
+{
+  "extensions": [],
+  "skills": [
+    "../.xtrm/skills/active"
+  ],
+  "packages": [
+    "npm:@jaggerxtrm/pi-extensions"
+  ]
+}
