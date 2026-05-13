@@ -43,18 +43,7 @@ function DayHeader({ label }: { label: string }) {
 
 function LabelChip({ name }: { name: string }) {
   return (
-    <span
-      style={{
-        display: "inline-block",
-        padding: "1px 6px",
-        borderRadius: "var(--radius-pill)",
-        background: "var(--surface-tertiary)",
-        border: "1px solid var(--border-default)",
-        color: "var(--text-secondary)",
-        fontSize: "var(--text-xs)",
-        lineHeight: 1.5,
-      }}
-    >
+    <span className="issue-label-chip">
       {name}
     </span>
   );
@@ -65,7 +54,7 @@ function IssueExpandedBody({ issue }: { issue: GithubIssue }) {
   const labels = parseLabels(issue.label_names);
 
   return (
-    <div style={{ padding: "8px 12px 10px", display: "flex", flexDirection: "column", gap: 6 }}>
+    <div className="issue-expanded-body">
       {issue.body && (() => {
         const { visible, hasMore } = truncateBody(issue.body);
         return (
@@ -138,77 +127,32 @@ function IssueRow({
 
   return (
     <div
+      className={`issue-row ${expanded ? "is-expanded" : ""} ${issue.state === "closed" ? "closed" : "open"}`}
       onClick={onToggle}
-      style={{
-        cursor: "pointer",
-        borderBottom: "1px solid var(--border-subtle)",
-        background: expanded ? "var(--surface-secondary)" : "transparent",
-      }}
     >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          padding: "8px 12px",
-          minHeight: 40,
-        }}
-      >
-        <span style={{ color, flexShrink: 0 }}>
+      <div className="issue-row-main">
+        <span className="issue-row-icon" style={{ color }}>
           <Icon size={16} />
         </span>
-        <span
-          style={{
-            color: "var(--text-muted)",
-            fontFamily: "var(--font-mono, monospace)",
-            fontSize: "var(--text-xs)",
-            flexShrink: 0,
-          }}
-        >
+        <span className="issue-number">
           #{issue.number}
         </span>
-        <span
-          style={{
-            flex: 1,
-            fontSize: "var(--text-xs)",
-            color: "var(--text-primary)",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-          }}
-        >
+        <span className="issue-title">
           {issue.title}
         </span>
-        <span style={{ color: "var(--text-secondary)", fontSize: "var(--text-xs)", flexShrink: 0 }}>
+        <span className="issue-repo">
           {repoShort}
         </span>
         {issue.comment_count > 0 && (
-          <span
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 3,
-              color: "var(--text-muted)",
-              fontSize: "var(--text-xs)",
-              flexShrink: 0,
-            }}
-          >
+          <span className="issue-comments">
             <CommentIcon size={12} />
             {issue.comment_count}
           </span>
         )}
-        <span style={{ color: "var(--text-muted)", fontSize: "var(--text-xs)", flexShrink: 0 }}>
+        <span className="issue-time">
           {time}
         </span>
-        <span
-          style={{
-            color: "var(--text-muted)",
-            flexShrink: 0,
-            transform: expanded ? "rotate(180deg)" : "rotate(0deg)",
-            transition: "transform 150ms",
-            display: "flex",
-          }}
-        >
+        <span className="issue-chevron">
           <ChevronDownIcon size={14} />
         </span>
       </div>
