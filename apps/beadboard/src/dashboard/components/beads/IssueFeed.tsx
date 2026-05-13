@@ -17,14 +17,16 @@ interface IssueFeedProps {
 const STATUS_RANK: Record<string, number> = {
   in_progress: 0,
   open: 1,
-  blocked: 2,
-  deferred: 3,
-  closed: 4,
+  in_review: 2,
+  blocked: 3,
+  deferred: 4,
+  closed: 5,
 };
 
 const STATUS_LABELS: Record<string, string> = {
   in_progress: "In progress",
   open: "Ready",
+  in_review: "In review",
   blocked: "Blocked",
   deferred: "Deferred",
   closed: "Closed",
@@ -107,14 +109,33 @@ function IssueRow({
   const dependentCount = detail?.dependents.length ?? 0;
 
   return (
-    <article
+    <button
+      type="button"
       onClick={onClick}
+      aria-expanded={isExpanded}
+      aria-controls={`issue-dossier-${issue.id}`}
       style={{
+        textAlign: "left",
+        width: "100%",
         border: isEpic ? "1px solid var(--accent-blue)" : "1px solid var(--border-subtle)",
         borderRadius: isEpic ? 14 : 10,
         background: isEpic ? "rgba(59, 130, 246, 0.08)" : "var(--surface-secondary)",
         padding: 12,
         cursor: "pointer",
+        color: "inherit",
+        outline: "none",
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onClick();
+        }
+      }}
+      onFocus={(event) => {
+        event.currentTarget.style.boxShadow = "0 0 0 2px var(--accent-blue)";
+      }}
+      onBlur={(event) => {
+        event.currentTarget.style.boxShadow = "none";
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
@@ -146,22 +167,22 @@ function IssueRow({
       </div>
 
       {isExpanded && (
-        <IssueDossier detail={detail} issue={issue} loading={isLoadingDetail} />
+        <IssueDossier id={`issue-dossier-${issue.id}`} detail={detail} issue={issue} loading={isLoadingDetail} />
       )}
-    </article>
+    </button>
   );
 }
 
-function IssueDossier({ detail, issue, loading }: { detail: BeadIssueDetail | null; issue: BeadIssue; loading: boolean }) {
+function IssueDossier({ id, detail, issue, loading }: { id: string; detail: BeadIssueDetail | null; issue: BeadIssue; loading: boolean }) {
   if (loading) {
-    return <div style={{ marginTop: 12, color: "var(--text-muted)", fontSize: "var(--text-sm)" }}>Loading dossier...</div>;
+    return <div id={id} style={{ marginTop: 12, color: "var(--text-muted)", fontSize: "var(--text-sm)" }}>Loading dossier...</div>;
   }
 
   const dependencyItems = detail?.dependencies ?? issue.dependencies;
   const dependentItems = detail?.dependents ?? [];
 
   return (
-    <section style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--border-subtle)", display: "grid", gap: 12 }}>
+    <section id={id} style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--border-subtle)", display: "grid", gap: 12 }}>
       <DossierBlock title="Context" lines={[
         issue.closed_at ? `Closed ${issue.closed_at}` : `Updated ${issue.updated_at}`,
         issue.parent_id ? `Parent ${issue.parent_id}` : null,

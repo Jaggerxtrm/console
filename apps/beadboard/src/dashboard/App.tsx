@@ -1,13 +1,15 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { IssueFeed } from "./components/beads/IssueFeed.tsx";
+import { KanbanBoard } from "./components/beads/KanbanBoard.tsx";
 import { useBeadsStore } from "./stores/beads.ts";
 import { api } from "./lib/api.ts";
-import type { BeadIssue, BeadIssueDetail, BeadsProject, Memory, Interaction } from "../types/beads.ts";
+import type { BeadIssue, BeadIssueDetail, Memory, Interaction } from "../types/beads.ts";
 
-type Tab = "issues" | "closed" | "memories";
+type Tab = "issues" | "board" | "closed" | "memories";
 
 const TABS: Array<{ id: Tab; label: string }> = [
-  { id: "issues", label: "Issues" },
+  { id: "issues", label: "Feed" },
+  { id: "board", label: "Board" },
   { id: "closed", label: "Closed" },
   { id: "memories", label: "Memories" },
 ];
@@ -17,6 +19,7 @@ export function App() {
   const [interactions, setInteractions] = useState<Interaction[]>([]);
   const [selectedIssueDetail, setSelectedIssueDetail] = useState<BeadIssueDetail | null>(null);
   const [loadingDetailId, setLoadingDetailId] = useState<string | null>(null);
+  const requestIdRef = useRef(0);
 
   const {
     projects,
@@ -87,15 +90,23 @@ export function App() {
       setSelectedIssueDetail(null);
       return;
     }
+
+    const requestId = requestIdRef.current + 1;
+    requestIdRef.current = requestId;
     setLoadingDetailId(issue.id);
     try {
       const detail = await api.getIssue(selectedProjectId, issue.id);
+      if (requestIdRef.current !== requestId) return;
       setSelectedIssueDetail(detail ?? null);
     } catch (err) {
-      console.error(err);
-      setSelectedIssueDetail(null);
+      if (requestIdRef.current === requestId) {
+        console.error(err);
+        setSelectedIssueDetail(null);
+      }
     } finally {
-      setLoadingDetailId(null);
+      if (requestIdRef.current === requestId) {
+        setLoadingDetailId(null);
+      }
     }
   }, [loadingDetailId, selectedIssueDetail?.id, selectedProjectId]);
 
@@ -160,6 +171,7 @@ export function App() {
               getAgent={getAgentForIssue}
             />
           )}
+          {activeTab === "board" && <KanbanBoard issues={issues} getAgent={getAgentForIssue} onIssueClick={() => setActiveTab("issues")} />}
           {activeTab === "closed" && <ClosedIssuesPanel issues={closedIssues} getAgent={getAgentForIssue} />}
           {activeTab === "memories" && <MemoriesPanel memories={memories} />}
         </div>
