@@ -167,9 +167,9 @@ export function App() {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: '#181818', color: 'var(--text-primary)', fontFamily: 'var(--font-ui)' }}>
-      <header style={{ display: 'flex', alignItems: 'center', gap: 20, padding: '0 16px', height: 'var(--topbar-height)', background: '#181818', borderBottom: '1px solid var(--border-subtle)', flexShrink: 0 }}>
-        <span style={{ fontSize: 'var(--text-sm)', fontWeight: 600, letterSpacing: '0.1em', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Beadboard</span>
+    <div className="xtrm-shell">
+      <header className="xtrm-topbar">
+        <span className="xtrm-brand">Beadboard</span>
         <nav style={{ display: 'flex', gap: 4, height: '100%', alignItems: 'stretch' }}>
           {TABS.map(tab => (
             <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{ padding: '0 10px', fontSize: '12px', fontWeight: 600, letterSpacing: '0.04em', color: activeTab === tab.id ? 'var(--text-primary)' : 'var(--text-secondary)', background: 'transparent', border: 'none', borderBottom: activeTab === tab.id ? '1px solid rgba(142,210,220,0.72)' : '1px solid transparent', cursor: 'pointer' }}>{tab.label}</button>
@@ -179,7 +179,7 @@ export function App() {
         {error && <span style={{ marginLeft: 'auto', color: 'var(--status-blocked)', fontSize: 'var(--text-sm)' }}>{error}</span>}
       </header>
 
-      <main style={{ flex: 1, minHeight: 0, display: 'flex' }}>
+      <main className="xtrm-console-main">
         <ProjectRail
           projects={projects}
           selectedProjectId={selectedProjectId}

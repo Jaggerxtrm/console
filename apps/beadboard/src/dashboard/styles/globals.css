@@ -48,6 +48,26 @@
   --topbar-height: 48px;
 }
 
+
+/* Shared xtrm console primitives */
+.xtrm-shell { display: flex; flex-direction: column; height: 100vh; background: #181818; color: var(--text-primary); font-family: var(--font-ui); }
+.xtrm-topbar { display: flex; align-items: center; gap: 20px; height: var(--topbar-height); padding: 0 16px; background: #181818; border-bottom: 1px solid var(--border-subtle); flex-shrink: 0; }
+.xtrm-brand { color: var(--text-muted); font-size: var(--text-xs); font-weight: 700; letter-spacing: 0.12em; text-decoration: none; text-transform: uppercase; }
+.xtrm-module-link { display: flex; align-items: center; height: 100%; padding: 0 10px; border-bottom: 1px solid transparent; color: var(--text-secondary); font-size: 12px; font-weight: 600; letter-spacing: 0.04em; text-decoration: none; }
+.xtrm-module-link.is-active { border-bottom-color: rgba(142,210,220,0.72); color: var(--text-primary); }
+.xtrm-console-main { flex: 1; min-height: 0; display: flex; overflow: hidden; background: #181818; }
+.xtrm-rail { width: var(--sidebar-width); min-width: var(--sidebar-width); background: #181818; border-right: 1px solid var(--border-subtle); display: flex; flex-direction: column; overflow: hidden; }
+.xtrm-rail-header, .xtrm-rail-row { width: 100%; border: 0; border-left: 2px solid transparent; background: transparent; color: var(--text-primary); text-align: left; }
+.xtrm-rail-header { height: 32px; padding: 0 12px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--border-subtle); color: var(--text-muted); font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+.xtrm-rail-header.is-active, .xtrm-rail-row.is-active { border-left-color: rgba(142,210,220,0.78); background: #202020; color: var(--text-primary); }
+.xtrm-rail-row { display: flex; flex-direction: column; gap: 5px; padding: 8px 12px; cursor: pointer; }
+.xtrm-rail-row:hover { background: #1d1d1d; }
+.xtrm-rail-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 0; }
+.xtrm-muted { color: var(--text-muted); }
+.xtrm-tag { font-size: 9px; font-weight: 800; letter-spacing: 0.08em; }
+.xtrm-tag.git { color: #8ed2dc; }
+.xtrm-tag.beads { color: #a371f7; }
+
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {

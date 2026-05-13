@@ -26,20 +26,11 @@ function DashboardShell({ view, activeTab }: { view: View; activeTab: Tab }) {
   const [selectedConsoleRepo, setSelectedConsoleRepo] = useState<ConsoleRepoRecord | null>(null);
 
   return (
-    <div className={isPreview ? "westworld-app design-preview-container" : "westworld-app"} style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--surface-primary)', color: 'var(--text-primary)', fontFamily: 'var(--font-ui)' }}>
-      <header className="ww-topbar" style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 24,
-        padding: '0 20px',
-        height: 'var(--topbar-height)',
-        background: 'linear-gradient(180deg, var(--surface-secondary), var(--surface-primary))',
-        borderBottom: '1px solid var(--border-subtle)',
-        flexShrink: 0,
-      }}>
+    <div className={isPreview ? "xtrm-shell westworld-app design-preview-container" : "xtrm-shell westworld-app"}>
+      <header className="xtrm-topbar ww-topbar">
         <a
           href="/console"
-          style={{ fontSize: 'var(--text-xs)', fontWeight: 600, letterSpacing: '0.1em', color: 'var(--text-muted)', textTransform: 'uppercase', textDecoration: 'none' }}
+          className="xtrm-brand"
         >
           xtrm.wtf
         </a>
@@ -48,20 +39,7 @@ function DashboardShell({ view, activeTab }: { view: View; activeTab: Tab }) {
             <a
               key={tab.id}
               href={tab.id === "github" ? "/console/git" : "/console/beads"}
-              className={activeTab === tab.id && !isPreview ? "ww-nav-item is-active" : "ww-nav-item"}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                padding: '0 12px',
-                fontSize: 'var(--text-base)',
-                fontWeight: 500,
-                color: activeTab === tab.id && !isPreview ? 'var(--text-primary)' : 'var(--text-secondary)',
-                background: 'transparent',
-                borderBottom: activeTab === tab.id && !isPreview ? '2px solid var(--accent-blue)' : '2px solid transparent',
-                cursor: 'pointer',
-                textDecoration: 'none',
-                transition: 'var(--transition)',
-              }}
+              className={activeTab === tab.id && !isPreview ? "xtrm-module-link ww-nav-item is-active" : "xtrm-module-link ww-nav-item"}
             >
               {tab.label}
             </a>
@@ -101,7 +79,7 @@ function DashboardShell({ view, activeTab }: { view: View; activeTab: Tab }) {
           </a>
         </div>
       </header>
-      <main className="gitboard-main" style={{ flex: 1, minHeight: 0, display: "flex", overflow: "hidden" }}>
+      <main className="xtrm-console-main gitboard-main">
         {isPreview ? (
           <DesignPreview />
         ) : (

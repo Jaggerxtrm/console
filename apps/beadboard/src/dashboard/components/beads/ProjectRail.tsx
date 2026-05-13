@@ -42,8 +42,8 @@ export function ProjectRail({ projects, selectedProjectId, statsByProject, loadi
   }, [projects, statsByProject]);
 
   return (
-    <aside style={{ width: "var(--sidebar-width)", minWidth: "var(--sidebar-width)", borderRight: "1px solid var(--border-subtle)", background: "#181818", display: "flex", flexDirection: "column", overflow: "hidden" }}>
-      <div style={{ height: 32, padding: "0 12px", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid var(--border-subtle)" }}>
+    <aside className="xtrm-rail">
+      <div className="xtrm-rail-header" style={{ justifyContent: "space-between" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--text-muted)", fontSize: "var(--text-xs)", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>
           <RepoIcon size={13} />
           Projects
@@ -51,7 +51,7 @@ export function ProjectRail({ projects, selectedProjectId, statsByProject, loadi
         {loadingStats && <span style={{ color: "var(--text-muted)", lineHeight: 0 }}><SyncIcon size={12} /></span>}
       </div>
 
-      <div style={{ flex: 1, overflowY: "auto", minHeight: 0, padding: "4px 0" }}>
+      <div className="xtrm-rail-scroll">
         {sortedProjects.length === 0 ? (
           <div style={{ padding: 16, color: "var(--text-muted)", fontSize: "var(--text-sm)", lineHeight: 1.5 }}>
             No Beads projects found. Run <code style={{ background: "var(--surface-tertiary)", padding: "2px 5px", borderRadius: 4 }}>bd init</code> in a repo to make it visible.
@@ -73,6 +73,7 @@ export function ProjectRail({ projects, selectedProjectId, statsByProject, loadi
               onClick={() => onSelectProject(project.id)}
               onMouseEnter={() => setHoveredProjectId(project.id)}
               onMouseLeave={() => setHoveredProjectId(null)}
+              className={isSelected ? "xtrm-rail-row is-active" : "xtrm-rail-row"}
               style={{
                 width: "100%",
                 display: "flex",
