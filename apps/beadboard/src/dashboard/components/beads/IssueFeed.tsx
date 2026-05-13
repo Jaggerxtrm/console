@@ -56,8 +56,8 @@ export function IssueFeed({
   }, [issueById, issues]);
 
   return (
-    <div style={{ padding: 16 }}>
-      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+    <div style={{ padding: 0, background: "#181818" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
         {sortedTopLevelIssues.length === 0 ? (
           <EmptyFeed />
         ) : (

@@ -16,6 +16,8 @@ const TABS: Array<{ id: Tab; label: string }> = [
 ];
 
 export function App() {
+  const searchParams = new URLSearchParams(window.location.search);
+  const isEmbedded = searchParams.get("embedded") === "1";
   const [activeTab, setActiveTab] = useState<Tab>("issues");
   const [interactions, setInteractions] = useState<Interaction[]>([]);
   const [selectedIssueId, setSelectedIssueId] = useState<string | null>(null);
@@ -49,7 +51,7 @@ export function App() {
         const projs = await api.getProjects();
         setProjects(projs);
         if (projs.length > 0 && !selectedProjectId) {
-          const requestedProject = new URLSearchParams(window.location.search).get("project");
+          const requestedProject = searchParams.get("project");
           const matchedProject = requestedProject
             ? projs.find((project) => project.id === requestedProject || project.name === requestedProject)
             : null;
@@ -168,27 +170,31 @@ export function App() {
 
   return (
     <div className="xtrm-shell">
-      <header className="xtrm-topbar">
-        <span className="xtrm-brand">Beadboard</span>
-        <nav style={{ display: 'flex', gap: 4, height: '100%', alignItems: 'stretch' }}>
-          {TABS.map(tab => (
-            <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{ padding: '0 10px', fontSize: '12px', fontWeight: 600, letterSpacing: '0.04em', color: activeTab === tab.id ? 'var(--text-primary)' : 'var(--text-secondary)', background: 'transparent', border: 'none', borderBottom: activeTab === tab.id ? '1px solid rgba(142,210,220,0.72)' : '1px solid transparent', cursor: 'pointer' }}>{tab.label}</button>
-          ))}
-        </nav>
-        {loading && <span style={{ marginLeft: 'auto', color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>Loading...</span>}
-        {error && <span style={{ marginLeft: 'auto', color: 'var(--status-blocked)', fontSize: 'var(--text-sm)' }}>{error}</span>}
-      </header>
+      {!isEmbedded && (
+        <header className="xtrm-topbar">
+          <span className="xtrm-brand">Beadboard</span>
+          <nav style={{ display: 'flex', gap: 4, height: '100%', alignItems: 'stretch' }}>
+            {TABS.map(tab => (
+              <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{ padding: '0 10px', fontSize: '12px', fontWeight: 600, letterSpacing: '0.04em', color: activeTab === tab.id ? 'var(--text-primary)' : 'var(--text-secondary)', background: 'transparent', border: 'none', borderBottom: activeTab === tab.id ? '1px solid rgba(142,210,220,0.72)' : '1px solid transparent', cursor: 'pointer' }}>{tab.label}</button>
+            ))}
+          </nav>
+          {loading && <span style={{ marginLeft: 'auto', color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>Loading...</span>}
+          {error && <span style={{ marginLeft: 'auto', color: 'var(--status-blocked)', fontSize: 'var(--text-sm)' }}>{error}</span>}
+        </header>
+      )}
 
       <main className="xtrm-console-main">
-        <ProjectRail
-          projects={projects}
-          selectedProjectId={selectedProjectId}
-          statsByProject={statsByProject}
-          loadingStats={loadingProjectStats}
-          onSelectProject={selectProject}
-        />
+        {!isEmbedded && (
+          <ProjectRail
+            projects={projects}
+            selectedProjectId={selectedProjectId}
+            statsByProject={statsByProject}
+            loadingStats={loadingProjectStats}
+            onSelectProject={selectProject}
+          />
+        )}
 
-        <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+        <div style={{ flex: 1, minHeight: 0, overflow: 'auto', background: '#181818' }}>
           {activeTab === "issues" && (
             <IssueFeed
               issues={issues}

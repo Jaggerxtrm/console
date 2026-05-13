@@ -90,12 +90,12 @@ function DashboardShell({ view, activeTab }: { view: View; activeTab: Tab }) {
           <GithubPanel hideRepoSidebar selectedRepo={selectedConsoleRepo?.github?.fullName ?? null} />
         ) : (
           <iframe 
-            src={selectedConsoleRepo?.beads ? `${BEADBOARD_URL}?project=${encodeURIComponent(selectedConsoleRepo.beads.projectId)}` : BEADBOARD_URL}
+            src={selectedConsoleRepo?.beads ? `${BEADBOARD_URL}?embedded=1&project=${encodeURIComponent(selectedConsoleRepo.beads.projectId)}` : `${BEADBOARD_URL}?embedded=1`}
             style={{ 
               width: '100%', 
               height: '100%', 
               border: 'none',
-              background: 'var(--surface-primary)',
+              background: '#181818',
             }}
             title="Beadboard"
           />
