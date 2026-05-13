@@ -213,6 +213,7 @@ function IssueDossier({ id, detail, issue, loading, childIssues, issueById }: { 
   const parentLinks = enrichDependencies((detail?.dependencies ?? issue.dependencies).filter((dependency) => dependency.dependency_type === "parent-child"), issueById);
   const dependents = enrichDependencies((detail?.dependents ?? []).filter((dependency) => dependency.dependency_type !== "parent-child"), issueById);
   const children = detail?.children?.length ? detail.children : childIssues.map((child) => ({ id: child.id, title: child.title, status: child.status, dependency_type: "parent-child" }));
+  const linkedPrs = extractPrRefs(issue.title, detail?.description ?? issue.description, detail?.notes ?? issue.notes, issue.close_reason);
 
   return (
     <section id={id} className="bead-expanded-body">
@@ -224,6 +225,15 @@ function IssueDossier({ id, detail, issue, loading, childIssues, issueById }: { 
           <DossierSection title="Notes">
             <Markdown value={detail?.notes ?? issue.notes} empty="No notes." />
           </DossierSection>
+          {linkedPrs.length > 0 && (
+            <DossierSection title="Linked PRs">
+              <div className="bead-linked-records">
+                {linkedPrs.map((number) => (
+                  <a key={number} href={`/console/git?pr=${encodeURIComponent(number)}`} onClick={(event) => event.stopPropagation()}>PR #{number}</a>
+                ))}
+              </div>
+            </DossierSection>
+          )}
         </div>
         <div style={{ display: "grid", gap: 10 }}>
           <DossierList title="Depends on" items={dependencies} empty="No blockers." />
