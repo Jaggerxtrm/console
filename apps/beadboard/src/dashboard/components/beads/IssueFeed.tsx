@@ -2,7 +2,7 @@
  * IssueFeed - primary inline issue feed with expandable dossiers
  */
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { BeadIssue, BeadIssueDetail } from "../../../types/beads.ts";
 
 interface IssueFeedProps {
@@ -105,6 +105,7 @@ function IssueRow({
   onClick: () => void;
 }) {
   const isEpic = issue.issue_type === "epic";
+  const [isFocused, setIsFocused] = useState(false);
   const dependencyCount = (detail?.dependencies ?? issue.dependencies).length;
   const dependentCount = detail?.dependents.length ?? 0;
 
@@ -124,6 +125,7 @@ function IssueRow({
         cursor: "pointer",
         color: "inherit",
         outline: "none",
+        boxShadow: isFocused ? "0 0 0 2px var(--accent-blue)" : "none",
       }}
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") {
@@ -131,12 +133,8 @@ function IssueRow({
           onClick();
         }
       }}
-      onFocus={(event) => {
-        event.currentTarget.style.boxShadow = "0 0 0 2px var(--accent-blue)";
-      }}
-      onBlur={(event) => {
-        event.currentTarget.style.boxShadow = "none";
-      }}
+      onFocus={() => setIsFocused(true)}
+      onBlur={() => setIsFocused(false)}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         <StatusPill status={issue.status} />
