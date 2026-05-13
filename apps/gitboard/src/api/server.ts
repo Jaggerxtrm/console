@@ -42,13 +42,13 @@ export function createApp(db: Database): {
     app.get("/gitboard/assets/*", async (c) => {
       const path = c.req.path.replace("/gitboard", "/gitboard");
       const file = Bun.file(join(gitboardDist, path));
-      if (await file.exists()) return new Response(file, { headers: { "Content-Type": contentType(path) } });
+      if (await file.exists()) return new Response(file, { headers: staticHeaders(path) });
       return c.notFound();
     });
 
     const serveGitboardSpa = async () => {
       const file = Bun.file(join(gitboardDist, "gitboard/index.html"));
-      return new Response(file, { headers: { "Content-Type": "text/html" } });
+      return new Response(file, { headers: htmlHeaders() });
     };
 
     app.get("/gitboard", serveGitboardSpa);
@@ -60,18 +60,18 @@ export function createApp(db: Database): {
     app.get("/beadboard/assets/*", async (c) => {
       const path = c.req.path.replace("/beadboard", "/beadboard");
       const file = Bun.file(join(beadboardDist, path));
-      if (await file.exists()) return new Response(file, { headers: { "Content-Type": contentType(path) } });
+      if (await file.exists()) return new Response(file, { headers: staticHeaders(path) });
       return c.notFound();
     });
 
     app.get("/beadboard", async (c) => {
       const file = Bun.file(join(beadboardDist, "beadboard/index.html"));
-      return new Response(file, { headers: { "Content-Type": "text/html" } });
+      return new Response(file, { headers: htmlHeaders() });
     });
 
     app.get("/beadboard/*", async (c) => {
       const file = Bun.file(join(beadboardDist, "beadboard/index.html"));
-      return new Response(file, { headers: { "Content-Type": "text/html" } });
+      return new Response(file, { headers: htmlHeaders() });
     });
 
     // Root redirects to the unified xtrm console.
@@ -124,6 +124,20 @@ export function startServer(db: Database, options: ServerOptions = {}): void {
   console.log(`[xtrm] - Console: http://${hostname}:${port}/console`);
   console.log(`[xtrm] - Gitboard: http://${hostname}:${port}/gitboard`);
   console.log(`[xtrm] - Beadboard: http://${hostname}:${port}/beadboard`);
+}
+
+function staticHeaders(path: string): HeadersInit {
+  return {
+    "Content-Type": contentType(path),
+    "Cache-Control": "no-store, max-age=0",
+  };
+}
+
+function htmlHeaders(): HeadersInit {
+  return {
+    "Content-Type": "text/html; charset=utf-8",
+    "Cache-Control": "no-store, max-age=0",
+  };
 }
 
 function contentType(path: string): string {

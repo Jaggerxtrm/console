@@ -17,7 +17,7 @@ const TABS: Array<{ id: Tab; label: string }> = [
 
 export function App() {
   const searchParams = new URLSearchParams(window.location.search);
-  const isEmbedded = searchParams.get("embedded") === "1";
+  const isEmbedded = searchParams.get("embedded") === "1" || window.self !== window.top;
   const [activeTab, setActiveTab] = useState<Tab>("issues");
   const [interactions, setInteractions] = useState<Interaction[]>([]);
   const [selectedIssueId, setSelectedIssueId] = useState<string | null>(null);
