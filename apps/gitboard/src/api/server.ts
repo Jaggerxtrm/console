@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import type { Database } from "bun:sqlite";
+import { createConsoleRouter } from "./routes/console.ts";
 import { createGithubRouter } from "./routes/github.ts";
 import { beadsRoutes } from "../../../beadboard/src/api/routes/beads.ts";
 import { ChannelRegistry } from "./ws/channels.ts";
@@ -31,6 +32,7 @@ export function createApp(db: Database): {
   app.get("/health", (c) => c.json({ status: "ok" }));
 
   // API routes
+  app.route("/api/console", createConsoleRouter(db));
   app.route("/api/github", createGithubRouter(db, registry));
   app.route("/api/beads", beadsRoutes);
 
