@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { ConsoleRepoRail, type ConsoleRepoRecord } from "./components/console/ConsoleRepoRail.tsx";
 import { GithubPanel } from "./components/github/GithubPanel.tsx";
 
 type Tab = "github" | "beads";
@@ -16,36 +15,55 @@ const BEADBOARD_URL = import.meta.env.VITE_BEADBOARD_URL || "/beadboard";
 export function App() {
   const path = window.location.pathname;
   const view: View = path.endsWith("/design-preview") || path.endsWith("/preview") ? "design-preview" : "dashboard";
-  const activeTab: Tab = path.includes("/beads") ? "beads" : "github";
 
-  return <DashboardShell view={view} activeTab={activeTab} />;
+  return <DashboardShell view={view} />;
 }
 
-function DashboardShell({ view, activeTab }: { view: View; activeTab: Tab }) {
+function DashboardShell({ view }: { view: View }) {
+  const [activeTab, setActiveTab] = useState<Tab>("github");
   const isPreview = view === "design-preview";
-  const [selectedConsoleRepo, setSelectedConsoleRepo] = useState<ConsoleRepoRecord | null>(null);
 
   return (
-    <div className={isPreview ? "xtrm-shell westworld-app design-preview-container" : "xtrm-shell westworld-app"}>
-      <header className="xtrm-topbar ww-topbar">
+    <div className={isPreview ? "westworld-app design-preview-container" : "westworld-app"} style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--surface-primary)', color: 'var(--text-primary)', fontFamily: 'var(--font-ui)' }}>
+      <header className="ww-topbar" style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 24,
+        padding: '0 20px',
+        height: 'var(--topbar-height)',
+        background: 'linear-gradient(180deg, var(--surface-secondary), var(--surface-primary))',
+        borderBottom: '1px solid var(--border-subtle)',
+        flexShrink: 0,
+      }}>
         <a
-          href="/console"
-          className="xtrm-brand"
+          href="/gitboard"
+          style={{ fontSize: 'var(--text-xs)', fontWeight: 600, letterSpacing: '0.1em', color: 'var(--text-muted)', textTransform: 'uppercase', textDecoration: 'none' }}
         >
           xtrm.wtf
         </a>
         <nav className="ww-nav" style={{ display: 'flex', gap: 4, height: '100%', alignItems: 'stretch' }}>
           {TABS.map(tab => (
-            <a
+            <button
               key={tab.id}
-              href={tab.id === "github" ? "/console/git" : "/console/beads"}
-              className={activeTab === tab.id && !isPreview ? "xtrm-module-link ww-nav-item is-active" : "xtrm-module-link ww-nav-item"}
+              className={activeTab === tab.id && !isPreview ? "ww-nav-item is-active" : "ww-nav-item"}
+              onClick={() => setActiveTab(tab.id)}
+              style={{
+                padding: '0 12px',
+                fontSize: 'var(--text-base)',
+                fontWeight: 500,
+                color: activeTab === tab.id && !isPreview ? 'var(--text-primary)' : 'var(--text-secondary)',
+                background: 'transparent',
+                border: 'none',
+                borderBottom: activeTab === tab.id && !isPreview ? '2px solid var(--accent-blue)' : '2px solid transparent',
+                cursor: 'pointer',
+                transition: 'var(--transition)',
+              }}
             >
               {tab.label}
-            </a>
+            </button>
           ))}
           <a
-            href="/console/design-preview"
+            href="/gitboard/design-preview"
             className={isPreview ? "ww-nav-item is-active" : "ww-nav-item"}
             style={{
               display: 'flex',
@@ -66,6 +84,8 @@ function DashboardShell({ view, activeTab }: { view: View; activeTab: Tab }) {
           <span className="ww-system-state"><i /> OPERATIONAL</span>
           <a 
             href="/beadboard" 
+            target="_blank" 
+            rel="noopener noreferrer"
             style={{
               fontSize: 'var(--text-sm)',
               color: 'var(--text-muted)',
@@ -75,32 +95,27 @@ function DashboardShell({ view, activeTab }: { view: View; activeTab: Tab }) {
               background: 'var(--surface-tertiary)',
             }}
           >
-            legacy Beadboard
+            Beadboard ↗
           </a>
         </div>
       </header>
-      <main className="xtrm-console-main gitboard-main">
+      <main className="gitboard-main" style={{ flex: 1, minHeight: 0 }}>
         {isPreview ? (
           <DesignPreview />
-        ) : (
-          <ConsoleRepoRail selectedRepoId={selectedConsoleRepo?.id ?? null} onSelect={setSelectedConsoleRepo} />
-        )}
-        <div style={{ flex: 1, minWidth: 0, minHeight: 0 }}>
-        {isPreview ? null : activeTab === "github" ? (
-          <GithubPanel hideRepoSidebar selectedRepo={selectedConsoleRepo?.github?.fullName ?? null} />
+        ) : activeTab === "github" ? (
+          <GithubPanel />
         ) : (
           <iframe 
-            src={selectedConsoleRepo?.beads ? `${BEADBOARD_URL}?embedded=1&project=${encodeURIComponent(selectedConsoleRepo.beads.projectId)}` : `${BEADBOARD_URL}?embedded=1`}
+            src={BEADBOARD_URL}
             style={{ 
               width: '100%', 
               height: '100%', 
               border: 'none',
-              background: '#181818',
+              background: 'var(--surface-primary)',
             }}
             title="Beadboard"
           />
         )}
-        </div>
       </main>
     </div>
   );

@@ -16,8 +16,6 @@ const TABS: Array<{ id: Tab; label: string }> = [
 ];
 
 export function App() {
-  const searchParams = new URLSearchParams(window.location.search);
-  const isEmbedded = searchParams.get("embedded") === "1" || window.self !== window.top;
   const [activeTab, setActiveTab] = useState<Tab>("issues");
   const [interactions, setInteractions] = useState<Interaction[]>([]);
   const [selectedIssueId, setSelectedIssueId] = useState<string | null>(null);
@@ -51,11 +49,7 @@ export function App() {
         const projs = await api.getProjects();
         setProjects(projs);
         if (projs.length > 0 && !selectedProjectId) {
-          const requestedProject = searchParams.get("project");
-          const matchedProject = requestedProject
-            ? projs.find((project) => project.id === requestedProject || project.name === requestedProject)
-            : null;
-          selectProject((matchedProject ?? projs[0]).id);
+          selectProject(projs[0].id);
         }
       } catch (err) {
         setError("Failed to load projects");
@@ -169,32 +163,28 @@ export function App() {
   };
 
   return (
-    <div className="xtrm-shell">
-      {!isEmbedded && (
-        <header className="xtrm-topbar">
-          <span className="xtrm-brand">Beadboard</span>
-          <nav style={{ display: 'flex', gap: 4, height: '100%', alignItems: 'stretch' }}>
-            {TABS.map(tab => (
-              <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{ padding: '0 10px', fontSize: '12px', fontWeight: 600, letterSpacing: '0.04em', color: activeTab === tab.id ? 'var(--text-primary)' : 'var(--text-secondary)', background: 'transparent', border: 'none', borderBottom: activeTab === tab.id ? '1px solid rgba(142,210,220,0.72)' : '1px solid transparent', cursor: 'pointer' }}>{tab.label}</button>
-            ))}
-          </nav>
-          {loading && <span style={{ marginLeft: 'auto', color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>Loading...</span>}
-          {error && <span style={{ marginLeft: 'auto', color: 'var(--status-blocked)', fontSize: 'var(--text-sm)' }}>{error}</span>}
-        </header>
-      )}
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: '#181818', color: 'var(--text-primary)', fontFamily: 'var(--font-ui)' }}>
+      <header style={{ display: 'flex', alignItems: 'center', gap: 20, padding: '0 16px', height: 'var(--topbar-height)', background: '#181818', borderBottom: '1px solid var(--border-subtle)', flexShrink: 0 }}>
+        <span style={{ fontSize: 'var(--text-sm)', fontWeight: 600, letterSpacing: '0.1em', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Beadboard</span>
+        <nav style={{ display: 'flex', gap: 4, height: '100%', alignItems: 'stretch' }}>
+          {TABS.map(tab => (
+            <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{ padding: '0 10px', fontSize: '12px', fontWeight: 600, letterSpacing: '0.04em', color: activeTab === tab.id ? 'var(--text-primary)' : 'var(--text-secondary)', background: 'transparent', border: 'none', borderBottom: activeTab === tab.id ? '1px solid rgba(142,210,220,0.72)' : '1px solid transparent', cursor: 'pointer' }}>{tab.label}</button>
+          ))}
+        </nav>
+        {loading && <span style={{ marginLeft: 'auto', color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>Loading...</span>}
+        {error && <span style={{ marginLeft: 'auto', color: 'var(--status-blocked)', fontSize: 'var(--text-sm)' }}>{error}</span>}
+      </header>
 
-      <main className="xtrm-console-main">
-        {!isEmbedded && (
-          <ProjectRail
-            projects={projects}
-            selectedProjectId={selectedProjectId}
-            statsByProject={statsByProject}
-            loadingStats={loadingProjectStats}
-            onSelectProject={selectProject}
-          />
-        )}
+      <main style={{ flex: 1, minHeight: 0, display: 'flex' }}>
+        <ProjectRail
+          projects={projects}
+          selectedProjectId={selectedProjectId}
+          statsByProject={statsByProject}
+          loadingStats={loadingProjectStats}
+          onSelectProject={selectProject}
+        />
 
-        <div style={{ flex: 1, minHeight: 0, overflow: 'auto', background: '#181818' }}>
+        <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
           {activeTab === "issues" && (
             <IssueFeed
               issues={issues}

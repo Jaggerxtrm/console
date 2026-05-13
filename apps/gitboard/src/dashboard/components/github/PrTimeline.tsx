@@ -239,14 +239,6 @@ function PrExpandedBody({ pr }: { pr: GithubPr }) {
   }, [pr.repo, pr.number]);
 
   const conversation = useMemo(() => buildConversation(pr, detail), [pr, detail]);
-  const linkedBeads = useMemo(
-    () => extractBeadIds(
-      pr.title,
-      pr.body,
-      ...conversation.map((item) => `${item.label}\n${item.body ?? ""}`),
-    ),
-    [conversation, pr.body, pr.title],
-  );
 
   return (
     <div className="pr-expanded-body">
@@ -264,14 +256,6 @@ function PrExpandedBody({ pr }: { pr: GithubPr }) {
             <span><b>Files</b>{pr.changed_files ?? "—"}</span>
             <span><b>Additions</b><strong className="is-add">+{pr.additions ?? 0}</strong></span>
             <span><b>Deletions</b><strong className="is-del">−{pr.deletions ?? 0}</strong></span>
-          </div>
-        )}
-        {linkedBeads.length > 0 && (
-          <div className="pr-summary-line pr-linked-records">
-            <span><b>Linked beads</b></span>
-            {linkedBeads.map((id) => (
-              <a key={id} href={`/console/beads?issue=${encodeURIComponent(id)}`} onClick={(event) => event.stopPropagation()}>{id}</a>
-            ))}
           </div>
         )}
       </div>
