@@ -44,15 +44,15 @@ export function createApp(db: Database): {
       return c.notFound();
     });
 
-    app.get("/gitboard", async (c) => {
+    const serveGitboardSpa = async () => {
       const file = Bun.file(join(gitboardDist, "gitboard/index.html"));
       return new Response(file, { headers: { "Content-Type": "text/html" } });
-    });
+    };
 
-    app.get("/gitboard/*", async (c) => {
-      const file = Bun.file(join(gitboardDist, "gitboard/index.html"));
-      return new Response(file, { headers: { "Content-Type": "text/html" } });
-    });
+    app.get("/gitboard", serveGitboardSpa);
+    app.get("/gitboard/*", serveGitboardSpa);
+    app.get("/console", serveGitboardSpa);
+    app.get("/console/*", serveGitboardSpa);
 
     // Beadboard - serve assets and SPA
     app.get("/beadboard/assets/*", async (c) => {
@@ -72,8 +72,8 @@ export function createApp(db: Database): {
       return new Response(file, { headers: { "Content-Type": "text/html" } });
     });
 
-    // Root redirects to gitboard
-    app.get("/", (c) => c.redirect("/gitboard"));
+    // Root redirects to the unified xtrm console.
+    app.get("/", (c) => c.redirect("/console"));
   }
 
   return { app, registry, wsHandler };
@@ -119,6 +119,7 @@ export function startServer(db: Database, options: ServerOptions = {}): void {
   });
 
   console.log(`[xtrm] Server running at http://${hostname}:${port}`);
+  console.log(`[xtrm] - Console: http://${hostname}:${port}/console`);
   console.log(`[xtrm] - Gitboard: http://${hostname}:${port}/gitboard`);
   console.log(`[xtrm] - Beadboard: http://${hostname}:${port}/beadboard`);
 }

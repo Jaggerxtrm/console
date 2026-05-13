@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { GithubPanel } from "./components/github/GithubPanel.tsx";
 
 type Tab = "github" | "beads";
@@ -15,12 +14,12 @@ const BEADBOARD_URL = import.meta.env.VITE_BEADBOARD_URL || "/beadboard";
 export function App() {
   const path = window.location.pathname;
   const view: View = path.endsWith("/design-preview") || path.endsWith("/preview") ? "design-preview" : "dashboard";
+  const activeTab: Tab = path.includes("/beads") ? "beads" : "github";
 
-  return <DashboardShell view={view} />;
+  return <DashboardShell view={view} activeTab={activeTab} />;
 }
 
-function DashboardShell({ view }: { view: View }) {
-  const [activeTab, setActiveTab] = useState<Tab>("github");
+function DashboardShell({ view, activeTab }: { view: View; activeTab: Tab }) {
   const isPreview = view === "design-preview";
 
   return (
@@ -36,34 +35,36 @@ function DashboardShell({ view }: { view: View }) {
         flexShrink: 0,
       }}>
         <a
-          href="/gitboard"
+          href="/console"
           style={{ fontSize: 'var(--text-xs)', fontWeight: 600, letterSpacing: '0.1em', color: 'var(--text-muted)', textTransform: 'uppercase', textDecoration: 'none' }}
         >
           xtrm.wtf
         </a>
         <nav className="ww-nav" style={{ display: 'flex', gap: 4, height: '100%', alignItems: 'stretch' }}>
           {TABS.map(tab => (
-            <button
+            <a
               key={tab.id}
+              href={tab.id === "github" ? "/console/git" : "/console/beads"}
               className={activeTab === tab.id && !isPreview ? "ww-nav-item is-active" : "ww-nav-item"}
-              onClick={() => setActiveTab(tab.id)}
               style={{
+                display: 'flex',
+                alignItems: 'center',
                 padding: '0 12px',
                 fontSize: 'var(--text-base)',
                 fontWeight: 500,
                 color: activeTab === tab.id && !isPreview ? 'var(--text-primary)' : 'var(--text-secondary)',
                 background: 'transparent',
-                border: 'none',
                 borderBottom: activeTab === tab.id && !isPreview ? '2px solid var(--accent-blue)' : '2px solid transparent',
                 cursor: 'pointer',
+                textDecoration: 'none',
                 transition: 'var(--transition)',
               }}
             >
               {tab.label}
-            </button>
+            </a>
           ))}
           <a
-            href="/gitboard/design-preview"
+            href="/console/design-preview"
             className={isPreview ? "ww-nav-item is-active" : "ww-nav-item"}
             style={{
               display: 'flex',
@@ -84,8 +85,6 @@ function DashboardShell({ view }: { view: View }) {
           <span className="ww-system-state"><i /> OPERATIONAL</span>
           <a 
             href="/beadboard" 
-            target="_blank" 
-            rel="noopener noreferrer"
             style={{
               fontSize: 'var(--text-sm)',
               color: 'var(--text-muted)',
@@ -95,7 +94,7 @@ function DashboardShell({ view }: { view: View }) {
               background: 'var(--surface-tertiary)',
             }}
           >
-            Beadboard ↗
+            legacy Beadboard
           </a>
         </div>
       </header>
