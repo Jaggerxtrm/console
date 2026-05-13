@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { IssueFeed } from "./components/beads/IssueFeed.tsx";
 import { KanbanBoard } from "./components/beads/KanbanBoard.tsx";
+import { ProjectRail, type ProjectRailStats } from "./components/beads/ProjectRail.tsx";
 import { useBeadsStore } from "./stores/beads.ts";
 import { api } from "./lib/api.ts";
 import type { BeadIssue, BeadIssueDetail, Memory, Interaction } from "../types/beads.ts";
@@ -19,6 +20,8 @@ export function App() {
   const [interactions, setInteractions] = useState<Interaction[]>([]);
   const [selectedIssueDetail, setSelectedIssueDetail] = useState<BeadIssueDetail | null>(null);
   const [loadingDetailId, setLoadingDetailId] = useState<string | null>(null);
+  const [statsByProject, setStatsByProject] = useState<Record<string, ProjectRailStats | undefined>>({});
+  const [loadingProjectStats, setLoadingProjectStats] = useState(false);
   const requestIdRef = useRef(0);
 
   const {
@@ -83,6 +86,37 @@ export function App() {
     if (selectedProjectId) loadProjectData(selectedProjectId);
   }, [selectedProjectId, loadProjectData]);
 
+  useEffect(() => {
+    if (projects.length === 0) {
+      setStatsByProject({});
+      return;
+    }
+
+    let cancelled = false;
+    async function loadProjectStats() {
+      setLoadingProjectStats(true);
+      const entries = await Promise.all(projects.map(async (project) => {
+        try {
+          const stats = await api.getStats(project.id);
+          return [project.id, stats] as const;
+        } catch (err) {
+          console.error(`Failed to load stats for ${project.id}`, err);
+          return [project.id, undefined] as const;
+        }
+      }));
+
+      if (!cancelled) {
+        setStatsByProject(Object.fromEntries(entries));
+        setLoadingProjectStats(false);
+      }
+    }
+
+    loadProjectStats();
+    return () => {
+      cancelled = true;
+    };
+  }, [projects]);
+
   const handleIssueSelect = useCallback(async (issue: BeadIssue) => {
     if (!selectedProjectId) return;
     if (loadingDetailId === issue.id) return;
@@ -137,28 +171,13 @@ export function App() {
       </header>
 
       <main style={{ flex: 1, minHeight: 0, display: 'flex' }}>
-        <aside style={{ width: 'var(--sidebar-width)', borderRight: '1px solid var(--border-subtle)', background: 'var(--surface-secondary)', padding: 16, display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div>
-            <h3 style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 12 }}>Projects</h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              {projects.length === 0 ? <div style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>No projects found</div> : projects.map(project => (
-                <button key={project.id} onClick={() => selectProject(project.id)} style={{ padding: 'var(--spacing-sm) var(--spacing-md)', borderRadius: 'var(--radius-sm)', background: selectedProjectId === project.id ? 'var(--surface-tertiary)' : 'transparent', color: 'var(--text-primary)', fontSize: 'var(--text-sm)', border: 'none', cursor: 'pointer', textAlign: 'left' }}>{project.name}</button>
-              ))}
-            </div>
-          </div>
-
-          {selectedProjectId && (
-            <div>
-              <h3 style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 12 }}>Stats</h3>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                <StatBadge label="Ready" count={issues.filter(i => i.status === 'open').length} color="var(--status-open)" />
-                <StatBadge label="Progress" count={issues.filter(i => i.status === 'in_progress').length} color="var(--accent-blue)" />
-                <StatBadge label="Blocked" count={issues.filter(i => i.status === 'blocked').length} color="var(--status-blocked)" />
-                <StatBadge label="Closed" count={closedIssues.length} color="var(--status-closed)" />
-              </div>
-            </div>
-          )}
-        </aside>
+        <ProjectRail
+          projects={projects}
+          selectedProjectId={selectedProjectId}
+          statsByProject={statsByProject}
+          loadingStats={loadingProjectStats}
+          onSelectProject={selectProject}
+        />
 
         <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
           {activeTab === "issues" && (
@@ -178,10 +197,6 @@ export function App() {
       </main>
     </div>
   );
-}
-
-function StatBadge({ label, count, color }: { label: string; count: number; color: string }) {
-  return <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: 'var(--spacing-xs) var(--spacing-sm)', background: 'var(--surface-tertiary)', borderRadius: 'var(--radius-sm)' }}><span style={{ width: 8, height: 8, borderRadius: '50%', background: color }} /><span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>{label}</span><span style={{ fontSize: 'var(--text-xs)', fontWeight: 600, marginLeft: 'auto' }}>{count}</span></div>;
 }
 
 function ClosedIssuesPanel({ issues, getAgent }: { issues: BeadIssue[]; getAgent: (id: string) => string | null; }) {
