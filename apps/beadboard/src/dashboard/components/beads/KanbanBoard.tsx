@@ -1,5 +1,5 @@
 /**
- * KanbanBoard - 4-column Kanban layout for bead issues
+ * KanbanBoard - secondary overview layout for bead issues
  */
 
 import type { BeadIssue } from "../../../types/beads.ts";
@@ -11,40 +11,50 @@ interface KanbanBoardProps {
   getAgent?: (issueId: string) => string | null;
 }
 
-const COLUMNS: Array<{ status: BeadIssue["status"]; title: string }> = [
-  { status: "open", title: "Open" },
-  { status: "in_progress", title: "In Progress" },
-  { status: "blocked", title: "Blocked" },
-  { status: "closed", title: "Closed" },
+const COLUMNS: Array<{ status: BeadIssue["status"]; title: string; description: string }> = [
+  { status: "in_progress", title: "In progress", description: "Active operator work" },
+  { status: "open", title: "Ready", description: "Unblocked queue" },
+  { status: "blocked", title: "Blocked", description: "Needs dependency cleared" },
+  { status: "closed", title: "Closed", description: "Recently completed" },
 ];
 
 export function KanbanBoard({ issues, onIssueClick, getAgent }: KanbanBoardProps) {
-  // Group issues by status
   const issuesByStatus = COLUMNS.reduce((acc, col) => {
-    acc[col.status] = issues.filter((i) => i.status === col.status);
+    acc[col.status] = issues
+      .filter((issue) => issue.status === col.status)
+      .sort((a, b) => {
+        const priorityDiff = (a.priority ?? 99) - (b.priority ?? 99);
+        if (priorityDiff !== 0) return priorityDiff;
+        return b.updated_at.localeCompare(a.updated_at);
+      });
     return acc;
   }, {} as Record<BeadIssue["status"], BeadIssue[]>);
 
   return (
-    <div
-      style={{
-        display: "flex",
-        gap: "var(--spacing-md)",
-        height: "100%",
-        overflowX: "auto",
-        padding: "var(--spacing-sm)",
-      }}
-    >
-      {COLUMNS.map((col) => (
-        <StatusColumn
-          key={col.status}
-          title={col.title}
-          status={col.status}
-          issues={issuesByStatus[col.status]}
-          onIssueClick={onIssueClick}
-          getAgent={getAgent}
-        />
-      ))}
+    <div style={{ height: "100%", display: "flex", flexDirection: "column", background: "var(--surface-primary)" }}>
+      <div style={{ padding: "14px 18px 10px", borderBottom: "1px solid var(--border-subtle)", background: "linear-gradient(180deg, rgba(88,166,255,0.05), transparent)" }}>
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12 }}>
+          <div>
+            <h2 style={{ fontSize: 13, fontWeight: 750, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-primary)", margin: 0 }}>Board overview</h2>
+            <p style={{ margin: "4px 0 0", fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>Secondary state map. Feed remains the primary dossier surface.</p>
+          </div>
+          <span style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)", color: "var(--text-muted)", border: "1px solid var(--border-subtle)", borderRadius: 999, padding: "3px 8px", background: "rgba(255,255,255,0.03)" }}>{issues.length} issues</span>
+        </div>
+      </div>
+
+      <div style={{ display: "flex", gap: 12, minHeight: 0, flex: 1, overflowX: "auto", padding: 14 }}>
+        {COLUMNS.map((col) => (
+          <StatusColumn
+            key={col.status}
+            title={col.title}
+            description={col.description}
+            status={col.status}
+            issues={issuesByStatus[col.status] ?? []}
+            onIssueClick={onIssueClick}
+            getAgent={getAgent}
+          />
+        ))}
+      </div>
     </div>
   );
 }
