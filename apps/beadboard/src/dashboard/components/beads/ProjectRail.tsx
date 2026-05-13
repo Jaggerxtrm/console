@@ -42,8 +42,8 @@ export function ProjectRail({ projects, selectedProjectId, statsByProject, loadi
   }, [projects, statsByProject]);
 
   return (
-    <aside style={{ width: "var(--sidebar-width)", minWidth: "var(--sidebar-width)", borderRight: "1px solid var(--border-subtle)", background: "#181818", display: "flex", flexDirection: "column", overflow: "hidden" }}>
-      <div style={{ height: 32, padding: "0 12px", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid var(--border-subtle)" }}>
+    <aside style={{ width: "var(--sidebar-width)", minWidth: "var(--sidebar-width)", borderRight: "1px solid var(--border-subtle)", background: "var(--surface-secondary)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+      <div style={{ height: 32, padding: "0 16px", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid var(--border-subtle)", background: "var(--surface-secondary)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--text-muted)", fontSize: "var(--text-xs)", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>
           <RepoIcon size={13} />
           Projects
@@ -78,12 +78,12 @@ export function ProjectRail({ projects, selectedProjectId, statsByProject, loadi
                 display: "flex",
                 flexDirection: "column",
                 gap: 5,
-                padding: "8px 12px",
+                padding: "8px 16px",
                 border: "none",
                 borderTop: "1px solid transparent",
-                borderBottom: "1px solid transparent",
-                borderLeft: isSelected ? "2px solid rgba(142,210,220,0.78)" : "2px solid transparent",
-                background: isSelected ? "#202020" : hoveredProjectId === project.id ? "#1d1d1d" : "transparent",
+                borderBottom: "1px solid var(--border-subtle)",
+                borderLeft: isSelected ? "2px solid var(--accent-blue)" : "2px solid transparent",
+                background: isSelected ? "var(--surface-tertiary)" : hoveredProjectId === project.id ? "var(--surface-hover)" : "transparent",
                 color: "var(--text-primary)",
                 cursor: isSelected ? "default" : "pointer",
                 textAlign: "left",
@@ -96,7 +96,7 @@ export function ProjectRail({ projects, selectedProjectId, statsByProject, loadi
                   <div style={{ fontSize: "12px", fontWeight: 650, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{project.name}</div>
                   <div style={{ marginTop: 1, fontSize: "10px", color: "var(--text-muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{compactPath(project.path)}</div>
                 </div>
-                <span style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)", color: activeCount > 0 ? "var(--text-primary)" : "var(--text-muted)", background: "rgba(255,255,255,0.04)", border: "1px solid var(--border-subtle)", borderRadius: 999, padding: "2px 7px" }}>{activeCount}</span>
+                <span style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)", color: activeCount > 0 ? "var(--text-primary)" : "var(--text-muted)", background: "transparent", border: "1px solid var(--border-subtle)", borderRadius: 0, padding: "2px 7px" }}>{activeCount}</span>
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 4 }}>

@@ -1520,7 +1520,7 @@ body {
 
 /* v8 systemization pass: consistent metrics, fewer ad-hoc shapes, stronger FUI hierarchy. */
 .westworld-app {
-  --ww-topbar-h: 42px;
+  --ww-topbar-h: var(--topbar-height);
   --ww-header-h: 32px;
   --ww-row-h: 50px;
   --ww-cut: 7px;

@@ -91,8 +91,9 @@ function DashboardShell({ view }: { view: View }) {
               color: 'var(--text-muted)',
               textDecoration: 'none',
               padding: '4px 8px',
-              borderRadius: 'var(--radius-sm)',
-              background: 'var(--surface-tertiary)',
+              borderRadius: 0,
+              background: 'transparent',
+              border: '1px solid var(--border-subtle)',
             }}
           >
             Beadboard ↗
