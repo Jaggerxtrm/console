@@ -32,6 +32,7 @@ function TabBar({
 
   return (
     <div
+      className="gitboard-tabbar"
       style={{
         display: "flex",
         borderBottom: "1px solid var(--border-subtle)",
@@ -42,6 +43,7 @@ function TabBar({
       {tabs.map((tab) => (
         <button
           key={tab.id}
+          className={activeTab === tab.id ? "gitboard-tab is-active" : "gitboard-tab"}
           onClick={() => onSelect(tab.id)}
           style={{
             padding: "8px 16px",
@@ -98,9 +100,13 @@ export function GithubPanel({ onMount = useGithubActivity }: { onMount?: () => v
     if (stat.last_event_at) lastEventAt[repo] = stat.last_event_at;
   }
 
-  // Filter PRs and issues to only the owner's repos
-  const ownPrs = ownerUsername ? prs.filter((pr) => pr.repo.startsWith(ownerUsername + "/")) : prs;
-  const ownIssues = ownerUsername ? issues.filter((issue) => issue.repo.startsWith(ownerUsername + "/")) : issues;
+  // Filter PRs and issues to owner's repos and respect the active repo selection.
+  const selectedRepoSet = new Set(filter.repos ?? []);
+  const repoMatchesFilter = (repo: string) => selectedRepoSet.size === 0 || selectedRepoSet.has(repo);
+  const ownPrs = (ownerUsername ? prs.filter((pr) => pr.repo.startsWith(ownerUsername + "/")) : prs)
+    .filter((pr) => repoMatchesFilter(pr.repo));
+  const ownIssues = (ownerUsername ? issues.filter((issue) => issue.repo.startsWith(ownerUsername + "/")) : issues)
+    .filter((issue) => repoMatchesFilter(issue.repo));
 
   function handleSelectEvent(evt: GithubEvent) {
     selectEvent(evt);
@@ -124,7 +130,7 @@ export function GithubPanel({ onMount = useGithubActivity }: { onMount?: () => v
   }
 
   return (
-    <div style={{ display: "flex", height: "100%", overflow: "hidden" }}>
+    <div className="gitboard-shell" style={{ display: "flex", height: "100%", overflow: "hidden" }}>
       {/* Left: Repo Sidebar */}
       <RepoSidebar
         repos={repos}
@@ -138,7 +144,7 @@ export function GithubPanel({ onMount = useGithubActivity }: { onMount?: () => v
       />
 
       {/* Center: Tabbed timeline */}
-      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+      <div className="gitboard-center" style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
         <StatsHeader summary={summary} />
 
         <TabBar

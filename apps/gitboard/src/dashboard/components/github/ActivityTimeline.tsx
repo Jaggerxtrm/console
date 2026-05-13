@@ -150,6 +150,7 @@ function EventRow({ evt, selected, hovered, expanded = false, onSelect, onMouseE
   return (
     <div
       role="row"
+      className={selected ? "timeline-row is-selected" : hovered ? "timeline-row is-hovered" : "timeline-row"}
       aria-selected={selected}
       onClick={() => onSelect(evt)}
       onMouseEnter={onMouseEnter}
@@ -234,7 +235,7 @@ function EventRow({ evt, selected, hovered, expanded = false, onSelect, onMouseE
 
 function DayHeader({ label }: { label: string }) {
   return (
-    <div style={{
+    <div className="timeline-day-header" style={{
       padding: "6px 16px",
       fontSize: "var(--text-xs)",
       fontWeight: 600,

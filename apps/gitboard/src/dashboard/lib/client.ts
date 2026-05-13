@@ -9,6 +9,7 @@ import type {
   RepoStatsResponse,
   PrsResponse,
   IssuesResponse,
+  GithubPrDetail,
 } from "../../types/github.ts";
 
 export class ApiClient {
@@ -100,6 +101,10 @@ export class ApiClient {
 
   getPr(owner: string, repo: string, number: number): Promise<unknown> {
     return this.get(`/api/github/prs/${owner}/${repo}/${number}`);
+  }
+
+  getPrDetail(owner: string, repo: string, number: number): Promise<GithubPrDetail> {
+    return this.get(`/api/github/prs/${owner}/${repo}/${number}/detail`);
   }
 
   getIssues(params: { repo?: string; state?: string; limit?: number; offset?: number } = {}): Promise<IssuesResponse> {

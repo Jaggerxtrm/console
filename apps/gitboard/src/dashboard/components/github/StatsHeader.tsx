@@ -15,7 +15,7 @@ const STATS: Array<{ key: keyof Summary; label: string; Icon: React.ComponentTyp
 
 export function StatsHeader({ summary }: Props) {
   return (
-    <div style={{
+    <div className="gitboard-statsbar" style={{
       display: "flex",
       alignItems: "center",
       height: 32,
@@ -26,7 +26,7 @@ export function StatsHeader({ summary }: Props) {
       flexShrink: 0,
     }}>
       {STATS.map(({ key, label, Icon }, i) => (
-        <div key={key} style={{ display: "flex", alignItems: "center" }}>
+        <div key={key} className="gitboard-stat" style={{ display: "flex", alignItems: "center" }}>
           {i > 0 && (
             <span style={{ margin: "0 10px", color: "var(--text-muted)", fontSize: 11 }}>·</span>
           )}

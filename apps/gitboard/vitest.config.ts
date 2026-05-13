@@ -15,7 +15,7 @@ export default defineConfig({
     globals: true,
     reporters: [
       "default",
-      new VitestReporter("/home/dawid/projects/gitboard"),
+      new VitestReporter("/home/dawid/dev/gitboard"),
     ],
     coverage: {
       provider: "v8",

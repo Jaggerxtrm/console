@@ -155,3 +155,2185 @@ body {
   border-radius: var(--radius-pill);
 }
 ::-webkit-scrollbar-thumb:hover { background: var(--bg-hover); }
+
+/* Westworld-inspired design preview route: /gitboard/design-preview */
+.design-preview-container {
+  --surface-primary: #071016;
+  --surface-secondary: rgba(10, 20, 27, 0.82);
+  --surface-tertiary: rgba(24, 43, 52, 0.66);
+  --border-subtle: rgba(118, 177, 188, 0.16);
+  --accent-blue: #7ed7e5;
+  --accent-purple: #6fa8b7;
+  --text-primary: #e5eef0;
+  --text-secondary: #9bb0b5;
+  --text-muted: #65777d;
+}
+
+.fui-shell {
+  position: relative;
+  height: 100%;
+  overflow: auto;
+  padding: 28px;
+  background:
+    radial-gradient(circle at 18% 12%, rgba(92, 164, 176, 0.18), transparent 34%),
+    radial-gradient(circle at 78% 8%, rgba(44, 79, 96, 0.22), transparent 32%),
+    linear-gradient(135deg, #081117 0%, #0b151d 46%, #0a0f14 100%);
+  color: #e7f0f1;
+  isolation: isolate;
+}
+
+.fui-atmosphere {
+  position: fixed;
+  inset: 48px 0 0;
+  pointer-events: none;
+  background: linear-gradient(115deg, transparent 0%, rgba(151, 218, 224, 0.045) 42%, transparent 70%);
+  filter: blur(18px);
+  opacity: 0.85;
+  z-index: -2;
+}
+
+.fui-grid {
+  position: fixed;
+  inset: 48px 0 0;
+  pointer-events: none;
+  z-index: -1;
+  background-image:
+    linear-gradient(rgba(137, 204, 214, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(137, 204, 214, 0.04) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: radial-gradient(circle at 50% 30%, black, transparent 78%);
+}
+
+.fui-topline {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 22px;
+}
+
+.fui-eyebrow,
+.fui-title span {
+  color: #7fb8c1;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  line-height: 1;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+}
+
+.fui-topline h1 {
+  max-width: 760px;
+  font-size: clamp(28px, 4vw, 52px);
+  font-weight: 650;
+  letter-spacing: -0.055em;
+  line-height: 0.94;
+  color: #eef7f7;
+  text-shadow: 0 0 30px rgba(126, 215, 229, 0.11);
+}
+
+.fui-status-cluster {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: fit-content;
+  padding: 10px 12px;
+  border: 1px solid rgba(126, 215, 229, 0.16);
+  border-radius: 999px;
+  background: rgba(7, 16, 22, 0.48);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045), 0 18px 60px rgba(0, 0, 0, 0.22);
+  color: #9bb0b5;
+  font-size: 12px;
+  backdrop-filter: blur(18px);
+}
+
+.fui-status-cluster strong {
+  color: #d9ecef;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.fui-pulse {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: #7ed7e5;
+  box-shadow: 0 0 0 0 rgba(126, 215, 229, 0.45), 0 0 18px rgba(126, 215, 229, 0.9);
+  animation: fui-pulse 3.4s ease-in-out infinite;
+}
+
+.fui-layout {
+  display: grid;
+  grid-template-columns: minmax(210px, 0.72fr) minmax(520px, 1.9fr) minmax(300px, 0.95fr);
+  gap: 18px;
+  min-height: calc(100vh - 170px);
+}
+
+.fui-main {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: 18px;
+  min-width: 0;
+}
+
+.fui-panel {
+  position: relative;
+  border: 1px solid rgba(126, 215, 229, 0.14);
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(19, 34, 43, 0.72), rgba(8, 16, 22, 0.78)),
+    rgba(10, 18, 24, 0.58);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    inset 0 0 42px rgba(126, 215, 229, 0.025),
+    0 20px 70px rgba(0, 0, 0, 0.36);
+  backdrop-filter: blur(22px) saturate(120%);
+}
+
+.fui-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(120deg, rgba(126, 215, 229, 0.14), transparent 24%, transparent 78%, rgba(126, 215, 229, 0.07));
+  opacity: 0.52;
+}
+
+.fui-rail,
+.fui-diagnostics {
+  padding: 18px;
+}
+
+.fui-title h2 {
+  color: #e4eff0;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
+.fui-title.compact h2 { font-size: 13px; }
+
+.fui-region {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  margin-top: 8px;
+  padding: 12px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.018);
+  color: #cfdddf;
+  cursor: pointer;
+  transition: 240ms ease;
+}
+
+.fui-region small { color: #75888e; }
+.fui-region.is-active {
+  border-color: rgba(126, 215, 229, 0.22);
+  background: rgba(126, 215, 229, 0.07);
+  box-shadow: 0 0 28px rgba(126, 215, 229, 0.06);
+}
+
+.fui-divider {
+  height: 1px;
+  margin: 18px 0;
+  background: linear-gradient(90deg, transparent, rgba(126, 215, 229, 0.18), transparent);
+}
+
+.fui-security-ring {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 142px;
+  height: 142px;
+  margin: 24px auto 4px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, rgba(126, 215, 229, 0.08) 0 44%, transparent 45%),
+    conic-gradient(from 20deg, #7ed7e5 0 84%, rgba(126, 215, 229, 0.08) 84% 100%);
+}
+
+.fui-security-ring::after {
+  content: "";
+  position: absolute;
+  inset: 9px;
+  border-radius: inherit;
+  background: #091219;
+  border: 1px solid rgba(126, 215, 229, 0.12);
+}
+
+.fui-security-ring span,
+.fui-security-ring small {
+  position: relative;
+  z-index: 1;
+}
+
+.fui-security-ring span {
+  font-family: var(--font-mono);
+  font-size: 25px;
+  color: #edf8f8;
+}
+
+.fui-security-ring small {
+  color: #778d92;
+  margin-top: 34px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.fui-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.fui-metric-card {
+  padding: 16px;
+  min-height: 120px;
+}
+
+.fui-metric-card > span {
+  display: block;
+  color: #8fa7ac;
+  font-size: 12px;
+  margin-bottom: 18px;
+}
+
+.fui-metric-card strong {
+  display: block;
+  color: #edf8f8;
+  font-size: 30px;
+  font-weight: 560;
+  letter-spacing: -0.04em;
+}
+
+.fui-metric-card div {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 14px;
+}
+
+.fui-metric-card small {
+  color: #7ed7e5;
+  font-family: var(--font-mono);
+}
+
+.fui-metric-card em {
+  color: #7b8f95;
+  font-size: 11px;
+  font-style: normal;
+}
+
+.fui-map-panel {
+  padding: 18px;
+  overflow: hidden;
+}
+
+.fui-panel-header {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.fui-chip {
+  padding: 6px 10px;
+  border: 1px solid rgba(126, 215, 229, 0.18);
+  border-radius: 999px;
+  color: #8fb8be;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: rgba(126, 215, 229, 0.045);
+}
+
+.fui-topology {
+  position: relative;
+  height: calc(100% - 56px);
+  min-height: 430px;
+  margin-top: 16px;
+  border-radius: 14px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 44%, rgba(126, 215, 229, 0.13), transparent 38%),
+    linear-gradient(rgba(126, 215, 229, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(126, 215, 229, 0.035) 1px, transparent 1px);
+  background-size: auto, 34px 34px, 34px 34px;
+}
+
+.fui-lines {
+  position: absolute;
+  inset: 8%;
+  width: 84%;
+  height: 84%;
+  filter: drop-shadow(0 0 12px rgba(126, 215, 229, 0.22));
+}
+
+.fui-lines path {
+  fill: none;
+  stroke: rgba(126, 215, 229, 0.48);
+  stroke-width: 0.22;
+  vector-effect: non-scaling-stroke;
+  stroke-dasharray: 3 4;
+  animation: fui-dash 18s linear infinite;
+}
+
+.fui-node {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  transform: translate(-50%, -50%);
+  padding: 7px 9px;
+  border: 1px solid rgba(126, 215, 229, 0.2);
+  border-radius: 999px;
+  background: rgba(7, 16, 22, 0.82);
+  color: #cfe4e7;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  box-shadow: 0 0 24px rgba(126, 215, 229, 0.08);
+}
+
+.fui-node span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #7ed7e5;
+  box-shadow: 0 0 12px rgba(126, 215, 229, 0.75);
+}
+
+.fui-node.warn span { background: #d6b66b; box-shadow: 0 0 12px rgba(214, 182, 107, 0.7); }
+.fui-node.hot span { animation: fui-pulse 2.8s ease-in-out infinite; }
+
+.fui-floating-window {
+  position: absolute;
+  width: 190px;
+  padding: 12px;
+  border: 1px solid rgba(126, 215, 229, 0.17);
+  border-radius: 12px;
+  background: rgba(8, 18, 24, 0.72);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.32), inset 0 1px 0 rgba(255,255,255,0.05);
+  backdrop-filter: blur(16px);
+}
+
+.fui-floating-window strong {
+  display: block;
+  color: #e8f2f3;
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+
+.fui-floating-window span {
+  color: #86a2a8;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.window-a { left: 8%; bottom: 13%; animation: fui-float 8s ease-in-out infinite; }
+.window-b { right: 9%; top: 13%; animation: fui-float 9s ease-in-out infinite reverse; }
+
+.fui-log-stream {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 9px;
+  margin-top: 18px;
+}
+
+.fui-log-stream code {
+  display: block;
+  padding: 9px 10px;
+  border-left: 1px solid rgba(126, 215, 229, 0.26);
+  background: rgba(255, 255, 255, 0.022);
+  color: #9eb8bd;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.45;
+  white-space: normal;
+}
+
+.fui-pipeline {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+  margin-top: 24px;
+}
+
+.fui-pipeline div {
+  display: grid;
+  gap: 8px;
+  color: #687d83;
+  font-size: 10px;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.fui-pipeline span {
+  height: 3px;
+  border-radius: 999px;
+  background: rgba(126, 215, 229, 0.12);
+}
+
+.fui-pipeline .is-complete span { background: rgba(126, 215, 229, 0.52); }
+.fui-pipeline .is-current span {
+  background: #7ed7e5;
+  box-shadow: 0 0 18px rgba(126, 215, 229, 0.45);
+}
+
+@keyframes fui-pulse {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(126, 215, 229, 0.32), 0 0 18px rgba(126, 215, 229, 0.72); }
+  50% { transform: scale(1.12); box-shadow: 0 0 0 8px rgba(126, 215, 229, 0), 0 0 24px rgba(126, 215, 229, 0.92); }
+}
+
+@keyframes fui-dash { to { stroke-dashoffset: -80; } }
+@keyframes fui-float { 0%, 100% { transform: translateY(0); opacity: 0.92; } 50% { transform: translateY(-7px); opacity: 1; } }
+
+@media (max-width: 1180px) {
+  .fui-layout { grid-template-columns: 1fr; }
+  .fui-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .fui-rail, .fui-diagnostics { min-height: auto; }
+}
+
+@media (max-width: 720px) {
+  .fui-shell { padding: 18px; }
+  .fui-topline { flex-direction: column; }
+  .fui-metrics { grid-template-columns: 1fr; }
+  .fui-topology { min-height: 360px; }
+  .fui-floating-window { display: none; }
+}
+
+/* Density pass: match Gitboard's sidebar / timeline / detail-pane proportions. */
+.fui-shell.fui-dense {
+  display: grid;
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr) var(--detail-width);
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.fui-dense .fui-rail,
+.fui-dense .fui-detail-panel {
+  border-radius: 0;
+  border-top: 0;
+  border-bottom: 0;
+}
+
+.fui-dense .fui-rail {
+  border-left: 0;
+  padding: 14px;
+  overflow: auto;
+}
+
+.fui-feed-column {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-right: 1px solid rgba(126, 215, 229, 0.14);
+}
+
+.fui-command-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 72px;
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(126, 215, 229, 0.14);
+  background: rgba(7, 16, 22, 0.58);
+  backdrop-filter: blur(18px);
+}
+
+.fui-command-bar h1 {
+  margin: 0;
+  color: #edf6f7;
+  font-size: 20px;
+  font-weight: 650;
+  letter-spacing: -0.035em;
+  line-height: 1.1;
+}
+
+.fui-dense .fui-eyebrow { margin-bottom: 5px; }
+.fui-dense .fui-status-cluster { padding: 7px 10px; font-size: 11px; }
+
+.fui-dense .fui-metrics {
+  flex-shrink: 0;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0;
+  border-bottom: 1px solid rgba(126, 215, 229, 0.14);
+}
+
+.fui-dense .fui-metric-card {
+  min-height: 86px;
+  padding: 12px 14px;
+  border-radius: 0;
+  border-top: 0;
+  border-left: 0;
+  border-bottom: 0;
+}
+
+.fui-dense .fui-metric-card strong { font-size: 23px; }
+.fui-dense .fui-metric-card > span { margin-bottom: 8px; }
+.fui-dense .fui-metric-card div { margin-top: 8px; }
+
+.fui-activity-panel {
+  flex: 1;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  overflow: hidden;
+  background: rgba(7, 16, 22, 0.36);
+}
+
+.fui-tabbar {
+  display: flex;
+  height: 37px;
+  border-bottom: 1px solid rgba(126, 215, 229, 0.14);
+  background: rgba(7, 16, 22, 0.48);
+}
+
+.fui-tabbar button {
+  padding: 0 14px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: #7e9399;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.fui-tabbar button.is-active {
+  color: #e2eff1;
+  border-bottom-color: #7ed7e5;
+}
+
+.fui-feed-list {
+  height: calc(100% - 37px);
+  overflow: auto;
+}
+
+.fui-feed-item {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) 78px 70px;
+  align-items: center;
+  gap: 10px;
+  min-height: 58px;
+  padding: 9px 16px;
+  border-bottom: 1px solid rgba(126, 215, 229, 0.09);
+  background: linear-gradient(90deg, rgba(126, 215, 229, 0.035), transparent 38%);
+}
+
+.fui-feed-item strong {
+  display: block;
+  color: #dce9eb;
+  font-size: 13px;
+  font-weight: 560;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fui-feed-item span {
+  color: #72878d;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.fui-feed-item em,
+.fui-feed-item time {
+  color: #7c9298;
+  font-size: 11px;
+  font-style: normal;
+  text-align: right;
+}
+
+.fui-event-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #7ed7e5;
+  box-shadow: 0 0 14px rgba(126, 215, 229, 0.55);
+}
+
+.fui-event-dot.review,
+.fui-event-dot.guarded { background: #d6b66b; box-shadow: 0 0 14px rgba(214, 182, 107, 0.45); }
+
+.fui-dense .fui-region {
+  margin-top: 5px;
+  padding: 9px 10px;
+  border-radius: 8px;
+}
+
+.fui-dense .fui-security-ring {
+  width: 104px;
+  height: 104px;
+  margin-top: 14px;
+}
+
+.fui-dense .fui-security-ring span { font-size: 19px; }
+.fui-dense .fui-security-ring small { margin-top: 26px; font-size: 9px; }
+
+.fui-mini-stack {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+  color: #8ca2a7;
+  font-size: 11px;
+}
+
+.fui-mini-stack span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fui-mini-stack b {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #7ed7e5;
+}
+
+.fui-mini-stack strong {
+  margin-left: auto;
+  color: #d5e6e8;
+  font-weight: 500;
+}
+
+.fui-detail-panel {
+  padding: 14px;
+  overflow: auto;
+}
+
+.fui-detail-panel .fui-topology {
+  height: 260px;
+  min-height: 260px;
+  margin-top: 12px;
+}
+
+.fui-dense .fui-log-stream { gap: 6px; margin-top: 12px; }
+.fui-dense .fui-log-stream code { padding: 7px 8px; font-size: 10px; }
+.fui-dense .fui-pipeline { margin-top: 16px; }
+
+@media (max-width: 1180px) {
+  .fui-shell.fui-dense { grid-template-columns: 190px minmax(0, 1fr); }
+  .fui-detail-panel { display: none; }
+}
+
+@media (max-width: 760px) {
+  .fui-shell.fui-dense { grid-template-columns: 1fr; }
+  .fui-dense .fui-rail { display: none; }
+  .fui-dense .fui-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .fui-command-bar { align-items: flex-start; flex-direction: column; }
+}
+
+/* Grounded Westworld pass: more institutional, less sci-fi glow, tighter control-room density. */
+.fui-shell.fui-dense {
+  background:
+    radial-gradient(circle at 62% 0%, rgba(86, 132, 142, 0.10), transparent 34%),
+    linear-gradient(135deg, #080d12 0%, #0b141b 48%, #070b10 100%);
+}
+
+.fui-dense .fui-grid {
+  background-size: 28px 28px;
+  opacity: 0.72;
+}
+
+.fui-dense .fui-panel {
+  border-color: rgba(128, 166, 174, 0.13);
+  border-radius: 10px;
+  background:
+    linear-gradient(180deg, rgba(18, 28, 35, 0.74), rgba(8, 14, 19, 0.86)),
+    rgba(8, 14, 19, 0.78);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.035),
+    0 12px 34px rgba(0,0,0,0.22);
+}
+
+.fui-dense .fui-panel::before {
+  background: linear-gradient(135deg, rgba(151, 202, 210, 0.055), transparent 28%);
+  opacity: 1;
+}
+
+.fui-command-bar {
+  min-height: 60px;
+  background: linear-gradient(180deg, rgba(15, 25, 32, 0.82), rgba(7, 13, 18, 0.74));
+}
+
+.fui-command-bar h1 {
+  font-size: 16px;
+  letter-spacing: -0.02em;
+  text-transform: none;
+}
+
+.fui-eyebrow,
+.fui-title span {
+  color: #79aeb6;
+  font-size: 9px;
+  letter-spacing: 0.16em;
+}
+
+.fui-title h2 {
+  font-size: 13px;
+  color: #dbe8ea;
+}
+
+.fui-dense .fui-status-cluster {
+  border-color: rgba(128, 166, 174, 0.14);
+  background: rgba(8, 14, 19, 0.68);
+  box-shadow: none;
+}
+
+.fui-pulse,
+.fui-node span,
+.fui-event-dot {
+  background: #8ed2dc;
+  box-shadow: 0 0 10px rgba(142, 210, 220, 0.34);
+}
+
+.fui-dense .fui-metric-card {
+  min-height: 76px;
+  background: rgba(10, 18, 24, 0.54);
+}
+
+.fui-dense .fui-metric-card strong {
+  font-size: 20px;
+  font-weight: 540;
+}
+
+.fui-metric-card small,
+.fui-chip {
+  color: #8ed2dc;
+}
+
+.fui-feed-item {
+  min-height: 52px;
+  background: transparent;
+}
+
+.fui-feed-item:hover {
+  background: rgba(142, 210, 220, 0.035);
+}
+
+.fui-feed-item strong {
+  font-size: 12px;
+  font-weight: 520;
+}
+
+.fui-tabbar {
+  height: 34px;
+  background: rgba(8, 14, 19, 0.66);
+}
+
+.fui-tabbar button {
+  font-size: 10px;
+  letter-spacing: 0.02em;
+}
+
+.fui-detail-panel .fui-topology {
+  height: 224px;
+  min-height: 224px;
+  background:
+    radial-gradient(circle at 50% 44%, rgba(142, 210, 220, 0.07), transparent 40%),
+    linear-gradient(rgba(142, 210, 220, 0.028) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(142, 210, 220, 0.028) 1px, transparent 1px);
+  background-size: auto, 22px 22px, 22px 22px;
+}
+
+.fui-lines {
+  filter: none;
+}
+
+.fui-lines path {
+  stroke: rgba(142, 210, 220, 0.34);
+  stroke-width: 0.18;
+}
+
+.fui-node {
+  border-color: rgba(142, 210, 220, 0.16);
+  border-radius: 6px;
+  background: rgba(8, 14, 19, 0.9);
+  box-shadow: none;
+  font-size: 9px;
+}
+
+.fui-dense .fui-log-stream code {
+  border-left-color: rgba(142, 210, 220, 0.22);
+  background: rgba(255,255,255,0.015);
+  color: #93aab0;
+}
+
+.fui-dense .fui-region.is-active {
+  border-color: rgba(142, 210, 220, 0.20);
+  background: rgba(142, 210, 220, 0.045);
+  box-shadow: none;
+}
+
+.fui-dense .fui-security-ring {
+  background:
+    radial-gradient(circle, rgba(142, 210, 220, 0.045) 0 44%, transparent 45%),
+    conic-gradient(from 20deg, rgba(142, 210, 220, 0.82) 0 84%, rgba(142, 210, 220, 0.08) 84% 100%);
+}
+
+.fui-dense .fui-security-ring::after {
+  background: #091017;
+  border-color: rgba(142, 210, 220, 0.11);
+}
+
+/* Apply the grounded Westworld control-room design to the real Gitboard UI. */
+.westworld-app {
+  --surface-backdrop: #070b10;
+  --surface-elevated: rgba(13, 22, 29, 0.92);
+  --surface-primary: #081017;
+  --surface-secondary: rgba(12, 21, 28, 0.88);
+  --surface-tertiary: rgba(22, 37, 46, 0.74);
+  --surface-quaternary: rgba(35, 55, 64, 0.72);
+  --bg-hover: rgba(126, 183, 194, 0.08);
+  --border-subtle: rgba(132, 171, 179, 0.14);
+  --border-default: rgba(132, 171, 179, 0.20);
+  --border-strong: rgba(160, 202, 211, 0.28);
+  --text-primary: #e2ecee;
+  --text-secondary: #94a9ae;
+  --text-muted: #667a80;
+  --accent-blue: #8ed2dc;
+  --accent-green: #89c9a5;
+  --accent-orange: #d2b36d;
+  --accent-red: #d1847f;
+  --accent-purple: #9fb8c9;
+  --accent-teal: #8ed2dc;
+  --event-push: #8ed2dc;
+  --event-pr-open: #89c9a5;
+  --event-pr-merge: #a7b6d9;
+  --event-pr-close: rgba(209, 132, 127, 0.62);
+  --event-review: #d2b36d;
+  --event-issue-open: #89c9a5;
+  --event-issue-close: #74868b;
+  --event-release: #8ed2dc;
+  --event-branch: #8ca0a6;
+  --event-social: #8a8379;
+  --shadow-sm: 0 8px 26px rgba(0,0,0,0.24);
+  --shadow-md: 0 14px 42px rgba(0,0,0,0.28);
+  --shadow-lg: 0 22px 70px rgba(0,0,0,0.34);
+  --shadow-card: 0 14px 44px rgba(0,0,0,0.30);
+  background:
+    radial-gradient(circle at 72% -12%, rgba(94, 145, 156, 0.10), transparent 34%),
+    linear-gradient(135deg, #080d12 0%, #0b141b 50%, #070b10 100%) !important;
+}
+
+.westworld-app > header {
+  height: 44px !important;
+  background:
+    linear-gradient(180deg, rgba(15, 25, 32, 0.94), rgba(8, 14, 19, 0.88)) !important;
+  border-bottom: 1px solid rgba(132, 171, 179, 0.15) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.035), 0 10px 38px rgba(0,0,0,0.18);
+  backdrop-filter: blur(18px);
+}
+
+.westworld-app > header::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 44px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(142,210,220,0.22), transparent);
+  pointer-events: none;
+}
+
+.westworld-app > header a:first-child {
+  color: #dbe8ea !important;
+  letter-spacing: 0.16em !important;
+}
+
+.westworld-app button,
+.westworld-app a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.westworld-app main {
+  position: relative;
+  background:
+    linear-gradient(rgba(142, 210, 220, 0.026) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(142, 210, 220, 0.026) 1px, transparent 1px),
+    var(--surface-primary);
+  background-size: 28px 28px;
+}
+
+.westworld-app main > div {
+  background: rgba(8, 16, 23, 0.72);
+}
+
+.westworld-app [style*="background: var(--surface-secondary)"] {
+  background: linear-gradient(180deg, rgba(15, 25, 32, 0.80), rgba(8, 14, 19, 0.84)) !important;
+}
+
+.westworld-app [style*="background: var(--surface-primary)"] {
+  background: rgba(8, 16, 23, 0.70) !important;
+}
+
+.westworld-app [style*="background: var(--surface-tertiary)"] {
+  background: rgba(142, 210, 220, 0.06) !important;
+}
+
+.westworld-app [style*="borderBottom: 1px solid var(--border-subtle)"],
+.westworld-app [style*="border-bottom: 1px solid var(--border-subtle)"],
+.westworld-app [style*="borderRight: 1px solid var(--border-subtle)"],
+.westworld-app [style*="border-right: 1px solid var(--border-subtle)"],
+.westworld-app [style*="borderTop: 1px solid var(--border-subtle)"],
+.westworld-app [style*="border-top: 1px solid var(--border-subtle)"] {
+  border-color: rgba(132, 171, 179, 0.14) !important;
+}
+
+.westworld-app [style*="borderBottom: 2px solid var(--accent-blue)"],
+.westworld-app [style*="border-bottom: 2px solid var(--accent-blue)"],
+.westworld-app [style*="borderLeft: 2px solid var(--event-push)"],
+.westworld-app [style*="border-left: 2px solid var(--event-push)"] {
+  border-color: #8ed2dc !important;
+}
+
+.westworld-app [style*="fontSize: 11"],
+.westworld-app [style*="font-size: 11"] {
+  letter-spacing: 0.01em;
+}
+
+.westworld-app [style*="fontFamily: var(--font-mono)"],
+.westworld-app [style*="font-family: var(--font-mono)"] {
+  color: #cfe4e7 !important;
+}
+
+.westworld-app [style*="rgba(255,255,255,0.04)"] {
+  background: rgba(142, 210, 220, 0.05) !important;
+}
+
+.westworld-app [style*="boxShadow"],
+.westworld-app [style*="box-shadow"] {
+  box-shadow: var(--shadow-sm);
+}
+
+.westworld-app ::selection {
+  background: rgba(142, 210, 220, 0.22);
+  color: #f1fbfb;
+}
+
+.westworld-app ::-webkit-scrollbar-thumb {
+  background: rgba(110, 145, 153, 0.50);
+}
+
+.westworld-app ::-webkit-scrollbar-thumb:hover {
+  background: rgba(142, 180, 188, 0.64);
+}
+
+/* Cinematic depth refinement: keep density, add Westworld-like computational layering. */
+.westworld-app {
+  --ww-line: rgba(144, 205, 216, 0.13);
+  --ww-line-soft: rgba(144, 205, 216, 0.075);
+  --ww-glow: rgba(142, 210, 220, 0.18);
+  --ww-glow-soft: rgba(142, 210, 220, 0.075);
+}
+
+.westworld-app .gitboard-main {
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.westworld-app .gitboard-main::before,
+.westworld-app .gitboard-main::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.westworld-app .gitboard-main::before {
+  background:
+    radial-gradient(ellipse at 72% 18%, rgba(142, 210, 220, 0.105), transparent 34%),
+    radial-gradient(ellipse at 28% 76%, rgba(82, 121, 132, 0.09), transparent 38%),
+    linear-gradient(115deg, transparent 0 34%, rgba(167, 220, 226, 0.032) 46%, transparent 63%);
+  filter: blur(10px);
+  opacity: 0.9;
+}
+
+.westworld-app .gitboard-main::after {
+  background:
+    linear-gradient(var(--ww-line-soft) 1px, transparent 1px),
+    linear-gradient(90deg, var(--ww-line-soft) 1px, transparent 1px),
+    linear-gradient(135deg, transparent 0 48%, rgba(142, 210, 220, 0.045) 49%, transparent 50%);
+  background-size: 28px 28px, 28px 28px, 180px 180px;
+  mask-image: radial-gradient(circle at 52% 42%, black, transparent 82%);
+  opacity: 0.7;
+}
+
+.westworld-app .gitboard-main > div {
+  position: relative;
+  z-index: 2;
+}
+
+.westworld-app .gitboard-main > div > div:first-child {
+  background:
+    linear-gradient(180deg, rgba(15, 25, 32, 0.86), rgba(8, 14, 19, 0.91)),
+    linear-gradient(90deg, rgba(142, 210, 220, 0.055), transparent 34%) !important;
+  box-shadow:
+    inset -1px 0 0 rgba(144, 205, 216, 0.10),
+    inset -12px 0 32px rgba(142, 210, 220, 0.018),
+    14px 0 48px rgba(0, 0, 0, 0.18);
+}
+
+.westworld-app .gitboard-main > div > div:first-child::before {
+  content: "SYSTEM PARTITIONS";
+  display: block;
+  height: 22px;
+  padding: 7px 16px 0;
+  border-bottom: 1px solid rgba(144, 205, 216, 0.11);
+  color: #6f8d94;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+}
+
+.westworld-app .gitboard-main > div > div:first-child button {
+  border-radius: 0 !important;
+}
+
+.westworld-app .gitboard-main > div > div:first-child button[aria-pressed="true"] {
+  background:
+    linear-gradient(90deg, rgba(142, 210, 220, 0.092), rgba(142, 210, 220, 0.018) 62%, transparent) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.026),
+    inset 16px 0 28px rgba(142, 210, 220, 0.035);
+}
+
+.westworld-app .gitboard-main > div > div:first-child button:hover:not([aria-pressed="true"]) {
+  background: rgba(142, 210, 220, 0.035) !important;
+}
+
+.westworld-app .gitboard-main > div > div:nth-child(2) {
+  position: relative;
+  background: rgba(7, 14, 20, 0.58) !important;
+}
+
+.westworld-app .gitboard-main > div > div:nth-child(2)::before {
+  content: "";
+  position: absolute;
+  inset: 32px 18px 18px;
+  border: 1px solid rgba(144, 205, 216, 0.055);
+  border-left-color: rgba(144, 205, 216, 0.12);
+  border-right-color: rgba(144, 205, 216, 0.08);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.westworld-app .gitboard-main > div > div:nth-child(2) > * {
+  position: relative;
+  z-index: 1;
+}
+
+.westworld-app .gitboard-main > div > div:nth-child(2) > div:first-child {
+  height: 34px !important;
+  background:
+    linear-gradient(180deg, rgba(18, 30, 38, 0.72), rgba(8, 14, 19, 0.78)),
+    repeating-linear-gradient(90deg, transparent 0 92px, rgba(144,205,216,0.055) 92px 93px) !important;
+}
+
+.westworld-app .gitboard-main > div > div:nth-child(2) > div:first-child span {
+  text-transform: uppercase;
+  letter-spacing: 0.055em;
+}
+
+.westworld-app .gitboard-main > div > div:nth-child(2) > div:nth-child(2) {
+  height: 34px;
+  background: rgba(7, 14, 20, 0.76) !important;
+  backdrop-filter: blur(14px);
+}
+
+.westworld-app .gitboard-main > div > div:nth-child(2) > div:nth-child(3) {
+  background:
+    radial-gradient(circle at 76% 18%, rgba(142, 210, 220, 0.055), transparent 24%),
+    rgba(7, 14, 20, 0.36) !important;
+}
+
+.westworld-app .gitboard-main article,
+.westworld-app .gitboard-main [role="article"] {
+  position: relative;
+}
+
+.westworld-app .gitboard-main article::before,
+.westworld-app .gitboard-main [role="article"]::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 10px;
+  bottom: 10px;
+  width: 1px;
+  background: linear-gradient(transparent, rgba(142,210,220,0.18), transparent);
+  opacity: 0.75;
+}
+
+.westworld-app .gitboard-main article:hover,
+.westworld-app .gitboard-main [role="article"]:hover,
+.westworld-app .gitboard-main button:hover {
+  box-shadow: inset 0 0 0 1px rgba(142, 210, 220, 0.045), inset 20px 0 34px rgba(142, 210, 220, 0.026);
+}
+
+.westworld-app .gitboard-main svg {
+  filter: drop-shadow(0 0 5px rgba(142, 210, 220, 0.11));
+}
+
+.westworld-app .gitboard-main a[href*="github.com"] {
+  color: #c9dcdf !important;
+}
+
+.westworld-app .gitboard-main code,
+.westworld-app .gitboard-main pre {
+  color: #9cb6bb;
+  text-shadow: none;
+}
+
+.westworld-app .gitboard-main [style*="borderRadius: var(--radius-sm)"],
+.westworld-app .gitboard-main [style*="border-radius: var(--radius-sm)"],
+.westworld-app .gitboard-main [style*="borderRadius: var(--radius-md)"],
+.westworld-app .gitboard-main [style*="border-radius: var(--radius-md)"],
+.westworld-app .gitboard-main [style*="borderRadius: var(--radius-lg)"],
+.westworld-app .gitboard-main [style*="border-radius: var(--radius-lg)"] {
+  border-radius: 6px !important;
+}
+
+.westworld-app .gitboard-main [style*="padding: 8px 16px"] {
+  padding-top: 7px !important;
+  padding-bottom: 7px !important;
+}
+
+.westworld-app .gitboard-main [style*="maxHeight: 160"],
+.westworld-app .gitboard-main [style*="max-height: 160"] {
+  background:
+    linear-gradient(180deg, rgba(8,14,19,0.88), rgba(11,20,27,0.78)),
+    linear-gradient(90deg, rgba(142,210,220,0.04), transparent) !important;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .westworld-app .gitboard-main::before {
+    animation: ww-atmosphere-drift 18s ease-in-out infinite alternate;
+  }
+
+  .westworld-app .gitboard-main article::before,
+  .westworld-app .gitboard-main [role="article"]::before {
+    animation: ww-edge-breathe 5.8s ease-in-out infinite;
+  }
+}
+
+@keyframes ww-atmosphere-drift {
+  from { transform: translate3d(-8px, -4px, 0); opacity: 0.72; }
+  to { transform: translate3d(10px, 6px, 0); opacity: 0.96; }
+}
+
+@keyframes ww-edge-breathe {
+  0%, 100% { opacity: 0.38; }
+  50% { opacity: 0.95; }
+}
+
+/* Top chrome refinement: more Delos/control-room, less web-app tab bar. */
+.westworld-app .ww-topbar {
+  position: relative;
+  padding-left: 18px !important;
+  padding-right: 14px !important;
+  gap: 18px !important;
+  background:
+    linear-gradient(90deg, rgba(142,210,220,0.055), transparent 18%, transparent 78%, rgba(142,210,220,0.035)),
+    linear-gradient(180deg, rgba(16, 27, 34, 0.96), rgba(7, 13, 18, 0.92)) !important;
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%);
+}
+
+.westworld-app .ww-topbar::before {
+  content: "";
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  top: 6px;
+  bottom: 6px;
+  border: 1px solid rgba(142, 210, 220, 0.055);
+  border-left-color: rgba(142, 210, 220, 0.15);
+  border-right-color: rgba(142, 210, 220, 0.10);
+  pointer-events: none;
+}
+
+.westworld-app .ww-topbar > a:first-child {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 13px 0 11px;
+  border: 1px solid rgba(142, 210, 220, 0.13);
+  background: rgba(142, 210, 220, 0.035);
+  clip-path: polygon(0 0, calc(100% - 7px) 0, 100% 7px, 100% 100%, 7px 100%, 0 calc(100% - 7px));
+}
+
+.westworld-app .ww-topbar > a:first-child::before,
+.westworld-app .ww-topbar > a:first-child::after {
+  content: "";
+  position: absolute;
+  width: 5px;
+  height: 1px;
+  background: rgba(142, 210, 220, 0.65);
+}
+
+.westworld-app .ww-topbar > a:first-child::before { left: 0; top: 0; }
+.westworld-app .ww-topbar > a:first-child::after { right: 0; bottom: 0; }
+
+.westworld-app .ww-nav {
+  position: relative;
+  gap: 0 !important;
+  height: 30px !important;
+  align-items: center !important;
+  padding: 0 4px;
+  border: 1px solid rgba(142, 210, 220, 0.10);
+  background: rgba(5, 11, 16, 0.34);
+  clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 0 100%);
+}
+
+.westworld-app .ww-nav::before {
+  content: "";
+  position: absolute;
+  left: 35%;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: linear-gradient(transparent, rgba(142,210,220,0.18), transparent);
+}
+
+.westworld-app .ww-nav button,
+.westworld-app .ww-nav a {
+  height: 24px !important;
+  padding: 0 13px !important;
+  border-bottom-width: 1px !important;
+  color: #82999f !important;
+  font-size: 11px !important;
+  letter-spacing: 0.075em;
+  text-transform: uppercase;
+}
+
+.westworld-app .ww-nav button:hover,
+.westworld-app .ww-nav a:hover {
+  background: rgba(142, 210, 220, 0.045) !important;
+  color: #d8e8ea !important;
+}
+
+.westworld-app .ww-nav button[style*="var(--text-primary)"],
+.westworld-app .ww-nav a[style*="var(--text-primary)"] {
+  color: #e8f4f5 !important;
+  background:
+    linear-gradient(180deg, rgba(142,210,220,0.075), rgba(142,210,220,0.025)) !important;
+}
+
+.ww-action-cluster > a {
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid rgba(142, 210, 220, 0.11);
+  border-radius: 0 !important;
+  clip-path: polygon(0 0, calc(100% - 6px) 0, 100% 6px, 100% 100%, 0 100%);
+}
+
+.ww-system-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid rgba(142, 210, 220, 0.12);
+  background: rgba(5, 11, 16, 0.38);
+  color: #8ea8ad;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%);
+}
+
+.ww-system-state i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #8ed2dc;
+  box-shadow: 0 0 10px rgba(142,210,220,0.46);
+}
+
+/* Gitboard internal headers: segmented machine framing. */
+.westworld-app .gitboard-main > div > div:nth-child(2) > div:first-child,
+.westworld-app .gitboard-main > div > div:nth-child(2) > div:nth-child(2) {
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 8px 100%, 0 calc(100% - 8px));
+}
+
+.westworld-app .gitboard-main > div > div:nth-child(2) > div:first-child::after,
+.westworld-app .gitboard-main > div > div:nth-child(2) > div:nth-child(2)::after {
+  content: "";
+  position: absolute;
+  right: 14px;
+  top: 8px;
+  width: 72px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(142,210,220,0.32));
+  pointer-events: none;
+}
+
+.westworld-app .gitboard-main > div > div:nth-child(2) > div:nth-child(2) button {
+  position: relative;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.westworld-app .gitboard-main > div > div:nth-child(2) > div:nth-child(2) button::before {
+  content: "";
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  width: 3px;
+  height: 3px;
+  margin-top: -1.5px;
+  background: rgba(142,210,220,0.42);
+}
+
+/* v8 systemization pass: consistent metrics, fewer ad-hoc shapes, stronger FUI hierarchy. */
+.westworld-app {
+  --ww-topbar-h: 42px;
+  --ww-header-h: 32px;
+  --ww-row-h: 50px;
+  --ww-cut: 7px;
+  --ww-cyan: #8ed2dc;
+  --ww-panel-bg: rgba(8, 15, 21, 0.78);
+  --ww-panel-bg-2: rgba(13, 24, 31, 0.82);
+}
+
+.westworld-app .ww-topbar {
+  height: var(--ww-topbar-h) !important;
+  min-height: var(--ww-topbar-h) !important;
+  padding: 0 14px !important;
+  gap: 14px !important;
+  clip-path: none;
+}
+
+.westworld-app .ww-topbar::before {
+  left: 10px;
+  right: 10px;
+  top: 7px;
+  bottom: 7px;
+  border-color: rgba(142,210,220,0.055);
+  border-left-color: rgba(142,210,220,0.16);
+}
+
+.westworld-app .ww-topbar::after {
+  top: var(--ww-topbar-h) !important;
+}
+
+.westworld-app .ww-topbar > a:first-child {
+  height: 24px;
+  min-width: 104px;
+  justify-content: center;
+  padding: 0 12px;
+  border-color: rgba(142,210,220,0.14);
+  background: linear-gradient(180deg, rgba(142,210,220,0.055), rgba(142,210,220,0.018));
+  clip-path: polygon(0 0, calc(100% - var(--ww-cut)) 0, 100% var(--ww-cut), 100% 100%, var(--ww-cut) 100%, 0 calc(100% - var(--ww-cut)));
+  font-size: 10px !important;
+}
+
+.westworld-app .ww-nav {
+  height: 26px !important;
+  padding: 0;
+  border-color: rgba(142,210,220,0.11);
+  background: rgba(5, 11, 16, 0.42);
+  clip-path: none;
+}
+
+.westworld-app .ww-nav .ww-nav-item {
+  position: relative;
+  display: inline-flex !important;
+  align-items: center !important;
+  height: 24px !important;
+  padding: 0 12px !important;
+  border-left: 1px solid rgba(142,210,220,0.055) !important;
+  border-bottom: 0 !important;
+  font-size: 10px !important;
+  line-height: 24px !important;
+}
+
+.westworld-app .ww-nav .ww-nav-item:first-child { border-left: 0 !important; }
+
+.westworld-app .ww-nav .ww-nav-item.is-active {
+  color: #e8f4f5 !important;
+  background: linear-gradient(180deg, rgba(142,210,220,0.095), rgba(142,210,220,0.03)) !important;
+  box-shadow: inset 0 -1px 0 rgba(142,210,220,0.64), inset 0 0 18px rgba(142,210,220,0.035);
+}
+
+.westworld-app .ww-action-cluster {
+  gap: 6px !important;
+}
+
+.westworld-app .ww-system-state,
+.westworld-app .ww-action-cluster > a {
+  height: 24px;
+  border-radius: 0;
+  font-size: 9px !important;
+}
+
+.westworld-app .gitboard-shell {
+  position: relative;
+  background: rgba(5, 11, 16, 0.54) !important;
+}
+
+.westworld-app .gitboard-repo-rail {
+  background:
+    linear-gradient(180deg, var(--ww-panel-bg-2), rgba(7,13,18,0.92)),
+    linear-gradient(90deg, rgba(142,210,220,0.04), transparent 44%) !important;
+  box-shadow: inset -1px 0 0 rgba(142,210,220,0.11), inset -16px 0 36px rgba(142,210,220,0.018);
+}
+
+.westworld-app .repo-section-control {
+  height: var(--ww-header-h) !important;
+  padding: 0 14px !important;
+  border-left-width: 0 !important;
+  color: #7d969c !important;
+  font-size: 9px !important;
+  letter-spacing: 0.16em !important;
+  background: rgba(6,12,17,0.66) !important;
+}
+
+.westworld-app .repo-section-control::after {
+  content: "";
+  margin-left: auto;
+  width: 48px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(142,210,220,0.28));
+}
+
+.westworld-app .repo-group-heading {
+  padding: 10px 14px 5px !important;
+  font-size: 9px !important;
+  letter-spacing: 0.15em !important;
+  color: #6e858b !important;
+}
+
+.westworld-app .repo-row {
+  min-height: 46px;
+  padding: 7px 14px !important;
+  border-left-width: 0 !important;
+  border-top: 1px solid transparent !important;
+  border-bottom: 1px solid rgba(142,210,220,0.045) !important;
+  background: transparent !important;
+}
+
+.westworld-app .repo-row::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 1px;
+  background: rgba(142,210,220,0.0);
+}
+
+.westworld-app .repo-row.is-active {
+  background: linear-gradient(90deg, rgba(142,210,220,0.085), rgba(142,210,220,0.018) 62%, transparent) !important;
+}
+
+.westworld-app .repo-row.is-active::before,
+.westworld-app .repo-row.has-unread::before {
+  background: rgba(142,210,220,0.78);
+  box-shadow: 0 0 12px rgba(142,210,220,0.34);
+}
+
+.westworld-app .gitboard-center {
+  background: rgba(7, 14, 20, 0.46) !important;
+}
+
+.westworld-app .gitboard-statsbar {
+  height: var(--ww-header-h) !important;
+  padding: 0 14px !important;
+  background:
+    linear-gradient(180deg, rgba(16,28,36,0.72), rgba(7,14,20,0.76)),
+    repeating-linear-gradient(90deg, transparent 0 118px, rgba(142,210,220,0.055) 118px 119px) !important;
+}
+
+.westworld-app .gitboard-stat {
+  height: 100%;
+  padding-right: 2px;
+}
+
+.westworld-app .gitboard-statsbar .gitboard-stat span {
+  font-size: 10px !important;
+}
+
+.westworld-app .gitboard-tabbar {
+  height: var(--ww-header-h) !important;
+  background: rgba(6, 12, 17, 0.72) !important;
+}
+
+.westworld-app .gitboard-tabbar .gitboard-tab {
+  height: var(--ww-header-h) !important;
+  padding: 0 14px !important;
+  border-bottom: 0 !important;
+  border-right: 1px solid rgba(142,210,220,0.065) !important;
+  font-size: 10px !important;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+}
+
+.westworld-app .gitboard-tabbar .gitboard-tab.is-active {
+  color: #e7f1f2 !important;
+  background: linear-gradient(180deg, rgba(142,210,220,0.075), rgba(142,210,220,0.018)) !important;
+  box-shadow: inset 0 -1px 0 rgba(142,210,220,0.60);
+}
+
+.westworld-app .timeline-day-header {
+  height: 28px;
+  padding: 8px 14px 0 !important;
+  border-top: 1px solid rgba(142,210,220,0.045);
+  background: rgba(5, 11, 16, 0.54) !important;
+  color: #6f858b !important;
+  font-size: 9px !important;
+  letter-spacing: 0.16em !important;
+}
+
+.westworld-app .timeline-row {
+  min-height: var(--ww-row-h);
+  margin: 0 !important;
+  padding: 9px 14px !important;
+  border-radius: 0 !important;
+  border-left-width: 0 !important;
+  border-bottom: 1px solid rgba(142,210,220,0.055) !important;
+  background: rgba(7, 14, 20, 0.20) !important;
+}
+
+.westworld-app .timeline-row::before {
+  left: 0 !important;
+  top: 9px !important;
+  bottom: 9px !important;
+  background: rgba(142,210,220,0.12) !important;
+}
+
+.westworld-app .timeline-row.is-selected {
+  background: linear-gradient(90deg, rgba(142,210,220,0.072), rgba(142,210,220,0.018) 46%, transparent) !important;
+}
+
+.westworld-app .timeline-row.is-selected::before {
+  width: 2px !important;
+  background: rgba(142,210,220,0.82) !important;
+  box-shadow: 0 0 14px rgba(142,210,220,0.38);
+}
+
+.westworld-app .timeline-row.is-hovered {
+  background: rgba(142,210,220,0.026) !important;
+}
+
+/* Undo the earlier over-shaped header treatment where it created uneven cuts. */
+.westworld-app .gitboard-main > div > div:nth-child(2) > div:first-child,
+.westworld-app .gitboard-main > div > div:nth-child(2) > div:nth-child(2) {
+  clip-path: none !important;
+}
+
+/* Inline PR dossier: GitHub-like PR semantics inside the operational FUI list. */
+.pr-timeline {
+  background: rgba(7, 14, 20, 0.34);
+}
+
+.pr-day-header {
+  height: 28px;
+  padding: 8px 14px 0;
+  border-bottom: 1px solid rgba(142,210,220,0.08);
+  background: rgba(5, 11, 16, 0.56);
+  color: #6f858b;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.pr-row {
+  position: relative;
+  cursor: pointer;
+  border-bottom: 1px solid rgba(142,210,220,0.075);
+  background: rgba(7, 14, 20, 0.24);
+  transition: background 160ms ease, box-shadow 160ms ease;
+}
+
+.pr-row::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 9px;
+  bottom: 9px;
+  width: 1px;
+  background: rgba(142,210,220,0.18);
+}
+
+.pr-row:hover {
+  background: rgba(142,210,220,0.028);
+  box-shadow: inset 20px 0 34px rgba(142,210,220,0.018);
+}
+
+.pr-row.is-expanded {
+  background: linear-gradient(90deg, rgba(142,210,220,0.058), rgba(142,210,220,0.018) 46%, rgba(7,14,20,0.28));
+}
+
+.pr-row.merged::before { background: rgba(159,184,201,0.86); box-shadow: 0 0 12px rgba(159,184,201,0.32); }
+.pr-row.closed::before { background: rgba(209,132,127,0.76); box-shadow: 0 0 12px rgba(209,132,127,0.24); }
+.pr-row.open::before { background: rgba(142,210,220,0.82); box-shadow: 0 0 12px rgba(142,210,220,0.32); }
+
+.pr-row-main {
+  display: grid;
+  grid-template-columns: 18px 58px minmax(0, 1fr) auto minmax(116px, auto) 22px;
+  align-items: center;
+  gap: 8px;
+  min-height: 54px;
+  padding: 8px 12px 8px 14px;
+}
+
+.pr-row-icon,
+.pr-chevron {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pr-number {
+  color: #7d969c;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.pr-title-block {
+  min-width: 0;
+}
+
+.pr-title-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.pr-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #dfebed;
+  font-size: 12px;
+  font-weight: 540;
+}
+
+.pr-meta-line {
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
+  overflow: hidden;
+  color: #748b91;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.pr-meta-line span {
+  position: relative;
+}
+
+.pr-meta-line span + span::before {
+  content: "";
+  position: absolute;
+  left: -6px;
+  top: 50%;
+  width: 2px;
+  height: 2px;
+  margin-top: -1px;
+  border-radius: 50%;
+  background: rgba(142,210,220,0.34);
+}
+
+.pr-state-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 20px;
+  padding: 0 8px;
+  border: 1px solid rgba(142,210,220,0.14);
+  background: rgba(142,210,220,0.04);
+  color: #a5cbd1;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.pr-state-pill.merged {
+  border-color: rgba(159,184,201,0.20);
+  background: rgba(159,184,201,0.065);
+  color: #c4d4df;
+}
+
+.pr-state-pill.closed {
+  border-color: rgba(209,132,127,0.22);
+  background: rgba(209,132,127,0.055);
+  color: #d7aaa6;
+}
+
+.pr-state-pill.open {
+  border-color: rgba(142,210,220,0.20);
+  background: rgba(142,210,220,0.060);
+  color: #b5dfe5;
+}
+
+.pr-row-diff {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  color: #7c9298;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.pr-row-diff em,
+.pr-row-diff b {
+  font-style: normal;
+  font-weight: 500;
+}
+
+.pr-chevron {
+  color: #71878d;
+  transition: transform 150ms ease;
+}
+
+.pr-row.is-expanded .pr-chevron {
+  transform: rotate(180deg);
+}
+
+.pr-expanded-body {
+  padding: 0 14px 14px 90px;
+}
+
+.pr-expanded-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  gap: 10px;
+}
+
+.pr-expanded-section {
+  border: 1px solid rgba(142,210,220,0.10);
+  background: rgba(5, 11, 16, 0.42);
+}
+
+.pr-description-section,
+.pr-dossier-section {
+  padding: 10px;
+}
+
+.pr-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+  color: #7fa4ab;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+
+.pr-body-text {
+  max-height: 220px;
+  overflow: auto;
+  white-space: pre-wrap;
+  color: #9fb3b8;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.pr-empty-note {
+  color: #6f858b;
+  font-size: 11px;
+}
+
+.pr-show-more {
+  margin-top: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #8ed2dc;
+  cursor: pointer;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.pr-dossier-list {
+  display: grid;
+  gap: 7px;
+}
+
+.pr-dossier-list span,
+.pr-diff-grid span {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  color: #748b91;
+  font-size: 10px;
+}
+
+.pr-dossier-list b,
+.pr-diff-grid b {
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.pr-dossier-list strong,
+.pr-diff-grid strong {
+  min-width: 0;
+  overflow: hidden;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #d7e6e8;
+  font-weight: 500;
+}
+
+.pr-diff-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(142,210,220,0.08);
+}
+
+.is-add { color: var(--diff-add) !important; }
+.is-del { color: var(--diff-del) !important; }
+
+.pr-lifecycle {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.pr-lifecycle-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 8px;
+  border: 1px solid rgba(142,210,220,0.08);
+  background: rgba(5, 11, 16, 0.32);
+}
+
+.pr-lifecycle-step > span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgba(142,210,220,0.22);
+}
+
+.pr-lifecycle-step.is-active > span {
+  background: #8ed2dc;
+  box-shadow: 0 0 10px rgba(142,210,220,0.34);
+}
+
+.pr-lifecycle-step.merged.is-active > span { background: #a7b6d9; }
+.pr-lifecycle-step.closed.is-active > span { background: #d1847f; }
+
+.pr-lifecycle-step strong {
+  display: block;
+  color: #d7e6e8;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.pr-lifecycle-step small {
+  color: #768d93;
+  font-size: 10px;
+}
+
+.pr-label-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 10px;
+}
+
+.pr-label-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 6px;
+  border: 1px solid rgba(142,210,220,0.12);
+  background: rgba(142,210,220,0.035);
+  color: #8fa8ae;
+  font-size: 9px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.pr-inline-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(142,210,220,0.075);
+  color: #657b81;
+  font-size: 10px;
+}
+
+.pr-inline-actions a {
+  flex-shrink: 0;
+  color: #8ed2dc !important;
+  text-decoration: none;
+}
+
+@media (max-width: 1100px) {
+  .pr-row-main {
+    grid-template-columns: 18px 50px minmax(0, 1fr) auto 22px;
+  }
+  .pr-row-diff { display: none; }
+  .pr-expanded-body { padding-left: 14px; }
+  .pr-expanded-grid { grid-template-columns: 1fr; }
+}
+
+/* PR expansion v10: GitHub-like inline flow, no boxed/scrolling description. */
+.pr-expanded-body {
+  padding: 0 14px 16px 90px;
+}
+
+.pr-compact-summary {
+  padding: 8px 0 6px;
+  border-top: 1px solid rgba(142,210,220,0.08);
+  border-bottom: 1px solid rgba(142,210,220,0.08);
+}
+
+.pr-summary-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  min-height: 22px;
+  color: #93aab0;
+  font-size: 10px;
+}
+
+.pr-summary-line + .pr-summary-line {
+  margin-top: 4px;
+}
+
+.pr-summary-line span {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
+}
+
+.pr-summary-line b {
+  color: #61777d;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+}
+
+.pr-summary-line strong {
+  font-weight: 600;
+}
+
+.pr-expanded-body .pr-lifecycle {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+  margin-top: 8px;
+  border-top: 1px solid rgba(142,210,220,0.07);
+  border-bottom: 1px solid rgba(142,210,220,0.07);
+}
+
+.pr-expanded-body .pr-lifecycle-step {
+  min-height: 34px;
+  padding: 6px 9px;
+  border: 0;
+  border-right: 1px solid rgba(142,210,220,0.07);
+  background: transparent;
+}
+
+.pr-expanded-body .pr-lifecycle-step:last-child {
+  border-right: 0;
+}
+
+.pr-expanded-body .pr-lifecycle-step strong,
+.pr-expanded-body .pr-lifecycle-step small {
+  font-size: 9px;
+}
+
+.pr-expanded-body .pr-label-row {
+  margin-top: 8px;
+}
+
+.pr-conversation {
+  margin-top: 10px;
+}
+
+.pr-conversation .pr-section-title {
+  margin-bottom: 7px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid rgba(142,210,220,0.07);
+}
+
+.pr-conversation .pr-section-title a {
+  color: #8ed2dc !important;
+  text-decoration: none;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+}
+
+.pr-body-text {
+  max-height: none !important;
+  overflow: visible !important;
+  padding: 0;
+  white-space: pre-wrap;
+  color: #a8babf;
+  font-size: 11px;
+  line-height: 1.58;
+}
+
+.pr-inline-actions {
+  margin-top: 12px;
+  padding-top: 8px;
+  justify-content: flex-start;
+}
+
+.pr-expanded-section,
+.pr-description-section,
+.pr-dossier-section,
+.pr-expanded-grid,
+.pr-dossier-list,
+.pr-diff-grid {
+  border: 0 !important;
+  background: transparent !important;
+  padding: 0 !important;
+}
+
+@media (max-width: 1100px) {
+  .pr-expanded-body { padding-left: 14px; }
+  .pr-summary-line { gap: 6px 10px; }
+}
+
+/* PR conversation v11: real GitHub-like inline thread, no duplicate lifecycle boxes. */
+.pr-detail-status {
+  margin-left: auto;
+  color: #6f858b;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.pr-conversation-thread {
+  position: relative;
+  display: grid;
+  gap: 0;
+  margin-top: 2px;
+}
+
+.pr-conversation-thread::before {
+  content: "";
+  position: absolute;
+  left: 7px;
+  top: 8px;
+  bottom: 8px;
+  width: 1px;
+  background: rgba(142,210,220,0.12);
+}
+
+.pr-conversation-entry {
+  position: relative;
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(142,210,220,0.055);
+}
+
+.pr-conversation-entry::before {
+  display: none !important;
+}
+
+.pr-entry-marker {
+  position: relative;
+  z-index: 1;
+  width: 7px;
+  height: 7px;
+  margin: 7px auto 0;
+  border-radius: 50%;
+  background: rgba(142,210,220,0.55);
+  box-shadow: 0 0 10px rgba(142,210,220,0.18);
+}
+
+.pr-conversation-entry.body .pr-entry-marker { background: #8ed2dc; }
+.pr-conversation-entry.review .pr-entry-marker { background: #a7b6d9; }
+.pr-conversation-entry.commit .pr-entry-marker { background: #89c9a5; }
+.pr-conversation-entry.event .pr-entry-marker { background: #748b91; }
+
+.pr-entry-main {
+  min-width: 0;
+}
+
+.pr-entry-header {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  min-height: 21px;
+  color: #789097;
+  font-size: 10px;
+}
+
+.pr-entry-header strong {
+  color: #dce8ea;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.pr-entry-header span {
+  color: #8aa1a7;
+}
+
+.pr-entry-header time {
+  color: #637980;
+  font-family: var(--font-mono);
+  font-size: 9px;
+}
+
+.pr-entry-header a {
+  margin-left: auto;
+  color: #8ed2dc !important;
+  text-decoration: none;
+}
+
+.pr-conversation-entry.comment .pr-body-text,
+.pr-conversation-entry.body .pr-body-text,
+.pr-conversation-entry.review .pr-body-text {
+  margin-top: 4px;
+  padding-left: 0;
+}
+
+.pr-conversation-entry.commit .pr-body-text,
+.pr-conversation-entry.event .pr-body-text {
+  margin-top: 2px;
+  color: #8ea6ac;
+  font-family: var(--font-mono);
+  font-size: 10px;
+}

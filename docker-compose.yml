@@ -10,7 +10,7 @@ services:
       # XTRM data
       - xtrm-data:/home/xtrm/.xtrm
       # Projects for beadboard
-      - /home/dawid/projects:/home/xtrm/projects:ro,Z
+      - /home/dawid/dev:/home/xtrm/projects:ro,Z
       - /home/dawid/.beads:/home/xtrm/.beads-host:ro,Z
     environment:
       - GITHUB_TOKEN=${GITHUB_TOKEN:-}

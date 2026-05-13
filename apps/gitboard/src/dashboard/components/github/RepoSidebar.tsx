@@ -94,7 +94,7 @@ export function RepoSidebar({ repos, stats, selectedRepos, unreadRepos = new Set
   const allActive = selectedRepos.length === 0;
 
   return (
-    <div style={{
+    <div className="gitboard-repo-rail" style={{
       width,
       minWidth: width,
       maxWidth: width,
@@ -123,6 +123,7 @@ export function RepoSidebar({ repos, stats, selectedRepos, unreadRepos = new Set
       <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
         <button
           aria-pressed={allActive}
+          className={allActive ? "repo-section-control is-active" : "repo-section-control"}
           title="Show all repos"
           onClick={onReset}
           style={{
@@ -153,6 +154,7 @@ export function RepoSidebar({ repos, stats, selectedRepos, unreadRepos = new Set
             {groupName && (
               <div
                 role="heading"
+                className="repo-group-heading"
                 style={{
                   padding: "8px 16px 4px",
                   fontSize: "var(--text-xs)",
@@ -177,6 +179,7 @@ export function RepoSidebar({ repos, stats, selectedRepos, unreadRepos = new Set
                 <button
                   key={repo.full_name}
                   aria-pressed={isSelected}
+                  className={isSelected ? "repo-row is-active" : isUnread ? "repo-row has-unread" : "repo-row"}
                   onClick={() => onSelect(repo.full_name)}
                   onMouseEnter={() => setHoveredKey(repo.full_name)}
                   onMouseLeave={() => setHoveredKey(null)}

@@ -19,6 +19,31 @@ import {
 } from "../../core/github-store.ts";
 import type { ChannelRegistry } from "../ws/channels.ts";
 
+async function githubApi<T>(path: string): Promise<T> {
+  const token = resolveToken();
+  const response = await fetch(`https://api.github.com${path}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28",
+      "User-Agent": "agent-forge/0.1.0",
+    },
+  });
+  if (!response.ok) throw new Error(`GitHub API error ${response.status}: ${path}`);
+  return await response.json() as T;
+}
+
+async function githubApiPages<T>(path: string, maxPages = 3): Promise<T[]> {
+  const results: T[] = [];
+  const separator = path.includes("?") ? "&" : "?";
+  for (let page = 1; page <= maxPages; page++) {
+    const items = await githubApi<T[]>(`${path}${separator}per_page=100&page=${page}`);
+    results.push(...items);
+    if (items.length < 100) break;
+  }
+  return results;
+}
+
 function resolveToken(): string {
   if (process.env.GITHUB_TOKEN) return process.env.GITHUB_TOKEN;
   const r = Bun.spawnSync(['gh', 'auth', 'token']);
@@ -185,6 +210,103 @@ export function createGithubRouter(db: Database, registry: ChannelRegistry): Hon
     const offset = q.offset ? parseInt(q.offset, 10) : 0;
     const prs = getPrs(db, { repo: q.repo, state: q.state, limit, offset });
     return c.json({ data: prs, limit, offset });
+  });
+
+  // GET /api/github/prs/:owner/:repo/:number/detail
+  app.get("/prs/:owner/:repo/:number/detail", async (c) => {
+    const repo = `${c.req.param("owner")}/${c.req.param("repo")}`;
+    const number = parseInt(c.req.param("number"), 10);
+    const pr = getPr(db, repo, number);
+    if (!pr) return c.json({ error: "not found" }, 404);
+
+    type CommentItem = { id: number; user: { login: string } | null; body: string; html_url: string | null; created_at: string; updated_at: string | null };
+    type ReviewItem = { id: number; user: { login: string } | null; state: string; body: string | null; html_url: string | null; submitted_at: string | null };
+    type ReviewCommentItem = { id: number; user: { login: string } | null; body: string; path: string | null; line: number | null; diff_hunk: string | null; html_url: string | null; created_at: string; updated_at: string | null };
+    type CommitItem = { sha: string; html_url: string | null; commit: { message: string; author: { name: string; date: string } | null } };
+    type FileItem = { filename: string; status: string; additions: number; deletions: number; changes: number; patch?: string | null };
+    type TimelineItem = { id?: number | string; event?: string; actor?: { login: string } | null; user?: { login: string } | null; body?: string | null; commit_id?: string | null; state?: string | null; html_url?: string | null; created_at?: string; submitted_at?: string };
+
+    const [commentsResult, reviewsResult, reviewCommentsResult, commitsResult, filesResult, timelineResult] = await Promise.allSettled([
+      githubApiPages<CommentItem>(`/repos/${repo}/issues/${number}/comments`),
+      githubApiPages<ReviewItem>(`/repos/${repo}/pulls/${number}/reviews`),
+      githubApiPages<ReviewCommentItem>(`/repos/${repo}/pulls/${number}/comments`),
+      githubApiPages<CommitItem>(`/repos/${repo}/pulls/${number}/commits`),
+      githubApiPages<FileItem>(`/repos/${repo}/pulls/${number}/files`),
+      githubApiPages<TimelineItem>(`/repos/${repo}/issues/${number}/timeline`),
+    ]);
+
+    const errors: Record<string, string> = {};
+    const collectError = (key: string, result: PromiseSettledResult<unknown>) => {
+      if (result.status === "rejected") errors[key] = result.reason instanceof Error ? result.reason.message : String(result.reason);
+    };
+    collectError("comments", commentsResult);
+    collectError("reviews", reviewsResult);
+    collectError("review_comments", reviewCommentsResult);
+    collectError("commits", commitsResult);
+    collectError("files", filesResult);
+    collectError("timeline", timelineResult);
+
+    const comments = commentsResult.status === "fulfilled" ? commentsResult.value.map((item) => ({
+      id: item.id,
+      author: item.user?.login ?? "unknown",
+      body: item.body,
+      url: item.html_url,
+      created_at: item.created_at,
+      updated_at: item.updated_at,
+    })) : [];
+
+    const reviews = reviewsResult.status === "fulfilled" ? reviewsResult.value.map((item) => ({
+      id: item.id,
+      author: item.user?.login ?? "unknown",
+      state: item.state,
+      body: item.body,
+      url: item.html_url,
+      submitted_at: item.submitted_at,
+    })) : [];
+
+    const review_comments = reviewCommentsResult.status === "fulfilled" ? reviewCommentsResult.value.map((item) => ({
+      id: item.id,
+      author: item.user?.login ?? "unknown",
+      body: item.body,
+      path: item.path,
+      line: item.line,
+      diff_hunk: item.diff_hunk,
+      url: item.html_url,
+      created_at: item.created_at,
+      updated_at: item.updated_at,
+    })) : [];
+
+    const commits = commitsResult.status === "fulfilled" ? commitsResult.value.map((item) => ({
+      sha: item.sha,
+      message: item.commit.message.split("\n")[0],
+      author: item.commit.author?.name ?? "unknown",
+      url: item.html_url,
+      committed_at: item.commit.author?.date ?? pr.updated_at ?? pr.created_at,
+    })) : [];
+
+    const files = filesResult.status === "fulfilled" ? filesResult.value.map((item) => ({
+      filename: item.filename,
+      status: item.status,
+      additions: item.additions,
+      deletions: item.deletions,
+      changes: item.changes,
+      patch: item.patch ?? null,
+    })) : [];
+
+    const timeline = timelineResult.status === "fulfilled" ? timelineResult.value
+      .filter((item) => item.event || item.body || item.state)
+      .map((item, index) => ({
+        id: String(item.id ?? `${item.event ?? "timeline"}-${index}`),
+        event: item.event ?? (item.body ? "commented" : "activity"),
+        actor: item.actor?.login ?? item.user?.login ?? null,
+        body: item.body ?? null,
+        commit_id: item.commit_id ?? null,
+        state: item.state ?? null,
+        url: item.html_url ?? null,
+        created_at: item.created_at ?? item.submitted_at ?? pr.updated_at ?? pr.created_at,
+      })) : [];
+
+    return c.json({ pr, comments, reviews, review_comments, commits, files, timeline, errors });
   });
 
   // GET /api/github/prs/:owner/:repo/:number

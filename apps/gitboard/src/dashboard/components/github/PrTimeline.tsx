@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   GitPullRequestIcon,
@@ -6,7 +6,8 @@ import {
   GitPullRequestClosedIcon,
   ChevronDownIcon,
 } from "@primer/octicons-react";
-import type { GithubPr } from "../../../types/github.ts";
+import type { GithubPr, GithubPrDetail } from "../../../types/github.ts";
+import { apiClient } from "../../lib/client.ts";
 import {
   buildDateGroupedItems,
   formatRelativeTime,
@@ -17,118 +18,272 @@ import {
 
 type PrItem = DateGroupItem<GithubPr>;
 
-function prStateStyle(state: string): { Icon: React.ElementType; color: string } {
-  if (state === "merged") return { Icon: GitMergeIcon, color: "var(--accent-purple)" };
-  if (state === "closed") return { Icon: GitPullRequestClosedIcon, color: "var(--accent-red)" };
-  return { Icon: GitPullRequestIcon, color: "var(--accent-blue)" };
+type PrStateTone = "open" | "merged" | "closed";
+
+function prStateStyle(state: string): { Icon: React.ElementType; color: string; tone: PrStateTone; label: string } {
+  if (state === "merged") {
+    return { Icon: GitMergeIcon, color: "var(--accent-purple)", tone: "merged", label: "MERGED" };
+  }
+  if (state === "closed") {
+    return { Icon: GitPullRequestClosedIcon, color: "var(--accent-red)", tone: "closed", label: "CLOSED · NOT MERGED" };
+  }
+  return { Icon: GitPullRequestIcon, color: "var(--accent-blue)", tone: "open", label: "OPEN" };
+}
+
+function formatDateTime(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function stateTimestamp(pr: GithubPr): string {
+  if (pr.state === "merged") return `Merged ${formatRelativeTime(pr.merged_at ?? pr.updated_at ?? pr.created_at)}`;
+  if (pr.state === "closed") return `Closed unmerged ${formatRelativeTime(pr.closed_at ?? pr.updated_at ?? pr.created_at)}`;
+  return `Updated ${formatRelativeTime(pr.updated_at ?? pr.created_at)}`;
 }
 
 function DayHeader({ label }: { label: string }) {
   return (
-    <div
-      style={{
-        padding: "6px 12px 4px",
-        fontSize: "var(--text-xs)",
-        color: "var(--text-muted)",
-        fontWeight: 600,
-        letterSpacing: "0.05em",
-        textTransform: "uppercase",
-        borderBottom: "1px solid var(--border-subtle)",
-        background: "var(--surface-primary)",
-      }}
-    >
+    <div className="pr-day-header">
       {label}
     </div>
   );
 }
 
 function LabelChip({ name }: { name: string }) {
+  return <span className="pr-label-chip">{name}</span>;
+}
+
+function PrStatePill({ pr }: { pr: GithubPr }) {
+  const { tone, label } = prStateStyle(pr.state);
+  return <span className={`pr-state-pill ${tone}`}>{label}</span>;
+}
+
+function PrLifecycle({ pr }: { pr: GithubPr }) {
+  const steps = [
+    { label: "Opened", value: formatDateTime(pr.created_at), active: true, tone: "open" },
+    { label: "Updated", value: formatDateTime(pr.updated_at), active: Boolean(pr.updated_at), tone: "update" },
+    pr.state === "merged"
+      ? { label: "Merged", value: formatDateTime(pr.merged_at), active: true, tone: "merged" }
+      : pr.state === "closed"
+        ? { label: "Closed", value: formatDateTime(pr.closed_at), active: true, tone: "closed" }
+        : { label: "Awaiting merge", value: "active", active: false, tone: "pending" },
+  ];
+
   return (
-    <span
-      style={{
-        display: "inline-block",
-        padding: "1px 6px",
-        borderRadius: "var(--radius-pill)",
-        background: "var(--surface-tertiary)",
-        border: "1px solid var(--border-default)",
-        color: "var(--text-secondary)",
-        fontSize: "var(--text-xs)",
-        lineHeight: 1.5,
-      }}
-    >
-      {name}
-    </span>
+    <div className="pr-lifecycle">
+      {steps.map((step) => (
+        <div className={`pr-lifecycle-step ${step.active ? "is-active" : ""} ${step.tone}`} key={step.label}>
+          <span />
+          <div>
+            <strong>{step.label}</strong>
+            <small>{step.value}</small>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+type ConversationItem = {
+  id: string;
+  kind: "body" | "comment" | "review" | "commit" | "event";
+  actor: string;
+  label: string;
+  body?: string | null;
+  url?: string | null;
+  created_at: string;
+};
+
+function buildConversation(pr: GithubPr, detail: GithubPrDetail | null): ConversationItem[] {
+  const items: ConversationItem[] = [];
+  if (pr.body?.trim()) {
+    items.push({
+      id: "body",
+      kind: "body",
+      actor: pr.author,
+      label: "opened this pull request",
+      body: pr.body.trim(),
+      url: pr.url,
+      created_at: pr.created_at,
+    });
+  }
+
+  for (const comment of detail?.comments ?? []) {
+    items.push({
+      id: `comment-${comment.id}`,
+      kind: "comment",
+      actor: comment.author,
+      label: "commented",
+      body: comment.body,
+      url: comment.url,
+      created_at: comment.created_at,
+    });
+  }
+
+  for (const review of detail?.reviews ?? []) {
+    items.push({
+      id: `review-${review.id}`,
+      kind: "review",
+      actor: review.author,
+      label: `reviewed · ${review.state.replaceAll("_", " ").toLowerCase()}`,
+      body: review.body,
+      url: review.url,
+      created_at: review.submitted_at ?? pr.updated_at ?? pr.created_at,
+    });
+  }
+
+  for (const reviewComment of detail?.review_comments ?? []) {
+    items.push({
+      id: `review-comment-${reviewComment.id}`,
+      kind: "review",
+      actor: reviewComment.author,
+      label: `commented on ${reviewComment.path ?? "diff"}${reviewComment.line ? `:${reviewComment.line}` : ""}`,
+      body: reviewComment.body,
+      url: reviewComment.url,
+      created_at: reviewComment.created_at,
+    });
+  }
+
+  for (const commit of detail?.commits ?? []) {
+    items.push({
+      id: `commit-${commit.sha}`,
+      kind: "commit",
+      actor: commit.author,
+      label: `committed ${commit.sha.slice(0, 7)}`,
+      body: commit.message,
+      url: commit.url,
+      created_at: commit.committed_at,
+    });
+  }
+
+  if (detail?.files.length) {
+    items.push({
+      id: "files-summary",
+      kind: "event",
+      actor: "github",
+      label: `changed ${detail.files.length} file${detail.files.length === 1 ? "" : "s"}`,
+      body: detail.files.slice(0, 20).map((file) => `${file.status} ${file.filename} (+${file.additions}/−${file.deletions})`).join("\n"),
+      created_at: pr.updated_at ?? pr.created_at,
+    });
+  }
+
+  for (const event of detail?.timeline ?? []) {
+    if (["commented", "reviewed", "committed"].includes(event.event)) continue;
+    items.push({
+      id: `event-${event.id}`,
+      kind: "event",
+      actor: event.actor ?? "github",
+      label: event.event.replaceAll("_", " "),
+      body: event.body ?? event.commit_id ?? event.state ?? null,
+      url: event.url ?? null,
+      created_at: event.created_at,
+    });
+  }
+
+  return items.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+}
+
+function ConversationEntry({ item }: { item: ConversationItem }) {
+  const [showMore, setShowMore] = useState(false);
+  const body = item.body?.trim();
+  const display = body ? truncateBody(body, item.kind === "body" ? 1800 : 900) : null;
+
+  return (
+    <article className={`pr-conversation-entry ${item.kind}`}>
+      <div className="pr-entry-marker" />
+      <div className="pr-entry-main">
+        <div className="pr-entry-header">
+          <strong>{item.actor}</strong>
+          <span>{item.label}</span>
+          <time>{formatDateTime(item.created_at)}</time>
+          {item.url && <a href={item.url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>↗</a>}
+        </div>
+        {display && (
+          <div>
+            <div className="pr-body-text">{showMore ? body : display.visible}</div>
+            {display.hasMore && !showMore && (
+              <button className="pr-show-more" onClick={(e) => { e.stopPropagation(); setShowMore(true); }}>
+                show full text
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    </article>
   );
 }
 
 function PrExpandedBody({ pr }: { pr: GithubPr }) {
-  const [showMore, setShowMore] = useState(false);
   const labels = parseLabels(pr.label_names);
   const hasDiff = pr.additions != null || pr.deletions != null || pr.changed_files != null;
+  const [detail, setDetail] = useState<GithubPrDetail | null>(null);
+  const [detailError, setDetailError] = useState<string | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+
+  useEffect(() => {
+    const [owner, repoName] = pr.repo.split("/");
+    if (!owner || !repoName) return;
+    let cancelled = false;
+    setDetailLoading(true);
+    setDetailError(null);
+    apiClient.getPrDetail(owner, repoName, pr.number)
+      .then((data) => { if (!cancelled) setDetail(data); })
+      .catch((err) => { if (!cancelled) setDetailError(err instanceof Error ? err.message : "Failed to load PR detail"); })
+      .finally(() => { if (!cancelled) setDetailLoading(false); });
+    return () => { cancelled = true; };
+  }, [pr.repo, pr.number]);
+
+  const conversation = useMemo(() => buildConversation(pr, detail), [pr, detail]);
 
   return (
-    <div style={{ padding: "8px 12px 10px", display: "flex", flexDirection: "column", gap: 6 }}>
-      {pr.body && (() => {
-        const { visible, hasMore } = truncateBody(pr.body);
-        return (
-          <div>
-            <div
-              style={{
-                whiteSpace: "pre-wrap",
-                fontSize: "var(--text-xs)",
-                color: "var(--text-secondary)",
-                lineHeight: 1.5,
-              }}
-            >
-              {showMore ? pr.body : visible}
-            </div>
-            {hasMore && !showMore && (
-              <button
-                onClick={(e) => { e.stopPropagation(); setShowMore(true); }}
-                style={{
-                  background: "none",
-                  border: "none",
-                  color: "var(--accent-blue)",
-                  fontSize: "var(--text-xs)",
-                  cursor: "pointer",
-                  padding: "2px 0",
-                }}
-              >
-                show more
-              </button>
-            )}
-          </div>
-        );
-      })()}
-      {hasDiff && (
-        <div style={{ display: "flex", gap: 8, fontSize: "var(--text-xs)" }}>
-          {pr.additions != null && (
-            <span style={{ color: "var(--diff-add)" }}>+{pr.additions}</span>
-          )}
-          {pr.deletions != null && (
-            <span style={{ color: "var(--diff-del)" }}>−{pr.deletions}</span>
-          )}
-          {pr.changed_files != null && (
-            <span style={{ color: "var(--text-muted)" }}>Δ{pr.changed_files} files</span>
-          )}
+    <div className="pr-expanded-body">
+      <div className="pr-compact-summary">
+        <div className="pr-summary-line">
+          <span><b>Author</b>{pr.author}</span>
+          <span><b>Comments</b>{detail?.comments.length ?? pr.comment_count}</span>
+          <span><b>Reviews</b>{detail ? detail.reviews.length + detail.review_comments.length : "—"}</span>
+          <span><b>Commits</b>{detail?.commits.length ?? "—"}</span>
+          <span><b>Files</b>{detail?.files.length ?? pr.changed_files ?? "—"}</span>
         </div>
-      )}
+        {hasDiff && (
+          <div className="pr-summary-line pr-summary-diff">
+            <span><b>Repository</b>{pr.repo}</span>
+            <span><b>Files</b>{pr.changed_files ?? "—"}</span>
+            <span><b>Additions</b><strong className="is-add">+{pr.additions ?? 0}</strong></span>
+            <span><b>Deletions</b><strong className="is-del">−{pr.deletions ?? 0}</strong></span>
+          </div>
+        )}
+      </div>
+
       {labels.length > 0 && (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+        <div className="pr-label-row">
           {labels.map((name) => <LabelChip key={name} name={name} />)}
         </div>
       )}
-      {pr.url && (
-        <a
-          href={pr.url}
-          target="_blank"
-          rel="noreferrer"
-          onClick={(e) => e.stopPropagation()}
-          style={{ color: "var(--accent-blue)", fontSize: "var(--text-xs)", textDecoration: "none" }}
-        >
-          Open on GitHub →
-        </a>
-      )}
+
+      <div className="pr-conversation">
+        <div className="pr-section-title">
+          <span>Conversation</span>
+          <span className="pr-detail-status">{detailLoading ? "hydrating GitHub detail…" : detailError ? detailError : detail?.errors && Object.keys(detail.errors).length > 0 ? `${conversation.length} events · partial GitHub data` : `${conversation.length} events`}</span>
+          {pr.url && (
+            <a href={pr.url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>
+              Open on GitHub →
+            </a>
+          )}
+        </div>
+        {conversation.length > 0 ? (
+          <div className="pr-conversation-thread">
+            {conversation.map((item) => <ConversationEntry item={item} key={item.id} />)}
+          </div>
+        ) : (
+          <div className="pr-empty-note">No PR conversation detail available yet.</div>
+        )}
+      </div>
     </div>
   );
 }
@@ -142,68 +297,40 @@ function PrRow({
   expanded: boolean;
   onToggle: () => void;
 }) {
-  const { Icon, color } = prStateStyle(pr.state);
+  const { Icon, color, tone } = prStateStyle(pr.state);
   const repoShort = pr.repo.split("/")[1] ?? pr.repo;
-  const time = formatRelativeTime(pr.updated_at ?? pr.created_at);
+  const time = stateTimestamp(pr);
+  const labels = parseLabels(pr.label_names);
 
   return (
     <div
+      className={`pr-row ${expanded ? "is-expanded" : ""} ${tone}`}
       onClick={onToggle}
-      style={{
-        cursor: "pointer",
-        borderBottom: "1px solid var(--border-subtle)",
-        background: expanded ? "var(--surface-secondary)" : "transparent",
-      }}
     >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          padding: "8px 12px",
-          minHeight: 40,
-        }}
-      >
-        <span style={{ color, flexShrink: 0 }}>
+      <div className="pr-row-main">
+        <span className="pr-row-icon" style={{ color }}>
           <Icon size={16} />
         </span>
-        <span
-          style={{
-            color: "var(--text-muted)",
-            fontFamily: "var(--font-mono, monospace)",
-            fontSize: "var(--text-xs)",
-            flexShrink: 0,
-          }}
-        >
-          #{pr.number}
+        <span className="pr-number">#{pr.number}</span>
+        <div className="pr-title-block">
+          <div className="pr-title-line">
+            <span className="pr-title">{pr.title}</span>
+            {labels.slice(0, 2).map((name) => <LabelChip key={name} name={name} />)}
+          </div>
+          <div className="pr-meta-line">
+            <span>{repoShort}</span>
+            <span>{pr.author}</span>
+            <span>{time}</span>
+            {pr.comment_count > 0 && <span>{pr.comment_count} comments</span>}
+          </div>
+        </div>
+        <PrStatePill pr={pr} />
+        <span className="pr-row-diff">
+          {pr.changed_files != null && <em>{pr.changed_files} files</em>}
+          {pr.additions != null && <b className="is-add">+{pr.additions}</b>}
+          {pr.deletions != null && <b className="is-del">−{pr.deletions}</b>}
         </span>
-        <span
-          style={{
-            flex: 1,
-            fontSize: "var(--text-xs)",
-            color: "var(--text-primary)",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {pr.title}
-        </span>
-        <span style={{ color: "var(--text-secondary)", fontSize: "var(--text-xs)", flexShrink: 0 }}>
-          {repoShort}
-        </span>
-        <span style={{ color: "var(--text-muted)", fontSize: "var(--text-xs)", flexShrink: 0 }}>
-          {time}
-        </span>
-        <span
-          style={{
-            color: "var(--text-muted)",
-            flexShrink: 0,
-            transform: expanded ? "rotate(180deg)" : "rotate(0deg)",
-            transition: "transform 150ms",
-            display: "flex",
-          }}
-        >
+        <span className="pr-chevron" aria-hidden="true">
           <ChevronDownIcon size={14} />
         </span>
       </div>
@@ -220,7 +347,7 @@ function VirtualizedPrTimeline({ prs }: { prs: GithubPr[] }) {
   const rowVirtualizer = useVirtualizer({
     count: items.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: (i) => items[i].kind === "header" ? 32 : 72,
+    estimateSize: (i) => items[i].kind === "header" ? 28 : 74,
     overscan: 5,
     measureElement: (el) => el?.getBoundingClientRect().height ?? 0,
   });
@@ -234,7 +361,7 @@ function VirtualizedPrTimeline({ prs }: { prs: GithubPr[] }) {
   };
 
   return (
-    <div ref={parentRef} style={{ height: "100%", overflowY: "auto" }}>
+    <div ref={parentRef} className="pr-timeline" style={{ height: "100%", overflowY: "auto" }}>
       <div
         style={{
           height: rowVirtualizer.getTotalSize(),
@@ -297,7 +424,7 @@ export function PrTimeline({ prs }: { prs: GithubPr[] }) {
       <div>
         {items.map((item, i) =>
           item.kind === "header" ? (
-            <div key={item.key}>{item.label}</div>
+            <DayHeader key={item.key} label={item.label} />
           ) : (
             <PrRow key={i} pr={item.item} expanded={false} onToggle={() => {}} />
           ),

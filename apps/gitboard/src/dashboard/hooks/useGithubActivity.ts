@@ -32,7 +32,7 @@ export function useGithubActivity(): void {
         apiClient.getContributions(),
         apiClient.getSummary("today"),
         apiClient.getRepoStats(),
-        apiClient.getPrs({ limit: 100 }),
+        apiClient.getPrs({ limit: 1000 }),
         apiClient.getIssues({ limit: 100 }),
       ]);
       setEvents(eventsRes.data);

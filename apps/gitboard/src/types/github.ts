@@ -116,6 +116,73 @@ export interface GithubPr {
   closed_at: string | null;
 }
 
+export interface GithubPrComment {
+  id: number;
+  author: string;
+  body: string;
+  url: string | null;
+  created_at: string;
+  updated_at: string | null;
+}
+
+export interface GithubPrReview {
+  id: number;
+  author: string;
+  state: string;
+  body: string | null;
+  url: string | null;
+  submitted_at: string | null;
+}
+
+export interface GithubPrTimelineEvent {
+  id: string;
+  event: string;
+  actor: string | null;
+  body?: string | null;
+  commit_id?: string | null;
+  state?: string | null;
+  url?: string | null;
+  created_at: string;
+}
+
+export interface GithubPrReviewComment {
+  id: number;
+  author: string;
+  body: string;
+  path: string | null;
+  line: number | null;
+  diff_hunk: string | null;
+  url: string | null;
+  created_at: string;
+  updated_at: string | null;
+}
+
+export interface GithubPrFile {
+  filename: string;
+  status: string;
+  additions: number;
+  deletions: number;
+  changes: number;
+  patch?: string | null;
+}
+
+export interface GithubPrDetail {
+  pr: GithubPr;
+  comments: GithubPrComment[];
+  reviews: GithubPrReview[];
+  review_comments: GithubPrReviewComment[];
+  commits: Array<{
+    sha: string;
+    message: string;
+    author: string;
+    url: string | null;
+    committed_at: string;
+  }>;
+  files: GithubPrFile[];
+  timeline: GithubPrTimelineEvent[];
+  errors?: Record<string, string>;
+}
+
 export interface GithubIssue {
   repo: string;
   number: number;
