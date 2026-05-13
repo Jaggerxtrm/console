@@ -133,7 +133,8 @@ body {
   position: relative;
   cursor: pointer;
   border-bottom: 1px solid var(--border-subtle);
-  background: var(--bg);
+  background: var(--surface-1);
+  border-radius: 0;
   transition: background 160ms ease, box-shadow 160ms ease;
 }
 .bead-row::before {
@@ -142,21 +143,21 @@ body {
   left: 0;
   top: 9px;
   bottom: 9px;
-  width: 1px;
+  width: 2px;
   background: rgba(142,210,220,0.18);
 }
-.bead-row:hover { background: #1d1d1d; box-shadow: inset 20px 0 34px rgba(142,210,220,0.014); }
-.bead-row.is-expanded { background: linear-gradient(90deg, rgba(142,210,220,0.045), rgba(255,255,255,0.018) 46%, #181818); }
-.bead-row.open::before { background: rgba(142,210,220,0.82); box-shadow: 0 0 12px rgba(142,210,220,0.32); }
-.bead-row.in_progress::before { background: rgba(159,184,201,0.86); box-shadow: 0 0 12px rgba(159,184,201,0.32); }
-.bead-row.blocked::before { background: rgba(209,132,127,0.76); box-shadow: 0 0 12px rgba(209,132,127,0.24); }
-.bead-row.epic::before { width: 2px; background: rgba(163,113,247,0.9); box-shadow: 0 0 14px rgba(163,113,247,0.35); }
+.bead-row:hover { background: var(--surface-hover); box-shadow: none; }
+.bead-row.is-expanded { background: linear-gradient(90deg, rgba(142,210,220,0.052), var(--surface-selected) 46%, var(--surface-1)); }
+.bead-row.open::before { background: rgba(142,210,220,0.82); box-shadow: none; }
+.bead-row.in_progress::before { background: rgba(159,184,201,0.86); box-shadow: none; }
+.bead-row.blocked::before { background: rgba(209,132,127,0.76); box-shadow: none; }
+.bead-row.epic::before { background: rgba(163,113,247,0.9); box-shadow: none; }
 .bead-row-main {
   display: grid;
   grid-template-columns: 18px 86px minmax(0, 1fr) auto minmax(120px, auto) 22px;
   align-items: center;
   gap: 8px;
-  min-height: 54px;
+  min-height: var(--row-height);
   padding: 8px 12px 8px 14px;
   width: 100%;
   border: 0;
@@ -174,14 +175,14 @@ body {
 .bead-meta-line { display: flex; gap: 10px; margin-top: 4px; overflow: hidden; color: #748b91; font-size: 10px; white-space: nowrap; }
 .bead-meta-line span { position: relative; }
 .bead-meta-line span + span::before { content: ""; position: absolute; left: -6px; top: 50%; width: 2px; height: 2px; margin-top: -1px; border-radius: 50%; background: rgba(142,210,220,0.34); }
-.bead-pill { display: inline-flex; align-items: center; justify-content: center; height: 20px; padding: 0 8px; border: 1px solid rgba(142,210,220,0.14); background: rgba(142,210,220,0.04); color: #a5cbd1; font-size: 9px; font-weight: 700; letter-spacing: 0.10em; text-transform: uppercase; white-space: nowrap; }
-.bead-pill.epic { border-color: rgba(163,113,247,0.26); background: rgba(163,113,247,0.09); color: #cdb8ff; }
+.bead-pill { display: inline-flex; align-items: center; justify-content: center; height: 20px; padding: 0 8px; border: 1px solid var(--border-subtle); background: transparent; border-radius: 0; color: #a5cbd1; font-size: 9px; font-weight: 700; letter-spacing: 0.10em; text-transform: uppercase; white-space: nowrap; }
+.bead-pill.epic { border-color: rgba(163,113,247,0.26); background: transparent; color: #cdb8ff; }
 .bead-row-stats { display: flex; justify-content: flex-end; gap: 6px; color: #7c9298; font-family: var(--font-mono); font-size: 10px; white-space: nowrap; }
 .bead-chevron { display: flex; align-items: center; justify-content: center; color: #71878d; transition: transform 150ms ease; }
 .bead-row.is-expanded .bead-chevron { transform: rotate(180deg); }
-.bead-expanded-body { padding: 0 14px 14px 118px; }
+.bead-expanded-body { padding: 0 14px 14px 118px; border-top: 1px solid rgba(142,210,220,0.07); }
 .bead-expanded-grid { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 10px; }
-.bead-expanded-section { border: 1px solid var(--border-subtle); background: #1b1b1b; padding: 10px; }
+.bead-expanded-section { border: 0; background: transparent; padding: 10px 0; }
 .bead-section-title { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; color: #7fa4ab; font-size: 9px; font-weight: 700; letter-spacing: 0.15em; text-transform: uppercase; }
 .bead-body-text { white-space: normal; color: #9fb3b8; font-size: 11px; line-height: 1.55; }
 .bead-empty-note { color: #6f858b; font-size: 11px; }
