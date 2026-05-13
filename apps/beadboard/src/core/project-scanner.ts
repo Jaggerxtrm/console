@@ -2,7 +2,7 @@
  * Project Scanner - Discovers beads projects on the filesystem
  */
 
-import { readdir, readFile } from "fs/promises";
+import { lstat, readdir, readFile } from "fs/promises";
 import { join, basename } from "path";
 import type { BeadsProject, ProjectSourceHealth, ProjectSourceKind } from "../types/beads.ts";
 
@@ -59,19 +59,32 @@ export class ProjectScanner {
     const projects: BeadsProject[] = [];
 
     try {
+      if (this.isWorktreePath(dirPath)) return [];
+
       const entries = await readdir(dirPath, { withFileTypes: true });
+      if (depth === 0) {
+        const candidates = entries
+          .filter((entry) => entry.isDirectory())
+          .filter((entry) => !this.config.excludePatterns.includes(entry.name))
+          .filter((entry) => entry.name !== ".worktrees" && entry.name !== "worktrees")
+          .map((entry) => this.withTimeout(this.loadProject(join(dirPath, entry.name)), 250, null));
+        const loaded = await Promise.all(candidates);
+        return loaded.filter((project): project is BeadsProject => Boolean(project));
+      }
+
       const beadsDir = entries.find((entry) => entry.name === ".beads" && entry.isDirectory());
-      if (beadsDir) {
+      if (beadsDir && depth > 0) {
         const project = await this.loadProject(dirPath);
-        if (project) projects.push(project);
+        return project ? [project] : [];
       }
 
       for (const entry of entries) {
         if (!entry.isDirectory()) continue;
         if (this.config.excludePatterns.includes(entry.name)) continue;
+        if (entry.name === ".worktrees" || entry.name === "worktrees") continue;
 
         const subPath = join(dirPath, entry.name);
-        const subProjects = await this.scanPath(subPath, depth + 1);
+        const subProjects = await this.withTimeout(this.scanPath(subPath, depth + 1), 500, []);
         projects.push(...subProjects);
       }
     } catch {
@@ -81,10 +94,35 @@ export class ProjectScanner {
     return projects;
   }
 
+  private async withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+    return Promise.race([
+      promise,
+      new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms)),
+    ]);
+  }
+
+  private isWorktreePath(dirPath: string): boolean {
+    return dirPath.split(/[\\/]+/).some((part) => part === ".worktrees" || part === "worktrees");
+  }
+
+  private async isGitWorktree(repoPath: string): Promise<boolean> {
+    try {
+      const gitPath = join(repoPath, ".git");
+      const stat = await lstat(gitPath);
+      if (!stat.isFile()) return false;
+      const gitFile = await readFile(gitPath, "utf-8");
+      return gitFile.trim().startsWith("gitdir:");
+    } catch {
+      return false;
+    }
+  }
+
   private async loadProject(repoPath: string): Promise<BeadsProject | null> {
     const beadsPath = join(repoPath, ".beads");
 
     try {
+      if (await this.isGitWorktree(repoPath)) return null;
+
       const metadataPath = join(beadsPath, "metadata.json");
       const metadataContent = await readFile(metadataPath, "utf-8");
       const metadata = JSON.parse(metadataContent) as { project_id?: string; issue_count?: number };

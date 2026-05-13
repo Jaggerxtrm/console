@@ -22,6 +22,7 @@ export class BeadsReader {
     return {
       ...this.toIssue(issue),
       dependents: this.getDependents(issueId),
+      children: this.getDependents(issueId).filter((dependency) => dependency.dependency_type === "parent-child"),
       source: "sqlite",
       sourceHealth: [{ kind: "sqlite", state: "available" }],
     };
@@ -48,6 +49,57 @@ export class BeadsReader {
     } catch {
       return [];
     }
+  }
+
+  static parseIssueLine(line: string): BeadIssue[] {
+    if (!line.trim()) return [];
+    try {
+      const data = JSON.parse(line) as Record<string, unknown>;
+      if (data._type && data._type !== "issue") return [];
+      if (typeof data.id !== "string" || typeof data.title !== "string") return [];
+
+      const issueId = data.id;
+      const dependencies = Array.isArray(data.dependencies)
+        ? data.dependencies.flatMap((dependency) => BeadsReader.parseJsonlDependency(dependency, issueId))
+        : [];
+      const labels = Array.isArray(data.labels) ? data.labels.filter((label): label is string => typeof label === "string") : [];
+
+      return [{
+        id: issueId,
+        title: data.title,
+        description: data.description == null ? null : String(data.description),
+        notes: data.notes == null ? null : String(data.notes),
+        status: String(data.status ?? "open") as BeadIssue["status"],
+        priority: Number(data.priority ?? 2) as BeadIssue["priority"],
+        issue_type: String(data.issue_type ?? "task") as BeadIssue["issue_type"],
+        owner: data.owner == null ? null : String(data.owner),
+        created_at: String(data.created_at ?? ""),
+        created_by: data.created_by == null ? null : String(data.created_by),
+        updated_at: String(data.updated_at ?? data.created_at ?? ""),
+        closed_at: data.closed_at == null ? undefined : String(data.closed_at),
+        close_reason: data.close_reason == null ? undefined : String(data.close_reason),
+        project_id: "",
+        dependencies,
+        parent_id: data.parent_id == null ? undefined : String(data.parent_id),
+        related_ids: Array.isArray(data.related_ids) ? data.related_ids.filter((id): id is string => typeof id === "string") : [],
+        labels,
+      }];
+    } catch {
+      return [];
+    }
+  }
+
+  private static parseJsonlDependency(value: unknown, issueId: string): BeadDependency[] {
+    if (!value || typeof value !== "object") return [];
+    const dependency = value as Record<string, unknown>;
+    const id = dependency.depends_on_id ?? dependency.to_issue ?? dependency.id;
+    if (typeof id !== "string" || id === issueId) return [];
+    return [{
+      id,
+      title: typeof dependency.title === "string" ? dependency.title : "",
+      status: String(dependency.status ?? "open") as BeadDependency["status"],
+      dependency_type: String(dependency.type ?? dependency.dependency_type ?? "blocks") as BeadDependency["dependency_type"],
+    }];
   }
 
   static inferAgent(model?: string): "claude" | "pi" | "qwen" | "gemini" | "other" {
@@ -154,6 +206,7 @@ export class BeadsReader {
       id: issueId,
       title: String(issue.title ?? ""),
       description: issue.description == null ? null : String(issue.description),
+      notes: issue.notes == null ? null : String(issue.notes),
       status: String(issue.status ?? "open") as BeadIssue["status"],
       priority: Number(issue.priority ?? 2) as BeadIssue["priority"],
       issue_type: String(issue.issue_type ?? "task") as BeadIssue["issue_type"],

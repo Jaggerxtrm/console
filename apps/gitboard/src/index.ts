@@ -15,6 +15,13 @@ console.log(`[gitboard] Database initialized at ${DB_PATH}`);
 startServer(db, { port: PORT });
 
 try {
+  if (process.env.SKIP_GITHUB_POLLER === "1") {
+    console.log("[gitboard] GitHub poller disabled: SKIP_GITHUB_POLLER=1");
+    process.on("SIGINT", () => {
+      db.close();
+      process.exit(0);
+    });
+  } else {
   const token = getGithubToken();
   const username = await getAuthenticatedUsername(token);
 
@@ -34,6 +41,7 @@ try {
     db.close();
     process.exit(0);
   });
+  }
 } catch (err) {
   console.warn("[gitboard] GitHub poller disabled:", (err as Error).message);
   process.on("SIGINT", () => {

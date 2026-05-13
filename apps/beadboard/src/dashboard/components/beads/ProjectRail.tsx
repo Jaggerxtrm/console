@@ -42,8 +42,8 @@ export function ProjectRail({ projects, selectedProjectId, statsByProject, loadi
   }, [projects, statsByProject]);
 
   return (
-    <aside style={{ width: 276, minWidth: 276, borderRight: "1px solid var(--border-subtle)", background: "var(--surface-secondary)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
-      <div style={{ height: 34, padding: "0 16px", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid var(--border-subtle)" }}>
+    <aside style={{ width: "var(--sidebar-width)", minWidth: "var(--sidebar-width)", borderRight: "1px solid var(--border-subtle)", background: "#181818", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+      <div style={{ height: 32, padding: "0 12px", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid var(--border-subtle)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--text-muted)", fontSize: "var(--text-xs)", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>
           <RepoIcon size={13} />
           Projects
@@ -51,7 +51,7 @@ export function ProjectRail({ projects, selectedProjectId, statsByProject, loadi
         {loadingStats && <span style={{ color: "var(--text-muted)", lineHeight: 0 }}><SyncIcon size={12} /></span>}
       </div>
 
-      <div style={{ flex: 1, overflowY: "auto", minHeight: 0, padding: "8px 0" }}>
+      <div style={{ flex: 1, overflowY: "auto", minHeight: 0, padding: "4px 0" }}>
         {sortedProjects.length === 0 ? (
           <div style={{ padding: 16, color: "var(--text-muted)", fontSize: "var(--text-sm)", lineHeight: 1.5 }}>
             No Beads projects found. Run <code style={{ background: "var(--surface-tertiary)", padding: "2px 5px", borderRadius: 4 }}>bd init</code> in a repo to make it visible.
@@ -77,11 +77,13 @@ export function ProjectRail({ projects, selectedProjectId, statsByProject, loadi
                 width: "100%",
                 display: "flex",
                 flexDirection: "column",
-                gap: 7,
-                padding: "10px 16px",
+                gap: 5,
+                padding: "8px 12px",
                 border: "none",
-                borderLeft: isSelected ? "2px solid var(--accent-blue)" : "2px solid transparent",
-                background: isSelected ? "var(--surface-tertiary)" : hoveredProjectId === project.id ? "rgba(255,255,255,0.04)" : "transparent",
+                borderTop: "1px solid transparent",
+                borderBottom: "1px solid transparent",
+                borderLeft: isSelected ? "2px solid rgba(142,210,220,0.78)" : "2px solid transparent",
+                background: isSelected ? "#202020" : hoveredProjectId === project.id ? "#1d1d1d" : "transparent",
                 color: "var(--text-primary)",
                 cursor: isSelected ? "default" : "pointer",
                 textAlign: "left",
@@ -91,13 +93,13 @@ export function ProjectRail({ projects, selectedProjectId, statsByProject, loadi
               <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
                 <SourceIcon health={health.state} />
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: "var(--text-base)", fontWeight: 650, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{project.name}</div>
-                  <div style={{ marginTop: 2, fontSize: "var(--text-xs)", color: "var(--text-muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{compactPath(project.path)}</div>
+                  <div style={{ fontSize: "12px", fontWeight: 650, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{project.name}</div>
+                  <div style={{ marginTop: 1, fontSize: "10px", color: "var(--text-muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{compactPath(project.path)}</div>
                 </div>
                 <span style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)", color: activeCount > 0 ? "var(--text-primary)" : "var(--text-muted)", background: "rgba(255,255,255,0.04)", border: "1px solid var(--border-subtle)", borderRadius: 999, padding: "2px 7px" }}>{activeCount}</span>
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 5 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 4 }}>
                 <CountPill label="Open" value={stats?.open ?? project.issueCount ?? 0} tone="var(--status-open)" />
                 <CountPill label="Run" value={stats?.in_progress ?? 0} tone="var(--accent-blue)" />
                 <CountPill label="Blk" value={stats?.blocked ?? 0} tone="var(--status-blocked)" />
@@ -121,7 +123,7 @@ export function ProjectRail({ projects, selectedProjectId, statsByProject, loadi
 
 function CountPill({ label, value, tone }: { label: string; value: number; tone: string }) {
   return (
-    <span style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 4, minWidth: 0, padding: "3px 5px", borderRadius: 5, background: "rgba(255,255,255,0.035)", border: "1px solid var(--border-subtle)", fontSize: 10, color: "var(--text-muted)" }}>
+    <span style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 3, minWidth: 0, padding: "2px 4px", borderRadius: 0, background: "#1d1d1d", border: "1px solid var(--border-subtle)", fontSize: 9, color: "var(--text-muted)" }}>
       <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{label}</span>
       <span style={{ color: value > 0 ? tone : "var(--text-disabled)", fontWeight: 750 }}>{value}</span>
     </span>

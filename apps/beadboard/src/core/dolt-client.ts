@@ -62,6 +62,7 @@ export class DoltClient {
     return {
       ...issue,
       dependents: await this.getDependents(issueId),
+      children: (await this.getDependents(issueId)).filter((dependency) => dependency.dependency_type === "parent-child"),
       source: "dolt",
       sourceHealth: [{ kind: "dolt", state: "available" }],
     };
@@ -99,7 +100,7 @@ export class DoltClient {
     const offset = filters.offset ?? 0;
 
     const [rows] = await this.connection!.execute<RowDataPacket[]>(
-      `SELECT id, title, description, status, priority, issue_type, owner, created_at, created_by, updated_at, closed_at, close_reason, parent_id
+      `SELECT *
        FROM issues
        ${where}
        ORDER BY priority ASC, created_at DESC
@@ -115,6 +116,7 @@ export class DoltClient {
       id: String(row.id),
       title: String(row.title ?? ""),
       description: row.description ?? null,
+      notes: row.notes ?? null,
       status: String(row.status ?? "open") as BeadIssue["status"],
       priority: Number(row.priority ?? 2) as BeadIssue["priority"],
       issue_type: String(row.issue_type ?? "task") as BeadIssue["issue_type"],
@@ -194,7 +196,7 @@ export class DoltClient {
     await this.connect();
 
     const [rows] = await this.connection!.execute<RowDataPacket[]>(
-      `SELECT id, title, description, status, priority, issue_type, owner, created_at, created_by, updated_at, closed_at, close_reason, parent_id
+      `SELECT *
        FROM issues
        WHERE status = 'closed' AND closed_at IS NOT NULL
        ORDER BY closed_at DESC

@@ -7,7 +7,7 @@ import { Database } from "bun:sqlite";
 import { ProjectScanner } from "../../core/project-scanner.ts";
 import { BeadsReader } from "../../core/beads-reader.ts";
 import { DoltClient } from "../../core/dolt-client.ts";
-import type { BeadIssue, BeadIssueDetail, Memory, Interaction, ProjectSourceKind } from "../types/beads.ts";
+import type { BeadIssue, BeadIssueDetail, Memory, Interaction, ProjectSourceKind } from "../../types/beads.ts";
 
 let scanner: ProjectScanner | null = null;
 const doltClients: Map<number, DoltClient> = new Map();
@@ -18,8 +18,8 @@ function getScanner(): ProjectScanner {
     const searchPath = process.env.XDG_PROJECTS_DIR || (process.env.HOME ? `${process.env.HOME}/projects` : "/home");
     scanner = new ProjectScanner({
       searchPath,
-      maxDepth: 5,
-      excludePatterns: ["node_modules", ".git", "Library", "Applications", ".cargo", ".npm", ".rustup"],
+      maxDepth: 1,
+      excludePatterns: ["node_modules", ".git", ".worktrees", "worktrees", "Library", "Applications", ".cargo", ".npm", ".rustup"],
     });
   }
   return scanner;
@@ -53,7 +53,10 @@ export const beadsRoutes = new Hono();
 
 beadsRoutes.get("/projects", async (c) => {
   try {
-    const projects = await getScanner().scanDirectory();
+    const projects = await Promise.race([
+      getScanner().scanDirectory(),
+      new Promise<[]>(resolve => setTimeout(() => resolve([]), 1000)),
+    ]);
     return c.json({ projects });
   } catch (error) {
     console.error("[api] Error scanning projects:", error);
@@ -187,7 +190,8 @@ async function getIssuesFromProject(
     }
   }
 
-  return [];
+  const jsonlIssues = await readJsonlIssues(project.beadsPath, projectId);
+  return applyIssueFilters(jsonlIssues, filters);
 }
 
 async function getIssueDetailFromProject(projectId: string, issueId: string): Promise<BeadIssueDetail | null> {
@@ -216,7 +220,27 @@ async function getIssueDetailFromProject(projectId: string, issueId: string): Pr
     }
   }
 
-  return null;
+  const jsonlIssues = await readJsonlIssues(project.beadsPath, projectId);
+  const issue = jsonlIssues.find((candidate) => candidate.id === issueId);
+  if (!issue) return null;
+  const dependents = jsonlIssues.flatMap((candidate) =>
+    candidate.dependencies
+      .filter((dependency: BeadIssue["dependencies"][number]) => dependency.id === issueId)
+      .map((dependency: BeadIssue["dependencies"][number]) => ({
+        id: candidate.id,
+        title: candidate.title,
+        status: candidate.status,
+        dependency_type: dependency.dependency_type,
+      })),
+  );
+
+  return {
+    ...issue,
+    dependents,
+    children: dependents.filter((dependency) => dependency.dependency_type === "parent-child"),
+    source: "jsonl",
+    sourceHealth: [{ kind: "jsonl", state: "available", path: `${project.beadsPath}/issues.jsonl` }],
+  };
 }
 
 async function getClosedIssuesFromProject(projectId: string, limit: number): Promise<BeadIssue[]> {
@@ -243,7 +267,11 @@ async function getClosedIssuesFromProject(projectId: string, limit: number): Pro
     }
   }
 
-  return [];
+  const jsonlIssues = await readJsonlIssues(project.beadsPath, projectId);
+  return jsonlIssues
+    .filter((issue) => issue.status === "closed")
+    .sort((a, b) => new Date(b.closed_at || b.updated_at).getTime() - new Date(a.closed_at || a.updated_at).getTime())
+    .slice(0, limit);
 }
 
 async function getStatsFromProject(projectId: string): Promise<{
@@ -265,13 +293,38 @@ async function getStatsFromProject(projectId: string): Promise<{
     acc.total += 1;
     if (issue.status in acc) acc[issue.status as keyof typeof acc] += 1;
     const priorityKey = `p${issue.priority}`;
+    const numericPriorityKey = String(issue.priority);
     if (priorityKey in acc.by_priority) acc.by_priority[priorityKey] += 1;
+    acc.by_priority[numericPriorityKey] = (acc.by_priority[numericPriorityKey] ?? 0) + 1;
     const typeKey = issue.issue_type;
     if (typeKey in acc.by_type) acc.by_type[typeKey] += 1;
     return acc;
   }, { total: 0, open: 0, in_progress: 0, blocked: 0, closed: 0, by_priority: { p0: 0, p1: 0, p2: 0, p3: 0, p4: 0 }, by_type: { bug: 0, feature: 0, task: 0, epic: 0, chore: 0 } });
 
   return stats;
+}
+
+function applyIssueFilters(
+  issues: BeadIssue[],
+  filters: { status?: BeadIssue["status"][]; priority?: BeadIssue["priority"][]; search?: string; limit?: number },
+): BeadIssue[] {
+  let filtered = issues;
+  if (filters.status?.length) filtered = filtered.filter((issue) => filters.status?.includes(issue.status));
+  if (filters.priority?.length) filtered = filtered.filter((issue) => filters.priority?.includes(issue.priority));
+  if (filters.search) {
+    const search = filters.search.toLowerCase();
+    filtered = filtered.filter((issue) => issue.title.toLowerCase().includes(search) || issue.description?.toLowerCase().includes(search) || issue.notes?.toLowerCase().includes(search));
+  }
+  return filtered.slice(0, filters.limit ?? 100);
+}
+
+async function readJsonlIssues(beadsPath: string, projectId: string): Promise<BeadIssue[]> {
+  try {
+    const content = await Bun.file(`${beadsPath}/issues.jsonl`).text();
+    return content.split("\n").flatMap((line) => BeadsReader.parseIssueLine(line)).map((issue) => withProjectId(issue, projectId));
+  } catch {
+    return [];
+  }
 }
 
 async function readJsonlMemories(path: string) {

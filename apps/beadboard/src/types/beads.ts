@@ -32,6 +32,7 @@ export interface BeadIssue {
   id: string;
   title: string;
   description: string | null;
+  notes?: string | null;
   status: Status;
   priority: Priority;
   issue_type: IssueType;
@@ -50,6 +51,7 @@ export interface BeadIssue {
 
 export interface BeadIssueDetail extends BeadIssue {
   dependents: BeadDependency[];
+  children?: BeadDependency[];
   source: ProjectSourceKind;
   sourceHealth: ProjectSourceHealth[];
 }
@@ -58,7 +60,7 @@ export interface BeadDependency {
   id: string;
   title: string;
   status: Status;
-  dependency_type: "blocks" | "blocked_by" | "related" | "parent";
+  dependency_type: "blocks" | "blocked_by" | "related" | "parent" | "parent-child" | (string & {});
 }
 
 export interface Memory {
