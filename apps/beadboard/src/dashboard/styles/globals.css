@@ -32,8 +32,10 @@ body {
 .module-icon-btn.is-active { color: var(--text-primary); border-color: var(--border); }
 .module-status { font-size: var(--text-xs); color: var(--text-muted); }
 .module-status.is-error { color: var(--danger); }
-.bead-feed { background: var(--bg); }
-.module-list { display: grid; gap: 0; }
+.bead-feed { background: var(--bg); width: 100%; }
+.module-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; width: 100%; }
+.module-list > * { min-width: 0; }
+.row { width: 100%; }
 .row { position: relative; border-bottom: 1px solid var(--border-subtle); background: var(--surface-1); }
 .row:hover { background: var(--surface-2); }
 .row.is-expanded { background: var(--surface-3); }
