@@ -151,7 +151,7 @@ body {
 
 .fui-status-cluster strong {
   color: var(--text-primary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: 11px;
   font-weight: 500;
 }
@@ -276,7 +276,7 @@ body {
 }
 
 .fui-security-ring span {
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: 25px;
   color: var(--text-primary);
 }
@@ -324,7 +324,7 @@ body {
 
 .fui-metric-card small {
   color: #7ed7e5;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
 }
 
 .fui-metric-card em {
@@ -399,7 +399,7 @@ body {
   border-radius: 999px;
   background: rgba(7, 16, 22, 0.82);
   color: var(--text-primary);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: 10px;
   letter-spacing: 0.08em;
   box-shadow: 0 0 24px rgba(126, 215, 229, 0.08);
@@ -436,7 +436,7 @@ body {
 
 .fui-floating-window span {
   color: #86a2a8;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: 11px;
 }
 
