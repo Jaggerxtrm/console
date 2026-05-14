@@ -478,7 +478,7 @@ function VirtualizedPrTimeline({ prs }: { prs: GithubPr[] }) {
   const rowVirtualizer = useVirtualizer({
     count: items.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: (i) => items[i].kind === "header" ? 28 : 74,
+    estimateSize: (i) => items[i].kind === "header" ? 24 : 66,
     overscan: 5,
     measureElement: (el) => el?.getBoundingClientRect().height ?? 0,
   });

@@ -64,19 +64,19 @@ export function StatusColumn({ title, description, status, issues, projectId, in
 
   return (
     <section style={{ display: "flex", flexDirection: "column", minWidth: 292, maxWidth: 336, background: "var(--surface-secondary)", borderRadius: "var(--radius-sm)", border: "1px solid var(--border-subtle)", overflow: "hidden" }}>
-      <div style={{ padding: "10px 12px", borderBottom: "1px solid var(--border-subtle)", background: "var(--surface-secondary)" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <div style={{ padding: "8px 10px", borderBottom: "1px solid var(--border-subtle)", background: "var(--surface-secondary)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <span style={{ color: config.color, display: "inline-flex", lineHeight: 0 }}><StatusIcon size={14} /></span>
           <h3 style={{ fontSize: "var(--text-sm)", fontWeight: 700, color: "var(--text-primary)", margin: 0, letterSpacing: "0.02em" }}>{title}</h3>
           <span style={{ marginLeft: "auto", fontSize: "var(--text-xs)", color: "var(--text-primary)", background: "var(--surface-tertiary)", border: "1px solid var(--border-subtle)", padding: "2px 7px", borderRadius: "var(--radius-sm)" }}>{issues.length}</span>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6, fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4, fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>
           <span>{description ?? "Issue lane"}</span>
           {epicCount > 0 && <span style={{ marginLeft: "auto", color: "var(--accent-purple)", fontWeight: 700 }}>Epic {epicCount}</span>}
         </div>
       </div>
 
-      <div style={{ flex: 1, overflowY: "auto", minHeight: 0, padding: 10, display: "flex", flexDirection: "column", gap: 9 }}>
+      <div style={{ flex: 1, overflowY: "auto", minHeight: 0, padding: 8, display: "flex", flexDirection: "column", gap: 7 }}>
         {issues.length === 0 ? (
           <div style={{ padding: "24px 10px", textAlign: "center", color: "var(--text-muted)", fontSize: "var(--text-sm)", border: "1px dashed var(--border-subtle)", borderRadius: "var(--radius-sm)", background: "var(--surface-primary)" }}>No issues in lane</div>
         ) : (
@@ -108,7 +108,7 @@ function BeadDossier({ issue, detail, loading, interactions }: { issue: BeadIssu
   const agent = interactions[0]?.model ?? interactions[0]?.actor ?? null;
 
   return (
-    <section style={{ border: "1px solid var(--border-subtle)", borderRadius: "var(--radius-sm)", background: "var(--surface-primary)", padding: 10, display: "grid", gap: 10 }}>
+    <section style={{ border: "1px solid var(--border-subtle)", borderRadius: "var(--radius-sm)", background: "var(--surface-primary)", padding: 8, display: "grid", gap: 8 }}>
       {loading ? <div style={{ color: "var(--text-muted)", fontSize: "var(--text-sm)" }}>Loading dossier...</div> : null}
       <DossierBlock title="Description">
         <SafeMarkdown value={detail?.description ?? issue.description} empty="No description." />
@@ -127,11 +127,11 @@ function BeadDossier({ issue, detail, loading, interactions }: { issue: BeadIssu
 }
 
 function DossierBlock({ title, children }: { title: string; children: ReactNode }) {
-  return <section style={{ display: "grid", gap: 6 }}><div style={{ fontSize: "var(--text-xs)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-muted)", fontWeight: 750 }}>{title}</div>{children}</section>;
+  return <section style={{ display: "grid", gap: 4 }}><div style={{ fontSize: "var(--text-xs)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-muted)", fontWeight: 750 }}>{title}</div>{children}</section>;
 }
 
 function DossierList({ title, items, empty }: { title: string; items: Array<{ id: string; title: string; status: string; dependency_type: string }>; empty: string; }) {
-  return <DossierBlock title={title}>{items.length === 0 ? <div style={{ color: "var(--text-muted)", fontSize: "var(--text-sm)" }}>{empty}</div> : <div style={{ display: "grid", gap: 6 }}>{items.map((item) => <div key={`${title}-${item.id}-${item.dependency_type}`} style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--text-secondary)", fontSize: "var(--text-xs)" }}><GitBranchIcon size={12} />{item.id}<span style={{ color: "var(--text-muted)" }}>{item.title || "Untitled issue"}</span></div>)}</div>}</DossierBlock>;
+  return <DossierBlock title={title}>{items.length === 0 ? <div style={{ color: "var(--text-muted)", fontSize: "var(--text-sm)" }}>{empty}</div> : <div style={{ display: "grid", gap: 4 }}>{items.map((item) => <div key={`${title}-${item.id}-${item.dependency_type}`} style={{ display: "flex", alignItems: "center", gap: 4, color: "var(--text-secondary)", fontSize: "var(--text-xs)" }}><GitBranchIcon size={12} />{item.id}<span style={{ color: "var(--text-muted)" }}>{item.title || "Untitled issue"}</span></div>)}</div>}</DossierBlock>;
 }
 
 function SafeMarkdown({ value, empty }: { value?: string | null; empty: string }) {

@@ -117,7 +117,7 @@ export function RepoSidebar({ repos, stats, selectedRepos, unreadRepos = new Set
         }}
       />
       {/* Scrollable repo list */}
-      <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
+      <div style={{ flex: 1, overflowY: "auto", minHeight: 0, padding: "2px 0" }}>
         <button
           aria-pressed={allActive}
           className={allActive ? "repo-section-control is-active" : "repo-section-control"}
@@ -126,8 +126,8 @@ export function RepoSidebar({ repos, stats, selectedRepos, unreadRepos = new Set
           style={{
             display: "flex",
             alignItems: "center",
-            height: 32,
-            padding: "0 16px",
+            height: 28,
+            padding: "0 12px",
             background: "var(--surface-secondary)",
             border: "none",
             borderBottom: "1px solid var(--border-subtle)",
@@ -183,8 +183,8 @@ export function RepoSidebar({ repos, stats, selectedRepos, unreadRepos = new Set
                   style={{
                     display: "flex",
                     flexDirection: "column",
-                    gap: 4,
-                    padding: "8px 16px",
+                    gap: 3,
+                    padding: "6px 12px",
                     background: isSelected ? "var(--surface-tertiary)" : hoveredKey === repo.full_name ? "rgba(255,255,255,0.04)" : "transparent",
                     border: "none",
                     borderLeft: isSelected ? "2px solid var(--event-push)" : "2px solid transparent",
@@ -226,7 +226,7 @@ export function RepoSidebar({ repos, stats, selectedRepos, unreadRepos = new Set
                     </a>
                   </div>
 
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "var(--text-xs)", color: "var(--text-secondary)", paddingLeft: 20 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "var(--text-xs)", color: "var(--text-secondary)", paddingLeft: 16 }}>
                     {stat ? (
                       <>
                         {stat.pushes > 0 && (
