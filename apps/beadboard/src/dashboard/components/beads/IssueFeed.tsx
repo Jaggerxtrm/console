@@ -91,12 +91,15 @@ function IssueRow({ issue, detail, isExpanded, isLoadingDetail, agent, dependenc
     <article className={`row ${issue.status} ${isEpic ? "epic" : ""} ${isExpanded ? "is-expanded" : ""} ${isChild ? "is-child" : ""}`}>
       <button type="button" className="row-main" onClick={onClick} aria-expanded={isExpanded} aria-controls={`issue-dossier-${issue.id}`}>
         <span className="id">{issue.id}</span>
-        <span className="title-line">
-          <span className="title">{issue.title}</span>
-          <span className="meta"><span>{issue.owner ?? "unassigned"}</span><span>{formatCompactDate(issue.updated_at)}</span>{childCount > 0 && <span>{childCount} children</span>}</span>
+        <span className="title">{issue.title}</span>
+        <span className="meta-cluster">
+          <span className="meta-item">{issue.owner ?? "unassigned"}</span>
+          <span className="meta-item">{formatCompactDate(issue.updated_at)}</span>
+          {childCount > 0 && <span className="meta-item">{childCount} children</span>}
+          {renderInlineDeps(issue, dependencyCount)}
+          {agent && <span className="agent-badge"><DependabotIcon size={10} /> {agent}</span>}
         </span>
         <span className="type-mark" title={TYPE_LABELS[issue.issue_type] ?? issue.issue_type}>{TYPE_LABELS[issue.issue_type] ?? issue.issue_type}</span>
-        <span className="meta-right">{renderInlineDeps(issue, dependencyCount)}{agent && <span className="agent-badge"><DependabotIcon size={10} /> {agent}</span>}</span>
         <span className="state">{STATUS_LABELS[issue.status] ?? issue.status}</span>
         <span className="chev">{isExpanded ? <ChevronDownIcon size={12} /> : <ChevronRightIcon size={12} />}</span>
       </button>
