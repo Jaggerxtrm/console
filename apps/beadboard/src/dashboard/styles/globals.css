@@ -1,118 +1,5 @@
-/* Import design tokens from @omniforge/ui - for now inline */
+@import "../../../../../packages/ui/src/styles/tokens.css";
 @import "tailwindcss";
-
-:root {
-  /* xtrm Console Minimal FUI */
-  --bg: #181818;
-  --surface-1: #181818;
-  --surface-2: #1b1b1b;
-  --surface-3: #202020;
-  --surface-hover: #222222;
-  --surface-selected: #242424;
-
-  --border-subtle: rgba(255, 255, 255, 0.07);
-  --border: rgba(255, 255, 255, 0.11);
-  --border-strong: rgba(255, 255, 255, 0.18);
-
-  --text-primary: #e6e6e6;
-  --text-secondary: #a7a7a7;
-  --text-muted: #757575;
-  --text-disabled: #505050;
-
-  --accent: #8ed2dc;
-  --accent-muted: rgba(142, 210, 220, 0.18);
-
-  --success: #7fbf8f;
-  --warning: #d6b36a;
-  --danger: #d1847f;
-  --epic: #b69adf;
-
-  --radius: 0;
-
-  --topbar-height: 44px;
-  --sidebar-width: 238px;
-  --row-height: 52px;
-
-  --font-ui: Inter, system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", monospace;
-
-  --text-xs: 11px;
-  --text-sm: 12px;
-  --text-base: 13px;
-
-  /* Compatibility aliases */
-  --surface-backdrop: var(--bg);
-  --surface-elevated: var(--surface-3);
-  --surface-primary: var(--surface-1);
-  --surface-secondary: var(--surface-2);
-  --surface-tertiary: var(--surface-3);
-  --surface-quaternary: #2b2b2b;
-  --bg-hover: var(--surface-hover);
-
-  --border-default: var(--border);
-
-  --accent-blue: var(--accent);
-  --accent-green: var(--success);
-  --accent-orange: var(--warning);
-  --accent-red: var(--danger);
-  --accent-purple: var(--epic);
-  --accent-teal: var(--accent);
-
-  --status-open: var(--success);
-  --status-in-progress: var(--accent);
-  --status-blocked: var(--danger);
-  --status-closed: var(--text-muted);
-
-  --event-push: var(--accent);
-  --event-pr-open: var(--success);
-  --event-pr-merge: var(--epic);
-  --event-pr-close: var(--danger);
-  --event-review: var(--warning);
-  --event-issue-open: var(--success);
-  --event-issue-close: var(--text-muted);
-  --event-release: var(--accent);
-  --event-branch: var(--text-secondary);
-  --event-social: var(--text-muted);
-
-  --status-active: rgba(127, 191, 143, 0.12);
-  --status-pending: rgba(214, 179, 106, 0.12);
-  --status-blocked-bg: rgba(209, 132, 127, 0.12);
-  --status-inactive: rgba(117, 117, 117, 0.08);
-
-  --diff-add: var(--success);
-  --diff-del: var(--danger);
-
-  --radius-xs: var(--radius);
-  --radius-sm: var(--radius);
-  --radius-md: var(--radius);
-  --radius-lg: var(--radius);
-  --radius-pill: var(--radius);
-
-  --spacing-xs: 4px;
-  --spacing-sm: 8px;
-  --spacing-md: 16px;
-  --spacing-lg: 24px;
-  --spacing-xl: 32px;
-  --spacing-2xl: 40px;
-
-  --text-md: 15px;
-  --text-xl: 18px;
-
-  --transition-fast: 120ms ease-out;
-  --transition-normal: 160ms ease-out;
-  --transition: all 120ms ease-out;
-
-  --detail-width: 360px;
-  --bg-primary: var(--surface-primary);
-  --bg-secondary: var(--surface-secondary);
-  --bg-tertiary: var(--surface-tertiary);
-  --shadow-sm: none;
-  --shadow-md: none;
-  --shadow-lg: none;
-  --shadow-card: none;
-  --shadow-widget: none;
-
-}
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -147,7 +34,7 @@ body {
   background: rgba(142,210,220,0.18);
 }
 .bead-row:hover { background: var(--surface-hover); box-shadow: none; }
-.bead-row.is-expanded { background: linear-gradient(90deg, rgba(142,210,220,0.052), var(--surface-selected) 46%, var(--surface-1)); }
+.bead-row.is-expanded { background: var(--surface-selected); }
 .bead-row.open::before { background: rgba(142,210,220,0.82); box-shadow: none; }
 .bead-row.in_progress::before { background: rgba(159,184,201,0.86); box-shadow: none; }
 .bead-row.blocked::before { background: rgba(209,132,127,0.76); box-shadow: none; }

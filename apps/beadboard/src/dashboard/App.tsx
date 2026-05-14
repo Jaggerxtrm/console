@@ -164,7 +164,7 @@ export function App() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--surface-primary)', color: 'var(--text-primary)', fontFamily: 'var(--font-ui)' }}>
-      <header style={{ display: 'flex', alignItems: 'center', gap: 24, padding: '0 20px', height: 'var(--topbar-height)', background: 'linear-gradient(180deg, var(--surface-secondary), var(--surface-primary))', borderBottom: '1px solid var(--border-subtle)', flexShrink: 0 }}>
+      <header style={{ display: 'flex', alignItems: 'center', gap: 24, padding: '0 20px', height: 'var(--topbar-height)', background: 'var(--surface-secondary)', borderBottom: '1px solid var(--border-subtle)', flexShrink: 0 }}>
         <span style={{ fontSize: 'var(--text-xs)', fontWeight: 600, letterSpacing: '0.1em', color: 'var(--text-muted)', textTransform: 'uppercase' }}>xtrm.beads</span>
         <nav style={{ display: 'flex', gap: 4, height: '100%', alignItems: 'stretch' }}>
           {TABS.map(tab => (
@@ -213,6 +213,5 @@ function MemoriesPanel({ memories }: { memories: Memory[] }) {
 }
 
 function AgentBadge({ agent }: { agent: string }) {
-  const colors: Record<string, string> = { claude: '#D97706', qwen: '#10B981', gemini: '#3B82F6', gpt: '#6366F1' };
-  return <span style={{ fontSize: 'var(--text-xs)', padding: '2px 6px', background: colors[agent] || 'var(--surface-tertiary)', color: 'white', borderRadius: 'var(--radius-pill)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>{agent}</span>;
+  return <span style={{ fontSize: 'var(--text-xs)', padding: '2px 6px', background: 'var(--surface-tertiary)', color: 'var(--text-primary)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>{agent}</span>;
 }

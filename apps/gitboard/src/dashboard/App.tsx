@@ -31,7 +31,7 @@ function DashboardShell({ view }: { view: View }) {
         gap: 24,
         padding: '0 20px',
         height: 'var(--topbar-height)',
-        background: 'linear-gradient(180deg, var(--surface-secondary), var(--surface-primary))',
+        background: 'var(--surface-secondary)',
         borderBottom: '1px solid var(--border-subtle)',
         flexShrink: 0,
       }}>

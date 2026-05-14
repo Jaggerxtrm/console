@@ -41,7 +41,7 @@ export function BeadCard({ issue, onClick, agent }: BeadCardProps) {
       <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 8 }}>
         <span style={{ display: "inline-flex", color: type.color, lineHeight: 0 }}><TypeIcon size={13} /></span>
         <span style={{ fontSize: "var(--text-xs)", fontWeight: 750, color: type.color, letterSpacing: "0.05em", textTransform: "uppercase" }}>{type.label}</span>
-        <span style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)", fontWeight: 750, color: priorityColor, border: `1px solid ${priorityColor}`, borderRadius: 999, padding: "1px 6px", lineHeight: 1.4 }}>P{issue.priority}</span>
+        <span style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)", fontWeight: 750, color: priorityColor, border: "1px solid var(--border-subtle)", borderRadius: "var(--radius-sm)", padding: "1px 6px", lineHeight: 1.4 }}>P{issue.priority}</span>
         {agent && <AgentBadge agent={agent} />}
         <span style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)", color: "var(--text-muted)", marginLeft: "auto" }}>{issue.id}</span>
       </div>
@@ -59,12 +59,12 @@ export function BeadCard({ issue, onClick, agent }: BeadCardProps) {
 
   const style = {
     width: "100%",
-    background: isEpic ? "linear-gradient(135deg, rgba(163,113,247,0.13), rgba(255,255,255,0.03))" : "var(--surface-secondary)",
-    borderRadius: 9,
+    background: "var(--surface-secondary)",
+    borderRadius: "var(--radius-sm)",
     padding: "10px 11px",
-    border: `1px solid ${isEpic ? "rgba(163,113,247,0.45)" : "var(--border-subtle)"}`,
+    border: "1px solid var(--border-subtle)",
     borderLeft: `3px solid ${isEpic ? "var(--accent-purple)" : priorityColor}`,
-    boxShadow: isEpic ? "inset 0 0 0 1px rgba(163,113,247,0.08)" : "none",
+    boxShadow: "none",
     color: "var(--text-primary)",
     textAlign: "left" as const,
     cursor: onClick ? "pointer" : "default",
@@ -82,7 +82,7 @@ export function BeadCard({ issue, onClick, agent }: BeadCardProps) {
 
 function MetaPill({ title, tone, icon, label }: { title: string; tone: string; icon: ReactNode; label: string }) {
   return (
-    <span title={title} style={{ display: "inline-flex", alignItems: "center", gap: 3, color: tone, background: "rgba(255,255,255,0.035)", border: "1px solid var(--border-subtle)", borderRadius: 999, padding: "2px 6px" }}>
+    <span title={title} style={{ display: "inline-flex", alignItems: "center", gap: 3, color: tone, background: "var(--surface-tertiary)", border: "1px solid var(--border-subtle)", borderRadius: "var(--radius-sm)", padding: "2px 6px" }}>
       {icon}
       {label}
     </span>
@@ -98,7 +98,7 @@ function AgentBadge({ agent }: { agent: string }) {
   };
 
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10, fontWeight: 750, padding: "2px 6px", background: colors[agent] || "var(--surface-tertiary)", color: "white", borderRadius: 999, letterSpacing: "0.03em", textTransform: "uppercase" }}>
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10, fontWeight: 750, padding: "2px 6px", background: "var(--surface-tertiary)", color: "var(--text-primary)", border: "1px solid var(--border-subtle)", borderRadius: "var(--radius-sm)", letterSpacing: "0.03em", textTransform: "uppercase" }}>
       <DependabotIcon size={11} />
       {agent}
     </span>

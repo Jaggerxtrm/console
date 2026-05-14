@@ -32,13 +32,13 @@ export function KanbanBoard({ issues, onIssueClick, getAgent }: KanbanBoardProps
 
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column", background: "var(--surface-primary)" }}>
-      <div style={{ padding: "14px 18px 10px", borderBottom: "1px solid var(--border-subtle)", background: "linear-gradient(180deg, rgba(88,166,255,0.05), transparent)" }}>
+      <div style={{ padding: "14px 18px 10px", borderBottom: "1px solid var(--border-subtle)", background: "var(--surface-secondary)" }}>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12 }}>
           <div>
             <h2 style={{ fontSize: 13, fontWeight: 750, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-primary)", margin: 0 }}>Board overview</h2>
             <p style={{ margin: "4px 0 0", fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>Secondary state map. Feed remains the primary dossier surface.</p>
           </div>
-          <span style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)", color: "var(--text-muted)", border: "1px solid var(--border-subtle)", borderRadius: 999, padding: "3px 8px", background: "rgba(255,255,255,0.03)" }}>{issues.length} issues</span>
+          <span style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)", color: "var(--text-muted)", border: "1px solid var(--border-subtle)", borderRadius: "var(--radius-sm)", padding: "3px 8px", background: "var(--surface-tertiary)" }}>{issues.length} issues</span>
         </div>
       </div>
 
