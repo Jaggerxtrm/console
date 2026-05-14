@@ -2,9 +2,10 @@
  * IssueFeed - primary inline issue feed with expandable dossiers
  */
 
-import { useMemo, useState, type ReactNode } from "react";
-import { ChevronDownIcon, ChevronRightIcon, GitBranchIcon, LinkIcon } from "@primer/octicons-react";
-import type { BeadDependency, BeadIssue, BeadIssueDetail } from "../../../types/beads.ts";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { ChevronRightIcon, ChevronDownIcon, GitBranchIcon, LinkIcon, AlertIcon, IssueOpenedIcon, MilestoneIcon, NorthStarIcon, ProjectIcon, ToolsIcon, DependabotIcon } from "@primer/octicons-react";
+import type { BeadDependency, BeadIssue, BeadIssueDetail, Interaction } from "../../../types/beads.ts";
+import { api } from "../../lib/api.ts";
 
 interface IssueFeedProps {
   issues: BeadIssue[];
@@ -13,16 +14,8 @@ interface IssueFeedProps {
   loadingDetailId: string | null;
   onIssueSelect: (issue: BeadIssue) => void;
   getAgent?: (issueId: string) => string | null;
+  projectId: string | null;
 }
-
-const STATUS_RANK: Record<string, number> = {
-  in_progress: 0,
-  open: 1,
-  in_review: 2,
-  blocked: 3,
-  deferred: 4,
-  closed: 5,
-};
 
 const STATUS_LABELS: Record<string, string> = {
   in_progress: "In progress",
@@ -33,7 +26,7 @@ const STATUS_LABELS: Record<string, string> = {
   closed: "Closed",
 };
 
-const ISSUE_TYPE_LABEL: Record<string, string> = {
+const TYPE_LABELS: Record<string, string> = {
   bug: "Bug",
   feature: "Feature",
   task: "Task",
@@ -41,58 +34,42 @@ const ISSUE_TYPE_LABEL: Record<string, string> = {
   chore: "Chore",
 };
 
-export function IssueFeed({
-  issues,
-  selectedIssueId,
-  selectedIssueDetail,
-  loadingDetailId,
-  onIssueSelect,
-  getAgent,
-}: IssueFeedProps) {
+const TYPE_ICONS: Record<string, typeof IssueOpenedIcon> = {
+  bug: IssueOpenedIcon,
+  feature: NorthStarIcon,
+  task: ProjectIcon,
+  epic: MilestoneIcon,
+  chore: ToolsIcon,
+};
+
+export function IssueFeed({ issues, selectedIssueId, selectedIssueDetail, loadingDetailId, onIssueSelect, getAgent, projectId }: IssueFeedProps) {
   const issueById = useMemo(() => new Map(issues.map((issue) => [issue.id, issue])), [issues]);
-  const childrenByEpic = useMemo(() => groupChildrenByEpic(issues), [issues]);
-  const sortedTopLevelIssues = useMemo(() => {
-    return sortIssues(issues).filter((issue) => !isEpicChild(issue, issueById));
-  }, [issueById, issues]);
+  const epicChildren = useMemo(() => groupChildrenByEpic(issues), [issues]);
+  const topLevelIssues = useMemo(() => issues.filter((issue) => !getEpicParentId(issue, issueById)), [issueById, issues]);
 
   return (
-    <div style={{ padding: 16 }}>
-      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-        {sortedTopLevelIssues.length === 0 ? (
+    <div className="bead-feed">
+      <div className="module-list">
+        {topLevelIssues.length === 0 ? (
           <EmptyFeed />
         ) : (
-          sortedTopLevelIssues.map((issue) => {
-            const epicChildren = childrenByEpic.get(issue.id) ?? [];
+          topLevelIssues.map((issue) => {
+            const children = epicChildren.get(issue.id) ?? [];
             return (
-              <div key={issue.id} style={{ display: "grid", gap: epicChildren.length ? 4 : 0 }}>
+              <div key={issue.id}>
                 <IssueRow
                   issue={issue}
                   detail={selectedIssueId === issue.id ? selectedIssueDetail : null}
                   isExpanded={selectedIssueId === issue.id}
                   isLoadingDetail={loadingDetailId === issue.id}
                   agent={getAgent?.(issue.id) ?? null}
-                  childIssues={epicChildren}
-                  issueById={issueById}
+                  dependencyCount={countDependencies(issue)}
+                  childCount={children.length}
                   onClick={() => onIssueSelect(issue)}
+                  projectId={projectId}
+                  issueById={issueById}
                 />
-                {epicChildren.length > 0 && (
-                  <div style={{ marginLeft: 22, paddingLeft: 14, borderLeft: "1px solid rgba(163,113,247,0.45)", display: "grid", gap: 4 }}>
-                    {sortIssues(epicChildren).map((child) => (
-                      <IssueRow
-                        key={child.id}
-                        issue={child}
-                        detail={selectedIssueId === child.id ? selectedIssueDetail : null}
-                        isExpanded={selectedIssueId === child.id}
-                        isLoadingDetail={loadingDetailId === child.id}
-                        agent={getAgent?.(child.id) ?? null}
-                        childIssues={[]}
-                        issueById={issueById}
-                        depth={1}
-                        onClick={() => onIssueSelect(child)}
-                      />
-                    ))}
-                  </div>
-                )}
+                {children.length > 0 && <EpicChildren issues={children} selectedIssueId={selectedIssueId} selectedIssueDetail={selectedIssueDetail} loadingDetailId={loadingDetailId} onIssueSelect={onIssueSelect} getAgent={getAgent} projectId={projectId} issueById={issueById} />}
               </div>
             );
           })
@@ -102,285 +79,363 @@ export function IssueFeed({
   );
 }
 
-function sortIssues(items: BeadIssue[]): BeadIssue[] {
-  return [...items].sort((a, b) => {
-    const statusDiff = rankStatus(a.status) - rankStatus(b.status);
-    if (statusDiff !== 0) return statusDiff;
-    const priorityDiff = (a.priority ?? 99) - (b.priority ?? 99);
-    if (priorityDiff !== 0) return priorityDiff;
-    return b.updated_at.localeCompare(a.updated_at);
-  });
+function EpicChildren({ issues, selectedIssueId, selectedIssueDetail, loadingDetailId, onIssueSelect, getAgent, projectId, issueById }: { issues: BeadIssue[]; selectedIssueId: string | null; selectedIssueDetail: BeadIssueDetail | null; loadingDetailId: string | null; onIssueSelect: (issue: BeadIssue) => void; getAgent?: (issueId: string) => string | null; projectId: string | null; issueById: Map<string, BeadIssue>; }) {
+  const sorted = [...issues].sort((a, b) => a.updated_at.localeCompare(b.updated_at));
+  return <div className="epic-children">{sorted.map((issue) => <IssueRow key={issue.id} issue={issue} detail={selectedIssueId === issue.id ? selectedIssueDetail : null} isExpanded={selectedIssueId === issue.id} isLoadingDetail={loadingDetailId === issue.id} agent={getAgent?.(issue.id) ?? null} dependencyCount={countDependencies(issue)} childCount={groupChildrenByEpic(issues).get(issue.id)?.length ?? 0} onClick={() => onIssueSelect(issue)} isChild projectId={projectId} issueById={issueById} />)}</div>;
 }
 
-function groupChildrenByEpic(issues: BeadIssue[]): Map<string, BeadIssue[]> {
-  const issueById = new Map(issues.map((issue) => [issue.id, issue]));
-  const groups = new Map<string, BeadIssue[]>();
-  for (const issue of issues) {
-    const epicId = getEpicParentId(issue, issueById);
-    if (!epicId) continue;
-    const children = groups.get(epicId) ?? [];
-    children.push(issue);
-    groups.set(epicId, children);
-  }
-  return groups;
-}
-
-function isEpicChild(issue: BeadIssue, issueById: Map<string, BeadIssue>): boolean {
-  return Boolean(getEpicParentId(issue, issueById));
-}
-
-function getEpicParentId(issue: BeadIssue, issueById: Map<string, BeadIssue>): string | null {
-  if (issue.parent_id && issueById.get(issue.parent_id)?.issue_type === "epic") return issue.parent_id;
-  const parentDependency = issue.dependencies.find((dependency) => dependency.dependency_type === "parent-child" && issueById.get(dependency.id)?.issue_type === "epic");
-  return parentDependency?.id ?? null;
-}
-
-function rankStatus(status: string): number {
-  return STATUS_RANK[status] ?? 99;
-}
-
-function IssueRow({
-  issue,
-  detail,
-  isExpanded,
-  isLoadingDetail,
-  agent,
-  childIssues,
-  issueById,
-  depth = 0,
-  onClick,
-}: {
-  issue: BeadIssue;
-  detail: BeadIssueDetail | null;
-  isExpanded: boolean;
-  isLoadingDetail: boolean;
-  agent: string | null;
-  childIssues: BeadIssue[];
-  issueById: Map<string, BeadIssue>;
-  depth?: number;
-  onClick: () => void;
-}) {
+function IssueRow({ issue, detail, isExpanded, isLoadingDetail, agent, dependencyCount, childCount, onClick, isChild = false, projectId, issueById }: { issue: BeadIssue; detail: BeadIssueDetail | null; isExpanded: boolean; isLoadingDetail: boolean; agent: string | null; dependencyCount: number; childCount: number; onClick: () => void; isChild?: boolean; projectId: string | null; issueById: Map<string, BeadIssue>; }) {
   const isEpic = issue.issue_type === "epic";
-  const visibleDependencies = issue.dependencies.filter((dependency) => dependency.dependency_type !== "parent-child");
-  const dependencyCount = visibleDependencies.length;
-  const childCount = childIssues.length || detail?.children?.length || 0;
-  const rowTone = String(issue.status).replaceAll("-", "_");
 
   return (
-    <article className={`bead-row ${rowTone} ${isEpic ? "epic" : ""} ${isExpanded ? "is-expanded" : ""}`} style={depth > 0 ? { marginLeft: 0 } : undefined}>
-      <button
-        type="button"
-        onClick={onClick}
-        aria-expanded={isExpanded}
-        aria-controls={`issue-dossier-${issue.id}`}
-        className="bead-row-main"
-      >
-        <span className="bead-chevron"><ChevronDownIcon size={14} /></span>
-        <span className="bead-number">{issue.id}</span>
-        <div className="bead-title-block">
-          <div className="bead-title-line">
-            <span className="bead-title">{issue.title}</span>
-          </div>
-          <div className="bead-meta-line">
-            <span>{STATUS_LABELS[issue.status] ?? issue.status}</span>
-            <span>{issue.owner ?? "unassigned"}</span>
-            <span>updated {formatCompactDate(issue.updated_at)}</span>
-          </div>
-        </div>
-        <TypePill type={issue.issue_type} isEpic={isEpic} />
-        <div className="bead-row-stats">
-          <span>P{issue.priority}</span>
-          {dependencyCount > 0 && <span>{dependencyCount} deps</span>}
-          {childCount > 0 && <span>{childCount} children</span>}
-          {agent && <span>{agent}</span>}
-        </div>
-        <span className="bead-chevron"><ChevronRightIcon size={14} /></span>
+    <article className={`row ${issue.status} ${isEpic ? "epic" : ""} ${isExpanded ? "is-expanded" : ""} ${isChild ? "is-child" : ""}`}>
+      <button type="button" className="row-main" onClick={onClick} aria-expanded={isExpanded} aria-controls={`issue-dossier-${issue.id}`}>
+        <span className="id">{issue.id}</span>
+        <span className="title">{issue.title}</span>
+        <span className="meta-cluster">
+          <span className="meta-item">{issue.owner ?? "unassigned"}</span>
+          <span className="meta-item">{formatCompactDate(issue.updated_at)}</span>
+          {childCount > 0 && <span className="meta-item">{childCount} children</span>}
+          {renderInlineDeps(issue, dependencyCount)}
+          {agent && <span className="agent-badge"><DependabotIcon size={10} /> {agent}</span>}
+        </span>
+        <span className="type-mark" title={TYPE_LABELS[issue.issue_type] ?? issue.issue_type}>{TYPE_LABELS[issue.issue_type] ?? issue.issue_type}</span>
+        <span className="state">{STATUS_LABELS[issue.status] ?? issue.status}</span>
+        <span className="chev">{isExpanded ? <ChevronDownIcon size={12} /> : <ChevronRightIcon size={12} />}</span>
       </button>
-
-      {isExpanded && (
-        <IssueDossier id={`issue-dossier-${issue.id}`} detail={detail} issue={issue} loading={isLoadingDetail} childIssues={childIssues} issueById={issueById} />
-      )}
+      {isExpanded && <IssueDossier id={`issue-dossier-${issue.id}`} detail={detail} issue={issue} loading={isLoadingDetail} projectId={projectId} issueById={issueById} />}
     </article>
   );
 }
 
-function IssueDossier({ id, detail, issue, loading, childIssues, issueById }: { id: string; detail: BeadIssueDetail | null; issue: BeadIssue; loading: boolean; childIssues: BeadIssue[]; issueById: Map<string, BeadIssue> }) {
-  if (loading) {
-    return <div id={id} className="bead-expanded-body"><div className="bead-empty-note">Loading dossier...</div></div>;
-  }
+function IssueDossier({ id, detail, issue, loading, projectId, issueById }: { id: string; detail: BeadIssueDetail | null; issue: BeadIssue; loading: boolean; projectId: string | null; issueById: Map<string, BeadIssue>; }) {
+  const [interactions, setInteractions] = useState<Interaction[]>([]);
 
-  const dependencies = enrichDependencies((detail?.dependencies ?? issue.dependencies).filter((dependency) => dependency.dependency_type !== "parent-child"), issueById);
-  const parentLinks = enrichDependencies((detail?.dependencies ?? issue.dependencies).filter((dependency) => dependency.dependency_type === "parent-child"), issueById);
-  const dependents = enrichDependencies((detail?.dependents ?? []).filter((dependency) => dependency.dependency_type !== "parent-child"), issueById);
-  const children = detail?.children?.length ? detail.children : childIssues.map((child) => ({ id: child.id, title: child.title, status: child.status, dependency_type: "parent-child" }));
+  useEffect(() => {
+    let cancelled = false;
+    async function loadInteractions() {
+      if (!projectId) return;
+      try {
+        const data = await api.getInteractions(projectId, issue.id);
+        if (!cancelled) setInteractions(data);
+      } catch (error) {
+        if (!cancelled) {
+          console.error(error);
+          setInteractions([]);
+        }
+      }
+    }
 
+    loadInteractions();
+    return () => {
+      cancelled = true;
+    };
+  }, [issue.id, projectId]);
+
+  if (loading) return <div id={id} className="bead-expanded-body"><div className="bead-empty-note">Loading dossier...</div></div>;
+  const allDeps = detail?.dependencies ?? issue.dependencies;
+  const related = (detail?.related_ids ?? issue.related_ids ?? []);
+  const children = detail?.children ?? [];
+  const labels = detail?.labels ?? issue.labels ?? [];
   return (
     <section id={id} className="bead-expanded-body">
-      <div className="bead-expanded-grid">
-        <div style={{ display: "grid", gap: 10 }}>
-          <DossierSection title="Description">
-            <Markdown value={detail?.description ?? issue.description} empty="No description." />
-          </DossierSection>
-          <DossierSection title="Notes">
-            <Markdown value={detail?.notes ?? issue.notes} empty="No notes." />
-          </DossierSection>
+      <div className="bead-expanded-stack">
+        <div className="bead-dossier-meta-strip">
+          <span><b>Status</b><strong>{STATUS_LABELS[issue.status] ?? issue.status}</strong></span>
+          <span><b>Priority</b><strong>P{issue.priority}</strong></span>
+          <span><b>Type</b><strong>{TYPE_LABELS[issue.issue_type] ?? issue.issue_type}</strong></span>
+          {issue.owner && <span><b>Owner</b><strong>{issue.owner}</strong></span>}
+          <span><b>Created</b><strong>{formatCompactDate(issue.created_at)}</strong></span>
+          <span><b>Updated</b><strong>{formatCompactDate(issue.updated_at)}</strong></span>
+          {issue.closed_at && <span><b>Closed</b><strong>{formatCompactDate(issue.closed_at)}</strong></span>}
         </div>
-        <div style={{ display: "grid", gap: 10 }}>
-          <DossierList title="Depends on" items={dependencies} empty="No blockers." />
-          <DossierList title="Blocks" items={dependents} empty="No downstream issues." />
-          <DossierList title="Epic / parent" items={parentLinks} empty="No parent link." />
-          <DossierList title="Children" items={children} empty="No child issues." />
-          <DossierSection title="Metadata">
-            <div className="bead-dossier-list">
-              <span><b>Created</b><strong>{formatCompactDate(issue.created_at)}</strong></span>
-              <span><b>Updated</b><strong>{formatCompactDate(issue.updated_at)}</strong></span>
-              {issue.closed_at && <span><b>Closed</b><strong>{formatCompactDate(issue.closed_at)}</strong></span>}
+        <DossierSection title="Description"><SafeMarkdown value={detail?.description ?? issue.description} empty="No description." /></DossierSection>
+        {(detail?.notes ?? issue.notes) && (
+          <DossierSection title="Notes"><SafeMarkdown value={detail?.notes ?? issue.notes} empty="No notes." /></DossierSection>
+        )}
+        {labels.length > 0 && (
+          <DossierSection title="Labels"><div className="bead-label-strip">{labels.map((l) => <span key={l} className="bead-label-chip">{l}</span>)}</div></DossierSection>
+        )}
+        {related.length > 0 && (
+          <DossierSection title="Related">
+            <ul className="bead-dep-list">{related.map((rid) => <li key={`rel-${rid}`}><span className="bead-dep-id">{rid}</span></li>)}</ul>
+          </DossierSection>
+        )}
+        {interactions.length > 0 && (
+          <DossierSection title="Audit log">
+            <div className="bead-audit-log">
+              {interactions.map((interaction) => <div key={interaction.id} className="bead-audit-item"><span className="bead-audit-kind">{interaction.kind}</span><span>{interaction.actor}</span><span>{formatCompactDate(interaction.created_at)}</span>{interaction.model && <span>{interaction.model}</span>}</div>)}
             </div>
           </DossierSection>
-        </div>
-      </div>
-      {!detail && <div className="bead-empty-note" style={{ marginTop: 8 }}>Partial dossier; issue detail API returned no extended payload.</div>}
-    </section>
-  );
-}
-
-function enrichDependencies(items: BeadDependency[], issueById: Map<string, BeadIssue>): BeadDependency[] {
-  return items.map((item) => {
-    const issue = issueById.get(item.id);
-    return issue ? { ...item, title: item.title || issue.title, status: issue.status } : item;
-  });
-}
-
-function DossierSection({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section style={{ display: "grid", gap: 7 }}>
-      <div style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 750 }}>{title}</div>
-      {children}
-    </section>
-  );
-}
-
-function DossierList({ title, items, empty }: { title: string; items: Array<{ id: string; title: string; status: string; dependency_type: string }>; empty: string }) {
-  return (
-    <section style={{ border: "1px solid var(--border-subtle)", borderRadius: 9, background: "rgba(255,255,255,0.025)", overflow: "hidden" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 9px", borderBottom: "1px solid var(--border-subtle)", color: "var(--text-muted)", fontSize: "var(--text-xs)", fontWeight: 750, letterSpacing: "0.06em", textTransform: "uppercase" }}>
-        <GitBranchIcon size={12} />
-        {title}
-      </div>
-      <div style={{ display: "grid", gap: 0 }}>
-        {items.length === 0 ? (
-          <div style={{ padding: 9, color: "var(--text-muted)", fontSize: "var(--text-sm)" }}>{empty}</div>
-        ) : items.map((item) => (
-          <div key={`${title}-${item.id}-${item.dependency_type}`} style={{ display: "grid", gap: 3, padding: 9, borderTop: "1px solid rgba(255,255,255,0.035)" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-              <LinkIcon size={12} />
-              <span style={{ fontFamily: "var(--font-mono)", color: "var(--text-muted)", fontSize: "var(--text-xs)" }}>{item.id}</span>
-              <StatusPill status={item.status} />
-            </div>
-            <div style={{ color: "var(--text-primary)", fontSize: "var(--text-sm)", lineHeight: 1.35 }}>{item.title || "Untitled issue"}</div>
-          </div>
-        ))}
+        )}
+        {(allDeps.length > 0 || children.length > 0) && (
+          <DossierSection title="Dependency tree">
+            <DependencyTree issue={issue} dependencies={allDeps} childDeps={children} issueById={issueById} />
+          </DossierSection>
+        )}
       </div>
     </section>
   );
 }
 
-function Markdown({ value, empty }: { value?: string | null; empty: string }) {
-  if (!value?.trim()) return <div style={{ color: "var(--text-muted)", fontSize: "var(--text-sm)" }}>{empty}</div>;
-  return <div style={{ display: "grid", gap: 7 }}>{parseMarkdown(value)}</div>;
+function DossierSection({ title, children }: { title: string; children: ReactNode }) { return <section className="bead-expanded-section"><div className="bead-section-title">{title}</div>{children}</section>; }
+
+function SafeMarkdown({ value, empty }: { value?: string | null; empty: string }) {
+  if (!value?.trim()) return <div className="bead-empty-note">{empty}</div>;
+  return <div className="bead-body-text">{renderSafeBody(value)}</div>;
 }
 
-function parseMarkdown(value: string): ReactNode[] {
+// Renders prose with markdown affordances (code fences, inline code, **bold**, *em*, [link], headers, lists, blockquotes).
+// HTML/XML-like content is rendered safely:
+//   - <script>/<style> blocks are dropped entirely
+//   - on*= attributes are stripped
+//   - block-level HTML tags (<p>, <li>, <h*>, <br>) are normalised to markdown
+//   - remaining tags are left as escaped text so XML structure stays visible
+function renderSafeBody(raw: string): ReactNode[] {
+  const sanitised = raw
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "")
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, "")
+    .replace(/\son\w+="[^"]*"/gi, "")
+    .replace(/\son\w+='[^']*'/gi, "")
+    // JSON-escaped newlines from some bd sources: convert literal "\n" / "\t" to real characters
+    .replace(/\\n/g, "\n")
+    .replace(/\\t/g, "    ");
+  const lines = sanitised
+    .replace(/<\/?details[^>]*>/gi, "\n")
+    .replace(/<summary[^>]*>/gi, "\n### ")
+    .replace(/<\/summary>/gi, "\n")
+    .replace(/<h[1-4][^>]*>/gi, "\n### ")
+    .replace(/<\/h[1-4]>/gi, "\n")
+    .replace(/<li[^>]*>/gi, "\n- ")
+    .replace(/<\/li>/gi, "")
+    .replace(/<br\s*\/?\s*>/gi, "\n")
+    .replace(/<\/p>/gi, "\n\n")
+    .replace(/<p[^>]*>/gi, "")
+    .replace(/<\/blockquote>/gi, "\n")
+    .replace(/<blockquote[^>]*>/gi, "> ")
+    .replace(/\r\n/g, "\n")
+    .split("\n");
+
   const nodes: ReactNode[] = [];
-  const lines = value.replace(/\r\n/g, "\n").split("\n");
-  let list: string[] = [];
-  let code: string[] | null = null;
+  let paragraph: string[] = [];
+  let listItems: ReactNode[] = [];
+  let fenceLang: string | null = null;
+  let fenceBuf: string[] = [];
 
-  function flushList(key: string) {
-    if (!list.length) return;
-    nodes.push(<ul key={key} style={{ margin: "0 0 0 18px", color: "var(--text-secondary)", fontSize: "var(--text-sm)", lineHeight: 1.55 }}>{list.map((item, index) => <li key={`${key}-${index}`}>{renderInlineMarkdown(item)}</li>)}</ul>);
-    list = [];
-  }
+  const flushParagraph = () => {
+    if (paragraph.length === 0) return;
+    nodes.push(<p key={`p-${nodes.length}`}>{paragraph.flatMap((line, idx) => [renderInline(line, `p${nodes.length}-${idx}`), idx < paragraph.length - 1 ? <br key={`br-${nodes.length}-${idx}`} /> : null])}</p>);
+    paragraph = [];
+  };
+  const flushList = () => {
+    if (listItems.length === 0) return;
+    nodes.push(<ul key={`ul-${nodes.length}`}>{listItems}</ul>);
+    listItems = [];
+  };
 
-  lines.forEach((line, index) => {
-    if (line.trim().startsWith("```")) {
-      if (code) {
-        nodes.push(<pre key={`code-${index}`} style={{ margin: 0, padding: 10, borderRadius: 8, background: "var(--surface-primary)", border: "1px solid var(--border-subtle)", overflowX: "auto", color: "var(--text-secondary)", fontSize: "var(--text-xs)", lineHeight: 1.5 }}><code>{code.join("\n")}</code></pre>);
-        code = null;
-      } else {
-        flushList(`list-before-code-${index}`);
-        code = [];
+  lines.forEach((rawLine) => {
+    const fenceMatch = rawLine.match(/^\s*```(\w*)/);
+    if (fenceLang !== null) {
+      if (fenceMatch) {
+        nodes.push(<pre key={`pre-${nodes.length}`} data-lang={fenceLang || undefined}><code>{fenceBuf.join("\n")}</code></pre>);
+        fenceLang = null;
+        fenceBuf = [];
+        return;
       }
+      fenceBuf.push(rawLine);
       return;
     }
-
-    if (code) {
-      code.push(line);
+    if (fenceMatch) {
+      flushParagraph();
+      flushList();
+      fenceLang = fenceMatch[1] ?? "";
       return;
     }
-
-    const trimmed = line.trim();
+    const trimmed = rawLine.trim();
     if (!trimmed) {
-      flushList(`list-${index}`);
+      flushParagraph();
+      flushList();
       return;
     }
-
-    const heading = trimmed.match(/^(#{1,3})\s+(.+)$/);
+    const heading = trimmed.match(/^(#{1,4})\s+(.*)$/);
     if (heading) {
-      flushList(`list-before-heading-${index}`);
-      nodes.push(<div key={`heading-${index}`} style={{ color: "var(--text-primary)", fontWeight: 750, fontSize: heading[1].length === 1 ? "var(--text-base)" : "var(--text-sm)", marginTop: 3 }}>{renderInlineMarkdown(heading[2])}</div>);
+      flushParagraph();
+      flushList();
+      const level = heading[1].length;
+      const Tag = (`h${Math.min(level + 2, 6)}` as "h3" | "h4" | "h5" | "h6");
+      nodes.push(<Tag key={`h-${nodes.length}`}>{renderInline(heading[2], `h${nodes.length}`)}</Tag>);
       return;
     }
-
-    const bullet = trimmed.match(/^[-*]\s+(.+)$/);
-    if (bullet) {
-      list.push(bullet[1]);
+    const li = trimmed.match(/^[-*]\s+(.*)$/);
+    if (li) {
+      flushParagraph();
+      listItems.push(<li key={`li-${listItems.length}`}>{renderInline(li[1], `li${nodes.length}-${listItems.length}`)}</li>);
       return;
     }
-
-    flushList(`list-before-p-${index}`);
-    if (trimmed.startsWith(">")) {
-      nodes.push(<blockquote key={`quote-${index}`} style={{ margin: 0, padding: "6px 9px", borderLeft: "2px solid var(--accent-blue)", color: "var(--text-secondary)", background: "rgba(88,166,255,0.06)", fontSize: "var(--text-sm)", lineHeight: 1.55 }}>{renderInlineMarkdown(trimmed.slice(1).trim())}</blockquote>);
+    const bq = trimmed.match(/^>\s?(.*)$/);
+    if (bq) {
+      flushParagraph();
+      flushList();
+      nodes.push(<blockquote key={`bq-${nodes.length}`}>{renderInline(bq[1], `bq${nodes.length}`)}</blockquote>);
       return;
     }
-
-    nodes.push(<p key={`p-${index}`} style={{ margin: 0, color: "var(--text-secondary)", fontSize: "var(--text-sm)", lineHeight: 1.55 }}>{renderInlineMarkdown(trimmed)}</p>);
+    flushList();
+    paragraph.push(rawLine);
   });
-
-  flushList("list-final");
-  const trailingCode = code;
-  if (trailingCode) nodes.push(<pre key="code-final" style={{ margin: 0, padding: 10, borderRadius: 8, background: "var(--surface-primary)", border: "1px solid var(--border-subtle)", overflowX: "auto", color: "var(--text-secondary)", fontSize: "var(--text-xs)", lineHeight: 1.5 }}><code>{(trailingCode as string[]).join("\n")}</code></pre>);
+  if (fenceLang !== null) {
+    nodes.push(<pre key={`pre-${nodes.length}`} data-lang={fenceLang || undefined}><code>{fenceBuf.join("\n")}</code></pre>);
+  }
+  flushParagraph();
+  flushList();
   return nodes;
 }
 
-function renderInlineMarkdown(text: string): ReactNode[] {
-  const parts = text.split(/(`[^`]+`|\*\*[^*]+\*\*)/g).filter(Boolean);
-  return parts.map((part, index) => {
-    if (part.startsWith("`") && part.endsWith("`")) return <code key={index} style={{ background: "var(--surface-tertiary)", borderRadius: 4, padding: "1px 4px", color: "var(--text-primary)", fontSize: "0.95em" }}>{part.slice(1, -1)}</code>;
-    if (part.startsWith("**") && part.endsWith("**")) return <strong key={index} style={{ color: "var(--text-primary)" }}>{part.slice(2, -2)}</strong>;
-    return part;
-  });
+const INLINE_RE = /(`[^`\n]+`)|(\*\*[^*\n]+\*\*)|(\*[^*\n]+\*)|(\[[^\]]+\]\((?:https?:\/\/|forge-)[^\s)]+\))/g;
+
+function renderInline(text: string, key: string): ReactNode[] {
+  // Escape any leftover tags as literal text so XML stays visible.
+  const escaped = text.replace(/<([^>]*)>/g, (_, inner) => `<${inner}>`);
+  const parts: ReactNode[] = [];
+  let lastIndex = 0;
+  let n = 0;
+  for (const match of escaped.matchAll(INLINE_RE)) {
+    if (match.index === undefined) continue;
+    if (match.index > lastIndex) parts.push(escaped.slice(lastIndex, match.index));
+    const token = match[0];
+    n += 1;
+    if (token.startsWith("`")) {
+      parts.push(<code key={`${key}-c${n}`}>{token.slice(1, -1)}</code>);
+    } else if (token.startsWith("**")) {
+      parts.push(<strong key={`${key}-b${n}`}>{token.slice(2, -2)}</strong>);
+    } else if (token.startsWith("*")) {
+      parts.push(<em key={`${key}-i${n}`}>{token.slice(1, -1)}</em>);
+    } else if (token.startsWith("[")) {
+      const linkMatch = token.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
+      if (linkMatch) {
+        const href = linkMatch[2];
+        const isExternal = href.startsWith("http");
+        parts.push(<a key={`${key}-a${n}`} href={isExternal ? href : `#${href}`} target={isExternal ? "_blank" : undefined} rel={isExternal ? "noreferrer" : undefined} onClick={(e) => { if (!isExternal) e.preventDefault(); e.stopPropagation(); }}>{linkMatch[1]}</a>);
+      } else {
+        parts.push(token);
+      }
+    }
+    lastIndex = match.index + token.length;
+  }
+  if (lastIndex < escaped.length) parts.push(escaped.slice(lastIndex));
+  return parts;
 }
 
-function formatCompactDate(iso: string | undefined): string {
-  if (!iso) return "—";
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return iso;
-  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+function formatCompactDate(iso: string | undefined): string { if (!iso) return "—"; const date = new Date(iso); if (Number.isNaN(date.getTime())) return iso; return date.toLocaleDateString(undefined, { month: "short", day: "numeric" }); }
+
+function countDependencies(issue: BeadIssue): number { return issue.dependencies.filter((dependency) => dependency.dependency_type !== "parent-child").length; }
+
+function groupChildrenByEpic(issues: BeadIssue[]): Map<string, BeadIssue[]> { const issueById = new Map(issues.map((issue) => [issue.id, issue])); const groups = new Map<string, BeadIssue[]>(); for (const issue of issues) { const parent = getEpicParentId(issue, issueById); if (!parent) continue; const list = groups.get(parent) ?? []; list.push(issue); groups.set(parent, list); } return groups; }
+
+function getEpicParentId(issue: BeadIssue, issueById: Map<string, BeadIssue>): string | null { if (issue.parent_id && issueById.get(issue.parent_id)?.issue_type === "epic") return issue.parent_id; const parentDependency = issue.dependencies.find((dependency) => dependency.dependency_type === "parent-child" && issueById.get(dependency.id)?.issue_type === "epic"); return parentDependency?.id ?? null; }
+
+function EmptyFeed() { return <div className="bead-empty-note">No issues</div>; }
+
+// ── Dependency display ────────────────────────────────────────────────────────
+
+const DEP_KIND_LABEL: Record<string, string> = {
+  blocks: "blocks",
+  blocked_by: "blocked by",
+  parent: "parent",
+  "parent-child": "parent",
+  related: "related",
+  "discovered-from": "discovered from",
+};
+
+const DEP_KIND_GLYPH: Record<string, string> = {
+  blocks: "↪",
+  blocked_by: "↩",
+  parent: "⊃",
+  "parent-child": "⊃",
+  related: "•",
+  "discovered-from": "↑",
+};
+
+const DEP_STATUS_ICON: Record<string, string> = {
+  closed: "✓",
+  open: "○",
+  in_progress: "◐",
+  blocked: "⛔",
+  in_review: "↻",
+  deferred: "❄",
+};
+
+function renderInlineDeps(issue: BeadIssue, fallbackCount: number): ReactNode {
+  const visible = issue.dependencies.filter((d) => d.dependency_type !== "parent-child").slice(0, 2);
+  if (visible.length === 0) {
+    if (fallbackCount === 0) return <span className="bead-row-dep-empty">—</span>;
+    return <span>{fallbackCount} deps</span>;
+  }
+  const total = issue.dependencies.filter((d) => d.dependency_type !== "parent-child").length;
+  const more = total - visible.length;
+  return (
+    <span className="bead-row-deps">
+      {visible.map((d) => (
+        <span key={`row-dep-${d.id}`} className={`bead-row-dep bead-row-dep-${d.dependency_type}`} title={`${DEP_KIND_LABEL[d.dependency_type] ?? d.dependency_type}: ${d.id}`}>
+          <span className="bead-row-dep-glyph">{DEP_KIND_GLYPH[d.dependency_type] ?? "·"}</span>
+          <span className="bead-row-dep-id">{d.id}</span>
+        </span>
+      ))}
+      {more > 0 && <span className="bead-row-dep-more">+{more}</span>}
+    </span>
+  );
 }
 
-function StatusPill({ status }: { status: string }) {
-  return <span style={{ fontSize: "var(--text-xs)", padding: "2px 8px", borderRadius: "var(--radius-sm)", background: "var(--surface-tertiary)", color: "var(--text-secondary)", whiteSpace: "nowrap", border: "1px solid var(--border-subtle)" }}>{STATUS_LABELS[status] ?? status}</span>;
-}
-
-function TypePill({ type, isEpic }: { type: string; isEpic: boolean }) {
-  return <span style={{ fontSize: "var(--text-xs)", padding: "2px 8px", borderRadius: "var(--radius-sm)", background: "var(--surface-tertiary)", color: isEpic ? "var(--accent)" : "var(--text-secondary)", whiteSpace: "nowrap", border: "1px solid var(--border-subtle)" }}>{ISSUE_TYPE_LABEL[type] ?? type}</span>;
-}
-
-function PriorityPill({ priority }: { priority: number }) {
-  return <span style={{ fontSize: "var(--text-xs)", padding: "2px 8px", borderRadius: "var(--radius-sm)", background: "var(--surface-tertiary)", color: "var(--text-secondary)", whiteSpace: "nowrap", border: "1px solid var(--border-subtle)" }}>P{priority}</span>;
-}
-
-function EmptyFeed() {
-  return <div style={{ padding: 20, color: "var(--text-muted)", border: "1px dashed var(--border-subtle)", borderRadius: "var(--radius-sm)" }}>No issues</div>;
+function DependencyTree({ issue, dependencies, childDeps, issueById }: { issue: BeadIssue; dependencies: BeadDependency[]; childDeps: BeadDependency[]; issueById: Map<string, BeadIssue>; }) {
+  const grouped = useMemo(() => {
+    const out = new Map<string, BeadDependency[]>();
+    for (const d of dependencies) {
+      const list = out.get(d.dependency_type) ?? [];
+      list.push(d);
+      out.set(d.dependency_type, list);
+    }
+    return out;
+  }, [dependencies]);
+  const order: Array<string> = ["parent", "parent-child", "blocked_by", "blocks", "discovered-from", "related"];
+  const resolveTitle = (d: BeadDependency) => d.title?.trim() ? d.title : (issueById.get(d.id)?.title ?? "");
+  const resolveStatus = (d: BeadDependency) => issueById.get(d.id)?.status ?? d.status;
+  return (
+    <div className="bead-dep-tree" role="tree">
+      <div className="bead-dep-tree-root">
+        <span className="bead-dep-tree-status">{DEP_STATUS_ICON[issue.status] ?? "•"}</span>
+        <span className="bead-dep-tree-id" title={issue.id}>{issue.id}</span>
+        <span className="bead-dep-tree-title" title={issue.title}>{issue.title}</span>
+        <span className="bead-dep-tree-kind">[root]</span>
+      </div>
+      {order.flatMap((kind) => {
+        const list = grouped.get(kind);
+        if (!list || list.length === 0) return [];
+        return list.map((d) => {
+          const title = resolveTitle(d);
+          const status = resolveStatus(d);
+          return (
+            <div key={`tree-${kind}-${d.id}`} className="bead-dep-tree-node">
+              <span className="bead-dep-tree-connector">└─</span>
+              <span className="bead-dep-tree-status">{DEP_STATUS_ICON[status] ?? "•"}</span>
+              <span className="bead-dep-tree-id" title={d.id}>{d.id}</span>
+              <span className="bead-dep-tree-title" title={title}>{title || <span className="bead-empty-note">—</span>}</span>
+              <span className="bead-dep-tree-kind">[{DEP_KIND_LABEL[d.dependency_type] ?? d.dependency_type}]</span>
+            </div>
+          );
+        });
+      })}
+      {childDeps.map((c) => {
+        const title = resolveTitle(c);
+        const status = resolveStatus(c);
+        return (
+          <div key={`tree-child-${c.id}`} className="bead-dep-tree-node">
+            <span className="bead-dep-tree-connector">└─</span>
+            <span className="bead-dep-tree-status">{DEP_STATUS_ICON[status] ?? "•"}</span>
+            <span className="bead-dep-tree-id" title={c.id}>{c.id}</span>
+            <span className="bead-dep-tree-title" title={title}>{title || <span className="bead-empty-note">—</span>}</span>
+            <span className="bead-dep-tree-kind">[child]</span>
+          </div>
+        );
+      })}
+    </div>
+  );
 }

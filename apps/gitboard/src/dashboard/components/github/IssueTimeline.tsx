@@ -15,6 +15,7 @@ import {
   truncateBody,
   type DateGroupItem,
 } from "../../lib/timeline-utils.ts";
+import { renderPrBodyText } from "./PrTimeline.tsx";
 
 type IssueItem = DateGroupItem<GithubIssue>;
 
@@ -27,7 +28,7 @@ function DayHeader({ label }: { label: string }) {
   return (
     <div
       style={{
-        padding: "6px 12px 4px",
+        padding: "4px 12px 3px",
         fontSize: "var(--text-xs)",
         color: "var(--text-muted)",
         fontWeight: 600,
@@ -58,17 +59,18 @@ function IssueExpandedBody({ issue }: { issue: GithubIssue }) {
     <div className="issue-expanded-body">
       {issue.body && (() => {
         const { visible, hasMore } = truncateBody(issue.body);
+        const rendered = renderPrBodyText(showMore ? issue.body : visible);
         return (
           <div>
             <div
+              className="issue-body-text"
               style={{
-                whiteSpace: "pre-wrap",
                 fontSize: "var(--text-xs)",
                 color: "var(--text-secondary)",
                 lineHeight: 1.5,
               }}
             >
-              {showMore ? issue.body : visible}
+              {rendered}
             </div>
             {hasMore && !showMore && (
               <button
@@ -174,7 +176,7 @@ function VirtualizedIssueTimeline({ issues }: { issues: GithubIssue[] }) {
   const rowVirtualizer = useVirtualizer({
     count: items.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: (i) => items[i].kind === "header" ? 32 : 72,
+    estimateSize: (i) => items[i].kind === "header" ? 28 : 64,
     overscan: 5,
     measureElement: (el) => el?.getBoundingClientRect().height ?? 0,
   });

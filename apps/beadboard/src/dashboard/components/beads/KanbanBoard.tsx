@@ -33,7 +33,7 @@ export function KanbanBoard({ issues, projectId, interactions, getAgent }: Kanba
 
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column", background: "var(--surface-primary)" }}>
-      <div style={{ padding: "14px 18px 10px", borderBottom: "1px solid var(--border-subtle)", background: "var(--surface-secondary)" }}>
+      <div style={{ padding: "10px 12px 8px", borderBottom: "1px solid var(--border-subtle)", background: "var(--surface-secondary)" }}>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12 }}>
           <div>
             <h2 style={{ fontSize: 13, fontWeight: 750, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-primary)", margin: 0 }}>Board overview</h2>
@@ -43,7 +43,7 @@ export function KanbanBoard({ issues, projectId, interactions, getAgent }: Kanba
         </div>
       </div>
 
-      <div style={{ display: "flex", gap: 12, minHeight: 0, flex: 1, overflowX: "auto", padding: 14 }}>
+      <div style={{ display: "flex", gap: 8, minHeight: 0, flex: 1, overflowX: "auto", padding: 10 }}>
         {COLUMNS.map((col) => (
           <StatusColumn
             key={col.status}

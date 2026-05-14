@@ -203,7 +203,7 @@ function SectionLabel({ icon: Icon, title, status }: { icon: typeof CommentIcon;
   );
 }
 
-function renderPrBodyText(value: string): ReactNode[] {
+export function renderPrBodyText(value: string): ReactNode[] {
   const nodes: ReactNode[] = [];
   const lines = value
     .replace(/<\/?details[^>]*>/gi, "\n")
@@ -478,7 +478,7 @@ function VirtualizedPrTimeline({ prs }: { prs: GithubPr[] }) {
   const rowVirtualizer = useVirtualizer({
     count: items.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: (i) => items[i].kind === "header" ? 28 : 74,
+    estimateSize: (i) => items[i].kind === "header" ? 24 : 66,
     overscan: 5,
     measureElement: (el) => el?.getBoundingClientRect().height ?? 0,
   });

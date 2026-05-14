@@ -29,8 +29,8 @@ function DashboardShell({ view }: { view: View }) {
       <header className="ww-topbar" style={{
         display: 'flex',
         alignItems: 'center',
-        gap: 24,
-        padding: '0 20px',
+        gap: 16,
+        padding: '0 16px',
         height: 'var(--topbar-height)',
         background: 'var(--surface-secondary)',
         borderBottom: '1px solid var(--border-subtle)',
@@ -42,14 +42,14 @@ function DashboardShell({ view }: { view: View }) {
         >
           xtrm.wtf
         </a>
-        <nav className="ww-nav" style={{ display: 'flex', gap: 4, height: '100%', alignItems: 'stretch' }}>
+        <nav className="ww-nav" style={{ display: 'flex', gap: 2, height: '100%', alignItems: 'stretch' }}>
           {TABS.map(tab => (
             <button
               key={tab.id}
               className={activeTab === tab.id && !isPreview ? "ww-nav-item is-active" : "ww-nav-item"}
               onClick={() => setActiveTab(tab.id)}
               style={{
-                padding: '0 12px',
+                padding: '0 10px',
                 fontSize: 'var(--text-base)',
                 fontWeight: 500,
                 color: activeTab === tab.id && !isPreview ? 'var(--text-primary)' : 'var(--text-secondary)',

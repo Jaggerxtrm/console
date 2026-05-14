@@ -1,20 +1,25 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { FilterIcon, InboxIcon, ProjectIcon, ArchiveIcon, DatabaseIcon, CheckIcon, SearchIcon } from "@primer/octicons-react";
 import { IssueFeed } from "./components/beads/IssueFeed.tsx";
 import { KanbanBoard } from "./components/beads/KanbanBoard.tsx";
 import { ProjectRail, type ProjectRailStats } from "./components/beads/ProjectRail.tsx";
 import { useBeadsStore } from "./stores/beads.ts";
 import { api } from "./lib/api.ts";
 import type { BeadIssue, BeadIssueDetail, Memory, Interaction } from "../types/beads.ts";
-import { CheckIcon } from "@primer/octicons-react";
 
-type Tab = "issues" | "board" | "closed" | "memories";
+type Tab = "issues" | "board" | "closed" | "memories" | "triage";
 
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: "issues", label: "Feed" },
   { id: "board", label: "Board" },
+  { id: "triage", label: "Triage" },
   { id: "closed", label: "Closed" },
   { id: "memories", label: "Memories" },
 ];
+
+const STALE_DAYS = 7;
+const VELOCITY_WINDOWS_DAYS = [7, 30] as const;
+const PRIORITY_WEIGHT: Record<number, number> = { 0: 1, 1: 0.75, 2: 0.5, 3: 0.25, 4: 0 };
 
 export function App() {
   const [activeTab, setActiveTab] = useState<Tab>("issues");
@@ -24,6 +29,9 @@ export function App() {
   const [loadingDetailId, setLoadingDetailId] = useState<string | null>(null);
   const [statsByProject, setStatsByProject] = useState<Record<string, ProjectRailStats | undefined>>({});
   const [loadingProjectStats, setLoadingProjectStats] = useState(false);
+  const [showOpenOnly, setShowOpenOnly] = useState(false);
+  const [issueSearch, setIssueSearch] = useState("");
+  const [quickFilter, setQuickFilter] = useState<"all" | "ready" | "blocked" | "stale">("all");
   const requestIdRef = useRef(0);
 
   const {
@@ -150,8 +158,8 @@ export function App() {
     }
   }, [loadingDetailId, selectedIssueId, selectedProjectId]);
 
-  const getAgentForIssue = (issueId: string): string | null => {
-    const issueInteractions = interactions.filter(i => i.issue_id === issueId);
+  const getAgentForIssue = useCallback((issueId: string): string | null => {
+    const issueInteractions = interactions.filter((i) => i.issue_id === issueId);
     if (issueInteractions.length === 0) return null;
     const model = issueInteractions[0]?.model;
     if (!model) return null;
@@ -161,20 +169,54 @@ export function App() {
     if (lower.includes("gemini")) return "gemini";
     if (lower.includes("gpt")) return "gpt";
     return null;
-  };
+  }, [interactions]);
+
+  const filteredIssues = useMemo(() => filterIssues(issues, { openOnly: showOpenOnly, search: issueSearch, quickFilter }), [issues, showOpenOnly, issueSearch, quickFilter]);
+  const filteredClosedIssues = useMemo(() => filterIssues(closedIssues, { openOnly: showOpenOnly, search: issueSearch, quickFilter }), [closedIssues, showOpenOnly, issueSearch, quickFilter]);
+  const triage = useMemo(() => buildTriageView(issues, closedIssues), [closedIssues, issues]);
+  const segmentCounts = useMemo(() => ({ issues: filteredIssues.length, board: filteredIssues.length, triage: triage.topPicks.length, closed: filteredClosedIssues.length, memories: memories.length }), [filteredClosedIssues.length, filteredIssues.length, memories.length, triage.topPicks.length]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--surface-primary)', color: 'var(--text-primary)', fontFamily: 'var(--font-ui)' }}>
-      <header style={{ display: 'flex', alignItems: 'center', gap: 24, padding: '0 20px', height: 'var(--topbar-height)', background: 'var(--surface-secondary)', borderBottom: '1px solid var(--border-subtle)', flexShrink: 0 }}>
-        <span style={{ fontSize: 'var(--text-xs)', fontWeight: 600, letterSpacing: '0.1em', color: 'var(--text-muted)', textTransform: 'uppercase' }}>xtrm.beads</span>
-        <nav style={{ display: 'flex', gap: 4, height: '100%', alignItems: 'stretch' }}>
-          {TABS.map(tab => (
-            <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{ padding: '0 12px', fontSize: 'var(--text-base)', fontWeight: 500, color: activeTab === tab.id ? 'var(--text-primary)' : 'var(--text-secondary)', background: 'transparent', border: 'none', borderBottom: activeTab === tab.id ? '2px solid var(--accent-blue)' : '2px solid transparent', cursor: 'pointer', transition: 'var(--transition)' }}>{tab.label}</button>
+      <div className="module-header-shell">
+      <header className="module-header">
+        <div className="module-segments">
+          {TABS.map((tab) => {
+            const Icon = tab.id === "issues" ? InboxIcon : tab.id === "board" ? ProjectIcon : tab.id === "closed" ? ArchiveIcon : DatabaseIcon;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                className={`module-segment ${activeTab === tab.id ? "is-active" : ""}`}
+                onClick={() => setActiveTab(tab.id)}
+              >
+                <Icon size={12} />
+                <span>{tab.label}</span>
+                <span className="module-count">{segmentCounts[tab.id]}</span>
+              </button>
+            );
+          })}
+        </div>
+        <div className="module-actions">
+          <label className="module-search" htmlFor="issue-search">
+            <SearchIcon size={12} />
+            <input id="issue-search" type="search" value={issueSearch} onChange={(event) => setIssueSearch(event.target.value)} placeholder="Search issues" />
+          </label>
+          <button type="button" className={`module-icon-btn ${showOpenOnly ? "is-active" : ""}`} onClick={() => setShowOpenOnly((value) => !value)} aria-pressed={showOpenOnly}>
+            <FilterIcon size={12} /> Filter
+          </button>
+        </div>
+        <div className="module-quick-filters" role="group" aria-label="Quick issue filters">
+          {(["all", "ready", "blocked", "stale"] as const).map((filter) => (
+            <button key={filter} type="button" className={`module-chip ${quickFilter === filter ? "is-active" : ""}`} onClick={() => setQuickFilter(filter)} aria-pressed={quickFilter === filter}>
+              {filter}
+            </button>
           ))}
-        </nav>
-        {loading && <span style={{ marginLeft: 'auto', color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>Loading...</span>}
-        {error && <span style={{ marginLeft: 'auto', color: 'var(--status-blocked)', fontSize: 'var(--text-sm)' }}>{error}</span>}
+        </div>
+        {loading && <span className="module-status">Loading...</span>}
+        {error && <span className="module-status is-error">{error}</span>}
       </header>
+      </div>
 
       <main style={{ flex: 1, minHeight: 0, display: 'flex' }}>
         <ProjectRail
@@ -188,16 +230,18 @@ export function App() {
         <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
           {activeTab === "issues" && (
             <IssueFeed
-              issues={issues}
+              issues={filteredIssues}
               selectedIssueId={selectedIssueId}
               selectedIssueDetail={selectedIssueDetail}
               loadingDetailId={loadingDetailId}
               onIssueSelect={handleIssueSelect}
               getAgent={getAgentForIssue}
+              projectId={selectedProjectId}
             />
           )}
-          {activeTab === "board" && <KanbanBoard issues={issues} projectId={selectedProjectId} interactions={interactions} getAgent={getAgentForIssue} />}
-          {activeTab === "closed" && <ClosedIssuesPanel issues={closedIssues} getAgent={getAgentForIssue} />}
+          {activeTab === "board" && <KanbanBoard issues={filteredIssues} projectId={selectedProjectId} interactions={interactions} getAgent={getAgentForIssue} />}
+          {activeTab === "triage" && <TriagePanel triage={triage} />}
+          {activeTab === "closed" && <ClosedIssuesPanel issues={filteredClosedIssues} getAgent={getAgentForIssue} />}
           {activeTab === "memories" && <MemoriesPanel memories={memories} />}
         </div>
       </main>
@@ -206,13 +250,192 @@ export function App() {
 }
 
 function ClosedIssuesPanel({ issues, getAgent }: { issues: BeadIssue[]; getAgent: (id: string) => string | null; }) {
-  return <div style={{ padding: 16, color: 'var(--text-secondary)' }}><h2 style={{ marginBottom: 16, color: 'var(--text-primary)' }}>Closed Issues</h2>{issues.length === 0 ? <p>No closed issues</p> : <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>{issues.map(issue => <div key={issue.id} style={{ padding: 'var(--spacing-md)', background: 'var(--surface-secondary)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}><div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}><span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>{issue.id}</span>{getAgent(issue.id) && <AgentBadge agent={getAgent(issue.id)!} />}</div><div style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{issue.title}</div>{issue.close_reason && <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginTop: 4 }}><CheckIcon size={12} />{issue.close_reason}</div>}</div>)}</div>}</div>;
+  return <div style={{ padding: 12, color: 'var(--text-secondary)' }}><h2 style={{ marginBottom: 12, color: 'var(--text-primary)' }}>Closed Issues</h2>{issues.length === 0 ? <p>No closed issues</p> : <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>{issues.map(issue => <div key={issue.id} style={{ padding: 'var(--spacing-sm)', background: 'var(--surface-secondary)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}><div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}><span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>{issue.id}</span>{getAgent(issue.id) && <AgentBadge agent={getAgent(issue.id)!} />}</div><div style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{issue.title}</div>{issue.close_reason && <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginTop: 2 }}><CheckIcon size={12} />{issue.close_reason}</div>}</div>)}</div>}</div>;
 }
 
 function MemoriesPanel({ memories }: { memories: Memory[] }) {
-  return <div style={{ padding: 16, color: 'var(--text-secondary)' }}><h2 style={{ marginBottom: 16, color: 'var(--text-primary)' }}>Memories</h2>{memories.length === 0 ? <p>No memories stored. Use <code style={{ background: 'var(--surface-tertiary)', padding: '2px 6px', borderRadius: 'var(--radius-sm)' }}>bd remember "insight"</code> to add one.</p> : <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>{memories.map(memory => <div key={memory.id} style={{ padding: 'var(--spacing-md)', background: 'var(--surface-secondary)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}><div style={{ display: 'flex', gap: 8, marginBottom: 4 }}><span style={{ fontSize: 'var(--text-xs)', padding: '2px 6px', background: 'var(--surface-tertiary)', borderRadius: 'var(--radius-sm)', color: 'var(--text-muted)' }}>{memory.type}</span>{memory.tags.map(tag => <span key={tag} style={{ fontSize: 'var(--text-xs)', color: 'var(--accent-blue)' }}>#{tag}</span>)}</div><div style={{ color: 'var(--text-primary)' }}>{memory.content}</div>{memory.issue_id && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginTop: 4 }}>Issue: {memory.issue_id}</div>}</div>)}</div>}</div>;
+  return <div style={{ padding: 12, color: 'var(--text-secondary)' }}><h2 style={{ marginBottom: 12, color: 'var(--text-primary)' }}>Memories</h2>{memories.length === 0 ? <p>No memories stored. Use <code style={{ background: 'var(--surface-tertiary)', padding: '2px 6px', borderRadius: 'var(--radius-sm)' }}>bd remember "insight"</code> to add one.</p> : <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>{memories.map(memory => <div key={memory.id} style={{ padding: 'var(--spacing-sm)', background: 'var(--surface-secondary)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}><div style={{ display: 'flex', gap: 6, marginBottom: 2 }}><span style={{ fontSize: 'var(--text-xs)', padding: '2px 6px', background: 'var(--surface-tertiary)', borderRadius: 'var(--radius-sm)', color: 'var(--text-muted)' }}>{memory.type}</span>{memory.tags.map(tag => <span key={tag} style={{ fontSize: 'var(--text-xs)', color: 'var(--accent-blue)' }}>#{tag}</span>)}</div><div style={{ color: 'var(--text-primary)' }}>{memory.content}</div>{memory.issue_id && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginTop: 2 }}>Issue: {memory.issue_id}</div>}</div>)}</div>}</div>;
 }
 
 function AgentBadge({ agent }: { agent: string }) {
   return <span style={{ fontSize: 'var(--text-xs)', padding: '2px 6px', background: 'var(--surface-tertiary)', color: 'var(--text-primary)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>{agent}</span>;
 }
+
+function filterIssues(issues: BeadIssue[], { openOnly, search, quickFilter }: { openOnly: boolean; search: string; quickFilter: "all" | "ready" | "blocked" | "stale"; }) {
+  const query = search.trim().toLowerCase();
+  return issues.filter((issue) => {
+    if (openOnly && issue.status === "closed") return false;
+    if (quickFilter !== "all" && !matchesQuickFilter(issue, quickFilter)) return false;
+    if (!query) return true;
+    return [issue.id, issue.title, issue.description ?? ""].some((value) => value.toLowerCase().includes(query));
+  });
+}
+
+function matchesQuickFilter(issue: BeadIssue, quickFilter: "all" | "ready" | "blocked" | "stale") {
+  switch (quickFilter) {
+    case "ready": return issue.status === "open" || issue.status === "in_progress";
+    case "blocked": return issue.status === "blocked";
+    case "stale": return isStaleIssue(issue);
+    default: return true;
+  }
+}
+
+function isStaleIssue(issue: BeadIssue) {
+  if (issue.status === "closed") return false;
+  const updatedAt = new Date(issue.updated_at);
+  if (Number.isNaN(updatedAt.getTime())) return false;
+  const staleThresholdMs = 7 * 24 * 60 * 60 * 1000;
+  return Date.now() - updatedAt.getTime() >= staleThresholdMs;
+}
+
+// ── Triage ────────────────────────────────────────────────────────────────────
+
+type TriageIssue = BeadIssue & { score: number; daysIdle: number; blockerCount: number };
+
+type TriageView = {
+  topPicks: TriageIssue[];
+  quickWins: TriageIssue[];
+  staleIssues: TriageIssue[];
+  velocity: { last7: number; last30: number };
+  health: {
+    countsByStatus: Record<string, number>;
+    countsByType: Record<string, number>;
+    countsByPriority: Record<string, number>;
+  };
+};
+
+function buildTriageView(issues: BeadIssue[], closedIssues: BeadIssue[]): TriageView {
+  const openIssues = issues.filter((issue) => issue.status !== "closed");
+  const scored: TriageIssue[] = openIssues.map((issue) => ({ ...issue, ...getTriageSignals(issue, openIssues) }));
+  const topPicks = [...scored].sort((a, b) => b.score - a.score).slice(0, 5);
+  const quickWins = scored.filter((i) => i.priority >= 2 && i.blockerCount === 0).sort((a, b) => a.priority - b.priority || b.score - a.score).slice(0, 5);
+  const staleIssues = scored.filter((i) => i.daysIdle >= STALE_DAYS).sort((a, b) => b.daysIdle - a.daysIdle || b.score - a.score).slice(0, 5);
+  return {
+    topPicks,
+    quickWins,
+    staleIssues,
+    velocity: getVelocity(closedIssues),
+    health: getHealthCounts(issues, closedIssues),
+  };
+}
+
+function getTriageSignals(issue: BeadIssue, openIssues: BeadIssue[]) {
+  const daysIdle = getDaysSince(issue.updated_at ?? issue.created_at);
+  const blockerCount = issue.dependencies.filter((d) => d.dependency_type === "blocks" || d.dependency_type === "blocked_by").length;
+  const priorityWeight = PRIORITY_WEIGHT[issue.priority as number] ?? 0;
+  const stalenessWeight = Math.min(daysIdle / 30, 1);
+  const openLoadWeight = Math.min(openIssues.length / 100, 1);
+  return { daysIdle, blockerCount, score: priorityWeight + stalenessWeight + openLoadWeight };
+}
+
+function getDaysSince(isoDate: string): number {
+  const t = new Date(isoDate).getTime();
+  if (Number.isNaN(t)) return 0;
+  return Math.max(0, Math.floor((Date.now() - t) / 86_400_000));
+}
+
+function getVelocity(closedIssues: BeadIssue[]) {
+  const now = Date.now();
+  const closedAt = (i: BeadIssue) => new Date(i.closed_at ?? i.updated_at).getTime();
+  return {
+    last7: closedIssues.filter((i) => now - closedAt(i) <= VELOCITY_WINDOWS_DAYS[0] * 86_400_000).length,
+    last30: closedIssues.filter((i) => now - closedAt(i) <= VELOCITY_WINDOWS_DAYS[1] * 86_400_000).length,
+  };
+}
+
+function getHealthCounts(issues: BeadIssue[], closedIssues: BeadIssue[]) {
+  const all = [...issues, ...closedIssues];
+  const countsByStatus: Record<string, number> = {};
+  const countsByType: Record<string, number> = {};
+  const countsByPriority: Record<string, number> = {};
+  for (const i of all) {
+    countsByStatus[i.status] = (countsByStatus[i.status] ?? 0) + 1;
+    countsByType[i.issue_type] = (countsByType[i.issue_type] ?? 0) + 1;
+    const p = `P${i.priority}`;
+    countsByPriority[p] = (countsByPriority[p] ?? 0) + 1;
+  }
+  return { countsByStatus, countsByType, countsByPriority };
+}
+
+function TriagePanel({ triage }: { triage: TriageView }) {
+  return (
+    <div style={{ padding: 12, display: 'grid', gap: 12, overflowY: 'auto' }}>
+      <section style={triagePanelStyle}>
+        <h2 style={triageSectionTitleStyle}>Top picks</h2>
+        <TriageIssueList issues={triage.topPicks} emptyText="No open issues" />
+      </section>
+      <section style={triagePanelStyle}>
+        <h2 style={triageSectionTitleStyle}>Quick wins</h2>
+        <TriageIssueList issues={triage.quickWins} emptyText="No quick wins" />
+      </section>
+      <section style={triagePanelStyle}>
+        <h2 style={triageSectionTitleStyle}>Stale ({STALE_DAYS}d+)</h2>
+        <TriageIssueList issues={triage.staleIssues} emptyText="No stale issues" />
+      </section>
+      <section style={triagePanelStyle}>
+        <h2 style={triageSectionTitleStyle}>Velocity</h2>
+        <div style={triageStatsGridStyle}>
+          <TriageStatCard label="Last 7 days" value={String(triage.velocity.last7)} />
+          <TriageStatCard label="Last 30 days" value={String(triage.velocity.last30)} />
+        </div>
+      </section>
+      <section style={triagePanelStyle}>
+        <h2 style={triageSectionTitleStyle}>Project health</h2>
+        <TriageStatGrid title="By status" items={triage.health.countsByStatus} />
+        <TriageStatGrid title="By type" items={triage.health.countsByType} />
+        <TriageStatGrid title="By priority" items={triage.health.countsByPriority} />
+      </section>
+    </div>
+  );
+}
+
+function TriageIssueList({ issues, emptyText }: { issues: TriageIssue[]; emptyText: string }) {
+  if (issues.length === 0) return <div style={triageEmptyStyle}>{emptyText}</div>;
+  return (
+    <div style={{ display: 'grid', gap: 6 }}>
+      {issues.map((issue) => (
+        <div key={issue.id} style={triageIssueCardStyle}>
+          <div style={triageIssueRowStyle}>
+            <span style={triageIssueIdStyle}>{issue.id}</span>
+            <span style={triageIssueScoreStyle}>{issue.score.toFixed(2)}</span>
+          </div>
+          <div style={triageIssueTitleStyle}>{issue.title}</div>
+          <div style={triageIssueMetaStyle}>P{issue.priority} · {issue.daysIdle}d idle · {issue.blockerCount} blocker{issue.blockerCount === 1 ? '' : 's'}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function TriageStatGrid({ title, items }: { title: string; items: Record<string, number> }) {
+  return (
+    <div style={{ marginTop: 8 }}>
+      <div style={triageStatGroupTitleStyle}>{title}</div>
+      <div style={triageStatsGridStyle}>
+        {Object.entries(items).map(([label, value]) => <TriageStatCard key={label} label={label} value={String(value)} />)}
+      </div>
+    </div>
+  );
+}
+
+function TriageStatCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={triageStatCardStyle}>
+      <div style={triageIssueMetaStyle}>{label}</div>
+      <div style={{ color: 'var(--text-primary)', fontWeight: 600, fontSize: 'var(--text-base)' }}>{value}</div>
+    </div>
+  );
+}
+
+const triagePanelStyle = { background: 'var(--surface-1)', border: '1px solid var(--border-subtle)', padding: 10 } as const;
+const triageSectionTitleStyle = { marginBottom: 8, color: 'var(--text-primary)', fontSize: 'var(--text-sm)', fontWeight: 600 } as const;
+const triageStatGroupTitleStyle = { marginBottom: 4, color: 'var(--text-muted)', fontSize: 9, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' } as const;
+const triageStatsGridStyle = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 6 } as const;
+const triageStatCardStyle = { background: 'var(--surface-2)', border: '1px solid var(--border-subtle)', padding: 8 } as const;
+const triageEmptyStyle = { color: 'var(--text-muted)', fontSize: 'var(--text-sm)' } as const;
+const triageIssueCardStyle = { background: 'var(--surface-2)', border: '1px solid var(--border-subtle)', padding: 8 } as const;
+const triageIssueRowStyle = { display: 'flex', justifyContent: 'space-between', gap: 8 } as const;
+const triageIssueIdStyle = { fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', fontSize: 'var(--text-xs)' } as const;
+const triageIssueScoreStyle = { color: 'var(--accent)', fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)' } as const;
+const triageIssueTitleStyle = { color: 'var(--text-primary)', fontWeight: 500, marginTop: 2, fontSize: 'var(--text-sm)' } as const;
+const triageIssueMetaStyle = { color: 'var(--text-muted)', fontSize: 'var(--text-xs)', marginTop: 2 } as const;
