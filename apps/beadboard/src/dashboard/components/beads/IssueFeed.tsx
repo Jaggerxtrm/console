@@ -86,17 +86,16 @@ function EpicChildren({ issues, selectedIssueId, selectedIssueDetail, loadingDet
 
 function IssueRow({ issue, detail, isExpanded, isLoadingDetail, agent, dependencyCount, childCount, onClick, isChild = false, projectId, issueById }: { issue: BeadIssue; detail: BeadIssueDetail | null; isExpanded: boolean; isLoadingDetail: boolean; agent: string | null; dependencyCount: number; childCount: number; onClick: () => void; isChild?: boolean; projectId: string | null; issueById: Map<string, BeadIssue>; }) {
   const isEpic = issue.issue_type === "epic";
-  const TypeIcon = TYPE_ICONS[issue.issue_type] ?? IssueOpenedIcon;
 
   return (
     <article className={`row ${issue.status} ${isEpic ? "epic" : ""} ${isExpanded ? "is-expanded" : ""} ${isChild ? "is-child" : ""}`}>
       <button type="button" className="row-main" onClick={onClick} aria-expanded={isExpanded} aria-controls={`issue-dossier-${issue.id}`}>
         <span className="id">{issue.id}</span>
-        <span className="title-col">
+        <span className="title-line">
           <span className="title">{issue.title}</span>
-          <span className="meta">{issue.owner ?? "unassigned"}<span>{formatCompactDate(issue.updated_at)}</span>{childCount > 0 && <span>{childCount} children</span>}</span>
+          <span className="meta"><span>{issue.owner ?? "unassigned"}</span><span>{formatCompactDate(issue.updated_at)}</span>{childCount > 0 && <span>{childCount} children</span>}</span>
         </span>
-        <span className="type-mark" title={TYPE_LABELS[issue.issue_type] ?? issue.issue_type}><TypeIcon size={13} /></span>
+        <span className="type-mark" title={TYPE_LABELS[issue.issue_type] ?? issue.issue_type}>{TYPE_LABELS[issue.issue_type] ?? issue.issue_type}</span>
         <span className="meta-right">{renderInlineDeps(issue, dependencyCount)}{agent && <span className="agent-badge"><DependabotIcon size={10} /> {agent}</span>}</span>
         <span className="state">{STATUS_LABELS[issue.status] ?? issue.status}</span>
         <span className="chev">{isExpanded ? <ChevronDownIcon size={12} /> : <ChevronRightIcon size={12} />}</span>
@@ -135,49 +134,42 @@ function IssueDossier({ id, detail, issue, loading, projectId, issueById }: { id
   const related = (detail?.related_ids ?? issue.related_ids ?? []);
   const children = detail?.children ?? [];
   const labels = detail?.labels ?? issue.labels ?? [];
-  const isEpic = issue.issue_type === "epic";
   return (
     <section id={id} className="bead-expanded-body">
-      <div className="bead-expanded-grid">
-        <div className="bead-dossier-main">
-          <DossierSection title="Description"><SafeMarkdown value={detail?.description ?? issue.description} empty="No description." /></DossierSection>
-          {(detail?.notes ?? issue.notes) && (
-            <DossierSection title="Notes"><SafeMarkdown value={detail?.notes ?? issue.notes} empty="No notes." /></DossierSection>
-          )}
+      <div className="bead-expanded-stack">
+        <div className="bead-dossier-meta-strip">
+          <span><b>Status</b><strong>{STATUS_LABELS[issue.status] ?? issue.status}</strong></span>
+          <span><b>Priority</b><strong>P{issue.priority}</strong></span>
+          <span><b>Type</b><strong>{TYPE_LABELS[issue.issue_type] ?? issue.issue_type}</strong></span>
+          {issue.owner && <span><b>Owner</b><strong>{issue.owner}</strong></span>}
+          <span><b>Created</b><strong>{formatCompactDate(issue.created_at)}</strong></span>
+          <span><b>Updated</b><strong>{formatCompactDate(issue.updated_at)}</strong></span>
+          {issue.closed_at && <span><b>Closed</b><strong>{formatCompactDate(issue.closed_at)}</strong></span>}
         </div>
-        <div className="bead-dossier-side">
-          {(allDeps.length > 0 || children.length > 0) && (
-            <DossierSection title="Dependency tree">
-              <DependencyTree issue={issue} dependencies={allDeps} childDeps={children} issueById={issueById} />
-            </DossierSection>
-          )}
-          {related.length > 0 && (
-            <DossierSection title="Related">
-              <ul className="bead-dep-list">{related.map((rid) => <li key={`rel-${rid}`}><span className="bead-dep-id">{rid}</span></li>)}</ul>
-            </DossierSection>
-          )}
-          {labels.length > 0 && (
-            <DossierSection title="Labels"><div className="bead-label-strip">{labels.map((l) => <span key={l} className="bead-label-chip">{l}</span>)}</div></DossierSection>
-          )}
-          {interactions.length > 0 && (
-            <DossierSection title="Audit log">
-              <div className="bead-audit-log">
-                {interactions.map((interaction) => <div key={interaction.id} className="bead-audit-item"><span className="bead-audit-kind">{interaction.kind}</span><span>{interaction.actor}</span><span>{formatCompactDate(interaction.created_at)}</span>{interaction.model && <span>{interaction.model}</span>}</div>)}
-              </div>
-            </DossierSection>
-          )}
-          <DossierSection title="Metadata">
-            <div className="bead-dossier-list">
-              <span><b>Status</b><strong>{issue.status}</strong></span>
-              <span><b>Priority</b><strong>P{issue.priority}</strong></span>
-              <span><b>Type</b><strong>{issue.issue_type}</strong></span>
-              {issue.owner && <span><b>Owner</b><strong>{issue.owner}</strong></span>}
-              <span><b>Created</b><strong>{formatCompactDate(issue.created_at)}</strong></span>
-              <span><b>Updated</b><strong>{formatCompactDate(issue.updated_at)}</strong></span>
-              {issue.closed_at && <span><b>Closed</b><strong>{formatCompactDate(issue.closed_at)}</strong></span>}
+        <DossierSection title="Description"><SafeMarkdown value={detail?.description ?? issue.description} empty="No description." /></DossierSection>
+        {(detail?.notes ?? issue.notes) && (
+          <DossierSection title="Notes"><SafeMarkdown value={detail?.notes ?? issue.notes} empty="No notes." /></DossierSection>
+        )}
+        {labels.length > 0 && (
+          <DossierSection title="Labels"><div className="bead-label-strip">{labels.map((l) => <span key={l} className="bead-label-chip">{l}</span>)}</div></DossierSection>
+        )}
+        {related.length > 0 && (
+          <DossierSection title="Related">
+            <ul className="bead-dep-list">{related.map((rid) => <li key={`rel-${rid}`}><span className="bead-dep-id">{rid}</span></li>)}</ul>
+          </DossierSection>
+        )}
+        {interactions.length > 0 && (
+          <DossierSection title="Audit log">
+            <div className="bead-audit-log">
+              {interactions.map((interaction) => <div key={interaction.id} className="bead-audit-item"><span className="bead-audit-kind">{interaction.kind}</span><span>{interaction.actor}</span><span>{formatCompactDate(interaction.created_at)}</span>{interaction.model && <span>{interaction.model}</span>}</div>)}
             </div>
           </DossierSection>
-        </div>
+        )}
+        {(allDeps.length > 0 || children.length > 0) && (
+          <DossierSection title="Dependency tree">
+            <DependencyTree issue={issue} dependencies={allDeps} childDeps={children} issueById={issueById} />
+          </DossierSection>
+        )}
       </div>
     </section>
   );
@@ -201,7 +193,10 @@ function renderSafeBody(raw: string): ReactNode[] {
     .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "")
     .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, "")
     .replace(/\son\w+="[^"]*"/gi, "")
-    .replace(/\son\w+='[^']*'/gi, "");
+    .replace(/\son\w+='[^']*'/gi, "")
+    // JSON-escaped newlines from some bd sources: convert literal "\n" / "\t" to real characters
+    .replace(/\\n/g, "\n")
+    .replace(/\\t/g, "    ");
   const lines = sanitised
     .replace(/<\/?details[^>]*>/gi, "\n")
     .replace(/<summary[^>]*>/gi, "\n### ")
