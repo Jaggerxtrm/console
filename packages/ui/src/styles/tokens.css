@@ -1,18 +1,18 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
 :root {
-  --bg: #181818;
-  --surface-backdrop: var(--bg);
-  --surface-elevated: #202020;
-  --surface-primary: #181818;
-  --surface-secondary: #1b1b1b;
-  --surface-tertiary: #202020;
-  --surface-quaternary: #2b2b2b;
-  --bg-hover: #222222;
+  --bg: #080d12;
+  --surface-backdrop: #080d12;
+  --surface-elevated: #0d1117;
+  --surface-primary: #0d1117;
+  --surface-secondary: #161b22;
+  --surface-tertiary: #21262d;
+  --surface-quaternary: #2d333b;
+  --bg-hover: #30363d;
 
-  --border-subtle: rgba(255, 255, 255, 0.07);
-  --border-default: rgba(255, 255, 255, 0.11);
-  --border-strong: rgba(255, 255, 255, 0.18);
+  --border-subtle: rgba(48, 54, 61, 0.7);
+  --border-default: #30363d;
+  --border-strong: #484f58;
 
   --text-primary: #e6e6e6;
   --text-secondary: #a7a7a7;

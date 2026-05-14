@@ -2148,7 +2148,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #181818;
+  color: var(--surface-primary);
 }
 
 .pr-conversation-entry.body .pr-entry-marker { background: var(--accent-blue); }
