@@ -19,7 +19,7 @@
 - Ask for confirmation only when actions are destructive, irreversible, or high-risk (e.g. `rm`, history rewrite, mass deletes, credential rotation, prod-impacting ops).
 - Prefer concise clarifying questions only when requirements are genuinely ambiguous.
 
-## Active Gates (extensions enforce these — not optional)
+## Active Gates (hooks enforce these — not optional)
 
 | Gate | Trigger | Required action |
 |------|---------|-----------------|
@@ -145,6 +145,7 @@ bv --robot-insights | jq '.Cycles'               # Circular deps — must fix
 
 ## Worktree Sessions
 
+- `xt claude` — launch Claude Code in a sandboxed worktree
 - `xt pi` — launch Pi in a sandboxed worktree
 - `xt end` — close session: commit / push / PR / cleanup
 <!-- xtrm:end -->
@@ -152,7 +153,7 @@ bv --robot-insights | jq '.Cycles'               # Circular deps — must fix
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **gitboard** (865 symbols, 1972 relationships, 49 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **gitboard** (1076 symbols, 2430 relationships, 86 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 
