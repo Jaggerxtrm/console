@@ -196,7 +196,7 @@ export function App() {
               getAgent={getAgentForIssue}
             />
           )}
-          {activeTab === "board" && <KanbanBoard issues={issues} getAgent={getAgentForIssue} onIssueClick={() => setActiveTab("issues")} />}
+          {activeTab === "board" && <KanbanBoard issues={issues} projectId={selectedProjectId} interactions={interactions} getAgent={getAgentForIssue} />}
           {activeTab === "closed" && <ClosedIssuesPanel issues={closedIssues} getAgent={getAgentForIssue} />}
           {activeTab === "memories" && <MemoriesPanel memories={memories} />}
         </div>

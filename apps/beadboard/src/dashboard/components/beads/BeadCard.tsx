@@ -2,14 +2,14 @@
  * BeadCard - compact secondary-board issue card
  */
 
-import { BlockedIcon, DependabotIcon, GitBranchIcon, IssueOpenedIcon, MilestoneIcon, NorthStarIcon, ProjectIcon, TagIcon, ToolsIcon } from "@primer/octicons-react";
-import type { ReactNode } from "react";
+import { DependabotIcon, IssueOpenedIcon, MilestoneIcon, NorthStarIcon, ProjectIcon, ToolsIcon } from "@primer/octicons-react";
 import type { BeadIssue } from "../../../types/beads.ts";
 
 interface BeadCardProps {
   issue: BeadIssue;
   onClick?: () => void;
   agent?: string | null;
+  isExpanded?: boolean;
 }
 
 const TYPE_CONFIG: Record<string, { label: string; icon: typeof IssueOpenedIcon; color: string }> = {
@@ -28,72 +28,47 @@ const PRIORITY_COLORS: Record<string, string> = {
   "4": "var(--text-disabled)",
 };
 
-export function BeadCard({ issue, onClick, agent }: BeadCardProps) {
-  const blockedBy = issue.dependencies.filter((d) => d.dependency_type === "blocked_by");
-  const blocking = issue.dependencies.filter((d) => d.dependency_type === "blocks");
+export function BeadCard({ issue, onClick, agent, isExpanded = false }: BeadCardProps) {
   const type = TYPE_CONFIG[String(issue.issue_type)] ?? { label: String(issue.issue_type), icon: IssueOpenedIcon, color: "var(--text-muted)" };
   const TypeIcon = type.icon;
   const priorityColor = PRIORITY_COLORS[String(issue.priority)] ?? "var(--text-muted)";
   const isEpic = issue.issue_type === "epic";
 
-  const content = (
-    <>
-      <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 8 }}>
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={isExpanded}
+      style={{
+        width: "100%",
+        background: isExpanded ? "var(--surface-primary)" : "var(--surface-secondary)",
+        borderRadius: "var(--radius-sm)",
+        padding: "10px 11px",
+        border: "1px solid var(--border-subtle)",
+        borderLeft: `3px solid ${isEpic ? "var(--accent-purple)" : priorityColor}`,
+        boxShadow: "none",
+        color: "var(--text-primary)",
+        textAlign: "left",
+        cursor: onClick ? "pointer" : "default",
+        transition: "background 120ms ease, border-color 120ms ease",
+        appearance: "none",
+        font: "inherit",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <span style={{ display: "inline-flex", color: type.color, lineHeight: 0 }}><TypeIcon size={13} /></span>
         <span style={{ fontSize: "var(--text-xs)", fontWeight: 750, color: type.color, letterSpacing: "0.05em", textTransform: "uppercase" }}>{type.label}</span>
-        <span style={{ fontSize: "var(--text-xs)", fontWeight: 750, color: priorityColor, border: "1px solid var(--border-subtle)", borderRadius: "var(--radius-sm)", padding: "1px 6px", lineHeight: 1.4 }}>P{issue.priority}</span>
-        {agent && <AgentBadge agent={agent} />}
         <span style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)", color: "var(--text-muted)", marginLeft: "auto" }}>{issue.id}</span>
       </div>
 
-      <h4 style={{ fontSize: "var(--text-sm)", fontWeight: isEpic ? 700 : 560, color: "var(--text-primary)", lineHeight: 1.35, margin: 0, overflow: "hidden" }}>{issue.title}</h4>
+      <h4 style={{ fontSize: "var(--text-sm)", fontWeight: isEpic ? 700 : 560, color: "var(--text-primary)", lineHeight: 1.35, margin: "7px 0 0", overflow: "hidden" }}>{issue.title}</h4>
 
-      <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 7, marginTop: 10, minHeight: 18, fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>
-        {blockedBy.length > 0 && <MetaPill title={`${blockedBy.length} blocker(s)`} tone="var(--status-blocked)" icon={<BlockedIcon size={12} />} label={String(blockedBy.length)} />}
-        {blocking.length > 0 && <MetaPill title={`Blocks ${blocking.length} issue(s)`} tone="var(--accent-orange)" icon={<GitBranchIcon size={12} />} label={String(blocking.length)} />}
-        {issue.labels.length > 0 && <MetaPill title={`${issue.labels.length} label(s)`} tone="var(--text-muted)" icon={<TagIcon size={12} />} label={String(issue.labels.length)} />}
-        {issue.related_ids.length > 0 && <span title={`${issue.related_ids.length} related issue(s)`} style={{ marginLeft: "auto", color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>rel {issue.related_ids.length}</span>}
+      <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8, marginTop: 8, fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>
+        <span>P{issue.priority}</span>
+        {agent && <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}><DependabotIcon size={11} />{agent}</span>}
+        {issue.dependencies.length > 0 && <span>{issue.dependencies.length} deps</span>}
+        {issue.labels.length > 0 && <span>{issue.labels.length} labels</span>}
       </div>
-    </>
-  );
-
-  const style = {
-    width: "100%",
-    background: "var(--surface-secondary)",
-    borderRadius: "var(--radius-sm)",
-    padding: "10px 11px",
-    border: "1px solid var(--border-subtle)",
-    borderLeft: `3px solid ${isEpic ? "var(--accent-purple)" : priorityColor}`,
-    boxShadow: "none",
-    color: "var(--text-primary)",
-    textAlign: "left" as const,
-    cursor: onClick ? "pointer" : "default",
-    transition: "background 120ms ease, border-color 120ms ease, transform 120ms ease",
-  };
-
-  if (!onClick) return <article style={style}>{content}</article>;
-
-  return (
-    <button type="button" onClick={onClick} style={{ ...style, appearance: "none", font: "inherit" }}>
-      {content}
     </button>
-  );
-}
-
-function MetaPill({ title, tone, icon, label }: { title: string; tone: string; icon: ReactNode; label: string }) {
-  return (
-    <span title={title} style={{ display: "inline-flex", alignItems: "center", gap: 3, color: tone, background: "var(--surface-tertiary)", border: "1px solid var(--border-subtle)", borderRadius: "var(--radius-sm)", padding: "2px 6px" }}>
-      {icon}
-      {label}
-    </span>
-  );
-}
-
-function AgentBadge({ agent }: { agent: string }) {
-  return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10, fontWeight: 750, padding: "2px 6px", background: "var(--surface-tertiary)", color: "var(--text-primary)", border: "1px solid var(--border-subtle)", borderRadius: "var(--radius-sm)", letterSpacing: "0.03em", textTransform: "uppercase" }}>
-      <DependabotIcon size={11} />
-      {agent}
-    </span>
   );
 }

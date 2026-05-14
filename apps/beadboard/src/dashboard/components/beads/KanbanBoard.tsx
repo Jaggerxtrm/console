@@ -2,12 +2,13 @@
  * KanbanBoard - secondary overview layout for bead issues
  */
 
-import type { BeadIssue } from "../../../types/beads.ts";
+import type { Interaction, BeadIssue } from "../../../types/beads.ts";
 import { StatusColumn } from "./StatusColumn";
 
 interface KanbanBoardProps {
   issues: BeadIssue[];
-  onIssueClick?: (issue: BeadIssue) => void;
+  projectId: string | null;
+  interactions: Interaction[];
   getAgent?: (issueId: string) => string | null;
 }
 
@@ -18,7 +19,7 @@ const COLUMNS: Array<{ status: BeadIssue["status"]; title: string; description: 
   { status: "closed", title: "Closed", description: "Recently completed" },
 ];
 
-export function KanbanBoard({ issues, onIssueClick, getAgent }: KanbanBoardProps) {
+export function KanbanBoard({ issues, projectId, interactions, getAgent }: KanbanBoardProps) {
   const issuesByStatus = COLUMNS.reduce((acc, col) => {
     acc[col.status] = issues
       .filter((issue) => issue.status === col.status)
@@ -50,7 +51,8 @@ export function KanbanBoard({ issues, onIssueClick, getAgent }: KanbanBoardProps
             description={col.description}
             status={col.status}
             issues={issuesByStatus[col.status] ?? []}
-            onIssueClick={onIssueClick}
+            projectId={projectId}
+            interactions={interactions}
             getAgent={getAgent}
           />
         ))}
