@@ -1,6 +1,6 @@
 import { useState } from "react";
 import * as Collapsible from "@radix-ui/react-collapsible";
-import { RepoIcon, GitBranchIcon, LinkExternalIcon } from "@primer/octicons-react";
+import { RepoIcon, GitBranchIcon, LinkExternalIcon, ChevronDownIcon } from "@primer/octicons-react";
 import type { GithubEvent, GithubCommit } from "../../../../src/types/github.ts";
 
 interface Props {
