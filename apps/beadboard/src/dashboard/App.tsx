@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { FilterIcon, InboxIcon, ProjectIcon, ArchiveIcon, DatabaseIcon, CheckIcon } from "@primer/octicons-react";
+import { FilterIcon, InboxIcon, ProjectIcon, ArchiveIcon, DatabaseIcon, CheckIcon, SearchIcon } from "@primer/octicons-react";
 import { IssueFeed } from "./components/beads/IssueFeed.tsx";
 import { KanbanBoard } from "./components/beads/KanbanBoard.tsx";
 import { ProjectRail, type ProjectRailStats } from "./components/beads/ProjectRail.tsx";
@@ -25,6 +25,8 @@ export function App() {
   const [statsByProject, setStatsByProject] = useState<Record<string, ProjectRailStats | undefined>>({});
   const [loadingProjectStats, setLoadingProjectStats] = useState(false);
   const [showOpenOnly, setShowOpenOnly] = useState(false);
+  const [issueSearch, setIssueSearch] = useState("");
+  const [quickFilter, setQuickFilter] = useState<"all" | "ready" | "blocked" | "stale">("all");
   const requestIdRef = useRef(0);
 
   const {
@@ -164,12 +166,13 @@ export function App() {
     return null;
   }, [interactions]);
 
-  const visibleIssues = useMemo(() => (showOpenOnly ? issues.filter((issue) => issue.status !== "closed") : issues), [issues, showOpenOnly]);
-  const visibleClosedIssues = useMemo(() => (showOpenOnly ? closedIssues.filter((issue) => issue.status === "closed") : closedIssues), [closedIssues, showOpenOnly]);
-  const segmentCounts = useMemo(() => ({ feed: visibleIssues.length, board: visibleIssues.length, closed: visibleClosedIssues.length, memories: memories.length }), [memories.length, visibleClosedIssues.length, visibleIssues.length]);
+  const filteredIssues = useMemo(() => filterIssues(issues, { openOnly: showOpenOnly, search: issueSearch, quickFilter }), [issues, showOpenOnly, issueSearch, quickFilter]);
+  const filteredClosedIssues = useMemo(() => filterIssues(closedIssues, { openOnly: showOpenOnly, search: issueSearch, quickFilter }), [closedIssues, showOpenOnly, issueSearch, quickFilter]);
+  const segmentCounts = useMemo(() => ({ feed: filteredIssues.length, board: filteredIssues.length, closed: filteredClosedIssues.length, memories: memories.length }), [filteredClosedIssues.length, filteredIssues.length, memories.length]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--surface-primary)', color: 'var(--text-primary)', fontFamily: 'var(--font-ui)' }}>
+      <div className="module-header-shell">
       <header className="module-header">
         <div className="module-segments">
           {TABS.map((tab) => {
@@ -189,13 +192,25 @@ export function App() {
           })}
         </div>
         <div className="module-actions">
+          <label className="module-search" htmlFor="issue-search">
+            <SearchIcon size={12} />
+            <input id="issue-search" type="search" value={issueSearch} onChange={(event) => setIssueSearch(event.target.value)} placeholder="Search issues" />
+          </label>
           <button type="button" className={`module-icon-btn ${showOpenOnly ? "is-active" : ""}`} onClick={() => setShowOpenOnly((value) => !value)} aria-pressed={showOpenOnly}>
             <FilterIcon size={12} /> Filter
           </button>
         </div>
+        <div className="module-quick-filters" role="group" aria-label="Quick issue filters">
+          {(["all", "ready", "blocked", "stale"] as const).map((filter) => (
+            <button key={filter} type="button" className={`module-chip ${quickFilter === filter ? "is-active" : ""}`} onClick={() => setQuickFilter(filter)} aria-pressed={quickFilter === filter}>
+              {filter}
+            </button>
+          ))}
+        </div>
         {loading && <span className="module-status">Loading...</span>}
         {error && <span className="module-status is-error">{error}</span>}
       </header>
+      </div>
 
       <main style={{ flex: 1, minHeight: 0, display: 'flex' }}>
         <ProjectRail
@@ -209,16 +224,17 @@ export function App() {
         <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
           {activeTab === "issues" && (
             <IssueFeed
-              issues={visibleIssues}
+              issues={filteredIssues}
               selectedIssueId={selectedIssueId}
               selectedIssueDetail={selectedIssueDetail}
               loadingDetailId={loadingDetailId}
               onIssueSelect={handleIssueSelect}
               getAgent={getAgentForIssue}
+              projectId={selectedProjectId}
             />
           )}
-          {activeTab === "board" && <KanbanBoard issues={visibleIssues} projectId={selectedProjectId} interactions={interactions} getAgent={getAgentForIssue} />}
-          {activeTab === "closed" && <ClosedIssuesPanel issues={visibleClosedIssues} getAgent={getAgentForIssue} />}
+          {activeTab === "board" && <KanbanBoard issues={filteredIssues} projectId={selectedProjectId} interactions={interactions} getAgent={getAgentForIssue} />}
+          {activeTab === "closed" && <ClosedIssuesPanel issues={filteredClosedIssues} getAgent={getAgentForIssue} />}
           {activeTab === "memories" && <MemoriesPanel memories={memories} />}
         </div>
       </main>
@@ -236,4 +252,31 @@ function MemoriesPanel({ memories }: { memories: Memory[] }) {
 
 function AgentBadge({ agent }: { agent: string }) {
   return <span style={{ fontSize: 'var(--text-xs)', padding: '2px 6px', background: 'var(--surface-tertiary)', color: 'var(--text-primary)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>{agent}</span>;
+}
+
+function filterIssues(issues: BeadIssue[], { openOnly, search, quickFilter }: { openOnly: boolean; search: string; quickFilter: "all" | "ready" | "blocked" | "stale"; }) {
+  const query = search.trim().toLowerCase();
+  return issues.filter((issue) => {
+    if (openOnly && issue.status === "closed") return false;
+    if (quickFilter !== "all" && !matchesQuickFilter(issue, quickFilter)) return false;
+    if (!query) return true;
+    return [issue.id, issue.title, issue.description ?? ""].some((value) => value.toLowerCase().includes(query));
+  });
+}
+
+function matchesQuickFilter(issue: BeadIssue, quickFilter: "all" | "ready" | "blocked" | "stale") {
+  switch (quickFilter) {
+    case "ready": return issue.status === "open" || issue.status === "in_progress";
+    case "blocked": return issue.status === "blocked";
+    case "stale": return isStaleIssue(issue);
+    default: return true;
+  }
+}
+
+function isStaleIssue(issue: BeadIssue) {
+  if (issue.status === "closed") return false;
+  const updatedAt = new Date(issue.updated_at);
+  if (Number.isNaN(updatedAt.getTime())) return false;
+  const staleThresholdMs = 7 * 24 * 60 * 60 * 1000;
+  return Date.now() - updatedAt.getTime() >= staleThresholdMs;
 }

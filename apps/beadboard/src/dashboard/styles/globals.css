@@ -16,6 +16,13 @@ body {
 
 /* Beadboard structural alignment */
 .module-header { display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 12px; border-bottom: 1px solid var(--border-subtle); background: var(--surface-1); }
+.module-header-shell { display: grid; gap: 6px; }
+.module-search { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 8px; border: 1px solid var(--border-subtle); color: var(--text-muted); background: var(--surface-2); }
+.module-search input { width: 220px; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text-primary); font: inherit; font-size: var(--text-xs); }
+.module-search input::placeholder { color: var(--text-muted); }
+.module-quick-filters { display: flex; gap: 6px; padding: 0 12px; }
+.module-chip { height: 22px; padding: 0 8px; border: 1px solid var(--border-subtle); color: var(--text-secondary); font-size: var(--text-xs); text-transform: capitalize; }
+.module-chip.is-active { color: var(--text-primary); border-color: var(--border); }
 .module-segments { display: flex; align-items: stretch; gap: 2px; }
 .module-segment { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-bottom: 1px solid transparent; color: var(--text-secondary); }
 .module-segment.is-active { color: var(--text-primary); border-bottom-color: var(--accent); }
@@ -78,6 +85,9 @@ body {
 .bead-section-title { margin-bottom: 6px; color: var(--text-muted); font-size: 9px; font-weight: 700; letter-spacing: 0.15em; text-transform: uppercase; }
 .bead-body-text { color: var(--text-secondary); font-size: 11px; line-height: 1.55; }
 .bead-empty-note { color: var(--text-muted); font-size: 11px; }
+.bead-audit-log { display: grid; gap: 4px; }
+.bead-audit-item { display: grid; grid-template-columns: auto auto auto 1fr; gap: 6px; align-items: center; color: var(--text-secondary); font-size: 10px; }
+.bead-audit-kind { text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); }
 .bead-dossier-list { display: grid; gap: 5px; }
 .bead-dossier-list span { display: flex; justify-content: space-between; gap: 10px; color: var(--text-muted); font-size: 10px; }
 .bead-dossier-list b { font-weight: 500; text-transform: uppercase; letter-spacing: 0.08em; }
