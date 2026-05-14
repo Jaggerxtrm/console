@@ -90,13 +90,6 @@ function MetaPill({ title, tone, icon, label }: { title: string; tone: string; i
 }
 
 function AgentBadge({ agent }: { agent: string }) {
-  const colors: Record<string, string> = {
-    claude: "#D97706",
-    qwen: "#10B981",
-    gemini: "#3B82F6",
-    gpt: "#6366F1",
-  };
-
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10, fontWeight: 750, padding: "2px 6px", background: "var(--surface-tertiary)", color: "var(--text-primary)", border: "1px solid var(--border-subtle)", borderRadius: "var(--radius-sm)", letterSpacing: "0.03em", textTransform: "uppercase" }}>
       <DependabotIcon size={11} />

@@ -55,28 +55,28 @@ body {
   cursor: pointer;
 }
 .bead-row-main:focus { outline: 2px solid rgba(142,210,220,0.45); outline-offset: -2px; }
-.bead-number { color: #7d969c; font-family: var(--font-mono); font-size: 11px; }
+.bead-number { color: var(--text-muted); font-family: var(--font-mono); font-size: 11px; }
 .bead-title-block { min-width: 0; }
 .bead-title-line { display: flex; align-items: center; gap: 6px; min-width: 0; }
-.bead-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #dfebed; font-size: 12px; font-weight: 540; }
-.bead-meta-line { display: flex; gap: 10px; margin-top: 4px; overflow: hidden; color: #748b91; font-size: 10px; white-space: nowrap; }
+.bead-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); font-size: 12px; font-weight: 540; }
+.bead-meta-line { display: flex; gap: 10px; margin-top: 4px; overflow: hidden; color: var(--text-muted); font-size: 10px; white-space: nowrap; }
 .bead-meta-line span { position: relative; }
 .bead-meta-line span + span::before { content: ""; position: absolute; left: -6px; top: 50%; width: 2px; height: 2px; margin-top: -1px; border-radius: 50%; background: rgba(142,210,220,0.34); }
-.bead-pill { display: inline-flex; align-items: center; justify-content: center; height: 20px; padding: 0 8px; border: 1px solid var(--border-subtle); background: transparent; border-radius: 0; color: #a5cbd1; font-size: 9px; font-weight: 700; letter-spacing: 0.10em; text-transform: uppercase; white-space: nowrap; }
-.bead-pill.epic { border-color: rgba(163,113,247,0.26); background: transparent; color: #cdb8ff; }
-.bead-row-stats { display: flex; justify-content: flex-end; gap: 6px; color: #7c9298; font-family: var(--font-mono); font-size: 10px; white-space: nowrap; }
-.bead-chevron { display: flex; align-items: center; justify-content: center; color: #71878d; transition: transform 150ms ease; }
+.bead-pill { display: inline-flex; align-items: center; justify-content: center; height: 20px; padding: 0 8px; border: 1px solid var(--border-subtle); background: transparent; border-radius: 0; color: var(--accent-blue); font-size: 9px; font-weight: 700; letter-spacing: 0.10em; text-transform: uppercase; white-space: nowrap; }
+.bead-pill.epic { border-color: var(--border-subtle); background: transparent; color: var(--accent-purple); }
+.bead-row-stats { display: flex; justify-content: flex-end; gap: 6px; color: var(--text-muted); font-family: var(--font-mono); font-size: 10px; white-space: nowrap; }
+.bead-chevron { display: flex; align-items: center; justify-content: center; color: var(--text-muted); transition: transform 150ms ease; }
 .bead-row.is-expanded .bead-chevron { transform: rotate(180deg); }
-.bead-expanded-body { padding: 0 14px 14px 118px; border-top: 1px solid rgba(142,210,220,0.07); }
+.bead-expanded-body { padding: 0 14px 14px 118px; border-top: 1px solid var(--border-subtle); }
 .bead-expanded-grid { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 10px; }
 .bead-expanded-section { border: 0; background: transparent; padding: 10px 0; }
-.bead-section-title { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; color: #7fa4ab; font-size: 9px; font-weight: 700; letter-spacing: 0.15em; text-transform: uppercase; }
-.bead-body-text { white-space: normal; color: #9fb3b8; font-size: 11px; line-height: 1.55; }
-.bead-empty-note { color: #6f858b; font-size: 11px; }
+.bead-section-title { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; color: var(--text-muted); font-size: 9px; font-weight: 700; letter-spacing: 0.15em; text-transform: uppercase; }
+.bead-body-text { white-space: normal; color: var(--text-secondary); font-size: 11px; line-height: 1.55; }
+.bead-empty-note { color: var(--text-muted); font-size: 11px; }
 .bead-dossier-list { display: grid; gap: 7px; }
-.bead-dossier-list span { display: flex; justify-content: space-between; gap: 10px; color: #748b91; font-size: 10px; }
+.bead-dossier-list span { display: flex; justify-content: space-between; gap: 10px; color: var(--text-muted); font-size: 10px; }
 .bead-dossier-list b { font-weight: 500; text-transform: uppercase; letter-spacing: 0.08em; }
-.bead-dossier-list strong { min-width: 0; overflow: hidden; text-align: right; text-overflow: ellipsis; white-space: nowrap; color: #d7e6e8; font-weight: 500; }
+.bead-dossier-list strong { min-width: 0; overflow: hidden; text-align: right; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); font-weight: 500; }
 @media (max-width: 980px) {
   .bead-row-main { grid-template-columns: 18px 70px minmax(0, 1fr) 22px; }
   .bead-row-stats, .bead-row-main > .bead-pill.hide-small { display: none; }
