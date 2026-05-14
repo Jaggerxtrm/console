@@ -41,7 +41,7 @@ export function BeadCard({ issue, onClick, agent }: BeadCardProps) {
       <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 8 }}>
         <span style={{ display: "inline-flex", color: type.color, lineHeight: 0 }}><TypeIcon size={13} /></span>
         <span style={{ fontSize: "var(--text-xs)", fontWeight: 750, color: type.color, letterSpacing: "0.05em", textTransform: "uppercase" }}>{type.label}</span>
-        <span style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)", fontWeight: 750, color: priorityColor, border: "1px solid var(--border-subtle)", borderRadius: "var(--radius-sm)", padding: "1px 6px", lineHeight: 1.4 }}>P{issue.priority}</span>
+        <span style={{ fontSize: "var(--text-xs)", fontWeight: 750, color: priorityColor, border: "1px solid var(--border-subtle)", borderRadius: "var(--radius-sm)", padding: "1px 6px", lineHeight: 1.4 }}>P{issue.priority}</span>
         {agent && <AgentBadge agent={agent} />}
         <span style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)", color: "var(--text-muted)", marginLeft: "auto" }}>{issue.id}</span>
       </div>

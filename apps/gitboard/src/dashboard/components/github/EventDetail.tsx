@@ -158,7 +158,7 @@ export function EventDetail({ event, commits }: Props) {
               <div style={{ width: `${addPct}%`, background: "var(--diff-add)" }} />
               <div style={{ width: `${delPct}%`, background: "var(--diff-del)" }} />
             </div>
-            <div style={{ display: "flex", gap: 8, fontFamily: "var(--font-mono)", fontSize: "var(--text-sm)" }}>
+            <div style={{ display: "flex", gap: 8, fontSize: "var(--text-sm)" }}>
               {event.additions != null && (
                 <span style={{ color: "var(--diff-add)" }}>+{event.additions}</span>
               )}

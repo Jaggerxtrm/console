@@ -38,7 +38,7 @@ export function KanbanBoard({ issues, onIssueClick, getAgent }: KanbanBoardProps
             <h2 style={{ fontSize: 13, fontWeight: 750, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-primary)", margin: 0 }}>Board overview</h2>
             <p style={{ margin: "4px 0 0", fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>Secondary state map. Feed remains the primary dossier surface.</p>
           </div>
-          <span style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)", color: "var(--text-muted)", border: "1px solid var(--border-subtle)", borderRadius: "var(--radius-sm)", padding: "3px 8px", background: "var(--surface-tertiary)" }}>{issues.length} issues</span>
+          <span style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)", border: "1px solid var(--border-subtle)", borderRadius: "var(--radius-sm)", padding: "3px 8px", background: "var(--surface-tertiary)" }}>{issues.length} issues</span>
         </div>
       </div>
 

@@ -172,7 +172,7 @@ function EventRow({ evt, selected, hovered, expanded = false, onSelect, onMouseE
       <div style={{ width: 6, height: 6, borderRadius: "var(--radius-pill)", background: color, flexShrink: 0, marginTop: 5, marginRight: 8 }} />
 
       {/* Time */}
-      <span style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)", color: "var(--text-muted)", width: 44, flexShrink: 0, paddingTop: 2 }}>
+      <span style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)", width: 44, flexShrink: 0, paddingTop: 2 }}>
         {formatTime(evt.created_at)}
       </span>
 
@@ -185,7 +185,7 @@ function EventRow({ evt, selected, hovered, expanded = false, onSelect, onMouseE
       <div style={{ flex: 1, minWidth: 0, overflow: "hidden" }}>
         {/* Line 1: repo · title */}
         <div style={{ display: "flex", alignItems: "baseline", gap: 4, overflow: "hidden" }}>
-          <span style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)", color: "var(--text-secondary)", flexShrink: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "40%" }}>
+          <span style={{ fontSize: "var(--text-xs)", color: "var(--text-secondary)", flexShrink: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "40%" }}>
             {evt.repo}
           </span>
           <span style={{ color: "var(--text-muted)", fontSize: "var(--text-xs)", flexShrink: 0 }}>·</span>
@@ -198,7 +198,6 @@ function EventRow({ evt, selected, hovered, expanded = false, onSelect, onMouseE
         <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
           {evt.branch && (
             <span style={{
-              fontFamily: "var(--font-mono)",
               fontSize: "var(--text-xs)",
               color: "var(--text-secondary)",
               background: "var(--surface-tertiary)",
@@ -224,7 +223,7 @@ function EventRow({ evt, selected, hovered, expanded = false, onSelect, onMouseE
 
       {/* Diffstats */}
       {hasDiff && (
-        <div style={{ display: "flex", gap: 4, fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)", fontWeight: 500, flexShrink: 0, marginLeft: 8 }}>
+        <div style={{ display: "flex", gap: 4, fontSize: "var(--text-xs)", fontWeight: 500, flexShrink: 0, marginLeft: 8 }}>
           {evt.additions != null && <span style={{ color: "var(--diff-add)" }}>+{evt.additions}</span>}
           {evt.deletions != null && <span style={{ color: "var(--diff-del)" }}>−{evt.deletions}</span>}
         </div>

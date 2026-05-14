@@ -37,7 +37,7 @@ export function StatusColumn({ title, description, status, issues, onIssueClick,
             <StatusIcon size={14} />
           </span>
           <h3 style={{ fontSize: "var(--text-sm)", fontWeight: 700, color: "var(--text-primary)", margin: 0, letterSpacing: "0.02em" }}>{title}</h3>
-          <span style={{ marginLeft: "auto", fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)", color: "var(--text-primary)", background: "var(--surface-tertiary)", border: "1px solid var(--border-subtle)", padding: "2px 7px", borderRadius: "var(--radius-sm)" }}>{issues.length}</span>
+          <span style={{ marginLeft: "auto", fontSize: "var(--text-xs)", color: "var(--text-primary)", background: "var(--surface-tertiary)", border: "1px solid var(--border-subtle)", padding: "2px 7px", borderRadius: "var(--radius-sm)" }}>{issues.length}</span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6, fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>
           <span>{description ?? "Issue lane"}</span>

@@ -1462,6 +1462,7 @@ body {
   font-size: 9px !important;
   letter-spacing: 0.16em !important;
   background: rgba(6,12,17,0.66) !important;
+  font-family: var(--font-ui) !important;
 }
 
 .westworld-app .repo-section-control::after {
@@ -1477,6 +1478,7 @@ body {
   font-size: 9px !important;
   letter-spacing: 0.15em !important;
   color: var(--text-muted) !important;
+  font-family: var(--font-ui) !important;
 }
 
 .westworld-app .repo-row {
@@ -1527,6 +1529,7 @@ body {
 
 .westworld-app .gitboard-statsbar .gitboard-stat span {
   font-size: 10px !important;
+  font-family: var(--font-ui) !important;
 }
 
 .westworld-app .gitboard-tabbar {
@@ -1558,6 +1561,7 @@ body {
   color: var(--text-muted) !important;
   font-size: 9px !important;
   letter-spacing: 0.16em !important;
+  font-family: var(--font-ui) !important;
 }
 
 .westworld-app .timeline-row {
@@ -2252,6 +2256,11 @@ body {
   color: var(--text-muted);
   font-family: var(--font-mono);
   font-size: 11px;
+}
+
+.issue-repo,
+.issue-time {
+  font-family: var(--font-ui);
 }
 
 .issue-title {

@@ -64,7 +64,7 @@ body {
 .bead-meta-line span + span::before { content: ""; position: absolute; left: -6px; top: 50%; width: 2px; height: 2px; margin-top: -1px; border-radius: 50%; background: rgba(142,210,220,0.34); }
 .bead-pill { display: inline-flex; align-items: center; justify-content: center; height: 20px; padding: 0 8px; border: 1px solid var(--border-subtle); background: transparent; border-radius: 0; color: var(--accent-blue); font-size: 9px; font-weight: 700; letter-spacing: 0.10em; text-transform: uppercase; white-space: nowrap; }
 .bead-pill.epic { border-color: var(--border-subtle); background: transparent; color: var(--accent-purple); }
-.bead-row-stats { display: flex; justify-content: flex-end; gap: 6px; color: var(--text-muted); font-family: var(--font-mono); font-size: 10px; white-space: nowrap; }
+.bead-row-stats { display: flex; justify-content: flex-end; gap: 6px; color: var(--text-muted); font-size: 10px; white-space: nowrap; }
 .bead-chevron { display: flex; align-items: center; justify-content: center; color: var(--text-muted); transition: transform 150ms ease; }
 .bead-row.is-expanded .bead-chevron { transform: rotate(180deg); }
 .bead-expanded-body { padding: 0 14px 14px 118px; border-top: 1px solid var(--border-subtle); }

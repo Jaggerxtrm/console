@@ -96,7 +96,7 @@ export function ProjectRail({ projects, selectedProjectId, statsByProject, loadi
                   <div style={{ fontSize: "12px", fontWeight: 650, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{project.name}</div>
                   <div style={{ marginTop: 1, fontSize: "10px", color: "var(--text-muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{compactPath(project.path)}</div>
                 </div>
-                <span style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)", color: activeCount > 0 ? "var(--text-primary)" : "var(--text-muted)", background: "transparent", border: "1px solid var(--border-subtle)", borderRadius: 0, padding: "2px 7px" }}>{activeCount}</span>
+                <span style={{ fontSize: "var(--text-xs)", color: activeCount > 0 ? "var(--text-primary)" : "var(--text-muted)", background: "transparent", border: "1px solid var(--border-subtle)", borderRadius: 0, padding: "2px 7px" }}>{activeCount}</span>
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 4 }}>
