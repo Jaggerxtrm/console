@@ -94,15 +94,15 @@ body {
 .bead-row-dep-discovered-from .bead-row-dep-glyph { color: var(--accent-green); }
 /* Dependency tree block in dossier */
 .bead-dep-tree { display: grid; gap: 2px; font-family: var(--font-mono); font-size: 10.5px; color: var(--text-secondary); }
-.bead-dep-tree-root, .bead-dep-tree-node { display: grid; grid-template-columns: 14px 16px auto minmax(0, 1fr) auto; gap: 6px; align-items: center; }
+.bead-dep-tree-root, .bead-dep-tree-node { display: grid; grid-template-columns: 14px 16px minmax(0, max-content) minmax(0, 1fr) auto; gap: 6px; align-items: center; }
 .bead-dep-tree-root { padding-left: 0; }
 .bead-dep-tree-node { padding-left: 14px; }
 .bead-dep-tree-node .bead-dep-tree-connector { color: var(--text-disabled); }
 .bead-dep-tree-root .bead-dep-tree-connector { content: ""; }
 .bead-dep-tree-status { color: var(--accent); text-align: center; }
-.bead-dep-tree-id { color: var(--text-muted); }
+.bead-dep-tree-id { color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; max-width: 140px; }
 .bead-dep-tree-title { color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; font-family: var(--font-ui); font-size: 11px; }
-.bead-dep-tree-kind { color: var(--accent); font-family: var(--font-ui); font-size: 9.5px; text-transform: lowercase; letter-spacing: 0.04em; }
+.bead-dep-tree-kind { color: var(--accent); font-family: var(--font-ui); font-size: 9.5px; text-transform: lowercase; letter-spacing: 0.04em; white-space: nowrap; }
 .bead-expanded-section { padding: 6px 0; }
 .bead-section-title { margin-bottom: 6px; color: var(--text-muted); font-size: 9px; font-weight: 700; letter-spacing: 0.15em; text-transform: uppercase; }
 .bead-body-text { color: var(--text-secondary); font-size: 11px; line-height: 1.55; }
