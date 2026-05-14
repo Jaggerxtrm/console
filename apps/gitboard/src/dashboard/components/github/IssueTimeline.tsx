@@ -15,6 +15,7 @@ import {
   truncateBody,
   type DateGroupItem,
 } from "../../lib/timeline-utils.ts";
+import { renderPrBodyText } from "./PrTimeline.tsx";
 
 type IssueItem = DateGroupItem<GithubIssue>;
 
@@ -58,17 +59,18 @@ function IssueExpandedBody({ issue }: { issue: GithubIssue }) {
     <div className="issue-expanded-body">
       {issue.body && (() => {
         const { visible, hasMore } = truncateBody(issue.body);
+        const rendered = renderPrBodyText(showMore ? issue.body : visible);
         return (
           <div>
             <div
+              className="issue-body-text"
               style={{
-                whiteSpace: "pre-wrap",
                 fontSize: "var(--text-xs)",
                 color: "var(--text-secondary)",
                 lineHeight: 1.5,
               }}
             >
-              {showMore ? issue.body : visible}
+              {rendered}
             </div>
             {hasMore && !showMore && (
               <button

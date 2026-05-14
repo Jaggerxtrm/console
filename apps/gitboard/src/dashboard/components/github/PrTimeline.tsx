@@ -203,7 +203,7 @@ function SectionLabel({ icon: Icon, title, status }: { icon: typeof CommentIcon;
   );
 }
 
-function renderPrBodyText(value: string): ReactNode[] {
+export function renderPrBodyText(value: string): ReactNode[] {
   const nodes: ReactNode[] = [];
   const lines = value
     .replace(/<\/?details[^>]*>/gi, "\n")

@@ -104,16 +104,200 @@ function IssueRow({ issue, detail, isExpanded, isLoadingDetail, agent, dependenc
 
 function IssueDossier({ id, detail, issue, loading }: { id: string; detail: BeadIssueDetail | null; issue: BeadIssue; loading: boolean; }) {
   if (loading) return <div id={id} className="bead-expanded-body"><div className="bead-empty-note">Loading dossier...</div></div>;
-  return <section id={id} className="bead-expanded-body"><div className="bead-expanded-grid"><DossierSection title="Description"><Markdown value={detail?.description ?? issue.description} empty="No description." /></DossierSection><DossierSection title="Notes"><Markdown value={detail?.notes ?? issue.notes} empty="No notes." /></DossierSection><DossierSection title="Metadata"><div className="bead-dossier-list"><span><b>Created</b><strong>{formatCompactDate(issue.created_at)}</strong></span><span><b>Updated</b><strong>{formatCompactDate(issue.updated_at)}</strong></span></div></DossierSection></div></section>;
+  const deps = (detail?.dependencies ?? issue.dependencies).filter((d) => d.dependency_type !== "parent-child");
+  const blockers = deps.filter((d) => d.dependency_type === "blocked_by" || d.dependency_type === "blocks");
+  const related = (detail?.related_ids ?? issue.related_ids ?? []);
+  const children = detail?.children ?? [];
+  const labels = detail?.labels ?? issue.labels ?? [];
+  const isEpic = issue.issue_type === "epic";
+  return (
+    <section id={id} className="bead-expanded-body">
+      <div className="bead-expanded-grid">
+        <div className="bead-dossier-main">
+          <DossierSection title="Description"><SafeMarkdown value={detail?.description ?? issue.description} empty="No description." /></DossierSection>
+          {(detail?.notes ?? issue.notes) && (
+            <DossierSection title="Notes"><SafeMarkdown value={detail?.notes ?? issue.notes} empty="No notes." /></DossierSection>
+          )}
+        </div>
+        <div className="bead-dossier-side">
+          {blockers.length > 0 && (
+            <DossierSection title="Dependencies">
+              <ul className="bead-dep-list">{blockers.map((d) => <li key={`dep-${d.id}`}><span className={`bead-dep-kind bead-dep-${d.dependency_type}`}>{d.dependency_type === "blocked_by" ? "blocked by" : "blocks"}</span><span className="bead-dep-id">{d.id}</span><span className="bead-dep-title">{d.title}</span><span className={`bead-dep-status bead-status-${d.status}`}>{d.status}</span></li>)}</ul>
+            </DossierSection>
+          )}
+          {isEpic && children.length > 0 && (
+            <DossierSection title={`Children (${children.length})`}>
+              <ul className="bead-dep-list">{children.map((c) => <li key={`child-${c.id}`}><span className="bead-dep-id">{c.id}</span><span className="bead-dep-title">{c.title}</span><span className={`bead-dep-status bead-status-${c.status}`}>{c.status}</span></li>)}</ul>
+            </DossierSection>
+          )}
+          {related.length > 0 && (
+            <DossierSection title="Related">
+              <ul className="bead-dep-list">{related.map((rid) => <li key={`rel-${rid}`}><span className="bead-dep-id">{rid}</span></li>)}</ul>
+            </DossierSection>
+          )}
+          {labels.length > 0 && (
+            <DossierSection title="Labels"><div className="bead-label-strip">{labels.map((l) => <span key={l} className="bead-label-chip">{l}</span>)}</div></DossierSection>
+          )}
+          <DossierSection title="Metadata">
+            <div className="bead-dossier-list">
+              <span><b>Status</b><strong>{issue.status}</strong></span>
+              <span><b>Priority</b><strong>P{issue.priority}</strong></span>
+              <span><b>Type</b><strong>{issue.issue_type}</strong></span>
+              {issue.owner && <span><b>Owner</b><strong>{issue.owner}</strong></span>}
+              <span><b>Created</b><strong>{formatCompactDate(issue.created_at)}</strong></span>
+              <span><b>Updated</b><strong>{formatCompactDate(issue.updated_at)}</strong></span>
+              {issue.closed_at && <span><b>Closed</b><strong>{formatCompactDate(issue.closed_at)}</strong></span>}
+            </div>
+          </DossierSection>
+        </div>
+      </div>
+    </section>
+  );
 }
 
 function DossierSection({ title, children }: { title: string; children: ReactNode }) { return <section className="bead-expanded-section"><div className="bead-section-title">{title}</div>{children}</section>; }
 
-function Markdown({ value, empty }: { value?: string | null; empty: string }) { if (!value?.trim()) return <div className="bead-empty-note">{empty}</div>; return <div className="bead-body-text">{parseMarkdown(value)}</div>; }
+function SafeMarkdown({ value, empty }: { value?: string | null; empty: string }) {
+  if (!value?.trim()) return <div className="bead-empty-note">{empty}</div>;
+  return <div className="bead-body-text">{renderSafeBody(value)}</div>;
+}
 
-function parseMarkdown(value: string): ReactNode[] { return value.replace(/\r\n/g, "\n").split("\n").filter(Boolean).map((line, index) => <p key={index}>{stripHtml(line)}</p>); }
+// Renders prose with markdown affordances (code fences, inline code, **bold**, *em*, [link], headers, lists, blockquotes).
+// HTML/XML-like content is rendered safely:
+//   - <script>/<style> blocks are dropped entirely
+//   - on*= attributes are stripped
+//   - block-level HTML tags (<p>, <li>, <h*>, <br>) are normalised to markdown
+//   - remaining tags are left as escaped text so XML structure stays visible
+function renderSafeBody(raw: string): ReactNode[] {
+  const sanitised = raw
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "")
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, "")
+    .replace(/\son\w+="[^"]*"/gi, "")
+    .replace(/\son\w+='[^']*'/gi, "");
+  const lines = sanitised
+    .replace(/<\/?details[^>]*>/gi, "\n")
+    .replace(/<summary[^>]*>/gi, "\n### ")
+    .replace(/<\/summary>/gi, "\n")
+    .replace(/<h[1-4][^>]*>/gi, "\n### ")
+    .replace(/<\/h[1-4]>/gi, "\n")
+    .replace(/<li[^>]*>/gi, "\n- ")
+    .replace(/<\/li>/gi, "")
+    .replace(/<br\s*\/?\s*>/gi, "\n")
+    .replace(/<\/p>/gi, "\n\n")
+    .replace(/<p[^>]*>/gi, "")
+    .replace(/<\/blockquote>/gi, "\n")
+    .replace(/<blockquote[^>]*>/gi, "> ")
+    .replace(/\r\n/g, "\n")
+    .split("\n");
 
-function stripHtml(value: string): string { return value.replace(/<[^>]*>/g, ""); }
+  const nodes: ReactNode[] = [];
+  let paragraph: string[] = [];
+  let listItems: ReactNode[] = [];
+  let fenceLang: string | null = null;
+  let fenceBuf: string[] = [];
+
+  const flushParagraph = () => {
+    if (paragraph.length === 0) return;
+    nodes.push(<p key={`p-${nodes.length}`}>{paragraph.flatMap((line, idx) => [renderInline(line, `p${nodes.length}-${idx}`), idx < paragraph.length - 1 ? <br key={`br-${nodes.length}-${idx}`} /> : null])}</p>);
+    paragraph = [];
+  };
+  const flushList = () => {
+    if (listItems.length === 0) return;
+    nodes.push(<ul key={`ul-${nodes.length}`}>{listItems}</ul>);
+    listItems = [];
+  };
+
+  lines.forEach((rawLine) => {
+    const fenceMatch = rawLine.match(/^\s*```(\w*)/);
+    if (fenceLang !== null) {
+      if (fenceMatch) {
+        nodes.push(<pre key={`pre-${nodes.length}`} data-lang={fenceLang || undefined}><code>{fenceBuf.join("\n")}</code></pre>);
+        fenceLang = null;
+        fenceBuf = [];
+        return;
+      }
+      fenceBuf.push(rawLine);
+      return;
+    }
+    if (fenceMatch) {
+      flushParagraph();
+      flushList();
+      fenceLang = fenceMatch[1] ?? "";
+      return;
+    }
+    const trimmed = rawLine.trim();
+    if (!trimmed) {
+      flushParagraph();
+      flushList();
+      return;
+    }
+    const heading = trimmed.match(/^(#{1,4})\s+(.*)$/);
+    if (heading) {
+      flushParagraph();
+      flushList();
+      const level = heading[1].length;
+      const Tag = (`h${Math.min(level + 2, 6)}` as "h3" | "h4" | "h5" | "h6");
+      nodes.push(<Tag key={`h-${nodes.length}`}>{renderInline(heading[2], `h${nodes.length}`)}</Tag>);
+      return;
+    }
+    const li = trimmed.match(/^[-*]\s+(.*)$/);
+    if (li) {
+      flushParagraph();
+      listItems.push(<li key={`li-${listItems.length}`}>{renderInline(li[1], `li${nodes.length}-${listItems.length}`)}</li>);
+      return;
+    }
+    const bq = trimmed.match(/^>\s?(.*)$/);
+    if (bq) {
+      flushParagraph();
+      flushList();
+      nodes.push(<blockquote key={`bq-${nodes.length}`}>{renderInline(bq[1], `bq${nodes.length}`)}</blockquote>);
+      return;
+    }
+    flushList();
+    paragraph.push(rawLine);
+  });
+  if (fenceLang !== null) {
+    nodes.push(<pre key={`pre-${nodes.length}`} data-lang={fenceLang || undefined}><code>{fenceBuf.join("\n")}</code></pre>);
+  }
+  flushParagraph();
+  flushList();
+  return nodes;
+}
+
+const INLINE_RE = /(`[^`\n]+`)|(\*\*[^*\n]+\*\*)|(\*[^*\n]+\*)|(\[[^\]]+\]\((?:https?:\/\/|forge-)[^\s)]+\))/g;
+
+function renderInline(text: string, key: string): ReactNode[] {
+  // Escape any leftover tags as literal text so XML stays visible.
+  const escaped = text.replace(/<([^>]*)>/g, (_, inner) => `<${inner}>`);
+  const parts: ReactNode[] = [];
+  let lastIndex = 0;
+  let n = 0;
+  for (const match of escaped.matchAll(INLINE_RE)) {
+    if (match.index === undefined) continue;
+    if (match.index > lastIndex) parts.push(escaped.slice(lastIndex, match.index));
+    const token = match[0];
+    n += 1;
+    if (token.startsWith("`")) {
+      parts.push(<code key={`${key}-c${n}`}>{token.slice(1, -1)}</code>);
+    } else if (token.startsWith("**")) {
+      parts.push(<strong key={`${key}-b${n}`}>{token.slice(2, -2)}</strong>);
+    } else if (token.startsWith("*")) {
+      parts.push(<em key={`${key}-i${n}`}>{token.slice(1, -1)}</em>);
+    } else if (token.startsWith("[")) {
+      const linkMatch = token.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
+      if (linkMatch) {
+        const href = linkMatch[2];
+        const isExternal = href.startsWith("http");
+        parts.push(<a key={`${key}-a${n}`} href={isExternal ? href : `#${href}`} target={isExternal ? "_blank" : undefined} rel={isExternal ? "noreferrer" : undefined} onClick={(e) => { if (!isExternal) e.preventDefault(); e.stopPropagation(); }}>{linkMatch[1]}</a>);
+      } else {
+        parts.push(token);
+      }
+    }
+    lastIndex = match.index + token.length;
+  }
+  if (lastIndex < escaped.length) parts.push(escaped.slice(lastIndex));
+  return parts;
+}
 
 function formatCompactDate(iso: string | undefined): string { if (!iso) return "—"; const date = new Date(iso); if (Number.isNaN(date.getTime())) return iso; return date.toLocaleDateString(undefined, { month: "short", day: "numeric" }); }
 
