@@ -1,6 +1,6 @@
 import { useState } from "react";
 import * as Collapsible from "@radix-ui/react-collapsible";
-import { RepoIcon, GitBranchIcon, LinkExternalIcon } from "@primer/octicons-react";
+import { RepoIcon, GitBranchIcon, LinkExternalIcon, ChevronDownIcon } from "@primer/octicons-react";
 import type { GithubEvent, GithubCommit } from "../../../../src/types/github.ts";
 
 interface Props {
@@ -50,7 +50,7 @@ function CommitRow({ commit }: { commit: GithubCommit }) {
         </span>
         {hasBody && (
           <Collapsible.Trigger style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: "var(--text-sm)", flexShrink: 0 }}>
-            {open ? "▾" : "▸"}
+            <ChevronDownIcon size={11} style={{ transform: open ? "rotate(180deg)" : undefined, transition: "transform 0.15s" }} />
           </Collapsible.Trigger>
         )}
       </div>
@@ -158,7 +158,7 @@ export function EventDetail({ event, commits }: Props) {
               <div style={{ width: `${addPct}%`, background: "var(--diff-add)" }} />
               <div style={{ width: `${delPct}%`, background: "var(--diff-del)" }} />
             </div>
-            <div style={{ display: "flex", gap: 8, fontFamily: "var(--font-mono)", fontSize: "var(--text-sm)" }}>
+            <div style={{ display: "flex", gap: 8, fontSize: "var(--text-sm)" }}>
               {event.additions != null && (
                 <span style={{ color: "var(--diff-add)" }}>+{event.additions}</span>
               )}

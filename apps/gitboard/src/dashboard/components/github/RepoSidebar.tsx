@@ -1,9 +1,8 @@
 import { useState } from "react";
 import { RepoIcon, LinkExternalIcon, GitCommitIcon, GitMergeIcon, GitPullRequestIcon } from "@primer/octicons-react";
 import type { GithubRepo, RepoStat } from "../../../../src/types/github.ts";
-import { ContributionHeatmap } from "./ContributionHeatmap.tsx";
 import { EventDetail } from "./EventDetail.tsx";
-import type { GithubEvent, GithubCommit, ContributionDay } from "../../../../src/types/github.ts";
+import type { GithubEvent, GithubCommit } from "../../../../src/types/github.ts";
 
 interface Props {
   repos: GithubRepo[];
@@ -14,8 +13,6 @@ interface Props {
   onReset: () => void;
   lastEventAt?: Record<string, string>;
   ownerUsername?: string | null;
-  contributions?: ContributionDay[];
-  onDateClick?: (date: string) => void;
   selectedEvent?: GithubEvent | null;
   selectedEventCommits?: GithubCommit[];
 }
@@ -47,7 +44,7 @@ export function relativeTime(iso: string): string {
   return `${days}d ago`;
 }
 
-export function RepoSidebar({ repos, stats, selectedRepos, unreadRepos = new Set(), onSelect, onReset, lastEventAt = {}, ownerUsername = null, contributions, onDateClick, selectedEvent, selectedEventCommits }: Props) {
+export function RepoSidebar({ repos, stats, selectedRepos, unreadRepos = new Set(), onSelect, onReset, lastEventAt = {}, ownerUsername = null, selectedEvent, selectedEventCommits }: Props) {
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
   const [width, setWidth] = useState(() => {
     try {
@@ -279,16 +276,6 @@ export function RepoSidebar({ repos, stats, selectedRepos, unreadRepos = new Set
         </div>
       )}
 
-      {/* Contribution heatmap pinned at bottom */}
-      {contributions !== undefined && (
-        <div style={{
-          borderTop: "1px solid var(--border-subtle)",
-          flexShrink: 0,
-          padding: "8px 0",
-        }}>
-          <ContributionHeatmap contributions={contributions} onDateClick={onDateClick ?? (() => {})} />
-        </div>
-      )}
     </div>
   );
 }

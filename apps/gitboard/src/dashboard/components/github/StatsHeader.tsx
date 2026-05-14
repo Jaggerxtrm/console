@@ -32,7 +32,7 @@ export function StatsHeader({ summary }: Props) {
           )}
           <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--text-muted)" }}>
             <Icon size={12} />
-            <span style={{ fontFamily: "var(--font-mono)", color: "var(--text-primary)" }}>
+            <span style={{ color: "var(--text-primary)" }}>
               {summary ? String(summary[key]) : "—"}
             </span>
             {label}

@@ -5,6 +5,7 @@ import { ProjectRail, type ProjectRailStats } from "./components/beads/ProjectRa
 import { useBeadsStore } from "./stores/beads.ts";
 import { api } from "./lib/api.ts";
 import type { BeadIssue, BeadIssueDetail, Memory, Interaction } from "../types/beads.ts";
+import { CheckIcon } from "@primer/octicons-react";
 
 type Tab = "issues" | "board" | "closed" | "memories";
 
@@ -164,7 +165,7 @@ export function App() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--surface-primary)', color: 'var(--text-primary)', fontFamily: 'var(--font-ui)' }}>
-      <header style={{ display: 'flex', alignItems: 'center', gap: 24, padding: '0 20px', height: 'var(--topbar-height)', background: 'linear-gradient(180deg, var(--surface-secondary), var(--surface-primary))', borderBottom: '1px solid var(--border-subtle)', flexShrink: 0 }}>
+      <header style={{ display: 'flex', alignItems: 'center', gap: 24, padding: '0 20px', height: 'var(--topbar-height)', background: 'var(--surface-secondary)', borderBottom: '1px solid var(--border-subtle)', flexShrink: 0 }}>
         <span style={{ fontSize: 'var(--text-xs)', fontWeight: 600, letterSpacing: '0.1em', color: 'var(--text-muted)', textTransform: 'uppercase' }}>xtrm.beads</span>
         <nav style={{ display: 'flex', gap: 4, height: '100%', alignItems: 'stretch' }}>
           {TABS.map(tab => (
@@ -195,7 +196,7 @@ export function App() {
               getAgent={getAgentForIssue}
             />
           )}
-          {activeTab === "board" && <KanbanBoard issues={issues} getAgent={getAgentForIssue} onIssueClick={() => setActiveTab("issues")} />}
+          {activeTab === "board" && <KanbanBoard issues={issues} projectId={selectedProjectId} interactions={interactions} getAgent={getAgentForIssue} />}
           {activeTab === "closed" && <ClosedIssuesPanel issues={closedIssues} getAgent={getAgentForIssue} />}
           {activeTab === "memories" && <MemoriesPanel memories={memories} />}
         </div>
@@ -205,7 +206,7 @@ export function App() {
 }
 
 function ClosedIssuesPanel({ issues, getAgent }: { issues: BeadIssue[]; getAgent: (id: string) => string | null; }) {
-  return <div style={{ padding: 16, color: 'var(--text-secondary)' }}><h2 style={{ marginBottom: 16, color: 'var(--text-primary)' }}>Closed Issues</h2>{issues.length === 0 ? <p>No closed issues</p> : <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>{issues.map(issue => <div key={issue.id} style={{ padding: 'var(--spacing-md)', background: 'var(--surface-secondary)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}><div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}><span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>{issue.id}</span>{getAgent(issue.id) && <AgentBadge agent={getAgent(issue.id)!} />}</div><div style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{issue.title}</div>{issue.close_reason && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginTop: 4 }}>✓ {issue.close_reason}</div>}</div>)}</div>}</div>;
+  return <div style={{ padding: 16, color: 'var(--text-secondary)' }}><h2 style={{ marginBottom: 16, color: 'var(--text-primary)' }}>Closed Issues</h2>{issues.length === 0 ? <p>No closed issues</p> : <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>{issues.map(issue => <div key={issue.id} style={{ padding: 'var(--spacing-md)', background: 'var(--surface-secondary)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}><div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}><span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>{issue.id}</span>{getAgent(issue.id) && <AgentBadge agent={getAgent(issue.id)!} />}</div><div style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{issue.title}</div>{issue.close_reason && <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginTop: 4 }}><CheckIcon size={12} />{issue.close_reason}</div>}</div>)}</div>}</div>;
 }
 
 function MemoriesPanel({ memories }: { memories: Memory[] }) {
@@ -213,6 +214,5 @@ function MemoriesPanel({ memories }: { memories: Memory[] }) {
 }
 
 function AgentBadge({ agent }: { agent: string }) {
-  const colors: Record<string, string> = { claude: '#D97706', qwen: '#10B981', gemini: '#3B82F6', gpt: '#6366F1' };
-  return <span style={{ fontSize: 'var(--text-xs)', padding: '2px 6px', background: colors[agent] || 'var(--surface-tertiary)', color: 'white', borderRadius: 'var(--radius-pill)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>{agent}</span>;
+  return <span style={{ fontSize: 'var(--text-xs)', padding: '2px 6px', background: 'var(--surface-tertiary)', color: 'var(--text-primary)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>{agent}</span>;
 }

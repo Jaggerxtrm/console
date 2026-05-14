@@ -5,6 +5,7 @@ import {
   IssueClosedIcon,
   ChevronDownIcon,
   CommentIcon,
+  LinkExternalIcon,
 } from "@primer/octicons-react";
 import type { GithubIssue } from "../../../types/github.ts";
 import {
@@ -103,9 +104,10 @@ function IssueExpandedBody({ issue }: { issue: GithubIssue }) {
           target="_blank"
           rel="noreferrer"
           onClick={(e) => e.stopPropagation()}
-          style={{ color: "var(--accent-blue)", fontSize: "var(--text-xs)", textDecoration: "none" }}
+          style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "var(--accent-blue)", fontSize: "var(--text-xs)", textDecoration: "none" }}
         >
-          Open on GitHub →
+          <LinkExternalIcon size={12} />
+          Open on GitHub
         </a>
       )}
     </div>

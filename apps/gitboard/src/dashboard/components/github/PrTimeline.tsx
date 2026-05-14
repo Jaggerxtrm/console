@@ -5,6 +5,13 @@ import {
   GitMergeIcon,
   GitPullRequestClosedIcon,
   ChevronDownIcon,
+  LinkExternalIcon,
+  CommentIcon,
+  FileDiffIcon,
+  FileIcon,
+  TagIcon,
+  LinkIcon,
+  IssueOpenedIcon,
 } from "@primer/octicons-react";
 import type { GithubPr, GithubPrDetail } from "../../../types/github.ts";
 import { apiClient } from "../../lib/client.ts";
@@ -63,35 +70,11 @@ function PrStatePill({ pr }: { pr: GithubPr }) {
   return <span className={`pr-state-pill ${tone}`}>{label}</span>;
 }
 
-function PrLifecycle({ pr }: { pr: GithubPr }) {
-  const steps = [
-    { label: "Opened", value: formatDateTime(pr.created_at), active: true, tone: "open" },
-    { label: "Updated", value: formatDateTime(pr.updated_at), active: Boolean(pr.updated_at), tone: "update" },
-    pr.state === "merged"
-      ? { label: "Merged", value: formatDateTime(pr.merged_at), active: true, tone: "merged" }
-      : pr.state === "closed"
-        ? { label: "Closed", value: formatDateTime(pr.closed_at), active: true, tone: "closed" }
-        : { label: "Awaiting merge", value: "active", active: false, tone: "pending" },
-  ];
-
-  return (
-    <div className="pr-lifecycle">
-      {steps.map((step) => (
-        <div className={`pr-lifecycle-step ${step.active ? "is-active" : ""} ${step.tone}`} key={step.label}>
-          <span />
-          <div>
-            <strong>{step.label}</strong>
-            <small>{step.value}</small>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
+type ConversationItemKind = "body" | "comment" | "review" | "commit" | "event";
 
 type ConversationItem = {
   id: string;
-  kind: "body" | "comment" | "review" | "commit" | "event";
+  kind: ConversationItemKind;
   actor: string;
   label: string;
   body?: string | null;
@@ -188,6 +171,38 @@ function buildConversation(pr: GithubPr, detail: GithubPrDetail | null): Convers
   return items.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
 }
 
+function extractLinkedBeads(body: string | null | undefined): string[] {
+  if (!body) return [];
+  return [...new Set((body.match(/\bforge-[a-z0-9-]+\b/gi) ?? []).map((id) => id.toLowerCase()))];
+}
+
+function getConversationIcon(kind: ConversationItemKind): typeof CommentIcon {
+  switch (kind) {
+    case "body":
+      return IssueOpenedIcon;
+    case "comment":
+      return CommentIcon;
+    case "review":
+      return TagIcon;
+    case "commit":
+      return FileIcon;
+    case "event":
+      return LinkIcon;
+    default:
+      return CommentIcon;
+  }
+}
+
+function SectionLabel({ icon: Icon, title, status }: { icon: typeof CommentIcon; title: string; status?: string }) {
+  return (
+    <div className="pr-section-label">
+      <span className="pr-section-label-icon"><Icon size={11} /></span>
+      <span className="pr-section-label-title">{title}</span>
+      {status && <span className="pr-section-label-status">{status}</span>}
+    </div>
+  );
+}
+
 function renderPrBodyText(value: string): ReactNode[] {
   const nodes: ReactNode[] = [];
   const lines = value
@@ -279,18 +294,19 @@ function RichPrBody({ body }: { body: string }) {
 
 function ConversationEntry({ item }: { item: ConversationItem }) {
   const [showMore, setShowMore] = useState(false);
+  const Icon = getConversationIcon(item.kind);
   const body = item.body?.trim();
   const display = body ? truncateBody(body, item.kind === "body" ? 1800 : 900) : null;
 
   return (
     <article className={`pr-conversation-entry ${item.kind}`}>
-      <div className="pr-entry-marker" />
+      <div className="pr-entry-marker"><Icon size={11} /></div>
       <div className="pr-entry-main">
         <div className="pr-entry-header">
           <strong>{item.actor}</strong>
           <span>{item.label}</span>
           <time>{formatDateTime(item.created_at)}</time>
-          {item.url && <a href={item.url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>↗</a>}
+          {item.url && <a href={item.url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} style={{ display: "inline-flex", alignItems: "center" }}><LinkExternalIcon size={12} /></a>}
         </div>
         {display && (
           <div>
@@ -328,6 +344,8 @@ function PrExpandedBody({ pr }: { pr: GithubPr }) {
   }, [pr.repo, pr.number]);
 
   const conversation = useMemo(() => buildConversation(pr, detail), [pr, detail]);
+  const files = detail?.files ?? [];
+  const linkedBeads = useMemo(() => extractLinkedBeads([pr.body, ...(detail?.timeline ?? []).map((event) => event.body ?? "")].filter(Boolean).join("\n")), [pr.body, detail]);
 
   return (
     <div className="pr-expanded-body">
@@ -337,7 +355,7 @@ function PrExpandedBody({ pr }: { pr: GithubPr }) {
           <span><b>Comments</b>{detail?.comments.length ?? pr.comment_count}</span>
           <span><b>Reviews</b>{detail ? detail.reviews.length + detail.review_comments.length : "—"}</span>
           <span><b>Commits</b>{detail?.commits.length ?? "—"}</span>
-          <span><b>Files</b>{detail?.files.length ?? pr.changed_files ?? "—"}</span>
+          <span><b>Files</b>{files.length > 0 ? files.length : pr.changed_files ?? "—"}</span>
         </div>
         {hasDiff && (
           <div className="pr-summary-line pr-summary-diff">
@@ -355,16 +373,14 @@ function PrExpandedBody({ pr }: { pr: GithubPr }) {
         </div>
       )}
 
-      <div className="pr-conversation">
-        <div className="pr-section-title">
-          <span>Conversation</span>
-          <span className="pr-detail-status">{detailLoading ? "hydrating GitHub detail…" : detailError ? detailError : detail?.errors && Object.keys(detail.errors).length > 0 ? `${conversation.length} events · partial GitHub data` : `${conversation.length} events`}</span>
-          {pr.url && (
-            <a href={pr.url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>
-              Open on GitHub →
-            </a>
-          )}
-        </div>
+      <section className="pr-section">
+        <SectionLabel icon={CommentIcon} title="Conversation" status={detailLoading ? "hydrating GitHub detail…" : detailError ? detailError : detail?.errors && Object.keys(detail.errors).length > 0 ? `${conversation.length} events · partial GitHub data` : `${conversation.length} events`} />
+        {pr.url && (
+          <a href={pr.url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+            <LinkExternalIcon size={12} />
+            Open on GitHub
+          </a>
+        )}
         {conversation.length > 0 ? (
           <div className="pr-conversation-thread">
             {conversation.map((item) => <ConversationEntry item={item} key={item.id} />)}
@@ -372,7 +388,33 @@ function PrExpandedBody({ pr }: { pr: GithubPr }) {
         ) : (
           <div className="pr-empty-note">No PR conversation detail available yet.</div>
         )}
-      </div>
+      </section>
+
+      <section className="pr-section">
+        <SectionLabel icon={FileDiffIcon} title="Files" status={files.length ? `${files.length} files` : "no file detail"} />
+        {files.length > 0 ? (
+          <div className="pr-file-list">
+            {files.map((file) => (
+              <div className="pr-file-row" key={file.filename}>
+                <span className={`pr-file-status ${file.status}`}>{file.status}</span>
+                <span className="pr-file-path">{file.filename}</span>
+                <span className="pr-file-diff"><span className="is-add">+{file.additions ?? 0}</span><span className="is-del">−{file.deletions ?? 0}</span></span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="pr-empty-note">No file detail available yet.</div>
+        )}
+      </section>
+
+      {linkedBeads.length > 0 && (
+        <section className="pr-section">
+          <SectionLabel icon={LinkIcon} title="Linked beads" status={`${linkedBeads.length} linked`} />
+          <div className="pr-linked-beads">
+            {linkedBeads.map((id) => <span key={id} className="pr-linked-bead">{id}</span>)}
+          </div>
+        </section>
+      )}
     </div>
   );
 }

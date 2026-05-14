@@ -91,14 +91,6 @@ describe("RepoSidebar", () => {
     expect(html).toContain("no activity today");
   });
 
-  it("renders contribution heatmap empty state in sidebar when contributions passed", () => {
-    const html = renderToStaticMarkup(
-      <RepoSidebar repos={repos} stats={stats} selectedRepos={[]} onSelect={noop} onReset={noop}
-        contributions={[]} onDateClick={noop} />
-    );
-    expect(html.toLowerCase()).toContain("no contribution data");
-  });
-
   it("renders Select an event placeholder in sidebar when selectedEvent is null", () => {
     const html = renderToStaticMarkup(
       <RepoSidebar repos={repos} stats={stats} selectedRepos={[]} onSelect={noop} onReset={noop}

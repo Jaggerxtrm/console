@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { LinkExternalIcon } from "@primer/octicons-react";
 import { GithubPanel } from "./components/github/GithubPanel.tsx";
 
 type Tab = "github" | "beads";
@@ -31,7 +32,7 @@ function DashboardShell({ view }: { view: View }) {
         gap: 24,
         padding: '0 20px',
         height: 'var(--topbar-height)',
-        background: 'linear-gradient(180deg, var(--surface-secondary), var(--surface-primary))',
+        background: 'var(--surface-secondary)',
         borderBottom: '1px solid var(--border-subtle)',
         flexShrink: 0,
       }}>
@@ -87,6 +88,9 @@ function DashboardShell({ view }: { view: View }) {
             target="_blank" 
             rel="noopener noreferrer"
             style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 4,
               fontSize: 'var(--text-sm)',
               color: 'var(--text-muted)',
               textDecoration: 'none',
@@ -96,7 +100,8 @@ function DashboardShell({ view }: { view: View }) {
               border: '1px solid var(--border-subtle)',
             }}
           >
-            Beadboard ↗
+            <LinkExternalIcon size={12} />
+            Beadboard
           </a>
         </div>
       </header>

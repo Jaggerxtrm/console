@@ -370,17 +370,17 @@ function formatCompactDate(iso: string | undefined): string {
 }
 
 function StatusPill({ status }: { status: string }) {
-  return <span style={{ fontSize: "var(--text-xs)", padding: "2px 8px", borderRadius: 999, background: "var(--surface-tertiary)", color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{STATUS_LABELS[status] ?? status}</span>;
+  return <span style={{ fontSize: "var(--text-xs)", padding: "2px 8px", borderRadius: "var(--radius-sm)", background: "var(--surface-tertiary)", color: "var(--text-secondary)", whiteSpace: "nowrap", border: "1px solid var(--border-subtle)" }}>{STATUS_LABELS[status] ?? status}</span>;
 }
 
 function TypePill({ type, isEpic }: { type: string; isEpic: boolean }) {
-  return <span style={{ fontSize: "var(--text-xs)", padding: "2px 8px", borderRadius: 999, background: isEpic ? "var(--accent-purple)" : "var(--surface-tertiary)", color: isEpic ? "white" : "var(--text-secondary)", whiteSpace: "nowrap" }}>{ISSUE_TYPE_LABEL[type] ?? type}</span>;
+  return <span style={{ fontSize: "var(--text-xs)", padding: "2px 8px", borderRadius: "var(--radius-sm)", background: "var(--surface-tertiary)", color: isEpic ? "var(--accent)" : "var(--text-secondary)", whiteSpace: "nowrap", border: "1px solid var(--border-subtle)" }}>{ISSUE_TYPE_LABEL[type] ?? type}</span>;
 }
 
 function PriorityPill({ priority }: { priority: number }) {
-  return <span style={{ fontSize: "var(--text-xs)", padding: "2px 8px", borderRadius: 999, background: "var(--surface-tertiary)", color: "var(--text-secondary)", whiteSpace: "nowrap" }}>P{priority}</span>;
+  return <span style={{ fontSize: "var(--text-xs)", padding: "2px 8px", borderRadius: "var(--radius-sm)", background: "var(--surface-tertiary)", color: "var(--text-secondary)", whiteSpace: "nowrap", border: "1px solid var(--border-subtle)" }}>P{priority}</span>;
 }
 
 function EmptyFeed() {
-  return <div style={{ padding: 20, color: "var(--text-muted)", border: "1px dashed var(--border-subtle)", borderRadius: 12 }}>No issues</div>;
+  return <div style={{ padding: 20, color: "var(--text-muted)", border: "1px dashed var(--border-subtle)", borderRadius: "var(--radius-sm)" }}>No issues</div>;
 }
