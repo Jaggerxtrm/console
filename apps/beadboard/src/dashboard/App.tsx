@@ -1,11 +1,11 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { FilterIcon, InboxIcon, ProjectIcon, ArchiveIcon, DatabaseIcon, CheckIcon } from "@primer/octicons-react";
 import { IssueFeed } from "./components/beads/IssueFeed.tsx";
 import { KanbanBoard } from "./components/beads/KanbanBoard.tsx";
 import { ProjectRail, type ProjectRailStats } from "./components/beads/ProjectRail.tsx";
 import { useBeadsStore } from "./stores/beads.ts";
 import { api } from "./lib/api.ts";
 import type { BeadIssue, BeadIssueDetail, Memory, Interaction } from "../types/beads.ts";
-import { CheckIcon } from "@primer/octicons-react";
 
 type Tab = "issues" | "board" | "closed" | "memories";
 
@@ -24,6 +24,7 @@ export function App() {
   const [loadingDetailId, setLoadingDetailId] = useState<string | null>(null);
   const [statsByProject, setStatsByProject] = useState<Record<string, ProjectRailStats | undefined>>({});
   const [loadingProjectStats, setLoadingProjectStats] = useState(false);
+  const [showOpenOnly, setShowOpenOnly] = useState(false);
   const requestIdRef = useRef(0);
 
   const {
@@ -150,8 +151,8 @@ export function App() {
     }
   }, [loadingDetailId, selectedIssueId, selectedProjectId]);
 
-  const getAgentForIssue = (issueId: string): string | null => {
-    const issueInteractions = interactions.filter(i => i.issue_id === issueId);
+  const getAgentForIssue = useCallback((issueId: string): string | null => {
+    const issueInteractions = interactions.filter((i) => i.issue_id === issueId);
     if (issueInteractions.length === 0) return null;
     const model = issueInteractions[0]?.model;
     if (!model) return null;
@@ -161,19 +162,39 @@ export function App() {
     if (lower.includes("gemini")) return "gemini";
     if (lower.includes("gpt")) return "gpt";
     return null;
-  };
+  }, [interactions]);
+
+  const visibleIssues = useMemo(() => (showOpenOnly ? issues.filter((issue) => issue.status !== "closed") : issues), [issues, showOpenOnly]);
+  const visibleClosedIssues = useMemo(() => (showOpenOnly ? closedIssues.filter((issue) => issue.status === "closed") : closedIssues), [closedIssues, showOpenOnly]);
+  const segmentCounts = useMemo(() => ({ feed: visibleIssues.length, board: visibleIssues.length, closed: visibleClosedIssues.length, memories: memories.length }), [memories.length, visibleClosedIssues.length, visibleIssues.length]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--surface-primary)', color: 'var(--text-primary)', fontFamily: 'var(--font-ui)' }}>
-      <header style={{ display: 'flex', alignItems: 'center', gap: 24, padding: '0 20px', height: 'var(--topbar-height)', background: 'var(--surface-secondary)', borderBottom: '1px solid var(--border-subtle)', flexShrink: 0 }}>
-        <span style={{ fontSize: 'var(--text-xs)', fontWeight: 600, letterSpacing: '0.1em', color: 'var(--text-muted)', textTransform: 'uppercase' }}>xtrm.beads</span>
-        <nav style={{ display: 'flex', gap: 4, height: '100%', alignItems: 'stretch' }}>
-          {TABS.map(tab => (
-            <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{ padding: '0 12px', fontSize: 'var(--text-base)', fontWeight: 500, color: activeTab === tab.id ? 'var(--text-primary)' : 'var(--text-secondary)', background: 'transparent', border: 'none', borderBottom: activeTab === tab.id ? '2px solid var(--accent-blue)' : '2px solid transparent', cursor: 'pointer', transition: 'var(--transition)' }}>{tab.label}</button>
-          ))}
-        </nav>
-        {loading && <span style={{ marginLeft: 'auto', color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>Loading...</span>}
-        {error && <span style={{ marginLeft: 'auto', color: 'var(--status-blocked)', fontSize: 'var(--text-sm)' }}>{error}</span>}
+      <header className="module-header">
+        <div className="module-segments">
+          {TABS.map((tab) => {
+            const Icon = tab.id === "issues" ? InboxIcon : tab.id === "board" ? ProjectIcon : tab.id === "closed" ? ArchiveIcon : DatabaseIcon;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                className={`module-segment ${activeTab === tab.id ? "is-active" : ""}`}
+                onClick={() => setActiveTab(tab.id)}
+              >
+                <Icon size={12} />
+                <span>{tab.label}</span>
+                <span className="module-count">{segmentCounts[tab.id]}</span>
+              </button>
+            );
+          })}
+        </div>
+        <div className="module-actions">
+          <button type="button" className={`module-icon-btn ${showOpenOnly ? "is-active" : ""}`} onClick={() => setShowOpenOnly((value) => !value)} aria-pressed={showOpenOnly}>
+            <FilterIcon size={12} /> Filter
+          </button>
+        </div>
+        {loading && <span className="module-status">Loading...</span>}
+        {error && <span className="module-status is-error">{error}</span>}
       </header>
 
       <main style={{ flex: 1, minHeight: 0, display: 'flex' }}>
@@ -188,7 +209,7 @@ export function App() {
         <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
           {activeTab === "issues" && (
             <IssueFeed
-              issues={issues}
+              issues={visibleIssues}
               selectedIssueId={selectedIssueId}
               selectedIssueDetail={selectedIssueDetail}
               loadingDetailId={loadingDetailId}
@@ -196,8 +217,8 @@ export function App() {
               getAgent={getAgentForIssue}
             />
           )}
-          {activeTab === "board" && <KanbanBoard issues={issues} projectId={selectedProjectId} interactions={interactions} getAgent={getAgentForIssue} />}
-          {activeTab === "closed" && <ClosedIssuesPanel issues={closedIssues} getAgent={getAgentForIssue} />}
+          {activeTab === "board" && <KanbanBoard issues={visibleIssues} projectId={selectedProjectId} interactions={interactions} getAgent={getAgentForIssue} />}
+          {activeTab === "closed" && <ClosedIssuesPanel issues={visibleClosedIssues} getAgent={getAgentForIssue} />}
           {activeTab === "memories" && <MemoriesPanel memories={memories} />}
         </div>
       </main>
