@@ -96,7 +96,7 @@ function IssueRow({ issue, detail, isExpanded, isLoadingDetail, agent, dependenc
           <span className="meta">{issue.owner ?? "unassigned"}<span>{formatCompactDate(issue.updated_at)}</span>{childCount > 0 && <span>{childCount} children</span>}</span>
         </span>
         <span className="type-mark" title={TYPE_LABELS[issue.issue_type] ?? issue.issue_type}><TypeIcon size={13} /></span>
-        <span className="meta-right"><span>{dependencyCount} deps</span>{agent && <span className="agent-badge"><DependabotIcon size={10} /> {agent}</span>}</span>
+        <span className="meta-right">{renderInlineDeps(issue, dependencyCount)}{agent && <span className="agent-badge"><DependabotIcon size={10} /> {agent}</span>}</span>
         <span className="state">{STATUS_LABELS[issue.status] ?? issue.status}</span>
         <span className="chev">{isExpanded ? <ChevronDownIcon size={12} /> : <ChevronRightIcon size={12} />}</span>
       </button>
@@ -130,8 +130,7 @@ function IssueDossier({ id, detail, issue, loading, projectId }: { id: string; d
   }, [issue.id, projectId]);
 
   if (loading) return <div id={id} className="bead-expanded-body"><div className="bead-empty-note">Loading dossier...</div></div>;
-  const deps = (detail?.dependencies ?? issue.dependencies).filter((d) => d.dependency_type !== "parent-child");
-  const blockers = deps.filter((d) => d.dependency_type === "blocked_by" || d.dependency_type === "blocks");
+  const allDeps = detail?.dependencies ?? issue.dependencies;
   const related = (detail?.related_ids ?? issue.related_ids ?? []);
   const children = detail?.children ?? [];
   const labels = detail?.labels ?? issue.labels ?? [];
@@ -146,14 +145,9 @@ function IssueDossier({ id, detail, issue, loading, projectId }: { id: string; d
           )}
         </div>
         <div className="bead-dossier-side">
-          {blockers.length > 0 && (
-            <DossierSection title="Dependencies">
-              <ul className="bead-dep-list">{blockers.map((d) => <li key={`dep-${d.id}`}><span className={`bead-dep-kind bead-dep-${d.dependency_type}`}>{d.dependency_type === "blocked_by" ? "blocked by" : "blocks"}</span><span className="bead-dep-id">{d.id}</span><span className="bead-dep-title">{d.title}</span><span className={`bead-dep-status bead-status-${d.status}`}>{d.status}</span></li>)}</ul>
-            </DossierSection>
-          )}
-          {isEpic && children.length > 0 && (
-            <DossierSection title={`Children (${children.length})`}>
-              <ul className="bead-dep-list">{children.map((c) => <li key={`child-${c.id}`}><span className="bead-dep-id">{c.id}</span><span className="bead-dep-title">{c.title}</span><span className={`bead-dep-status bead-status-${c.status}`}>{c.status}</span></li>)}</ul>
+          {(allDeps.length > 0 || children.length > 0) && (
+            <DossierSection title="Dependency tree">
+              <DependencyTree issue={issue} dependencies={allDeps} children={children} />
             </DossierSection>
           )}
           {related.length > 0 && (
@@ -341,3 +335,99 @@ function groupChildrenByEpic(issues: BeadIssue[]): Map<string, BeadIssue[]> { co
 function getEpicParentId(issue: BeadIssue, issueById: Map<string, BeadIssue>): string | null { if (issue.parent_id && issueById.get(issue.parent_id)?.issue_type === "epic") return issue.parent_id; const parentDependency = issue.dependencies.find((dependency) => dependency.dependency_type === "parent-child" && issueById.get(dependency.id)?.issue_type === "epic"); return parentDependency?.id ?? null; }
 
 function EmptyFeed() { return <div className="bead-empty-note">No issues</div>; }
+
+// ── Dependency display ────────────────────────────────────────────────────────
+
+const DEP_KIND_LABEL: Record<string, string> = {
+  blocks: "blocks",
+  blocked_by: "blocked by",
+  parent: "parent",
+  "parent-child": "parent",
+  related: "related",
+  "discovered-from": "discovered from",
+};
+
+const DEP_KIND_GLYPH: Record<string, string> = {
+  blocks: "↪",
+  blocked_by: "↩",
+  parent: "⊃",
+  "parent-child": "⊃",
+  related: "•",
+  "discovered-from": "↑",
+};
+
+const DEP_STATUS_ICON: Record<string, string> = {
+  closed: "✓",
+  open: "○",
+  in_progress: "◐",
+  blocked: "⛔",
+  in_review: "↻",
+  deferred: "❄",
+};
+
+function renderInlineDeps(issue: BeadIssue, fallbackCount: number): ReactNode {
+  const visible = issue.dependencies.filter((d) => d.dependency_type !== "parent-child").slice(0, 2);
+  if (visible.length === 0) {
+    if (fallbackCount === 0) return <span className="bead-row-dep-empty">—</span>;
+    return <span>{fallbackCount} deps</span>;
+  }
+  const total = issue.dependencies.filter((d) => d.dependency_type !== "parent-child").length;
+  const more = total - visible.length;
+  return (
+    <span className="bead-row-deps">
+      {visible.map((d) => (
+        <span key={`row-dep-${d.id}`} className={`bead-row-dep bead-row-dep-${d.dependency_type}`} title={`${DEP_KIND_LABEL[d.dependency_type] ?? d.dependency_type}: ${d.id}`}>
+          <span className="bead-row-dep-glyph">{DEP_KIND_GLYPH[d.dependency_type] ?? "·"}</span>
+          <span className="bead-row-dep-id">{d.id}</span>
+        </span>
+      ))}
+      {more > 0 && <span className="bead-row-dep-more">+{more}</span>}
+    </span>
+  );
+}
+
+function DependencyTree({ issue, dependencies, children }: { issue: BeadIssue; dependencies: BeadDependency[]; children: BeadDependency[]; }) {
+  const grouped = useMemo(() => {
+    const out = new Map<string, BeadDependency[]>();
+    for (const d of dependencies) {
+      const list = out.get(d.dependency_type) ?? [];
+      list.push(d);
+      out.set(d.dependency_type, list);
+    }
+    return out;
+  }, [dependencies]);
+  const order: Array<keyof typeof DEP_KIND_LABEL | string> = ["parent", "parent-child", "blocked_by", "blocks", "discovered-from", "related"];
+  const hasChildren = children.length > 0;
+  return (
+    <div className="bead-dep-tree" role="tree">
+      <div className="bead-dep-tree-root">
+        <span className="bead-dep-tree-status">{DEP_STATUS_ICON[issue.status] ?? "•"}</span>
+        <span className="bead-dep-tree-id">{issue.id}</span>
+        <span className="bead-dep-tree-title">{issue.title}</span>
+        <span className="bead-dep-tree-kind">[root]</span>
+      </div>
+      {order.map((kind) => {
+        const list = grouped.get(kind as string);
+        if (!list || list.length === 0) return null;
+        return list.map((d) => (
+          <div key={`tree-${kind}-${d.id}`} className="bead-dep-tree-node">
+            <span className="bead-dep-tree-connector">└─</span>
+            <span className="bead-dep-tree-status">{DEP_STATUS_ICON[d.status] ?? "•"}</span>
+            <span className="bead-dep-tree-id">{d.id}</span>
+            <span className="bead-dep-tree-title">{d.title}</span>
+            <span className="bead-dep-tree-kind">[{DEP_KIND_LABEL[d.dependency_type] ?? d.dependency_type}]</span>
+          </div>
+        ));
+      })}
+      {hasChildren && children.map((c) => (
+        <div key={`tree-child-${c.id}`} className="bead-dep-tree-node">
+          <span className="bead-dep-tree-connector">└─</span>
+          <span className="bead-dep-tree-status">{DEP_STATUS_ICON[c.status] ?? "•"}</span>
+          <span className="bead-dep-tree-id">{c.id}</span>
+          <span className="bead-dep-tree-title">{c.title}</span>
+          <span className="bead-dep-tree-kind">[child]</span>
+        </div>
+      ))}
+    </div>
+  );
+}

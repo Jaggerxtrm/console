@@ -81,6 +81,28 @@ body {
 .bead-dep-status.bead-status-in_progress { color: var(--accent); }
 .bead-label-strip { display: flex; flex-wrap: wrap; gap: 4px; }
 .bead-label-chip { font-family: var(--font-ui); font-size: 9.5px; color: var(--text-secondary); border: 1px solid var(--border-subtle); padding: 1px 6px; }
+/* Inline dependency chips in row meta-right */
+.bead-row-deps { display: inline-flex; align-items: center; gap: 4px; }
+.bead-row-dep { display: inline-flex; align-items: center; gap: 2px; padding: 0 4px; border: 1px solid var(--border-subtle); font-size: 9.5px; }
+.bead-row-dep-glyph { color: var(--accent); font-family: var(--font-mono); }
+.bead-row-dep-id { font-family: var(--font-mono); color: var(--text-secondary); }
+.bead-row-dep-more { color: var(--text-muted); font-size: 9.5px; }
+.bead-row-dep-empty { color: var(--text-disabled); font-size: 9.5px; }
+.bead-row-dep-blocks .bead-row-dep-glyph { color: var(--accent-orange); }
+.bead-row-dep-blocked_by .bead-row-dep-glyph { color: var(--accent-red); }
+.bead-row-dep-parent-child .bead-row-dep-glyph, .bead-row-dep-parent .bead-row-dep-glyph { color: var(--accent-purple); }
+.bead-row-dep-discovered-from .bead-row-dep-glyph { color: var(--accent-green); }
+/* Dependency tree block in dossier */
+.bead-dep-tree { display: grid; gap: 2px; font-family: var(--font-mono); font-size: 10.5px; color: var(--text-secondary); }
+.bead-dep-tree-root, .bead-dep-tree-node { display: grid; grid-template-columns: 14px 16px auto minmax(0, 1fr) auto; gap: 6px; align-items: center; }
+.bead-dep-tree-root { padding-left: 0; }
+.bead-dep-tree-node { padding-left: 14px; }
+.bead-dep-tree-node .bead-dep-tree-connector { color: var(--text-disabled); }
+.bead-dep-tree-root .bead-dep-tree-connector { content: ""; }
+.bead-dep-tree-status { color: var(--accent); text-align: center; }
+.bead-dep-tree-id { color: var(--text-muted); }
+.bead-dep-tree-title { color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; font-family: var(--font-ui); font-size: 11px; }
+.bead-dep-tree-kind { color: var(--accent); font-family: var(--font-ui); font-size: 9.5px; text-transform: lowercase; letter-spacing: 0.04em; }
 .bead-expanded-section { padding: 6px 0; }
 .bead-section-title { margin-bottom: 6px; color: var(--text-muted); font-size: 9px; font-weight: 700; letter-spacing: 0.15em; text-transform: uppercase; }
 .bead-body-text { color: var(--text-secondary); font-size: 11px; line-height: 1.55; }
