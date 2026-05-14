@@ -87,7 +87,6 @@ function IssueRow({ issue, detail, isExpanded, isLoadingDetail, agent, dependenc
   return (
     <article className={`row ${issue.status} ${isEpic ? "epic" : ""} ${isExpanded ? "is-expanded" : ""} ${isChild ? "is-child" : ""}`}>
       <button type="button" className="row-main" onClick={onClick} aria-expanded={isExpanded} aria-controls={`issue-dossier-${issue.id}`}>
-        <span className="rail" />
         <span className="id">{issue.id}</span>
         <span className="title-col">
           <span className="title">{issue.title}</span>
