@@ -27,62 +27,16 @@ const mockIssue: BeadIssue = {
 };
 
 describe("BeadCard", () => {
-  it("renders issue title", () => {
+  it("renders issue title and id", () => {
     render(<BeadCard issue={mockIssue} />);
-    const titles = screen.getAllByText("Test issue title");
-    expect(titles.length).toBeGreaterThan(0);
+    expect(screen.getByText("Test issue title")).toBeInTheDocument();
+    expect(screen.getByText("forge-001")).toBeInTheDocument();
   });
 
-  it("renders issue ID", () => {
-    render(<BeadCard issue={mockIssue} />);
-    const ids = screen.getAllByText("forge-001");
-    expect(ids.length).toBeGreaterThan(0);
-  });
-
-  it("renders priority badge", () => {
-    render(<BeadCard issue={mockIssue} />);
-    const badges = screen.getAllByText("P1");
-    expect(badges.length).toBeGreaterThan(0);
-  });
-
-  it("renders type icon", () => {
-    render(<BeadCard issue={mockIssue} />);
-    const icons = screen.getAllByText("✨");
-    expect(icons.length).toBeGreaterThan(0);
-  });
-
-  it("renders blocker count when issue is blocked", () => {
-    const blockedIssue: BeadIssue = {
-      ...mockIssue,
-      dependencies: [
-        { id: "dep-1", title: "Blocker", status: "open", dependency_type: "blocked_by" },
-      ],
-    };
-    render(<BeadCard issue={blockedIssue} />);
-    const blockers = screen.getAllByText(/⛔1/);
-    expect(blockers.length).toBeGreaterThan(0);
-  });
-
-  it("renders blocks count when issue blocks others", () => {
-    const blockingIssue: BeadIssue = {
-      ...mockIssue,
-      dependencies: [
-        { id: "dep-1", title: "Blocks this", status: "open", dependency_type: "blocks" },
-        { id: "dep-2", title: "Blocks that", status: "open", dependency_type: "blocks" },
-      ],
-    };
-    render(<BeadCard issue={blockingIssue} />);
-    const blocks = screen.getAllByText(/→2/);
-    expect(blocks.length).toBeGreaterThan(0);
-  });
-
-  it("renders label count", () => {
-    const labeledIssue: BeadIssue = {
-      ...mockIssue,
-      labels: ["frontend", "urgent"],
-    };
-    render(<BeadCard issue={labeledIssue} />);
-    const labels = screen.getAllByText(/🏷️2/);
-    expect(labels.length).toBeGreaterThan(0);
+  it("renders compact metadata without pills", () => {
+    render(<BeadCard issue={mockIssue} agent="claude" />);
+    expect(screen.getByText("P1")).toBeInTheDocument();
+    expect(screen.getByText("claude")).toBeInTheDocument();
+    expect(screen.queryByText("0 deps")).not.toBeInTheDocument();
   });
 });
