@@ -896,48 +896,12 @@ body {
 
 /* Apply the grounded Westworld control-room design to the real Gitboard UI. */
 .westworld-app {
-  --surface-backdrop: #070b10;
-  --surface-elevated: rgba(13, 22, 29, 0.92);
-  --surface-primary: #081017;
-  --surface-secondary: rgba(12, 21, 28, 0.88);
-  --surface-tertiary: rgba(22, 37, 46, 0.74);
-  --surface-quaternary: rgba(35, 55, 64, 0.72);
-  --bg-hover: rgba(126, 183, 194, 0.08);
-  --border-subtle: rgba(132, 171, 179, 0.14);
-  --border-default: rgba(132, 171, 179, 0.20);
-  --border-strong: rgba(160, 202, 211, 0.28);
-  --text-primary: #e2ecee;
-  --text-secondary: #94a9ae;
-  --text-muted: #667a80;
-  --accent-blue: #8ed2dc;
-  --accent-green: #89c9a5;
-  --accent-orange: #d2b36d;
-  --accent-red: #d1847f;
-  --accent-purple: #9fb8c9;
-  --accent-teal: #8ed2dc;
-  --event-push: #8ed2dc;
-  --event-pr-open: #89c9a5;
-  --event-pr-merge: #a7b6d9;
-  --event-pr-close: rgba(209, 132, 127, 0.62);
-  --event-review: #d2b36d;
-  --event-issue-open: #89c9a5;
-  --event-issue-close: #74868b;
-  --event-release: #8ed2dc;
-  --event-branch: #8ca0a6;
-  --event-social: #8a8379;
-  --shadow-sm: 0 8px 26px rgba(0,0,0,0.24);
-  --shadow-md: 0 14px 42px rgba(0,0,0,0.28);
-  --shadow-lg: 0 22px 70px rgba(0,0,0,0.34);
-  --shadow-card: 0 14px 44px rgba(0,0,0,0.30);
-  background:
-    radial-gradient(circle at 72% -12%, rgba(94, 145, 156, 0.10), transparent 34%),
-    linear-gradient(135deg, #080d12 0%, #0b141b 50%, #070b10 100%) !important;
+  background: var(--surface-primary) !important;
 }
 
 .westworld-app > header {
   height: 44px !important;
-  background:
-    linear-gradient(180deg, rgba(15, 25, 32, 0.94), rgba(8, 14, 19, 0.88)) !important;
+  background: var(--surface-secondary) !important;
   border-bottom: 1px solid rgba(132, 171, 179, 0.15) !important;
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.035), 0 10px 38px rgba(0,0,0,0.18);
   backdrop-filter: blur(18px);
@@ -950,12 +914,12 @@ body {
   right: 0;
   top: 44px;
   height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(142,210,220,0.22), transparent);
+  background: var(--border-subtle);
   pointer-events: none;
 }
 
 .westworld-app > header a:first-child {
-  color: #dbe8ea !important;
+  color: var(--text-primary) !important;
   letter-spacing: 0.16em !important;
 }
 
@@ -966,27 +930,24 @@ body {
 
 .westworld-app main {
   position: relative;
-  background:
-    linear-gradient(rgba(142, 210, 220, 0.026) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(142, 210, 220, 0.026) 1px, transparent 1px),
-    var(--surface-primary);
+  background: var(--surface-primary);
   background-size: 28px 28px;
 }
 
 .westworld-app main > div {
-  background: rgba(8, 16, 23, 0.72);
+  background: var(--surface-secondary);
 }
 
 .westworld-app [style*="background: var(--surface-secondary)"] {
-  background: linear-gradient(180deg, rgba(15, 25, 32, 0.80), rgba(8, 14, 19, 0.84)) !important;
+  background: var(--surface-secondary) !important;
 }
 
 .westworld-app [style*="background: var(--surface-primary)"] {
-  background: rgba(8, 16, 23, 0.70) !important;
+  background: var(--surface-primary) !important;
 }
 
 .westworld-app [style*="background: var(--surface-tertiary)"] {
-  background: rgba(142, 210, 220, 0.06) !important;
+  background: var(--surface-tertiary) !important;
 }
 
 .westworld-app [style*="borderBottom: 1px solid var(--border-subtle)"],
@@ -995,14 +956,14 @@ body {
 .westworld-app [style*="border-right: 1px solid var(--border-subtle)"],
 .westworld-app [style*="borderTop: 1px solid var(--border-subtle)"],
 .westworld-app [style*="border-top: 1px solid var(--border-subtle)"] {
-  border-color: rgba(132, 171, 179, 0.14) !important;
+  border-color: var(--border-subtle) !important;
 }
 
 .westworld-app [style*="borderBottom: 2px solid var(--accent-blue)"],
 .westworld-app [style*="border-bottom: 2px solid var(--accent-blue)"],
 .westworld-app [style*="borderLeft: 2px solid var(--event-push)"],
 .westworld-app [style*="border-left: 2px solid var(--event-push)"] {
-  border-color: #8ed2dc !important;
+  border-color: var(--accent-blue) !important;
 }
 
 .westworld-app [style*="fontSize: 11"],
@@ -1251,9 +1212,7 @@ body {
   padding-left: 18px !important;
   padding-right: 14px !important;
   gap: 18px !important;
-  background:
-    linear-gradient(90deg, rgba(142,210,220,0.055), transparent 18%, transparent 78%, rgba(142,210,220,0.035)),
-    linear-gradient(180deg, rgba(16, 27, 34, 0.96), rgba(7, 13, 18, 0.92)) !important;
+  background: var(--surface-secondary) !important;
   clip-path: polygon(0 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%);
 }
 
@@ -1264,9 +1223,9 @@ body {
   right: 8px;
   top: 6px;
   bottom: 6px;
-  border: 1px solid rgba(142, 210, 220, 0.055);
-  border-left-color: rgba(142, 210, 220, 0.15);
-  border-right-color: rgba(142, 210, 220, 0.10);
+  border: 1px solid var(--border-subtle);
+  border-left-color: var(--border-default);
+  border-right-color: var(--border-default);
   pointer-events: none;
 }
 
@@ -1276,8 +1235,8 @@ body {
   align-items: center;
   height: 26px;
   padding: 0 13px 0 11px;
-  border: 1px solid rgba(142, 210, 220, 0.13);
-  background: rgba(142, 210, 220, 0.035);
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-tertiary);
   clip-path: polygon(0 0, calc(100% - 7px) 0, 100% 7px, 100% 100%, 7px 100%, 0 calc(100% - 7px));
 }
 
@@ -1287,7 +1246,7 @@ body {
   position: absolute;
   width: 5px;
   height: 1px;
-  background: rgba(142, 210, 220, 0.65);
+  background: var(--accent-blue);
 }
 
 .westworld-app .ww-topbar > a:first-child::before { left: 0; top: 0; }
@@ -1299,8 +1258,8 @@ body {
   height: 30px !important;
   align-items: center !important;
   padding: 0 4px;
-  border: 1px solid rgba(142, 210, 220, 0.10);
-  background: rgba(5, 11, 16, 0.34);
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-primary);
   clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 0 100%);
 }
 
@@ -1311,7 +1270,7 @@ body {
   top: 0;
   bottom: 0;
   width: 1px;
-  background: linear-gradient(transparent, rgba(142,210,220,0.18), transparent);
+  background: var(--border-subtle);
 }
 
 .westworld-app .ww-nav button,
@@ -1319,7 +1278,7 @@ body {
   height: 24px !important;
   padding: 0 13px !important;
   border-bottom-width: 1px !important;
-  color: #82999f !important;
+  color: var(--text-muted) !important;
   font-size: 11px !important;
   letter-spacing: 0.075em;
   text-transform: uppercase;
