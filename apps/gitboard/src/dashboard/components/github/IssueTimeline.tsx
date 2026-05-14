@@ -27,7 +27,7 @@ function DayHeader({ label }: { label: string }) {
   return (
     <div
       style={{
-        padding: "6px 12px 4px",
+        padding: "4px 12px 3px",
         fontSize: "var(--text-xs)",
         color: "var(--text-muted)",
         fontWeight: 600,
@@ -174,7 +174,7 @@ function VirtualizedIssueTimeline({ issues }: { issues: GithubIssue[] }) {
   const rowVirtualizer = useVirtualizer({
     count: items.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: (i) => items[i].kind === "header" ? 32 : 72,
+    estimateSize: (i) => items[i].kind === "header" ? 28 : 64,
     overscan: 5,
     measureElement: (el) => el?.getBoundingClientRect().height ?? 0,
   });

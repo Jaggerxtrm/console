@@ -159,7 +159,7 @@ function EventRow({ evt, selected, hovered, expanded = false, onSelect, onMouseE
         display: "flex",
         alignItems: "flex-start",
         gap: 0,
-        padding: "10px 16px",
+        padding: "8px 12px",
         borderRadius: "var(--radius-md)",
         borderLeft: selected ? `2px solid ${color}` : "2px solid transparent",
         background: selected ? "var(--surface-tertiary)" : hovered ? "rgba(255,255,255,0.04)" : "transparent",
@@ -195,7 +195,7 @@ function EventRow({ evt, selected, hovered, expanded = false, onSelect, onMouseE
         </div>
 
         {/* Line 2: branch + commit count + chevron */}
-        <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 1 }}>
           {evt.branch && (
             <span style={{
               fontSize: "var(--text-xs)",
@@ -223,7 +223,7 @@ function EventRow({ evt, selected, hovered, expanded = false, onSelect, onMouseE
 
       {/* Diffstats */}
       {hasDiff && (
-        <div style={{ display: "flex", gap: 4, fontSize: "var(--text-xs)", fontWeight: 500, flexShrink: 0, marginLeft: 8 }}>
+        <div style={{ display: "flex", gap: 4, fontSize: "var(--text-xs)", fontWeight: 500, flexShrink: 0, marginLeft: 6 }}>
           {evt.additions != null && <span style={{ color: "var(--diff-add)" }}>+{evt.additions}</span>}
           {evt.deletions != null && <span style={{ color: "var(--diff-del)" }}>−{evt.deletions}</span>}
         </div>
@@ -380,9 +380,9 @@ function VirtualizedTimeline({ events, selectedId, onSelect }: Props) {
                       {item.event.type === "PushEvent" && expandedIds.includes(item.event.id) && (
                         <div style={{ borderTop: "1px solid var(--border-subtle)" }}>
                           {loadingIds.has(item.event.id) ? (
-                            <div style={{ padding: "8px 16px", fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>Loading commits…</div>
+                            <div style={{ padding: "6px 12px", fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>Loading commits…</div>
                           ) : (
-                            <div style={{ padding: "4px 16px 8px" }}>
+                            <div style={{ padding: "2px 12px 6px" }}>
                               {(commitCache.get(item.event.id) ?? []).map(commit => (
                                 <CommitRow key={commit.sha} commit={commit} />
                               ))}

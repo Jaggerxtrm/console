@@ -90,7 +90,7 @@ export function EventDetail({ event, commits }: Props) {
         height: "100%",
         color: "var(--text-muted)",
         fontSize: "var(--text-base)",
-        padding: "var(--spacing-lg)",
+        padding: "var(--spacing-md)",
       }}>
         Select an event to see details.
       </div>
@@ -110,7 +110,7 @@ export function EventDetail({ event, commits }: Props) {
         display: "flex",
         alignItems: "center",
         gap: 6,
-        padding: "12px 24px",
+        padding: "8px 16px",
         borderBottom: "1px solid var(--border-subtle)",
         flexShrink: 0,
         fontSize: "var(--text-sm)",
@@ -138,7 +138,7 @@ export function EventDetail({ event, commits }: Props) {
       </div>
 
       {/* Scrollable content */}
-      <div style={{ flex: 1, overflow: "auto", padding: "16px 24px", display: "flex", flexDirection: "column", gap: "var(--spacing-md)" }}>
+      <div style={{ flex: 1, overflow: "auto", padding: "12px 16px", display: "flex", flexDirection: "column", gap: "var(--spacing-sm)" }}>
         {/* Event title */}
         <div style={{ fontSize: "var(--text-md)", fontWeight: 600, color: "var(--text-primary)" }}>
           {event.title ?? event.type}
@@ -178,7 +178,7 @@ export function EventDetail({ event, commits }: Props) {
             background: "var(--surface-tertiary)",
             borderLeft: `3px solid ${eventColor}`,
             borderRadius: "var(--radius-sm)",
-            padding: "10px 12px",
+            padding: "8px 10px",
             fontSize: "var(--text-sm)",
             color: "var(--text-secondary)",
             whiteSpace: "pre-wrap",
@@ -216,7 +216,7 @@ export function EventDetail({ event, commits }: Props) {
               alignItems: "center",
               justifyContent: "center",
               gap: 6,
-              padding: "8px 12px",
+              padding: "6px 10px",
               marginTop: "auto",
               background: "var(--surface-tertiary)",
               border: "1px solid var(--border-default)",

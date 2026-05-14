@@ -43,7 +43,7 @@ export function BeadCard({ issue, onClick, agent, isExpanded = false }: BeadCard
         width: "100%",
         background: isExpanded ? "var(--surface-primary)" : "var(--surface-secondary)",
         borderRadius: "var(--radius-sm)",
-        padding: "10px 11px",
+        padding: "8px 9px",
         border: "1px solid var(--border-subtle)",
         borderLeft: `3px solid ${isEpic ? "var(--accent-purple)" : priorityColor}`,
         boxShadow: "none",
@@ -55,15 +55,15 @@ export function BeadCard({ issue, onClick, agent, isExpanded = false }: BeadCard
         font: "inherit",
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
         <span style={{ display: "inline-flex", color: type.color, lineHeight: 0 }}><TypeIcon size={13} /></span>
         <span style={{ fontSize: "var(--text-xs)", fontWeight: 750, color: type.color, letterSpacing: "0.05em", textTransform: "uppercase" }}>{type.label}</span>
         <span style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)", color: "var(--text-muted)", marginLeft: "auto" }}>{issue.id}</span>
       </div>
 
-      <h4 style={{ fontSize: "var(--text-sm)", fontWeight: isEpic ? 700 : 560, color: "var(--text-primary)", lineHeight: 1.35, margin: "7px 0 0", overflow: "hidden" }}>{issue.title}</h4>
+      <h4 style={{ fontSize: "var(--text-sm)", fontWeight: isEpic ? 700 : 560, color: "var(--text-primary)", lineHeight: 1.3, margin: "5px 0 0", overflow: "hidden" }}>{issue.title}</h4>
 
-      <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8, marginTop: 8, fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>
+      <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 6, marginTop: 6, fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>
         <span>P{issue.priority}</span>
         {agent && <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}><DependabotIcon size={11} />{agent}</span>}
         {issue.dependencies.length > 0 && <span>{issue.dependencies.length} deps</span>}
