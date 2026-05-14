@@ -50,7 +50,7 @@ function CommitRow({ commit }: { commit: GithubCommit }) {
         </span>
         {hasBody && (
           <Collapsible.Trigger style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: "var(--text-sm)", flexShrink: 0 }}>
-            {open ? "▾" : "▸"}
+            <ChevronDownIcon size={11} style={{ transform: open ? "rotate(180deg)" : undefined, transition: "transform 0.15s" }} />
           </Collapsible.Trigger>
         )}
       </div>

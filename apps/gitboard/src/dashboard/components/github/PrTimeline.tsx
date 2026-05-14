@@ -5,6 +5,7 @@ import {
   GitMergeIcon,
   GitPullRequestClosedIcon,
   ChevronDownIcon,
+  LinkExternalIcon,
 } from "@primer/octicons-react";
 import type { GithubPr, GithubPrDetail } from "../../../types/github.ts";
 import { apiClient } from "../../lib/client.ts";
@@ -290,7 +291,7 @@ function ConversationEntry({ item }: { item: ConversationItem }) {
           <strong>{item.actor}</strong>
           <span>{item.label}</span>
           <time>{formatDateTime(item.created_at)}</time>
-          {item.url && <a href={item.url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>↗</a>}
+          {item.url && <a href={item.url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} style={{ display: "inline-flex", alignItems: "center" }}><LinkExternalIcon size={12} /></a>}
         </div>
         {display && (
           <div>
@@ -360,8 +361,9 @@ function PrExpandedBody({ pr }: { pr: GithubPr }) {
           <span>Conversation</span>
           <span className="pr-detail-status">{detailLoading ? "hydrating GitHub detail…" : detailError ? detailError : detail?.errors && Object.keys(detail.errors).length > 0 ? `${conversation.length} events · partial GitHub data` : `${conversation.length} events`}</span>
           {pr.url && (
-            <a href={pr.url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>
-              Open on GitHub →
+            <a href={pr.url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+              <LinkExternalIcon size={12} />
+              Open on GitHub
             </a>
           )}
         </div>

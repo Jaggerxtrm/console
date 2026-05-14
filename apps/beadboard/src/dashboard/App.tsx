@@ -5,6 +5,7 @@ import { ProjectRail, type ProjectRailStats } from "./components/beads/ProjectRa
 import { useBeadsStore } from "./stores/beads.ts";
 import { api } from "./lib/api.ts";
 import type { BeadIssue, BeadIssueDetail, Memory, Interaction } from "../types/beads.ts";
+import { CheckIcon } from "@primer/octicons-react";
 
 type Tab = "issues" | "board" | "closed" | "memories";
 
@@ -205,7 +206,7 @@ export function App() {
 }
 
 function ClosedIssuesPanel({ issues, getAgent }: { issues: BeadIssue[]; getAgent: (id: string) => string | null; }) {
-  return <div style={{ padding: 16, color: 'var(--text-secondary)' }}><h2 style={{ marginBottom: 16, color: 'var(--text-primary)' }}>Closed Issues</h2>{issues.length === 0 ? <p>No closed issues</p> : <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>{issues.map(issue => <div key={issue.id} style={{ padding: 'var(--spacing-md)', background: 'var(--surface-secondary)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}><div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}><span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>{issue.id}</span>{getAgent(issue.id) && <AgentBadge agent={getAgent(issue.id)!} />}</div><div style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{issue.title}</div>{issue.close_reason && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginTop: 4 }}>✓ {issue.close_reason}</div>}</div>)}</div>}</div>;
+  return <div style={{ padding: 16, color: 'var(--text-secondary)' }}><h2 style={{ marginBottom: 16, color: 'var(--text-primary)' }}>Closed Issues</h2>{issues.length === 0 ? <p>No closed issues</p> : <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>{issues.map(issue => <div key={issue.id} style={{ padding: 'var(--spacing-md)', background: 'var(--surface-secondary)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}><div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}><span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>{issue.id}</span>{getAgent(issue.id) && <AgentBadge agent={getAgent(issue.id)!} />}</div><div style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{issue.title}</div>{issue.close_reason && <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginTop: 4 }}><CheckIcon size={12} />{issue.close_reason}</div>}</div>)}</div>}</div>;
 }
 
 function MemoriesPanel({ memories }: { memories: Memory[] }) {
