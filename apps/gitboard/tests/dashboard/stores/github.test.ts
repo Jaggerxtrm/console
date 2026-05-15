@@ -34,6 +34,7 @@ beforeEach(() => {
     filter: {},
     loading: false,
     error: null,
+    releases: [],
   });
 });
 

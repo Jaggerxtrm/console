@@ -45,6 +45,17 @@ export interface GithubRepo {
   color: string | null;
 }
 
+export interface GithubRelease {
+  id: string;
+  tag_name: string;
+  name: string | null;
+  body: string | null;
+  html_url: string | null;
+  author_login: string;
+  published_at: string;
+  repo_full_name: string;
+}
+
 export interface EventFilters {
   repos?: string[];
   types?: string[];
@@ -536,6 +547,12 @@ export interface IssueFilters {
   offset?: number;
 }
 
+export interface ReleaseFilters {
+  repo?: string;
+  limit?: number;
+  offset?: number;
+}
+
 export function upsertIssue(db: Database, issue: GithubIssue): void {
   db.prepare(
     `INSERT OR REPLACE INTO github_issues
@@ -593,4 +610,36 @@ export function getIssue(db: Database, repo: string, number: number): GithubIssu
       )
       .get({ $repo: repo, $number: number }) ?? null
   );
+}
+
+export function getReleases(db: Database, filters: ReleaseFilters = {}): GithubRelease[] {
+  const conditions: string[] = ["type = 'ReleaseEvent'"];
+  const params: Record<string, string | number | null | undefined> = {};
+
+  if (filters.repo) {
+    conditions.push("repo = $repo");
+    params.$repo = filters.repo;
+  }
+
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+  params.$limit = filters.limit ?? 50;
+  params.$offset = filters.offset ?? 0;
+
+  const rows = db.query<
+    { id: string; repo: string; created_at: string; body: string | null; title: string | null; url: string | null; actor: string },
+    AnyParams
+  >(
+    `SELECT id, repo, created_at, body, title, url, actor FROM github_events ${where} ORDER BY created_at DESC LIMIT $limit OFFSET $offset`
+  ).all(params);
+
+  return rows.map((row) => ({
+    id: row.id,
+    tag_name: row.title ?? "",
+    name: row.title,
+    body: row.body,
+    html_url: row.url,
+    author_login: row.actor,
+    published_at: row.created_at,
+    repo_full_name: row.repo,
+  }));
 }

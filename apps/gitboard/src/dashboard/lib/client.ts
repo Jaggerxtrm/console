@@ -10,6 +10,7 @@ import type {
   PrsResponse,
   IssuesResponse,
   GithubPrDetail,
+  GithubRelease,
 } from "../../types/github.ts";
 
 export class ApiClient {
@@ -115,6 +116,15 @@ export class ApiClient {
     if (params.offset != null) q.set("offset", String(params.offset));
     const qs = q.toString();
     return this.get(`/api/github/issues${qs ? `?${qs}` : ""}`);
+  }
+
+  getReleases(params: { repo?: string; limit?: number; offset?: number } = {}): Promise<{ releases: GithubRelease[] }> {
+    const q = new URLSearchParams();
+    if (params.repo) q.set("repo", params.repo);
+    if (params.limit != null) q.set("limit", String(params.limit));
+    if (params.offset != null) q.set("offset", String(params.offset));
+    const qs = q.toString();
+    return this.get(`/api/github/releases${qs ? `?${qs}` : ""}`);
   }
 
   getIssue(owner: string, repo: string, number: number): Promise<unknown> {

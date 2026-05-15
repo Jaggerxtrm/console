@@ -7,27 +7,31 @@ import { RepoSidebar } from "./RepoSidebar.tsx";
 import { ActivityTimeline } from "./ActivityTimeline.tsx";
 import { PrTimeline } from "./PrTimeline.tsx";
 import { IssueTimeline } from "./IssueTimeline.tsx";
+import { ReleaseTimeline } from "./ReleaseTimeline.tsx";
 import type { GithubEvent } from "../../../types/github.ts";
 
 const SOCIAL_TYPES = new Set(["WatchEvent", "ForkEvent", "MemberEvent"]);
 
-type Tab = "activity" | "prs" | "issues";
+type Tab = "activity" | "prs" | "issues" | "releases";
 
 function TabBar({
   activeTab,
   onSelect,
   prCount,
   issueCount,
+  releaseCount,
 }: {
   activeTab: Tab;
   onSelect: (tab: Tab) => void;
   prCount: number;
   issueCount: number;
+  releaseCount: number;
 }) {
   const tabs: { id: Tab; label: string }[] = [
     { id: "activity", label: "Activity" },
     { id: "prs", label: `Pull Requests${prCount > 0 ? ` (${prCount})` : ""}` },
     { id: "issues", label: `Issues${issueCount > 0 ? ` (${issueCount})` : ""}` },
+    { id: "releases", label: `Releases${releaseCount > 0 ? ` (${releaseCount})` : ""}` },
   ];
 
   return (
@@ -53,6 +57,7 @@ function TabBar({
             color: activeTab === tab.id ? "var(--text-primary)" : "var(--text-muted)",
             fontSize: "var(--text-xs)",
             fontWeight: activeTab === tab.id ? 600 : 400,
+            fontFamily: "var(--font-ui)",
             cursor: "pointer",
             whiteSpace: "nowrap",
           }}
@@ -82,6 +87,7 @@ export function GithubPanel({ onMount = useGithubActivity }: { onMount?: () => v
     unreadRepos,
     prs,
     issues,
+    releases,
     selectEvent,
     setFilter,
     resetFilter,
@@ -107,6 +113,8 @@ export function GithubPanel({ onMount = useGithubActivity }: { onMount?: () => v
     .filter((pr) => repoMatchesFilter(pr.repo));
   const ownIssues = (ownerUsername ? issues.filter((issue) => issue.repo.startsWith(ownerUsername + "/")) : issues)
     .filter((issue) => repoMatchesFilter(issue.repo));
+  const ownReleases = (ownerUsername ? releases.filter((release) => release.repo_full_name.startsWith(ownerUsername + "/")) : releases)
+    .filter((release) => repoMatchesFilter(release.repo_full_name));
 
   function handleSelectEvent(evt: GithubEvent) {
     selectEvent(evt);
@@ -152,6 +160,7 @@ export function GithubPanel({ onMount = useGithubActivity }: { onMount?: () => v
           onSelect={setActiveTab}
           prCount={ownPrs.length}
           issueCount={ownIssues.length}
+          releaseCount={ownReleases.length}
         />
 
         <div style={{ flex: 1, minHeight: 0 }}>
@@ -164,6 +173,7 @@ export function GithubPanel({ onMount = useGithubActivity }: { onMount?: () => v
           )}
           {activeTab === "prs" && <PrTimeline prs={ownPrs} />}
           {activeTab === "issues" && <IssueTimeline issues={ownIssues} />}
+          {activeTab === "releases" && <ReleaseTimeline releases={ownReleases} />}
         </div>
 
         {/* Starred / Social strip — only shown on Activity tab */}
