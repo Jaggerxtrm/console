@@ -2644,8 +2644,19 @@ body {
    as .pr-expanded-body so the centered stack lands at the same x as the
    PR/Issue/Release expanded views. */
 .gb-tab-pane {
-  padding: 14px;
-  background: transparent;
+  padding: 16px 14px;
+  background: var(--surface-secondary);
+  border-bottom: 1px solid var(--border-subtle);
+  position: relative;
+}
+.gb-tab-pane::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 16px;
+  bottom: 16px;
+  width: 2px;
+  background: rgba(142, 210, 220, 0.18);
 }
 
 .repo-content-state {
