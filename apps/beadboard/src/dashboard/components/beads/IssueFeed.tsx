@@ -108,7 +108,7 @@ function IssueRow({ issue, detail, isExpanded, isLoadingDetail, agent, dependenc
   );
 }
 
-function IssueDossier({ id, detail, issue, loading, projectId, issueById }: { id: string; detail: BeadIssueDetail | null; issue: BeadIssue; loading: boolean; projectId: string | null; issueById: Map<string, BeadIssue>; }) {
+export function IssueDossier({ id, detail, issue, loading, projectId, issueById }: { id: string; detail: BeadIssueDetail | null; issue: BeadIssue; loading: boolean; projectId: string | null; issueById: Map<string, BeadIssue>; }) {
   const [interactions, setInteractions] = useState<Interaction[]>([]);
 
   useEffect(() => {
