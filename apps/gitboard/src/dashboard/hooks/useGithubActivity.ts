@@ -46,7 +46,11 @@ export function useGithubActivity(): void {
       setRepoStats(statsRes.data);
       setPrs(prsRes.data);
       setIssues(issuesRes.data);
-      setReleases(releaseResponses.flatMap((response) => response.releases));
+      setReleases(
+        releaseResponses
+          .flatMap((response) => response.releases)
+          .sort((a, b) => (b.published_at ?? "").localeCompare(a.published_at ?? "")),
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load data");
     } finally {
