@@ -1681,10 +1681,6 @@ body {
 
 .pr-row.is-expanded {
   background: var(--surface-secondary);
-  border-bottom-left-radius: 0;
-  border-bottom-right-radius: 0;
-  border-bottom: 0;
-  margin-bottom: 0;
 }
 
 .pr-row.merged::before { background: rgba(159,184,201,0.86); box-shadow: none; }
@@ -1821,15 +1817,7 @@ body {
 }
 
 .pr-expanded-body {
-  border: var(--card-border);
-  border-top: 0;
-  border-top-left-radius: 0;
-  border-top-right-radius: 0;
-  border-bottom-left-radius: var(--card-radius-md);
-  border-bottom-right-radius: var(--card-radius-md);
-  background: var(--surface-secondary);
-  padding: 16px 18px 18px;
-  margin: 0 0 12px;
+  padding: 0 14px 14px;
 }
 
 .pr-expanded-grid {
@@ -1980,15 +1968,7 @@ body {
 
 /* PR expansion v10: GitHub-like inline flow, framed card body. */
 .pr-expanded-body {
-  border: var(--card-border);
-  border-top: 0;
-  border-top-left-radius: 0;
-  border-top-right-radius: 0;
-  border-bottom-left-radius: var(--card-radius-md);
-  border-bottom-right-radius: var(--card-radius-md);
-  background: var(--surface-secondary);
-  padding: 16px 18px 18px;
-  margin: 0 0 12px;
+  padding: 0 14px 14px;
 }
 
 .pr-section {
@@ -2288,10 +2268,21 @@ body {
   display: grid;
   grid-template-columns: 16px minmax(0, 1fr);
   gap: 10px;
-  padding: 8px 0;
+  padding: 10px 14px;
   border: var(--card-border);
   border-radius: var(--card-radius-sm);
-  background: rgba(255,255,255,0.015);
+  background: var(--surface-secondary);
+}
+
+.pr-conversation-entry + .pr-conversation-entry {
+  margin-top: 8px;
+}
+
+.pr-conversation-entry.body,
+.pr-conversation-entry.comment,
+.pr-conversation-entry.review {
+  padding: 14px 16px;
+  border-radius: var(--card-radius-md);
 }
 
 .pr-conversation-entry::before {
@@ -2462,10 +2453,6 @@ body {
 
 .issue-row.is-expanded {
   background: var(--surface-secondary);
-  border-bottom-left-radius: 0;
-  border-bottom-right-radius: 0;
-  border-bottom: 0;
-  margin-bottom: 0;
 }
 
 .issue-row-main {
@@ -2534,16 +2521,9 @@ body {
 .issue-expanded-body {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  border: var(--card-border);
-  border-top: 0;
-  border-top-left-radius: 0;
-  border-top-right-radius: 0;
-  border-bottom-left-radius: var(--card-radius-md);
-  border-bottom-right-radius: var(--card-radius-md);
-  background: var(--surface-secondary);
-  padding: 14px 16px 16px;
-  margin: 0 0 12px;
+  gap: 6px;
+  padding: 0 12px 12px;
+  border-top: 1px solid rgba(142,210,220,0.07);
 }
 
 .issue-label-chip {
