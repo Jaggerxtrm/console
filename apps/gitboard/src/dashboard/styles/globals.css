@@ -2095,6 +2095,73 @@ body {
   padding: 0 4px;
 }
 
+.pr-rich-text pre.rich-code {
+  background: rgba(5, 8, 11, 0.66);
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  margin: 8px 0;
+  overflow-x: auto;
+  padding: 10px 12px;
+  position: relative;
+  white-space: pre;
+}
+.pr-rich-text pre.rich-code code {
+  background: transparent;
+  border-radius: 0;
+  color: var(--text-secondary);
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  line-height: 1.5;
+  padding: 0;
+  white-space: pre;
+}
+.pr-rich-text pre.rich-code[data-lang="mermaid"]::before {
+  content: "mermaid";
+  position: absolute;
+  top: 4px;
+  right: 8px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.pr-rich-text pre.rich-code[data-lang]:not([data-lang=""])::before {
+  content: attr(data-lang);
+  position: absolute;
+  top: 4px;
+  right: 8px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.pr-rich-text table.rich-table {
+  border-collapse: collapse;
+  display: block;
+  margin: 8px 0;
+  overflow-x: auto;
+  width: 100%;
+}
+.pr-rich-text table.rich-table th,
+.pr-rich-text table.rich-table td {
+  border: 1px solid var(--border-subtle);
+  padding: 6px 10px;
+  text-align: left;
+  font-size: 11px;
+}
+.pr-rich-text table.rich-table th {
+  background: rgba(142,210,220,0.05);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.pr-rich-text table.rich-table tr:nth-child(even) td {
+  background: rgba(255,255,255,0.02);
+}
+
 .pr-inline-actions {
   margin-top: 12px;
   padding-top: 8px;

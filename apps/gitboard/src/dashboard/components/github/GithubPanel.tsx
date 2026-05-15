@@ -8,12 +8,12 @@ import { ActivityTimeline } from "./ActivityTimeline.tsx";
 import { PrTimeline } from "./PrTimeline.tsx";
 import { IssueTimeline } from "./IssueTimeline.tsx";
 import { ReleaseTimeline } from "./ReleaseTimeline.tsx";
-import { RepoDossier } from "./RepoDossier.tsx";
+import { ReadmeView, ChangelogView, ReportsView, parseOwnerName } from "./RepoContentPanels.tsx";
 import type { GithubEvent } from "../../../types/github.ts";
 
 const SOCIAL_TYPES = new Set(["WatchEvent", "ForkEvent", "MemberEvent"]);
 
-type Tab = "activity" | "prs" | "issues" | "releases";
+type Tab = "activity" | "prs" | "issues" | "releases" | "readme" | "changelog" | "reports";
 
 function TabBar({
   activeTab,
@@ -21,18 +21,23 @@ function TabBar({
   prCount,
   issueCount,
   releaseCount,
+  hasRepo,
 }: {
   activeTab: Tab;
   onSelect: (tab: Tab) => void;
   prCount: number;
   issueCount: number;
   releaseCount: number;
+  hasRepo: boolean;
 }) {
-  const tabs: { id: Tab; label: string }[] = [
+  const tabs: { id: Tab; label: string; disabled?: boolean }[] = [
     { id: "activity", label: "Activity" },
     { id: "prs", label: `Pull Requests${prCount > 0 ? ` (${prCount})` : ""}` },
     { id: "issues", label: `Issues${issueCount > 0 ? ` (${issueCount})` : ""}` },
     { id: "releases", label: `Releases${releaseCount > 0 ? ` (${releaseCount})` : ""}` },
+    { id: "readme", label: "README", disabled: !hasRepo },
+    { id: "changelog", label: "CHANGELOG", disabled: !hasRepo },
+    { id: "reports", label: "Reports", disabled: !hasRepo },
   ];
 
   return (
@@ -49,7 +54,9 @@ function TabBar({
         <button
           key={tab.id}
           className={activeTab === tab.id ? "gitboard-tab is-active" : "gitboard-tab"}
-          onClick={() => onSelect(tab.id)}
+          onClick={() => !tab.disabled && onSelect(tab.id)}
+          disabled={tab.disabled}
+          title={tab.disabled ? "Select a repo first" : undefined}
           style={{
             padding: "8px 16px",
             background: "transparent",
@@ -59,7 +66,8 @@ function TabBar({
             fontSize: "var(--text-xs)",
             fontWeight: activeTab === tab.id ? 600 : 400,
             fontFamily: "var(--font-ui)",
-            cursor: "pointer",
+            cursor: tab.disabled ? "not-allowed" : "pointer",
+            opacity: tab.disabled ? 0.4 : 1,
             whiteSpace: "nowrap",
           }}
         >
@@ -75,7 +83,6 @@ export function GithubPanel({ onMount = useGithubActivity }: { onMount?: () => v
 
   const [socialOpen, setSocialOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>("activity");
-  const [dossierRepo, setDossierRepo] = useState<string | null>(null);
 
   const {
     events,
@@ -151,35 +158,50 @@ export function GithubPanel({ onMount = useGithubActivity }: { onMount?: () => v
         ownerUsername={ownerUsername}
         onSelect={(r) => setFilter({ repos: [r] })}
         onReset={resetFilter}
-        onOpenDossier={(r) => setDossierRepo(r)}
       />
-
-      {dossierRepo && <RepoDossier repo={dossierRepo} onClose={() => setDossierRepo(null)} />}
 
       {/* Center: Tabbed timeline */}
       <div className="gitboard-center" style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
         <StatsHeader summary={summary} />
 
-        <TabBar
-          activeTab={activeTab}
-          onSelect={setActiveTab}
-          prCount={ownPrs.length}
-          issueCount={ownIssues.length}
-          releaseCount={ownReleases.length}
-        />
+        {(() => {
+          const selectedRepo = (filter.repos ?? [])[0] ?? null;
+          const parsed = selectedRepo ? parseOwnerName(selectedRepo) : null;
+          return (
+            <>
+              <TabBar
+                activeTab={activeTab}
+                onSelect={setActiveTab}
+                prCount={ownPrs.length}
+                issueCount={ownIssues.length}
+                releaseCount={ownReleases.length}
+                hasRepo={!!parsed}
+              />
 
-        <div style={{ flex: 1, minHeight: 0 }}>
-          {activeTab === "activity" && (
-            <ActivityTimeline
-              events={ownEvents}
-              selectedId={selectedEvent?.id ?? null}
-              onSelect={(evt) => void handleSelectEvent(evt)}
-            />
-          )}
-          {activeTab === "prs" && <PrTimeline prs={ownPrs} />}
-          {activeTab === "issues" && <IssueTimeline issues={ownIssues} />}
-          {activeTab === "releases" && <ReleaseTimeline releases={ownReleases} />}
-        </div>
+              <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
+                {activeTab === "activity" && (
+                  <ActivityTimeline
+                    events={ownEvents}
+                    selectedId={selectedEvent?.id ?? null}
+                    onSelect={(evt) => void handleSelectEvent(evt)}
+                  />
+                )}
+                {activeTab === "prs" && <PrTimeline prs={ownPrs} />}
+                {activeTab === "issues" && <IssueTimeline issues={ownIssues} />}
+                {activeTab === "releases" && <ReleaseTimeline releases={ownReleases} />}
+                {parsed && activeTab === "readme" && (
+                  <div style={{ padding: "14px 18px" }}><ReadmeView owner={parsed.owner} name={parsed.name} /></div>
+                )}
+                {parsed && activeTab === "changelog" && (
+                  <div style={{ padding: "14px 18px" }}><ChangelogView owner={parsed.owner} name={parsed.name} /></div>
+                )}
+                {parsed && activeTab === "reports" && (
+                  <div style={{ padding: "14px 18px" }}><ReportsView owner={parsed.owner} name={parsed.name} /></div>
+                )}
+              </div>
+            </>
+          );
+        })()}
 
         {/* Starred / Social strip — only shown on Activity tab */}
         {activeTab === "activity" && socialEvents.length > 0 && (

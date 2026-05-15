@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { RepoIcon, LinkExternalIcon, GitCommitIcon, GitMergeIcon, GitPullRequestIcon, BookIcon } from "@primer/octicons-react";
+import { RepoIcon, LinkExternalIcon, GitCommitIcon, GitMergeIcon, GitPullRequestIcon } from "@primer/octicons-react";
 import type { GithubRepo, RepoStat } from "../../../../src/types/github.ts";
 import { EventDetail } from "./EventDetail.tsx";
 import type { GithubEvent, GithubCommit } from "../../../../src/types/github.ts";
@@ -11,7 +11,6 @@ interface Props {
   unreadRepos?: Set<string>;
   onSelect: (fullName: string) => void;
   onReset: () => void;
-  onOpenDossier?: (fullName: string) => void;
   lastEventAt?: Record<string, string>;
   ownerUsername?: string | null;
   selectedEvent?: GithubEvent | null;
@@ -45,7 +44,7 @@ export function relativeTime(iso: string): string {
   return `${days}d ago`;
 }
 
-export function RepoSidebar({ repos, stats, selectedRepos, unreadRepos = new Set(), onSelect, onReset, onOpenDossier, lastEventAt = {}, ownerUsername = null, selectedEvent, selectedEventCommits }: Props) {
+export function RepoSidebar({ repos, stats, selectedRepos, unreadRepos = new Set(), onSelect, onReset, lastEventAt = {}, ownerUsername = null, selectedEvent, selectedEventCommits }: Props) {
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
   const [width, setWidth] = useState(() => {
     try {
@@ -214,25 +213,6 @@ export function RepoSidebar({ repos, stats, selectedRepos, unreadRepos = new Set
                     {lastAt && (
                       <span style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)", flexShrink: 0 }}>
                         {relativeTime(lastAt)}
-                      </span>
-                    )}
-                    {onOpenDossier && (
-                      <span
-                        role="button"
-                        tabIndex={0}
-                        title="Open repo dossier"
-                        onClick={(e) => { e.stopPropagation(); onOpenDossier(repo.full_name); }}
-                        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); onOpenDossier(repo.full_name); } }}
-                        style={{
-                          color: "var(--text-muted)",
-                          lineHeight: 1,
-                          cursor: "pointer",
-                          display: "inline-flex",
-                          opacity: hoveredKey === repo.full_name || isSelected ? 1 : 0.35,
-                          transition: "opacity 120ms ease",
-                        }}
-                      >
-                        <BookIcon size={12} />
                       </span>
                     )}
                     <a
