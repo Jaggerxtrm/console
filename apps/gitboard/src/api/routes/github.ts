@@ -18,6 +18,7 @@ import {
   getIssue,
   getReleases,
 } from "../../core/github-store.ts";
+import { fetchRepoFile, listRepoDir } from "../../core/github-readme.ts";
 import type { ChannelRegistry } from "../ws/channels.ts";
 
 async function githubApi<T>(path: string): Promise<T> {
@@ -345,6 +346,50 @@ export function createGithubRouter(db: Database, registry: ChannelRegistry): Hon
     const issue = getIssue(db, repo, number);
     if (!issue) return c.json({ error: "not found" }, 404);
     return c.json(issue);
+  });
+
+  // GET /api/github/repo/:owner/:name/markdown?path=README.md|CHANGELOG.md
+  app.get("/repo/:owner/:name/markdown", async (c) => {
+    const owner = c.req.param("owner");
+    const name = c.req.param("name");
+    const path = c.req.query("path") || "README.md";
+    try {
+      const file = await fetchRepoFile(owner, name, path);
+      if (!file) return c.json({ content: null, sha: null, last_modified: null }, 200);
+      return c.json(file);
+    } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : "fetch failed" }, 502);
+    }
+  });
+
+  // GET /api/github/repo/:owner/:name/reports
+  app.get("/repo/:owner/:name/reports", async (c) => {
+    const owner = c.req.param("owner");
+    const name = c.req.param("name");
+    try {
+      const entries = await listRepoDir(owner, name, ".xtrm/reports");
+      const reports = entries
+        .filter((e) => e.type === "file" && e.name.endsWith(".md"))
+        .sort((a, b) => b.name.localeCompare(a.name));
+      return c.json({ data: reports.map((r) => ({ name: r.name, path: r.path, sha: r.sha, size: r.size })) });
+    } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : "fetch failed" }, 502);
+    }
+  });
+
+  // GET /api/github/repo/:owner/:name/reports/:filename
+  app.get("/repo/:owner/:name/reports/:filename", async (c) => {
+    const owner = c.req.param("owner");
+    const name = c.req.param("name");
+    const filename = c.req.param("filename");
+    if (!/^[\w.-]+\.md$/.test(filename)) return c.json({ error: "invalid filename" }, 400);
+    try {
+      const file = await fetchRepoFile(owner, name, `.xtrm/reports/${filename}`);
+      if (!file) return c.json({ error: "not found" }, 404);
+      return c.json(file);
+    } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : "fetch failed" }, 502);
+    }
   });
 
   return app;

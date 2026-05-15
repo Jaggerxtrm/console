@@ -2420,3 +2420,146 @@ body {
     padding-left: 14px;
   }
 }
+
+/* Repo dossier overlay */
+.repo-dossier-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(5, 8, 11, 0.68);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 40px 24px;
+}
+
+.repo-dossier-panel {
+  background: var(--surface-primary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  width: min(900px, 100%);
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+}
+
+.repo-dossier-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.repo-dossier-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.repo-dossier-name {
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+.repo-dossier-link {
+  color: var(--text-muted);
+  display: inline-flex;
+  line-height: 1;
+}
+
+.repo-dossier-close {
+  background: transparent;
+  border: 0;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  padding: 4px;
+}
+.repo-dossier-close:hover { color: var(--text-primary); }
+
+.repo-dossier-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.repo-dossier-tab {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  font-size: 11px;
+  gap: 6px;
+  padding: 8px 10px;
+}
+.repo-dossier-tab:hover { color: var(--text-primary); }
+.repo-dossier-tab.is-active {
+  border-bottom-color: var(--accent-blue);
+  color: var(--text-primary);
+}
+
+.repo-dossier-tab-count {
+  background: var(--surface-tertiary);
+  border-radius: 8px;
+  color: var(--text-muted);
+  font-size: 10px;
+  padding: 1px 6px;
+}
+
+.repo-dossier-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px;
+}
+
+.repo-dossier-state {
+  color: var(--text-muted);
+  font-size: 12px;
+  padding: 24px;
+  text-align: center;
+}
+
+.repo-dossier-reports { display: block; }
+.repo-dossier-report-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.repo-dossier-report-row {
+  background: var(--surface-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  color: var(--text-primary);
+  cursor: pointer;
+  display: block;
+  font: inherit;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 6px 10px;
+  text-align: left;
+  width: 100%;
+}
+.repo-dossier-report-row:hover { border-color: var(--border-default); }
+.repo-dossier-report-row.is-active { border-color: var(--accent-blue); }
+
+.repo-dossier-report-body {
+  border: 1px solid var(--border-subtle);
+  border-top: 0;
+  border-radius: 0 0 4px 4px;
+  padding: 12px;
+  background: var(--surface-secondary);
+}

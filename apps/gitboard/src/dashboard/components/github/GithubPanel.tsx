@@ -8,6 +8,7 @@ import { ActivityTimeline } from "./ActivityTimeline.tsx";
 import { PrTimeline } from "./PrTimeline.tsx";
 import { IssueTimeline } from "./IssueTimeline.tsx";
 import { ReleaseTimeline } from "./ReleaseTimeline.tsx";
+import { RepoDossier } from "./RepoDossier.tsx";
 import type { GithubEvent } from "../../../types/github.ts";
 
 const SOCIAL_TYPES = new Set(["WatchEvent", "ForkEvent", "MemberEvent"]);
@@ -74,6 +75,7 @@ export function GithubPanel({ onMount = useGithubActivity }: { onMount?: () => v
 
   const [socialOpen, setSocialOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>("activity");
+  const [dossierRepo, setDossierRepo] = useState<string | null>(null);
 
   const {
     events,
@@ -149,7 +151,10 @@ export function GithubPanel({ onMount = useGithubActivity }: { onMount?: () => v
         ownerUsername={ownerUsername}
         onSelect={(r) => setFilter({ repos: [r] })}
         onReset={resetFilter}
+        onOpenDossier={(r) => setDossierRepo(r)}
       />
+
+      {dossierRepo && <RepoDossier repo={dossierRepo} onClose={() => setDossierRepo(null)} />}
 
       {/* Center: Tabbed timeline */}
       <div className="gitboard-center" style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>

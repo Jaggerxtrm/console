@@ -127,6 +127,18 @@ export class ApiClient {
     return this.get(`/api/github/releases${qs ? `?${qs}` : ""}`);
   }
 
+  getRepoMarkdown(owner: string, name: string, path: string): Promise<{ content: string | null; sha: string | null; last_modified: string | null }> {
+    return this.get(`/api/github/repo/${owner}/${name}/markdown?path=${encodeURIComponent(path)}`);
+  }
+
+  listRepoReports(owner: string, name: string): Promise<{ data: { name: string; path: string; sha: string; size: number }[] }> {
+    return this.get(`/api/github/repo/${owner}/${name}/reports`);
+  }
+
+  getRepoReport(owner: string, name: string, filename: string): Promise<{ content: string; sha: string; last_modified: string | null }> {
+    return this.get(`/api/github/repo/${owner}/${name}/reports/${filename}`);
+  }
+
   getIssue(owner: string, repo: string, number: number): Promise<unknown> {
     return this.get(`/api/github/issues/${owner}/${repo}/${number}`);
   }
