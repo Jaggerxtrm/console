@@ -4,6 +4,14 @@ import { renderPrBodyText } from "./PrTimeline.tsx";
 
 type AsyncContent = string | null | "loading" | "error";
 
+interface ReportEntry {
+  name: string;
+  path: string;
+  sha: string;
+  size?: number;
+  frontmatter: Record<string, string> | null;
+}
+
 export function ReadmeView({ owner, name }: { owner: string; name: string }) {
   return <MarkdownView owner={owner} name={name} path="README.md" emptyLabel="No README.md in this repo." />;
 }
@@ -30,14 +38,16 @@ function MarkdownView({ owner, name, path, emptyLabel }: { owner: string; name: 
   if (content === "error") return <div className="repo-content-state">Failed to load.</div>;
   if (!content) return <div className="repo-content-state">{emptyLabel}</div>;
   return (
-    <div className="pr-body-text">
-      <div className="pr-rich-text">{renderPrBodyText(content)}</div>
+    <div className="gb-detail-stack">
+      <div className="pr-body-text">
+        <div className="pr-rich-text">{renderPrBodyText(content)}</div>
+      </div>
     </div>
   );
 }
 
 export function ReportsView({ owner, name }: { owner: string; name: string }) {
-  const [reports, setReports] = useState<{ name: string; path: string; sha: string }[] | "loading" | "error">("loading");
+  const [reports, setReports] = useState<ReportEntry[] | "loading" | "error">("loading");
   const [open, setOpen] = useState<string | null>(null);
   const [body, setBody] = useState<AsyncContent>("loading");
 
@@ -73,30 +83,55 @@ export function ReportsView({ owner, name }: { owner: string; name: string }) {
     return <div className="repo-content-state">No reports yet — push to .xtrm/reports/ in this repo.</div>;
 
   return (
-    <ul className="repo-report-list">
-      {reports.map((r) => (
-        <li key={r.sha}>
-          <button
-            type="button"
-            className={`repo-report-row ${open === r.name ? "is-active" : ""}`}
-            onClick={() => setOpen(open === r.name ? null : r.name)}
-          >
-            <span className="repo-report-name">{r.name}</span>
-          </button>
-          {open === r.name && (
-            <div className="repo-report-body">
-              {body === "loading" && <div className="repo-content-state">Loading…</div>}
-              {body === "error" && <div className="repo-content-state">Failed to load report.</div>}
-              {typeof body === "string" && body !== "loading" && body !== "error" && (
-                <div className="pr-body-text">
-                  <div className="pr-rich-text">{renderPrBodyText(body)}</div>
-                </div>
-              )}
-            </div>
-          )}
-        </li>
+    <div className="gb-detail-stack">
+      <ul className="repo-report-list">
+        {reports.map((r) => (
+          <li key={r.sha}>
+            <button
+              type="button"
+              className={`repo-report-row ${open === r.name ? "is-active" : ""}`}
+              onClick={() => setOpen(open === r.name ? null : r.name)}
+            >
+              <span className="repo-report-name">{r.name.replace(/\.md$/, "")}</span>
+              <ReportMeta fm={r.frontmatter} />
+            </button>
+            {open === r.name && (
+              <div className="repo-report-body">
+                {body === "loading" && <div className="repo-content-state">Loading…</div>}
+                {body === "error" && <div className="repo-content-state">Failed to load report.</div>}
+                {typeof body === "string" && body !== "loading" && body !== "error" && (
+                  <div className="pr-body-text">
+                    <div className="pr-rich-text">{renderPrBodyText(body)}</div>
+                  </div>
+                )}
+              </div>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function ReportMeta({ fm }: { fm: Record<string, string> | null }) {
+  if (!fm) return null;
+  const items: Array<[string, string]> = [];
+  if (fm.session_date) items.push(["date", fm.session_date]);
+  if (fm.branch) items.push(["branch", fm.branch]);
+  if (fm.commits) items.push(["commits", fm.commits]);
+  if (fm.issues_closed) items.push(["closed", fm.issues_closed]);
+  if (fm.issues_filed) items.push(["filed", fm.issues_filed]);
+  if (fm.specialist_dispatches) items.push(["dispatch", fm.specialist_dispatches]);
+  if (items.length === 0) return null;
+  return (
+    <span className="repo-report-meta">
+      {items.map(([k, v]) => (
+        <span key={k} className="repo-report-meta-item">
+          <b>{k}</b>
+          {v}
+        </span>
       ))}
-    </ul>
+    </span>
   );
 }
 

@@ -96,3 +96,16 @@ export function clearReadmeCache(): void {
   fileCache.clear();
   dirCache.clear();
 }
+
+export function parseFrontmatter(text: string): Record<string, string> | null {
+  if (!text.startsWith("---")) return null;
+  const end = text.indexOf("\n---", 3);
+  if (end < 0) return null;
+  const block = text.slice(3, end).trim();
+  const out: Record<string, string> = {};
+  for (const line of block.split("\n")) {
+    const m = /^([A-Za-z_][\w-]*)\s*:\s*(.*)$/.exec(line.trim());
+    if (m) out[m[1]] = m[2].replace(/^['"]|['"]$/g, "");
+  }
+  return Object.keys(out).length > 0 ? out : null;
+}

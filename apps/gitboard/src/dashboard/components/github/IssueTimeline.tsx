@@ -57,61 +57,49 @@ function IssueExpandedBody({ issue }: { issue: GithubIssue }) {
 
   return (
     <div className="issue-expanded-body">
-      {issue.body && (() => {
-        const { visible, hasMore } = truncateBody(issue.body);
-        const rendered = renderPrBodyText(showMore ? issue.body : visible);
-        return (
-          <div>
-            <div
-              className="issue-body-text"
-              style={{
-                fontSize: "var(--text-xs)",
-                color: "var(--text-secondary)",
-                lineHeight: 1.5,
-              }}
-            >
-              {rendered}
+      <div className="gb-detail-stack">
+        {issue.body && (() => {
+          const { visible, hasMore } = truncateBody(issue.body);
+          const rendered = renderPrBodyText(showMore ? issue.body : visible);
+          return (
+            <div>
+              <div className="pr-body-text">
+                <div className="pr-rich-text">{rendered}</div>
+              </div>
+              {hasMore && !showMore && (
+                <button
+                  className="pr-show-more"
+                  onClick={(e) => { e.stopPropagation(); setShowMore(true); }}
+                >
+                  show full text
+                </button>
+              )}
             </div>
-            {hasMore && !showMore && (
-              <button
-                onClick={(e) => { e.stopPropagation(); setShowMore(true); }}
-                style={{
-                  background: "none",
-                  border: "none",
-                  color: "var(--accent-blue)",
-                  fontSize: "var(--text-xs)",
-                  cursor: "pointer",
-                  padding: "2px 0",
-                }}
-              >
-                show more
-              </button>
-            )}
+          );
+        })()}
+        {issue.comment_count > 0 && (
+          <div style={{ color: "var(--text-muted)", fontSize: "var(--text-xs)" }}>
+            {issue.comment_count} {issue.comment_count === 1 ? "comment" : "comments"}
           </div>
-        );
-      })()}
-      {issue.comment_count > 0 && (
-        <div style={{ color: "var(--text-muted)", fontSize: "var(--text-xs)" }}>
-          {issue.comment_count} {issue.comment_count === 1 ? "comment" : "comments"}
-        </div>
-      )}
-      {labels.length > 0 && (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-          {labels.map((name) => <LabelChip key={name} name={name} />)}
-        </div>
-      )}
-      {issue.url && (
-        <a
-          href={issue.url}
-          target="_blank"
-          rel="noreferrer"
-          onClick={(e) => e.stopPropagation()}
-          style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "var(--accent-blue)", fontSize: "var(--text-xs)", textDecoration: "none" }}
-        >
-          <LinkExternalIcon size={12} />
-          Open on GitHub
-        </a>
-      )}
+        )}
+        {labels.length > 0 && (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+            {labels.map((name) => <LabelChip key={name} name={name} />)}
+          </div>
+        )}
+        {issue.url && (
+          <a
+            href={issue.url}
+            target="_blank"
+            rel="noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "var(--accent-blue)", fontSize: "var(--text-xs)", textDecoration: "none" }}
+          >
+            <LinkExternalIcon size={12} />
+            Open on GitHub
+          </a>
+        )}
+      </div>
     </div>
   );
 }

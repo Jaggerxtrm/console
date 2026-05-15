@@ -37,13 +37,15 @@ function ReleaseExpandedBody({ release }: { release: GithubRelease }) {
 
   return (
     <div className="release-expanded-body">
-      <div className="pr-body-text"><div className="pr-rich-text">{renderPrBodyText(body)}</div></div>
-      {release.html_url && (
-        <a href={release.html_url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="release-link">
-          <LinkExternalIcon size={12} />
-          Open on GitHub
-        </a>
-      )}
+      <div className="gb-detail-stack">
+        <div className="pr-body-text"><div className="pr-rich-text">{renderPrBodyText(body)}</div></div>
+        {release.html_url && (
+          <a href={release.html_url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="release-link">
+            <LinkExternalIcon size={12} />
+            Open on GitHub
+          </a>
+        )}
+      </div>
     </div>
   );
 }

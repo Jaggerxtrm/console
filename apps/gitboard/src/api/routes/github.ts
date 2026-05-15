@@ -18,7 +18,7 @@ import {
   getIssue,
   getReleases,
 } from "../../core/github-store.ts";
-import { fetchRepoFile, listRepoDir } from "../../core/github-readme.ts";
+import { fetchRepoFile, listRepoDir, parseFrontmatter } from "../../core/github-readme.ts";
 import type { ChannelRegistry } from "../ws/channels.ts";
 
 async function githubApi<T>(path: string): Promise<T> {
@@ -371,7 +371,20 @@ export function createGithubRouter(db: Database, registry: ChannelRegistry): Hon
       const reports = entries
         .filter((e) => e.type === "file" && e.name.endsWith(".md"))
         .sort((a, b) => b.name.localeCompare(a.name));
-      return c.json({ data: reports.map((r) => ({ name: r.name, path: r.path, sha: r.sha, size: r.size })) });
+
+      const withMeta = await Promise.all(
+        reports.map(async (r) => {
+          let frontmatter: Record<string, string> | null = null;
+          try {
+            const file = await fetchRepoFile(owner, name, r.path);
+            if (file?.content) frontmatter = parseFrontmatter(file.content);
+          } catch {
+            /* skip per-file errors */
+          }
+          return { name: r.name, path: r.path, sha: r.sha, size: r.size, frontmatter };
+        }),
+      );
+      return c.json({ data: withMeta });
     } catch (err) {
       return c.json({ error: err instanceof Error ? err.message : "fetch failed" }, 502);
     }

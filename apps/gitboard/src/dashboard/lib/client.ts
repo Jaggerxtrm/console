@@ -131,7 +131,7 @@ export class ApiClient {
     return this.get(`/api/github/repo/${owner}/${name}/markdown?path=${encodeURIComponent(path)}`);
   }
 
-  listRepoReports(owner: string, name: string): Promise<{ data: { name: string; path: string; sha: string; size: number }[] }> {
+  listRepoReports(owner: string, name: string): Promise<{ data: { name: string; path: string; sha: string; size: number; frontmatter: Record<string, string> | null }[] }> {
     return this.get(`/api/github/repo/${owner}/${name}/reports`);
   }
 

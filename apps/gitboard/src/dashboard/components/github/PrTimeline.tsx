@@ -416,6 +416,7 @@ function PrExpandedBody({ pr }: { pr: GithubPr }) {
 
   return (
     <div className="pr-expanded-body">
+      <div className="gb-detail-stack">
       <div className="pr-compact-summary">
         <div className="pr-summary-line">
           <span><b>Author</b>{pr.author}</span>
@@ -482,6 +483,7 @@ function PrExpandedBody({ pr }: { pr: GithubPr }) {
           </div>
         </section>
       )}
+      </div>
     </div>
   );
 }
