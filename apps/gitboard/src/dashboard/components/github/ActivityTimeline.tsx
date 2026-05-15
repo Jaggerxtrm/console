@@ -75,8 +75,9 @@ function CommitRow({ commit }: { commit: GithubCommit }) {
   const hiddenCount = totalBodyLines - COMMIT_BODY_SOFT_CAP;
 
   return (
-    <div style={{ padding: "3px 0", fontSize: "var(--text-xs)" }}>
+    <div className="activity-commit-row" style={{ padding: "3px 0", fontSize: "var(--text-xs)" }}>
       <div
+        className="activity-commit-toggle"
         onClick={hasBody ? () => setOpen(o => !o) : undefined}
         style={{
           display: "flex",
@@ -106,7 +107,7 @@ function CommitRow({ commit }: { commit: GithubCommit }) {
         )}
       </div>
       {hasBody && open && (
-        <div style={{
+        <div className="activity-commit-body" style={{
           marginTop: 4,
           marginLeft: 44,
           padding: "6px 8px",

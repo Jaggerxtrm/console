@@ -20,6 +20,11 @@
   --border-default: #30363d;
   --border-strong: #484f58;
 
+  --card-border: 1px solid var(--border-default);
+  --card-radius-sm: 6px;
+  --card-radius-md: 8px;
+  --card-padding: 12px;
+
   --text-primary: #e6e6e6;
   --text-secondary: #a7a7a7;
   --text-muted: #757575;
