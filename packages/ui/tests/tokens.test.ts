@@ -39,13 +39,28 @@ describe("CSS Design Tokens", () => {
 
   it("defines typography scale", () => {
     const typography = [
-      "--text-xs",    // 11px
-      "--text-sm",    // 12px
-      "--text-base",  // 14px
-      "--text-md",    // 15px
-      "--text-xl",    // 18px
-    ];
-    expect(typography.length).toBe(5);
+      ["--text-xs", "0.75rem"],
+      ["--text-sm", "0.8125rem"],
+      ["--text-base", "0.875rem"],
+      ["--text-md", "1rem"],
+      ["--text-xl", "1.25rem"],
+    ] as const;
+
+    expect(typography).toHaveLength(5);
+    expect(typography.map(([token]) => token)).toEqual([
+      "--text-xs",
+      "--text-sm",
+      "--text-base",
+      "--text-md",
+      "--text-xl",
+    ]);
+    expect(typography.map(([, value]) => value)).toEqual([
+      "0.75rem",
+      "0.8125rem",
+      "0.875rem",
+      "1rem",
+      "1.25rem",
+    ]);
   });
 
   it("defines border radius", () => {

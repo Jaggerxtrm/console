@@ -1,6 +1,10 @@
 @import "../../../../../packages/ui/src/styles/tokens.css";
 @import "tailwindcss";
 
+html {
+  font-size: 16px;
+}
+
 /* Radix accordion animations via CSS data-state (no JS animation) */
 [data-state="open"] { animation: slideDown var(--transition-fast); }
 [data-state="closed"] { animation: slideUp var(--transition-fast); }
