@@ -9,6 +9,7 @@ import type {
   RepoStat,
   GithubPr,
   GithubIssue,
+  GithubRelease,
 } from "../../types/github.ts";
 
 export interface GithubState {
@@ -25,6 +26,7 @@ export interface GithubState {
   unreadRepos: Set<string>;
   prs: GithubPr[];
   issues: GithubIssue[];
+  releases: GithubRelease[];
 
   setEvents: (events: GithubEvent[]) => void;
   appendEvents: (events: GithubEvent[]) => void;
@@ -44,6 +46,7 @@ export interface GithubState {
   clearRepoUnread: (fullName: string) => void;
   setPrs: (prs: GithubPr[]) => void;
   setIssues: (issues: GithubIssue[]) => void;
+  setReleases: (releases: GithubRelease[]) => void;
 }
 
 const defaultFilter: EventFilter = {};
@@ -62,6 +65,7 @@ export const useGithubStore = create<GithubState>((set) => ({
   unreadRepos: new Set(),
   prs: [],
   issues: [],
+  releases: [],
 
   setEvents: (events) => set({ events }),
 
@@ -121,4 +125,6 @@ export const useGithubStore = create<GithubState>((set) => ({
   setPrs: (prs) => set({ prs }),
 
   setIssues: (issues) => set({ issues }),
+
+  setReleases: (releases) => set({ releases }),
 }));

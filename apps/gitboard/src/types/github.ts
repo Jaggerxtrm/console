@@ -116,6 +116,17 @@ export interface GithubPr {
   closed_at: string | null;
 }
 
+export interface GithubRelease {
+  id: string;
+  tag_name: string;
+  name: string | null;
+  body: string | null;
+  html_url: string | null;
+  author_login: string;
+  published_at: string;
+  repo_full_name: string;
+}
+
 export interface GithubPrComment {
   id: number;
   author: string;

@@ -16,6 +16,7 @@ import {
   getPr,
   getIssues,
   getIssue,
+  getReleases,
 } from "../../core/github-store.ts";
 import type { ChannelRegistry } from "../ws/channels.ts";
 
@@ -210,6 +211,16 @@ export function createGithubRouter(db: Database, registry: ChannelRegistry): Hon
     const offset = q.offset ? parseInt(q.offset, 10) : 0;
     const prs = getPrs(db, { repo: q.repo, state: q.state, limit, offset });
     return c.json({ data: prs, limit, offset });
+  });
+
+  // GET /api/github/releases
+  app.get("/releases", (c) => {
+    const q = c.req.query();
+    if (!q.repo) return c.json({ error: "repo is required" }, 400);
+    const limit = q.limit ? parseInt(q.limit, 10) : 50;
+    const offset = q.offset ? parseInt(q.offset, 10) : 0;
+    const releases = getReleases(db, { repo: q.repo, limit, offset });
+    return c.json({ releases });
   });
 
   // GET /api/github/prs/:owner/:repo/:number/detail
