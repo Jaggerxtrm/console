@@ -1764,7 +1764,7 @@ body {
 }
 
 .pr-expanded-body {
-  padding: 0 14px 14px 90px;
+  padding: 0 14px 14px;
 }
 
 .pr-expanded-grid {
@@ -1909,13 +1909,13 @@ body {
     grid-template-columns: 18px 50px minmax(0, 1fr) auto 22px;
   }
   .pr-row-diff { display: none; }
-  .pr-expanded-body { padding-left: 14px; }
+  .pr-expanded-body { padding-left: 14px; padding-right: 14px; }
   .pr-expanded-grid { grid-template-columns: 1fr; }
 }
 
 /* PR expansion v10: GitHub-like inline flow, no boxed/scrolling description. */
 .pr-expanded-body {
-  padding: 0 14px 16px 90px;
+  padding: 0 14px 16px;
 }
 
 .pr-section {
@@ -2180,7 +2180,7 @@ body {
 }
 
 @media (max-width: 1100px) {
-  .pr-expanded-body { padding-left: 14px; }
+  .pr-expanded-body { padding-left: 14px; padding-right: 14px; }
   .pr-summary-line { gap: 6px 10px; }
 }
 
@@ -2346,7 +2346,7 @@ body {
 .release-repo { margin-left: 4px; }
 .release-chevron { transition: transform 150ms ease; }
 .release-row.is-expanded .release-chevron { transform: rotate(180deg); }
-.release-expanded-body { display: flex; flex-direction: column; gap: 6px; padding: 0 14px 14px 118px; border-top: 1px solid rgba(142,210,220,0.07); }
+.release-expanded-body { display: flex; flex-direction: column; gap: 6px; padding: 0 14px 14px; border-top: 1px solid rgba(142,210,220,0.07); }
 .release-body-text { font-size: var(--text-xs); color: var(--text-secondary); line-height: 1.5; }
 .release-link,
 .release-show-more { font-size: var(--text-xs); color: var(--accent-blue); text-decoration: none; }
@@ -2455,7 +2455,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 0 14px 14px 118px;
+  padding: 0 14px 14px;
   border-top: 1px solid rgba(142,210,220,0.07);
 }
 
@@ -2644,11 +2644,8 @@ body {
    as .pr-expanded-body so the centered stack lands at the same x as the
    PR/Issue/Release expanded views. */
 .gb-tab-pane {
-  padding: 14px 14px 14px 90px;
+  padding: 14px;
   background: transparent;
-}
-@media (max-width: 1100px) {
-  .gb-tab-pane { padding-left: 14px; }
 }
 
 .repo-content-state {
