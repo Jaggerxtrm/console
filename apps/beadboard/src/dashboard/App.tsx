@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { FilterIcon, InboxIcon, ProjectIcon, ArchiveIcon, DatabaseIcon, CheckIcon, SearchIcon } from "@primer/octicons-react";
-import { IssueFeed } from "./components/beads/IssueFeed.tsx";
+import { IssueFeed, IssueRow, countDependencies } from "./components/beads/IssueFeed.tsx";
 import { KanbanBoard } from "./components/beads/KanbanBoard.tsx";
 import { ProjectRail, type ProjectRailStats } from "./components/beads/ProjectRail.tsx";
 import { useBeadsStore } from "./stores/beads.ts";
@@ -240,7 +240,18 @@ export function App() {
             />
           )}
           {activeTab === "board" && <KanbanBoard issues={filteredIssues} projectId={selectedProjectId} interactions={interactions} getAgent={getAgentForIssue} />}
-          {activeTab === "triage" && <TriagePanel triage={triage} />}
+          {activeTab === "triage" && (
+            <TriagePanel
+              triage={triage}
+              issues={issues}
+              selectedIssueId={selectedIssueId}
+              selectedIssueDetail={selectedIssueDetail}
+              loadingDetailId={loadingDetailId}
+              onIssueSelect={handleIssueSelect}
+              getAgent={getAgentForIssue}
+              projectId={selectedProjectId}
+            />
+          )}
           {activeTab === "closed" && <ClosedIssuesPanel issues={filteredClosedIssues} getAgent={getAgentForIssue} />}
           {activeTab === "memories" && <MemoriesPanel memories={memories} />}
         </div>
@@ -357,20 +368,59 @@ function getHealthCounts(issues: BeadIssue[], closedIssues: BeadIssue[]) {
   return { countsByStatus, countsByType, countsByPriority };
 }
 
-function TriagePanel({ triage }: { triage: TriageView }) {
+interface TriagePanelProps {
+  triage: TriageView;
+  issues: BeadIssue[];
+  selectedIssueId: string | null;
+  selectedIssueDetail: BeadIssueDetail | null;
+  loadingDetailId: string | null;
+  onIssueSelect: (issue: BeadIssue) => void;
+  getAgent: (id: string) => string | null;
+  projectId: string | null;
+}
+
+function TriagePanel({ triage, issues, selectedIssueId, selectedIssueDetail, loadingDetailId, onIssueSelect, getAgent, projectId }: TriagePanelProps) {
+  const issueById = useMemo(() => new Map(issues.map((i) => [i.id, i])), [issues]);
+
+  const renderRow = (issue: TriageIssue) => {
+    const full = issueById.get(issue.id);
+    if (!full) return null;
+    return (
+      <IssueRow
+        key={issue.id}
+        issue={full}
+        detail={selectedIssueId === issue.id ? selectedIssueDetail : null}
+        isExpanded={selectedIssueId === issue.id}
+        isLoadingDetail={loadingDetailId === issue.id}
+        agent={getAgent(issue.id)}
+        dependencyCount={countDependencies(full)}
+        childCount={0}
+        onClick={() => onIssueSelect(full)}
+        projectId={projectId}
+        issueById={issueById}
+      />
+    );
+  };
+
   return (
     <div style={{ padding: 12, display: 'grid', gap: 12, overflowY: 'auto' }}>
       <section style={triagePanelStyle}>
         <h2 style={triageSectionTitleStyle}>Top picks</h2>
-        <TriageIssueList issues={triage.topPicks} emptyText="No open issues" />
+        {triage.topPicks.length === 0
+          ? <div style={triageEmptyStyle}>No open issues</div>
+          : <div style={{ display: 'grid', gap: 4 }}>{triage.topPicks.map(renderRow)}</div>}
       </section>
       <section style={triagePanelStyle}>
         <h2 style={triageSectionTitleStyle}>Quick wins</h2>
-        <TriageIssueList issues={triage.quickWins} emptyText="No quick wins" />
+        {triage.quickWins.length === 0
+          ? <div style={triageEmptyStyle}>No quick wins</div>
+          : <div style={{ display: 'grid', gap: 4 }}>{triage.quickWins.map(renderRow)}</div>}
       </section>
       <section style={triagePanelStyle}>
         <h2 style={triageSectionTitleStyle}>Stale ({STALE_DAYS}d+)</h2>
-        <TriageIssueList issues={triage.staleIssues} emptyText="No stale issues" />
+        {triage.staleIssues.length === 0
+          ? <div style={triageEmptyStyle}>No stale issues</div>
+          : <div style={{ display: 'grid', gap: 4 }}>{triage.staleIssues.map(renderRow)}</div>}
       </section>
       <section style={triagePanelStyle}>
         <h2 style={triageSectionTitleStyle}>Velocity</h2>
@@ -385,24 +435,6 @@ function TriagePanel({ triage }: { triage: TriageView }) {
         <TriageStatGrid title="By type" items={triage.health.countsByType} />
         <TriageStatGrid title="By priority" items={triage.health.countsByPriority} />
       </section>
-    </div>
-  );
-}
-
-function TriageIssueList({ issues, emptyText }: { issues: TriageIssue[]; emptyText: string }) {
-  if (issues.length === 0) return <div style={triageEmptyStyle}>{emptyText}</div>;
-  return (
-    <div style={{ display: 'grid', gap: 6 }}>
-      {issues.map((issue) => (
-        <div key={issue.id} style={triageIssueCardStyle}>
-          <div style={triageIssueRowStyle}>
-            <span style={triageIssueIdStyle}>{issue.id}</span>
-            <span style={triageIssueScoreStyle}>{issue.score.toFixed(2)}</span>
-          </div>
-          <div style={triageIssueTitleStyle}>{issue.title}</div>
-          <div style={triageIssueMetaStyle}>P{issue.priority} · {issue.daysIdle}d idle · {issue.blockerCount} blocker{issue.blockerCount === 1 ? '' : 's'}</div>
-        </div>
-      ))}
     </div>
   );
 }

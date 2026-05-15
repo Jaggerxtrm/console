@@ -84,7 +84,7 @@ function EpicChildren({ issues, selectedIssueId, selectedIssueDetail, loadingDet
   return <div className="epic-children">{sorted.map((issue) => <IssueRow key={issue.id} issue={issue} detail={selectedIssueId === issue.id ? selectedIssueDetail : null} isExpanded={selectedIssueId === issue.id} isLoadingDetail={loadingDetailId === issue.id} agent={getAgent?.(issue.id) ?? null} dependencyCount={countDependencies(issue)} childCount={groupChildrenByEpic(issues).get(issue.id)?.length ?? 0} onClick={() => onIssueSelect(issue)} isChild projectId={projectId} issueById={issueById} />)}</div>;
 }
 
-function IssueRow({ issue, detail, isExpanded, isLoadingDetail, agent, dependencyCount, childCount, onClick, isChild = false, projectId, issueById }: { issue: BeadIssue; detail: BeadIssueDetail | null; isExpanded: boolean; isLoadingDetail: boolean; agent: string | null; dependencyCount: number; childCount: number; onClick: () => void; isChild?: boolean; projectId: string | null; issueById: Map<string, BeadIssue>; }) {
+export function IssueRow({ issue, detail, isExpanded, isLoadingDetail, agent, dependencyCount, childCount, onClick, isChild = false, projectId, issueById }: { issue: BeadIssue; detail: BeadIssueDetail | null; isExpanded: boolean; isLoadingDetail: boolean; agent: string | null; dependencyCount: number; childCount: number; onClick: () => void; isChild?: boolean; projectId: string | null; issueById: Map<string, BeadIssue>; }) {
   const isEpic = issue.issue_type === "epic";
 
   return (
@@ -327,7 +327,7 @@ function renderInline(text: string, key: string): ReactNode[] {
 
 function formatCompactDate(iso: string | undefined): string { if (!iso) return "—"; const date = new Date(iso); if (Number.isNaN(date.getTime())) return iso; return date.toLocaleDateString(undefined, { month: "short", day: "numeric" }); }
 
-function countDependencies(issue: BeadIssue): number { return issue.dependencies.filter((dependency) => dependency.dependency_type !== "parent-child").length; }
+export function countDependencies(issue: BeadIssue): number { return issue.dependencies.filter((dependency) => dependency.dependency_type !== "parent-child").length; }
 
 function groupChildrenByEpic(issues: BeadIssue[]): Map<string, BeadIssue[]> { const issueById = new Map(issues.map((issue) => [issue.id, issue])); const groups = new Map<string, BeadIssue[]>(); for (const issue of issues) { const parent = getEpicParentId(issue, issueById); if (!parent) continue; const list = groups.get(parent) ?? []; list.push(issue); groups.set(parent, list); } return groups; }
 
