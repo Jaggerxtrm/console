@@ -10,6 +10,7 @@ import type {
   PrsResponse,
   IssuesResponse,
   GithubPrDetail,
+  GithubRelease,
 } from "../../types/github.ts";
 
 export class ApiClient {
@@ -115,6 +116,27 @@ export class ApiClient {
     if (params.offset != null) q.set("offset", String(params.offset));
     const qs = q.toString();
     return this.get(`/api/github/issues${qs ? `?${qs}` : ""}`);
+  }
+
+  getReleases(params: { repo?: string; limit?: number; offset?: number } = {}): Promise<{ releases: GithubRelease[] }> {
+    const q = new URLSearchParams();
+    if (params.repo) q.set("repo", params.repo);
+    if (params.limit != null) q.set("limit", String(params.limit));
+    if (params.offset != null) q.set("offset", String(params.offset));
+    const qs = q.toString();
+    return this.get(`/api/github/releases${qs ? `?${qs}` : ""}`);
+  }
+
+  getRepoMarkdown(owner: string, name: string, path: string): Promise<{ content: string | null; sha: string | null; last_modified: string | null }> {
+    return this.get(`/api/github/repo/${owner}/${name}/markdown?path=${encodeURIComponent(path)}`);
+  }
+
+  listRepoReports(owner: string, name: string): Promise<{ data: { name: string; path: string; sha: string; size: number; frontmatter: Record<string, string> | null }[] }> {
+    return this.get(`/api/github/repo/${owner}/${name}/reports`);
+  }
+
+  getRepoReport(owner: string, name: string, filename: string): Promise<{ content: string; sha: string; last_modified: string | null }> {
+    return this.get(`/api/github/repo/${owner}/${name}/reports/${filename}`);
   }
 
   getIssue(owner: string, repo: string, number: number): Promise<unknown> {

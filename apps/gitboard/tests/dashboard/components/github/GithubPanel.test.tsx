@@ -15,6 +15,7 @@ beforeEach(() => {
   s.setContributions([]);
   s.setLoading(false);
   s.setError(null);
+  s.setReleases([]);
   s.resetFilter();
   s.setRepoStats([]);
 });

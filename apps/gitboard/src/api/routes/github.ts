@@ -16,7 +16,9 @@ import {
   getPr,
   getIssues,
   getIssue,
+  getReleases,
 } from "../../core/github-store.ts";
+import { fetchRepoFile, listRepoDir, parseFrontmatter } from "../../core/github-readme.ts";
 import type { ChannelRegistry } from "../ws/channels.ts";
 
 async function githubApi<T>(path: string): Promise<T> {
@@ -212,6 +214,16 @@ export function createGithubRouter(db: Database, registry: ChannelRegistry): Hon
     return c.json({ data: prs, limit, offset });
   });
 
+  // GET /api/github/releases
+  app.get("/releases", (c) => {
+    const q = c.req.query();
+    if (!q.repo) return c.json({ error: "repo is required" }, 400);
+    const limit = q.limit ? parseInt(q.limit, 10) : 50;
+    const offset = q.offset ? parseInt(q.offset, 10) : 0;
+    const releases = getReleases(db, { repo: q.repo, limit, offset });
+    return c.json({ releases });
+  });
+
   // GET /api/github/prs/:owner/:repo/:number/detail
   app.get("/prs/:owner/:repo/:number/detail", async (c) => {
     const repo = `${c.req.param("owner")}/${c.req.param("repo")}`;
@@ -334,6 +346,63 @@ export function createGithubRouter(db: Database, registry: ChannelRegistry): Hon
     const issue = getIssue(db, repo, number);
     if (!issue) return c.json({ error: "not found" }, 404);
     return c.json(issue);
+  });
+
+  // GET /api/github/repo/:owner/:name/markdown?path=README.md|CHANGELOG.md
+  app.get("/repo/:owner/:name/markdown", async (c) => {
+    const owner = c.req.param("owner");
+    const name = c.req.param("name");
+    const path = c.req.query("path") || "README.md";
+    try {
+      const file = await fetchRepoFile(owner, name, path);
+      if (!file) return c.json({ content: null, sha: null, last_modified: null }, 200);
+      return c.json(file);
+    } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : "fetch failed" }, 502);
+    }
+  });
+
+  // GET /api/github/repo/:owner/:name/reports
+  app.get("/repo/:owner/:name/reports", async (c) => {
+    const owner = c.req.param("owner");
+    const name = c.req.param("name");
+    try {
+      const entries = await listRepoDir(owner, name, ".xtrm/reports");
+      const reports = entries
+        .filter((e) => e.type === "file" && e.name.endsWith(".md"))
+        .sort((a, b) => b.name.localeCompare(a.name));
+
+      const withMeta = await Promise.all(
+        reports.map(async (r) => {
+          let frontmatter: Record<string, string> | null = null;
+          try {
+            const file = await fetchRepoFile(owner, name, r.path);
+            if (file?.content) frontmatter = parseFrontmatter(file.content);
+          } catch {
+            /* skip per-file errors */
+          }
+          return { name: r.name, path: r.path, sha: r.sha, size: r.size, frontmatter };
+        }),
+      );
+      return c.json({ data: withMeta });
+    } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : "fetch failed" }, 502);
+    }
+  });
+
+  // GET /api/github/repo/:owner/:name/reports/:filename
+  app.get("/repo/:owner/:name/reports/:filename", async (c) => {
+    const owner = c.req.param("owner");
+    const name = c.req.param("name");
+    const filename = c.req.param("filename");
+    if (!/^[\w.-]+\.md$/.test(filename)) return c.json({ error: "invalid filename" }, 400);
+    try {
+      const file = await fetchRepoFile(owner, name, `.xtrm/reports/${filename}`);
+      if (!file) return c.json({ error: "not found" }, 404);
+      return c.json(file);
+    } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : "fetch failed" }, 502);
+    }
   });
 
   return app;

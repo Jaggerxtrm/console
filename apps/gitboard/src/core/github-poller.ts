@@ -121,6 +121,7 @@ export function transformEvent(raw: RawGithubEvent): GithubEvent {
       const release = payload.release as Record<string, unknown> | undefined;
       if (release) {
         title = (release.name as string | undefined) ?? (release.tag_name as string | undefined) ?? null;
+        body = (release.body as string | undefined) ?? null;
         url = (release.html_url as string | undefined) ?? null;
       }
       break;

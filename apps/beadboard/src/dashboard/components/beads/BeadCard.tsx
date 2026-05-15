@@ -2,14 +2,21 @@
  * BeadCard - compact secondary-board issue card
  */
 
-import { DependabotIcon, IssueOpenedIcon, MilestoneIcon, NorthStarIcon, ProjectIcon, ToolsIcon } from "@primer/octicons-react";
+import { DependabotIcon, GitPullRequestIcon, IssueOpenedIcon, MilestoneIcon, NorthStarIcon, ProjectIcon, ToolsIcon } from "@primer/octicons-react";
 import type { BeadIssue } from "../../../types/beads.ts";
+
+interface BeadCardPrLink {
+  number: number;
+  repo: string;
+  url: string | null;
+}
 
 interface BeadCardProps {
   issue: BeadIssue;
   onClick?: () => void;
   agent?: string | null;
   isExpanded?: boolean;
+  prLink?: BeadCardPrLink | null;
 }
 
 const TYPE_CONFIG: Record<string, { label: string; icon: typeof IssueOpenedIcon; color: string }> = {
@@ -28,7 +35,7 @@ const PRIORITY_COLORS: Record<string, string> = {
   "4": "var(--text-disabled)",
 };
 
-export function BeadCard({ issue, onClick, agent, isExpanded = false }: BeadCardProps) {
+export function BeadCard({ issue, onClick, agent, isExpanded = false, prLink = null }: BeadCardProps) {
   const type = TYPE_CONFIG[String(issue.issue_type)] ?? { label: String(issue.issue_type), icon: IssueOpenedIcon, color: "var(--text-muted)" };
   const TypeIcon = type.icon;
   const priorityColor = PRIORITY_COLORS[String(issue.priority)] ?? "var(--text-muted)";
@@ -68,6 +75,18 @@ export function BeadCard({ issue, onClick, agent, isExpanded = false }: BeadCard
         {agent && <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}><DependabotIcon size={11} />{agent}</span>}
         {issue.dependencies.length > 0 && <span>{issue.dependencies.length} deps</span>}
         {issue.labels.length > 0 && <span>{issue.labels.length} labels</span>}
+        {prLink && (
+          <a
+            href={prLink.url ?? `https://github.com/${prLink.repo}/pull/${prLink.number}`}
+            target="_blank"
+            rel="noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            title={`${prLink.repo}#${prLink.number}`}
+            style={{ display: "inline-flex", alignItems: "center", gap: 3, color: "var(--accent-blue)", textDecoration: "none" }}
+          >
+            <GitPullRequestIcon size={11} />#{prLink.number}
+          </a>
+        )}
       </div>
     </button>
   );

@@ -7,27 +7,37 @@ import { RepoSidebar } from "./RepoSidebar.tsx";
 import { ActivityTimeline } from "./ActivityTimeline.tsx";
 import { PrTimeline } from "./PrTimeline.tsx";
 import { IssueTimeline } from "./IssueTimeline.tsx";
+import { ReleaseTimeline } from "./ReleaseTimeline.tsx";
+import { ReadmeView, ChangelogView, ReportsView, parseOwnerName } from "./RepoContentPanels.tsx";
 import type { GithubEvent } from "../../../types/github.ts";
 
 const SOCIAL_TYPES = new Set(["WatchEvent", "ForkEvent", "MemberEvent"]);
 
-type Tab = "activity" | "prs" | "issues";
+type Tab = "activity" | "prs" | "issues" | "releases" | "readme" | "changelog" | "reports";
 
 function TabBar({
   activeTab,
   onSelect,
   prCount,
   issueCount,
+  releaseCount,
+  hasRepo,
 }: {
   activeTab: Tab;
   onSelect: (tab: Tab) => void;
   prCount: number;
   issueCount: number;
+  releaseCount: number;
+  hasRepo: boolean;
 }) {
-  const tabs: { id: Tab; label: string }[] = [
+  const tabs: { id: Tab; label: string; disabled?: boolean }[] = [
     { id: "activity", label: "Activity" },
     { id: "prs", label: `Pull Requests${prCount > 0 ? ` (${prCount})` : ""}` },
     { id: "issues", label: `Issues${issueCount > 0 ? ` (${issueCount})` : ""}` },
+    { id: "releases", label: `Releases${releaseCount > 0 ? ` (${releaseCount})` : ""}` },
+    { id: "readme", label: "README", disabled: !hasRepo },
+    { id: "changelog", label: "CHANGELOG", disabled: !hasRepo },
+    { id: "reports", label: "Reports", disabled: !hasRepo },
   ];
 
   return (
@@ -44,7 +54,9 @@ function TabBar({
         <button
           key={tab.id}
           className={activeTab === tab.id ? "gitboard-tab is-active" : "gitboard-tab"}
-          onClick={() => onSelect(tab.id)}
+          onClick={() => !tab.disabled && onSelect(tab.id)}
+          disabled={tab.disabled}
+          title={tab.disabled ? "Select a repo first" : undefined}
           style={{
             padding: "8px 16px",
             background: "transparent",
@@ -53,7 +65,9 @@ function TabBar({
             color: activeTab === tab.id ? "var(--text-primary)" : "var(--text-muted)",
             fontSize: "var(--text-xs)",
             fontWeight: activeTab === tab.id ? 600 : 400,
-            cursor: "pointer",
+            fontFamily: "var(--font-ui)",
+            cursor: tab.disabled ? "not-allowed" : "pointer",
+            opacity: tab.disabled ? 0.4 : 1,
             whiteSpace: "nowrap",
           }}
         >
@@ -82,6 +96,7 @@ export function GithubPanel({ onMount = useGithubActivity }: { onMount?: () => v
     unreadRepos,
     prs,
     issues,
+    releases,
     selectEvent,
     setFilter,
     resetFilter,
@@ -107,6 +122,8 @@ export function GithubPanel({ onMount = useGithubActivity }: { onMount?: () => v
     .filter((pr) => repoMatchesFilter(pr.repo));
   const ownIssues = (ownerUsername ? issues.filter((issue) => issue.repo.startsWith(ownerUsername + "/")) : issues)
     .filter((issue) => repoMatchesFilter(issue.repo));
+  const ownReleases = (ownerUsername ? releases.filter((release) => release.repo_full_name.startsWith(ownerUsername + "/")) : releases)
+    .filter((release) => repoMatchesFilter(release.repo_full_name));
 
   function handleSelectEvent(evt: GithubEvent) {
     selectEvent(evt);
@@ -147,24 +164,44 @@ export function GithubPanel({ onMount = useGithubActivity }: { onMount?: () => v
       <div className="gitboard-center" style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
         <StatsHeader summary={summary} />
 
-        <TabBar
-          activeTab={activeTab}
-          onSelect={setActiveTab}
-          prCount={ownPrs.length}
-          issueCount={ownIssues.length}
-        />
+        {(() => {
+          const selectedRepo = (filter.repos ?? [])[0] ?? null;
+          const parsed = selectedRepo ? parseOwnerName(selectedRepo) : null;
+          return (
+            <>
+              <TabBar
+                activeTab={activeTab}
+                onSelect={setActiveTab}
+                prCount={ownPrs.length}
+                issueCount={ownIssues.length}
+                releaseCount={ownReleases.length}
+                hasRepo={!!parsed}
+              />
 
-        <div style={{ flex: 1, minHeight: 0 }}>
-          {activeTab === "activity" && (
-            <ActivityTimeline
-              events={ownEvents}
-              selectedId={selectedEvent?.id ?? null}
-              onSelect={(evt) => void handleSelectEvent(evt)}
-            />
-          )}
-          {activeTab === "prs" && <PrTimeline prs={ownPrs} />}
-          {activeTab === "issues" && <IssueTimeline issues={ownIssues} />}
-        </div>
+              <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
+                {activeTab === "activity" && (
+                  <ActivityTimeline
+                    events={ownEvents}
+                    selectedId={selectedEvent?.id ?? null}
+                    onSelect={(evt) => void handleSelectEvent(evt)}
+                  />
+                )}
+                {activeTab === "prs" && <PrTimeline prs={ownPrs} />}
+                {activeTab === "issues" && <IssueTimeline issues={ownIssues} />}
+                {activeTab === "releases" && <ReleaseTimeline releases={ownReleases} />}
+                {parsed && activeTab === "readme" && (
+                  <div className="gb-tab-pane"><ReadmeView owner={parsed.owner} name={parsed.name} /></div>
+                )}
+                {parsed && activeTab === "changelog" && (
+                  <div className="gb-tab-pane"><ChangelogView owner={parsed.owner} name={parsed.name} /></div>
+                )}
+                {parsed && activeTab === "reports" && (
+                  <div className="gb-tab-pane"><ReportsView owner={parsed.owner} name={parsed.name} /></div>
+                )}
+              </div>
+            </>
+          );
+        })()}
 
         {/* Starred / Social strip — only shown on Activity tab */}
         {activeTab === "activity" && socialEvents.length > 0 && (

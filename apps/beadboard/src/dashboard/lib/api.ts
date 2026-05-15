@@ -61,4 +61,21 @@ export const api = {
     const data: any = await res.json();
     return data.stats;
   },
+
+  async getOpenPrs(limit = 300): Promise<OpenPr[]> {
+    const res = await fetch(`${API_BASE}/api/github/prs?state=open&limit=${limit}`);
+    const data: any = await res.json();
+    return data.data || [];
+  },
 };
+
+export interface OpenPr {
+  repo: string;
+  number: number;
+  title: string;
+  body: string | null;
+  state: string;
+  url: string | null;
+  updated_at: string | null;
+  merged_at: string | null;
+}

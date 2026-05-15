@@ -25,3 +25,4 @@ e4494c9598b9
 
 # bv (beads viewer) local config and caches
 .bv/
+.playwright-mcp/

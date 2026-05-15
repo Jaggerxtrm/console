@@ -3,9 +3,16 @@
  */
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { ChevronRightIcon, ChevronDownIcon, GitBranchIcon, LinkIcon, AlertIcon, IssueOpenedIcon, MilestoneIcon, NorthStarIcon, ProjectIcon, ToolsIcon, DependabotIcon } from "@primer/octicons-react";
+import { ChevronRightIcon, ChevronDownIcon, GitBranchIcon, LinkIcon, AlertIcon, IssueOpenedIcon, MilestoneIcon, NorthStarIcon, ProjectIcon, ToolsIcon, DependabotIcon, GitPullRequestIcon } from "@primer/octicons-react";
 import type { BeadDependency, BeadIssue, BeadIssueDetail, Interaction } from "../../../types/beads.ts";
 import { api } from "../../lib/api.ts";
+
+export interface IssuePrLink {
+  number: number;
+  repo: string;
+  url: string | null;
+  state: string;
+}
 
 interface IssueFeedProps {
   issues: BeadIssue[];
@@ -15,6 +22,7 @@ interface IssueFeedProps {
   onIssueSelect: (issue: BeadIssue) => void;
   getAgent?: (issueId: string) => string | null;
   projectId: string | null;
+  prByIssueId?: Map<string, IssuePrLink>;
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -42,7 +50,7 @@ const TYPE_ICONS: Record<string, typeof IssueOpenedIcon> = {
   chore: ToolsIcon,
 };
 
-export function IssueFeed({ issues, selectedIssueId, selectedIssueDetail, loadingDetailId, onIssueSelect, getAgent, projectId }: IssueFeedProps) {
+export function IssueFeed({ issues, selectedIssueId, selectedIssueDetail, loadingDetailId, onIssueSelect, getAgent, projectId, prByIssueId }: IssueFeedProps) {
   const issueById = useMemo(() => new Map(issues.map((issue) => [issue.id, issue])), [issues]);
   const epicChildren = useMemo(() => groupChildrenByEpic(issues), [issues]);
   const topLevelIssues = useMemo(() => issues.filter((issue) => !getEpicParentId(issue, issueById)), [issueById, issues]);
@@ -68,8 +76,9 @@ export function IssueFeed({ issues, selectedIssueId, selectedIssueDetail, loadin
                   onClick={() => onIssueSelect(issue)}
                   projectId={projectId}
                   issueById={issueById}
+                  prLink={prByIssueId?.get(issue.id) ?? null}
                 />
-                {children.length > 0 && <EpicChildren issues={children} selectedIssueId={selectedIssueId} selectedIssueDetail={selectedIssueDetail} loadingDetailId={loadingDetailId} onIssueSelect={onIssueSelect} getAgent={getAgent} projectId={projectId} issueById={issueById} />}
+                {children.length > 0 && <EpicChildren issues={children} selectedIssueId={selectedIssueId} selectedIssueDetail={selectedIssueDetail} loadingDetailId={loadingDetailId} onIssueSelect={onIssueSelect} getAgent={getAgent} projectId={projectId} issueById={issueById} prByIssueId={prByIssueId} />}
               </div>
             );
           })
@@ -79,12 +88,12 @@ export function IssueFeed({ issues, selectedIssueId, selectedIssueDetail, loadin
   );
 }
 
-function EpicChildren({ issues, selectedIssueId, selectedIssueDetail, loadingDetailId, onIssueSelect, getAgent, projectId, issueById }: { issues: BeadIssue[]; selectedIssueId: string | null; selectedIssueDetail: BeadIssueDetail | null; loadingDetailId: string | null; onIssueSelect: (issue: BeadIssue) => void; getAgent?: (issueId: string) => string | null; projectId: string | null; issueById: Map<string, BeadIssue>; }) {
+function EpicChildren({ issues, selectedIssueId, selectedIssueDetail, loadingDetailId, onIssueSelect, getAgent, projectId, issueById, prByIssueId }: { issues: BeadIssue[]; selectedIssueId: string | null; selectedIssueDetail: BeadIssueDetail | null; loadingDetailId: string | null; onIssueSelect: (issue: BeadIssue) => void; getAgent?: (issueId: string) => string | null; projectId: string | null; issueById: Map<string, BeadIssue>; prByIssueId?: Map<string, IssuePrLink>; }) {
   const sorted = [...issues].sort((a, b) => a.updated_at.localeCompare(b.updated_at));
-  return <div className="epic-children">{sorted.map((issue) => <IssueRow key={issue.id} issue={issue} detail={selectedIssueId === issue.id ? selectedIssueDetail : null} isExpanded={selectedIssueId === issue.id} isLoadingDetail={loadingDetailId === issue.id} agent={getAgent?.(issue.id) ?? null} dependencyCount={countDependencies(issue)} childCount={groupChildrenByEpic(issues).get(issue.id)?.length ?? 0} onClick={() => onIssueSelect(issue)} isChild projectId={projectId} issueById={issueById} />)}</div>;
+  return <div className="epic-children">{sorted.map((issue) => <IssueRow key={issue.id} issue={issue} detail={selectedIssueId === issue.id ? selectedIssueDetail : null} isExpanded={selectedIssueId === issue.id} isLoadingDetail={loadingDetailId === issue.id} agent={getAgent?.(issue.id) ?? null} dependencyCount={countDependencies(issue)} childCount={groupChildrenByEpic(issues).get(issue.id)?.length ?? 0} onClick={() => onIssueSelect(issue)} isChild projectId={projectId} issueById={issueById} prLink={prByIssueId?.get(issue.id) ?? null} />)}</div>;
 }
 
-function IssueRow({ issue, detail, isExpanded, isLoadingDetail, agent, dependencyCount, childCount, onClick, isChild = false, projectId, issueById }: { issue: BeadIssue; detail: BeadIssueDetail | null; isExpanded: boolean; isLoadingDetail: boolean; agent: string | null; dependencyCount: number; childCount: number; onClick: () => void; isChild?: boolean; projectId: string | null; issueById: Map<string, BeadIssue>; }) {
+export function IssueRow({ issue, detail, isExpanded, isLoadingDetail, agent, dependencyCount, childCount, onClick, isChild = false, projectId, issueById, prLink = null }: { issue: BeadIssue; detail: BeadIssueDetail | null; isExpanded: boolean; isLoadingDetail: boolean; agent: string | null; dependencyCount: number; childCount: number; onClick: () => void; isChild?: boolean; projectId: string | null; issueById: Map<string, BeadIssue>; prLink?: IssuePrLink | null; }) {
   const isEpic = issue.issue_type === "epic";
 
   return (
@@ -97,6 +106,18 @@ function IssueRow({ issue, detail, isExpanded, isLoadingDetail, agent, dependenc
           <span className="meta-item">{formatCompactDate(issue.updated_at)}</span>
           {childCount > 0 && <span className="meta-item">{childCount} children</span>}
           {renderInlineDeps(issue, dependencyCount)}
+          {prLink && (
+            <a
+              href={prLink.url ?? `https://github.com/${prLink.repo}/pull/${prLink.number}`}
+              target="_blank"
+              rel="noreferrer"
+              className="pr-link-badge"
+              title={`${prLink.repo}#${prLink.number}`}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <GitPullRequestIcon size={10} /> #{prLink.number}
+            </a>
+          )}
           {agent && <span className="agent-badge"><DependabotIcon size={10} /> {agent}</span>}
         </span>
         <span className="type-mark" title={TYPE_LABELS[issue.issue_type] ?? issue.issue_type}>{TYPE_LABELS[issue.issue_type] ?? issue.issue_type}</span>
@@ -108,7 +129,7 @@ function IssueRow({ issue, detail, isExpanded, isLoadingDetail, agent, dependenc
   );
 }
 
-function IssueDossier({ id, detail, issue, loading, projectId, issueById }: { id: string; detail: BeadIssueDetail | null; issue: BeadIssue; loading: boolean; projectId: string | null; issueById: Map<string, BeadIssue>; }) {
+export function IssueDossier({ id, detail, issue, loading, projectId, issueById }: { id: string; detail: BeadIssueDetail | null; issue: BeadIssue; loading: boolean; projectId: string | null; issueById: Map<string, BeadIssue>; }) {
   const [interactions, setInteractions] = useState<Interaction[]>([]);
 
   useEffect(() => {
@@ -327,7 +348,7 @@ function renderInline(text: string, key: string): ReactNode[] {
 
 function formatCompactDate(iso: string | undefined): string { if (!iso) return "—"; const date = new Date(iso); if (Number.isNaN(date.getTime())) return iso; return date.toLocaleDateString(undefined, { month: "short", day: "numeric" }); }
 
-function countDependencies(issue: BeadIssue): number { return issue.dependencies.filter((dependency) => dependency.dependency_type !== "parent-child").length; }
+export function countDependencies(issue: BeadIssue): number { return issue.dependencies.filter((dependency) => dependency.dependency_type !== "parent-child").length; }
 
 function groupChildrenByEpic(issues: BeadIssue[]): Map<string, BeadIssue[]> { const issueById = new Map(issues.map((issue) => [issue.id, issue])); const groups = new Map<string, BeadIssue[]>(); for (const issue of issues) { const parent = getEpicParentId(issue, issueById); if (!parent) continue; const list = groups.get(parent) ?? []; list.push(issue); groups.set(parent, list); } return groups; }
 

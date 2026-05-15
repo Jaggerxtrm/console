@@ -20,6 +20,7 @@ export function useGithubActivity(): void {
     setError,
     setPrs,
     setIssues,
+    setReleases,
   } = useGithubStore();
 
   const load = useCallback(async () => {
@@ -35,6 +36,9 @@ export function useGithubActivity(): void {
         apiClient.getPrs({ limit: 1000 }),
         apiClient.getIssues({ limit: 100 }),
       ]);
+      const releaseResponses = await Promise.all(
+        reposRes.data.map((repo) => apiClient.getReleases({ repo: repo.full_name, limit: 100 })),
+      );
       setEvents(eventsRes.data);
       setRepos(reposRes.data);
       setContributions(contribRes.data);
@@ -42,12 +46,17 @@ export function useGithubActivity(): void {
       setRepoStats(statsRes.data);
       setPrs(prsRes.data);
       setIssues(issuesRes.data);
+      setReleases(
+        releaseResponses
+          .flatMap((response) => response.releases)
+          .sort((a, b) => (b.published_at ?? "").localeCompare(a.published_at ?? "")),
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load data");
     } finally {
       setLoading(false);
     }
-  }, [filter, setEvents, setRepos, setContributions, setSummary, setRepoStats, setLoading, setError, setPrs, setIssues]);
+  }, [filter, setEvents, setRepos, setContributions, setSummary, setRepoStats, setLoading, setError, setPrs, setIssues, setReleases]);
 
   useEffect(() => {
     void load();

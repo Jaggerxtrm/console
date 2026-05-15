@@ -227,7 +227,7 @@ export function renderPrBodyText(value: string): ReactNode[] {
   let listItems: ReactNode[] = [];
 
   const renderInline = (line: string, key: string): ReactNode => {
-    const pattern = /\[([^\]]+)]\((https?:\/\/[^\s)]+)\)|`([^`]+)`/g;
+    const pattern = /\[([^\]]+)]\((https?:\/\/[^\s)]+)\)|`([^`]+)`|\*\*([^*\n]+)\*\*|(?<![*\w])\*([^*\n]+)\*(?!\*)/g;
     const parts: ReactNode[] = [];
     let lastIndex = 0;
     for (const match of line.matchAll(pattern)) {
@@ -237,6 +237,10 @@ export function renderPrBodyText(value: string): ReactNode[] {
         parts.push(<a key={`${key}-link-${match.index}`} href={match[2]} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>{match[1]}</a>);
       } else if (match[3]) {
         parts.push(<code key={`${key}-code-${match.index}`}>{match[3]}</code>);
+      } else if (match[4]) {
+        parts.push(<strong key={`${key}-b-${match.index}`}>{match[4]}</strong>);
+      } else if (match[5]) {
+        parts.push(<em key={`${key}-i-${match.index}`}>{match[5]}</em>);
       }
       lastIndex = match.index + match[0].length;
     }
@@ -256,32 +260,95 @@ export function renderPrBodyText(value: string): ReactNode[] {
     listItems = [];
   };
 
-  lines.forEach((line, index) => {
+  const parseTableCells = (row: string): string[] =>
+    row.replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
+
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
     const trimmed = line.trim();
+
+    // Fenced code block ``` or ~~~
+    const fence = /^(```|~~~)\s*([\w-]*)\s*$/.exec(trimmed);
+    if (fence) {
+      flushParagraph();
+      flushList();
+      const lang = fence[2] || "";
+      const code: string[] = [];
+      i++;
+      while (i < lines.length && !new RegExp("^" + fence[1] + "\\s*$").test(lines[i].trim())) {
+        code.push(lines[i]);
+        i++;
+      }
+      i++;
+      nodes.push(
+        <pre key={`pre-${nodes.length}`} data-lang={lang} className={`rich-code${lang ? ` rich-code-${lang}` : ""}`}>
+          <code>{code.join("\n")}</code>
+        </pre>,
+      );
+      continue;
+    }
+
+    // Markdown table: header row + separator + data rows
+    const isTableRow = /^\|.*\|$/.test(trimmed);
+    const nextIsSeparator = i + 1 < lines.length && /^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(lines[i + 1].trim());
+    if (isTableRow && nextIsSeparator) {
+      flushParagraph();
+      flushList();
+      const headers = parseTableCells(trimmed);
+      i += 2;
+      const rows: string[][] = [];
+      while (i < lines.length && /^\|.*\|$/.test(lines[i].trim())) {
+        rows.push(parseTableCells(lines[i].trim()));
+        i++;
+      }
+      nodes.push(
+        <table key={`tbl-${nodes.length}`} className="rich-table">
+          <thead>
+            <tr>
+              {headers.map((h, ci) => <th key={ci}>{renderInline(h, `th-${ci}`)}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, ri) => (
+              <tr key={ri}>
+                {r.map((c, ci) => <td key={ci}>{renderInline(c, `td-${ri}-${ci}`)}</td>)}
+              </tr>
+            ))}
+          </tbody>
+        </table>,
+      );
+      continue;
+    }
+
     if (!trimmed) {
       flushParagraph();
       flushList();
-      return;
+      i++;
+      continue;
     }
 
     const heading = /^(#{1,4})\s+(.+)$/.exec(trimmed);
     if (heading) {
       flushParagraph();
       flushList();
-      nodes.push(<h3 key={`h-${index}`}>{renderInline(heading[2], `h-${index}`)}</h3>);
-      return;
+      nodes.push(<h3 key={`h-${i}`}>{renderInline(heading[2], `h-${i}`)}</h3>);
+      i++;
+      continue;
     }
 
     const list = /^[-*]\s+(.+)$/.exec(trimmed);
     if (list) {
       flushParagraph();
-      listItems.push(<li key={`li-${index}`}>{renderInline(list[1], `li-${index}`)}</li>);
-      return;
+      listItems.push(<li key={`li-${i}`}>{renderInline(list[1], `li-${i}`)}</li>);
+      i++;
+      continue;
     }
 
     flushList();
     paragraph.push(line);
-  });
+    i++;
+  }
 
   flushParagraph();
   flushList();
@@ -349,6 +416,7 @@ function PrExpandedBody({ pr }: { pr: GithubPr }) {
 
   return (
     <div className="pr-expanded-body">
+      <div className="gb-detail-stack">
       <div className="pr-compact-summary">
         <div className="pr-summary-line">
           <span><b>Author</b>{pr.author}</span>
@@ -415,6 +483,7 @@ function PrExpandedBody({ pr }: { pr: GithubPr }) {
           </div>
         </section>
       )}
+      </div>
     </div>
   );
 }
