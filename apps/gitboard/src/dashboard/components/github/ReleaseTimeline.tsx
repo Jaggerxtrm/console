@@ -59,7 +59,6 @@ function ReleaseRow({ release, expanded, onToggle }: { release: GithubRelease; e
         <span className="release-row-icon">
           <TagIcon size={16} />
         </span>
-        <span className="release-tag">{release.tag_name}</span>
         <span className="release-title">{release.name || release.tag_name}</span>
         <span className="release-repo">{release.repo_full_name}</span>
         <span className="release-actor">{release.author_login}</span>
