@@ -5,6 +5,7 @@ import { GithubPanel } from "./components/github/GithubPanel.tsx";
 import type { SidebarSelection } from "../types/shell.ts";
 import { useRepoTree } from "./hooks/useRepoTree.ts";
 import { Sidebar } from "./components/shell/Sidebar.tsx";
+import { MainPane } from "./components/shell/MainPane.tsx";
 
 type Tab = SidebarSelection["section"];
 type View = "dashboard" | "design-preview";
@@ -19,20 +20,21 @@ const BEADBOARD_URL = import.meta.env.VITE_BEADBOARD_URL || "/beadboard";
 
 export function App() {
   const path = window.location.pathname;
-  const view: View = path.endsWith("/design-preview") || path.endsWith("/preview") ? "design-preview" : "dashboard";
-  // forge-5w9.4 preview: /gitboard/shell-preview renders the new Sidebar standalone for visual QA
-  if (path.endsWith("/shell-preview")) return <ShellPreview />;
-  return <DashboardShell view={view} />;
+  // /gitboard/legacy → old TabBar shell (until 5w9.7+5w9.8 reach parity)
+  // /gitboard/design-preview, /preview → existing design preview
+  // default → new IDE shell (forge-5w9.6)
+  if (path.endsWith("/legacy")) return <DashboardShell view="dashboard" />;
+  if (path.endsWith("/design-preview") || path.endsWith("/preview"))
+    return <DashboardShell view="design-preview" />;
+  return <ShellApp />;
 }
 
-function ShellPreview() {
+function ShellApp() {
   useRepoTree();
   return (
-    <div style={{ display: "flex", minHeight: "100vh", background: "var(--surface-primary)", color: "var(--text-primary)", fontFamily: "var(--font-ui)" }}>
+    <div className="shell-app">
       <Sidebar />
-      <main style={{ flex: 1, padding: 24, color: "var(--text-muted)", fontSize: 13 }}>
-        Right pane placeholder — sidebar preview (forge-5w9.4). Open browser console for aggregation log.
-      </main>
+      <MainPane />
     </div>
   );
 }
