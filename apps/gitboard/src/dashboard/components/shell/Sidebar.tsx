@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronRightIcon,
+  ChevronLeftIcon,
   GitPullRequestIcon,
   GitCommitIcon,
   IssueOpenedIcon,
@@ -12,6 +13,7 @@ import {
   MilestoneIcon,
   SyncIcon,
   AlertIcon,
+  SidebarExpandIcon,
 } from "@primer/octicons-react";
 import {
   useShellStore,
@@ -94,6 +96,7 @@ export function Sidebar() {
   const toggleExpand = useShellStore((s) => s.toggleExpand);
   const select = useShellStore((s) => s.select);
   const sidebarCollapsed = useShellStore((s) => s.sidebarCollapsed);
+  const toggleSidebar = useShellStore((s) => s.toggleSidebar);
 
   const visible = useMemo(() => buildVisibleRows(repos, expanded), [repos, expanded]);
   const rowRefs = useRef<Map<string, HTMLLIElement>>(new Map());
@@ -168,6 +171,16 @@ export function Sidebar() {
     >
       <div className="shell-sidebar-header">
         <span className="shell-sidebar-title">EXPLORER</span>
+        <button
+          type="button"
+          className="shell-sidebar-toggle"
+          aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          aria-expanded={!sidebarCollapsed}
+          title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          onClick={toggleSidebar}
+        >
+          {sidebarCollapsed ? <SidebarExpandIcon size={12} /> : <ChevronLeftIcon size={12} />}
+        </button>
       </div>
       <ul role="tree" className="shell-tree" onKeyDown={onKeyDown}>
         {visible.map((row, idx) => {
