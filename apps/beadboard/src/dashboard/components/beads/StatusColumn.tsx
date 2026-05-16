@@ -32,7 +32,7 @@ export function StatusColumn({ title, description, status, issues, selectedId, o
   const epicCount = issues.filter((issue) => issue.issue_type === "epic").length;
 
   return (
-    <section style={{ display: "flex", flexDirection: "column", minWidth: 240, maxWidth: 300, background: "var(--surface-secondary)", borderRadius: "var(--radius-sm)", border: "1px solid var(--border-subtle)", overflow: "hidden" }}>
+    <section style={{ display: "flex", flexDirection: "column", flex: "1 1 0", minWidth: 260, background: "var(--surface-secondary)", borderRadius: "var(--radius-sm)", border: "1px solid var(--border-subtle)", overflow: "hidden" }}>
       <div style={{ padding: "7px 9px", borderBottom: "1px solid var(--border-subtle)", background: "var(--surface-secondary)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <span style={{ color: config.color, display: "inline-flex", lineHeight: 0 }}><StatusIcon size={13} /></span>
