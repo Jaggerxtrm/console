@@ -1,5 +1,5 @@
-// Aggregates github repos + beads projects into RepoNode[] for the shell sidebar
-// (forge-5w9.3). Runs once on mount; later refinements (live updates) live in forge-f0g/forge-igg.
+// Aggregates github repos + beads projects into RepoNode[] for the shell.
+// One-shot on mount; live updates are forge-f0g/forge-igg follow-ups.
 
 import { useEffect } from "react";
 import { apiClient } from "../lib/client.ts";
@@ -12,8 +12,8 @@ const ZERO_GITHUB: GithubChips = { openPRs: 0, commitsToday: 0, openIssues: 0, r
 const ZERO_BEADS: BeadsChips = { open: 0, inProgress: 0, blocked: 0, epics: 0 };
 
 function tailName(fullName: string): string {
-  const idx = fullName.lastIndexOf("/");
-  return idx >= 0 ? fullName.slice(idx + 1) : fullName;
+  const i = fullName.lastIndexOf("/");
+  return i >= 0 ? fullName.slice(i + 1) : fullName;
 }
 
 function beadsChipsFromStats(stats: BeadsStats | null): BeadsChips {
@@ -48,8 +48,6 @@ export function useRepoTree(): void {
         if (cancelled) return;
 
         const repoStatsByName = new Map(statsRes.data.map((s) => [s.full_name, s]));
-
-        // Per-project beads stats — parallel, tolerate misses.
         const projectStats = await Promise.all(
           projects.map((p) =>
             beadsApi.getStats(p.id).then(
@@ -60,7 +58,6 @@ export function useRepoTree(): void {
         );
         if (cancelled) return;
 
-        // Index beads projects by tail name for github match.
         const beadsByTail = new Map<string, { project: typeof projects[number]; stats: BeadsStats | null }>();
         for (const [project, stats] of projectStats) {
           beadsByTail.set(project.name, { project, stats });
@@ -69,7 +66,6 @@ export function useRepoTree(): void {
         const matched = new Set<string>();
         const nodes: RepoNode[] = [];
 
-        // GitHub repos first; pull in beads side if name matches.
         for (const repo of reposRes.data) {
           const tail = tailName(repo.full_name);
           const beadsSide = beadsByTail.get(tail);
@@ -77,14 +73,15 @@ export function useRepoTree(): void {
           const stats = repoStatsByName.get(repo.full_name);
           const githubStats: GithubChips = {
             openPRs: stats?.prs_open ?? 0,
-            commitsToday: 0,    // populated in forge-f0g live-update work
-            openIssues: 0,      // ditto
-            releases: 0,        // ditto
+            commitsToday: 0,
+            openIssues: 0,
+            releases: 0,
           };
           const beadsStats = beadsChipsFromStats(beadsSide?.stats ?? null);
           nodes.push({
             fullName: repo.full_name,
             displayName: repo.display_name ?? repo.full_name,
+            groupName: repo.group_name ?? null,
             lastActivityAt: maxIso(repo.last_polled_at, beadsSide?.project.lastScanned ?? null),
             openBeadsCount: beadsStats.open + beadsStats.inProgress + beadsStats.blocked,
             githubStats,
@@ -94,13 +91,14 @@ export function useRepoTree(): void {
           });
         }
 
-        // Beads-only orphans.
+        // Beads-only orphans
         for (const [tail, { project, stats }] of beadsByTail) {
           if (matched.has(tail)) continue;
           const beadsStats = beadsChipsFromStats(stats);
           nodes.push({
             fullName: project.name,
             displayName: project.name,
+            groupName: null,
             lastActivityAt: project.lastScanned,
             openBeadsCount: beadsStats.open + beadsStats.inProgress + beadsStats.blocked,
             githubStats: ZERO_GITHUB,
@@ -111,10 +109,6 @@ export function useRepoTree(): void {
         }
 
         setRepos(nodes);
-        if (nodes.length > 0) {
-          // AC: log at least one RepoNode with both stats populated.
-          console.log("[useRepoTree] aggregated %d repos; sample:", nodes.length, nodes[0]);
-        }
       } catch (err) {
         console.warn("[useRepoTree] aggregation failed", err);
       }

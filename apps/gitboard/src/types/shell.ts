@@ -1,24 +1,44 @@
-// IDE shell layout contracts (forge-5w9).
-// Aggregates per-repo github + beads stats for the file-tree sidebar.
+// IDE shell layout contracts (forge-5w9 / forge-7xu rebuild).
+// Topbar = surface switch [github|beads] + tab strip for the current surface.
+// Sidebar = single-level repo list. MainPane renders (surface, tab, repo).
 
-export type RepoSection = "github" | "beads";
+export type Surface = "github" | "beads";
 
-// Third-level leaves — each leaf is its own MainPane view with full content.
-export type GithubLeaf = "activity" | "prs" | "issues" | "releases";
-export type BeadsLeaf = "kanban" | "issues";
-export type LeafId = GithubLeaf | BeadsLeaf;
+export type GithubTab =
+  | "activity"
+  | "prs"
+  | "issues"
+  | "releases"
+  | "readme"
+  | "changelog"
+  | "reports";
 
-export const GITHUB_LEAVES: { id: GithubLeaf; label: string }[] = [
-  { id: "activity", label: "activity" },
-  { id: "prs", label: "pull-requests" },
-  { id: "issues", label: "issues" },
-  { id: "releases", label: "releases" },
+export type BeadsTab = "kanban" | "feed" | "triage" | "closed" | "memories";
+
+export type TabId = GithubTab | BeadsTab;
+
+export const GITHUB_TABS: { id: GithubTab; label: string }[] = [
+  { id: "activity",  label: "Activity" },
+  { id: "prs",       label: "Pull Requests" },
+  { id: "issues",    label: "Issues" },
+  { id: "releases",  label: "Releases" },
+  { id: "readme",    label: "README" },
+  { id: "changelog", label: "CHANGELOG" },
+  { id: "reports",   label: "Reports" },
 ];
 
-export const BEADS_LEAVES: { id: BeadsLeaf; label: string }[] = [
-  { id: "kanban", label: "kanban" },
-  { id: "issues", label: "issues" },
+export const BEADS_TABS: { id: BeadsTab; label: string }[] = [
+  { id: "kanban",    label: "Kanban" },
+  { id: "feed",      label: "Feed" },
+  { id: "triage",    label: "Triage" },
+  { id: "closed",    label: "Closed" },
+  { id: "memories",  label: "Memories" },
 ];
+
+export const DEFAULT_TAB: Record<Surface, TabId> = {
+  github: "activity",
+  beads: "kanban",
+};
 
 export interface GithubChips {
   openPRs: number;
@@ -35,18 +55,19 @@ export interface BeadsChips {
 }
 
 export interface RepoNode {
-  fullName: string;           // canonical aggregation key, e.g. "owner/repo"
+  fullName: string;
   displayName: string;
+  groupName?: string | null;       // preserved for sidebar grouping (legacy parity)
   lastActivityAt: string | null;
   openBeadsCount: number;
   githubStats: GithubChips;
   beadsStats: BeadsChips;
-  hasGithub: boolean;         // repo present in github source
-  hasBeads: boolean;          // repo present in beads source
+  hasGithub: boolean;
+  hasBeads: boolean;
 }
 
 export interface SidebarSelection {
-  repo: string;               // RepoNode.fullName
-  section: RepoSection;
-  leaf: LeafId;               // which view inside the section
+  surface: Surface;
+  tab: TabId;
+  repo: string | null;             // RepoNode.fullName — null = no repo selected
 }

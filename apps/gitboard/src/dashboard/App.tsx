@@ -1,14 +1,13 @@
 import { useState } from "react";
 import { LinkExternalIcon } from "@primer/octicons-react";
 import { GithubPanel } from "./components/github/GithubPanel.tsx";
-// forge-5w9.1 placeholder — selection type will drive MainPane swap in 5w9.6.
-import type { SidebarSelection } from "../types/shell.ts";
 import { useRepoTree } from "./hooks/useRepoTree.ts";
+import { TopBar } from "./components/shell/TopBar.tsx";
 import { Sidebar } from "./components/shell/Sidebar.tsx";
 import { MainPane } from "./components/shell/MainPane.tsx";
 import { useGithubActivity } from "./hooks/useGithubActivity.ts";
 
-type Tab = SidebarSelection["section"];
+type Tab = "github" | "beads";
 type View = "dashboard" | "design-preview";
 
 const TABS: Array<{ id: Tab; label: string }> = [
@@ -21,9 +20,9 @@ const BEADBOARD_URL = import.meta.env.VITE_BEADBOARD_URL || "/beadboard";
 
 export function App() {
   const path = window.location.pathname;
-  // /gitboard/legacy → old TabBar shell (until 5w9.7+5w9.8 reach parity)
-  // /gitboard/design-preview, /preview → existing design preview
-  // default → new IDE shell (forge-5w9.6)
+  // /gitboard/legacy → old TabBar shell (preserved for parity testing)
+  // /gitboard/design-preview, /preview → design preview
+  // default → unified IDE shell (forge-7xu)
   if (path.endsWith("/legacy")) return <DashboardShell view="dashboard" />;
   if (path.endsWith("/design-preview") || path.endsWith("/preview"))
     return <DashboardShell view="design-preview" />;
@@ -31,12 +30,15 @@ export function App() {
 }
 
 function ShellApp() {
-  useGithubActivity();  // populate github store for GithubRepoView + sidebar chips
+  useGithubActivity();
   useRepoTree();
   return (
-    <div className="shell-app">
-      <Sidebar />
-      <MainPane />
+    <div className="ide-shell">
+      <TopBar />
+      <div className="ide-body">
+        <Sidebar />
+        <MainPane />
+      </div>
     </div>
   );
 }

@@ -1,13 +1,17 @@
-// Unified IDE-shell store (forge-5w9.3).
-// Holds repo tree, expanded set, current selection, sidebar collapse.
-// Persists expanded/selection/sidebarCollapsed to localStorage so reload restores
-// navigation state (forge-5w9 UX note).
+// Unified IDE-shell store (forge-7xu rebuild).
+// Holds repo list, current selection (surface + tab + repo), sidebar collapse state.
+// Persists selection + sidebarCollapsed to localStorage.
 
 import { create } from "zustand";
-import type { LeafId, RepoNode, RepoSection, SidebarSelection } from "../../types/shell.ts";
+import type {
+  RepoNode,
+  SidebarSelection,
+  Surface,
+  TabId,
+} from "../../types/shell.ts";
+import { DEFAULT_TAB } from "../../types/shell.ts";
 
 const LS = {
-  expanded: "forge-5w9:expanded",
   selection: "forge-5w9:selection",
   collapsed: "forge-5w9:sidebarCollapsed",
 };
@@ -29,50 +33,56 @@ function writeJSON(key: string, value: unknown): void {
   }
 }
 
-const initialExpanded = new Set<string>(readJSON<string[]>(LS.expanded, []));
-const initialSelection = readJSON<SidebarSelection | null>(LS.selection, null);
+const initialSelection = readJSON<SidebarSelection>(LS.selection, {
+  surface: "github",
+  tab: DEFAULT_TAB.github,
+  repo: null,
+});
 const initialCollapsed = readJSON<boolean>(LS.collapsed, false);
 
 export interface ShellState {
   repos: RepoNode[];
-  expanded: Set<string>;
-  selection: SidebarSelection | null;
+  selection: SidebarSelection;
   sidebarCollapsed: boolean;
 
   setRepos: (repos: RepoNode[]) => void;
-  toggleExpand: (key: string) => void;
-  select: (repo: string, section: RepoSection, leaf: LeafId) => void;
-  clearSelection: () => void;
+  setSurface: (surface: Surface) => void;       // switching surface resets tab to default
+  setTab: (tab: TabId) => void;
+  setRepo: (repo: string | null) => void;
   toggleSidebar: () => void;
 }
 
 export const useShellStore = create<ShellState>((set) => ({
   repos: [],
-  expanded: initialExpanded,
   selection: initialSelection,
   sidebarCollapsed: initialCollapsed,
 
   setRepos: (repos) => set({ repos }),
 
-  toggleExpand: (key) =>
+  setSurface: (surface) =>
     set((state) => {
-      const next = new Set(state.expanded);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      writeJSON(LS.expanded, Array.from(next));
-      return { expanded: next };
+      const next: SidebarSelection = {
+        surface,
+        tab: DEFAULT_TAB[surface],
+        repo: state.selection.repo,
+      };
+      writeJSON(LS.selection, next);
+      return { selection: next };
     }),
 
-  select: (repo, section, leaf) => {
-    const selection: SidebarSelection = { repo, section, leaf };
-    writeJSON(LS.selection, selection);
-    set({ selection });
-  },
+  setTab: (tab) =>
+    set((state) => {
+      const next: SidebarSelection = { ...state.selection, tab };
+      writeJSON(LS.selection, next);
+      return { selection: next };
+    }),
 
-  clearSelection: () => {
-    writeJSON(LS.selection, null);
-    set({ selection: null });
-  },
+  setRepo: (repo) =>
+    set((state) => {
+      const next: SidebarSelection = { ...state.selection, repo };
+      writeJSON(LS.selection, next);
+      return { selection: next };
+    }),
 
   toggleSidebar: () =>
     set((state) => {
@@ -82,9 +92,6 @@ export const useShellStore = create<ShellState>((set) => ({
     }),
 }));
 
-// Narrow selectors keep components from re-rendering on unrelated slice changes
-// (react-best-practices: rerender-defer-reads).
-export const selectActiveSection = (state: ShellState) => state.selection;
-export const selectRepos = (state: ShellState) => state.repos;
-export const selectExpanded = (state: ShellState) => state.expanded;
-export const selectSidebarCollapsed = (state: ShellState) => state.sidebarCollapsed;
+export const selectSelection = (s: ShellState) => s.selection;
+export const selectRepos = (s: ShellState) => s.repos;
+export const selectSidebarCollapsed = (s: ShellState) => s.sidebarCollapsed;

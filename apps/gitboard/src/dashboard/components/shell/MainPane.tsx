@@ -1,79 +1,41 @@
-// MainPane (forge-5w9.6 + forge-ci9 per-leaf routing).
-// One full-content view per leaf — no stacked sections.
+// MainPane (forge-7xu). Renders the (surface, tab) view for the selected repo.
 
 import { useMemo, useState } from "react";
 import {
   useShellStore,
-  selectActiveSection,
   selectRepos,
+  selectSelection,
 } from "../../stores/shell.ts";
-import type { RepoNode } from "../../../types/shell.ts";
 import { useGithubStore } from "../../stores/github.ts";
 import { ActivityTimeline } from "../github/ActivityTimeline.tsx";
 import { PrTimeline } from "../github/PrTimeline.tsx";
 import { IssueTimeline } from "../github/IssueTimeline.tsx";
 import { ReleaseTimeline } from "../github/ReleaseTimeline.tsx";
+import { ReadmeView, ChangelogView, ReportsView } from "../github/RepoContentPanels.tsx";
 import { BeadsRepoView } from "../beads/BeadsRepoView.tsx";
+import type { BeadsTab, GithubTab, RepoNode } from "../../../types/shell.ts";
 
 export function MainPane() {
-  const selection = useShellStore(selectActiveSection);
+  const selection = useShellStore(selectSelection);
   const repos = useShellStore(selectRepos);
+  const setRepo = useShellStore((s) => s.setRepo);
 
   const repo = useMemo(
-    () => (selection ? repos.find((r) => r.fullName === selection.repo) : null),
-    [selection, repos],
+    () => (selection.repo ? repos.find((r) => r.fullName === selection.repo) ?? null : null),
+    [selection.repo, repos],
   );
 
-  return (
-    <main
-      className="shell-main"
-      key={selection ? `${selection.repo}:${selection.section}:${selection.leaf}` : "empty"}
-    >
-      {selection && repo ? (
-        <LeafView repo={repo} section={selection.section} leaf={selection.leaf} />
-      ) : (
-        <EmptyState />
-      )}
-    </main>
-  );
+  if (!repo) return <EmptyState repos={repos} onPick={setRepo} surface={selection.surface} />;
+
+  if (selection.surface === "github") {
+    if (!repo.hasGithub) return <NoSide side="github" repo={repo.displayName} />;
+    return <GithubTabView repo={repo} tab={selection.tab as GithubTab} />;
+  }
+  if (!repo.hasBeads) return <NoSide side="beads" repo={repo.displayName} />;
+  return <BeadsRepoView repo={repo} tab={selection.tab as BeadsTab} />;
 }
 
-function LeafView({
-  repo,
-  section,
-  leaf,
-}: {
-  repo: RepoNode;
-  section: "github" | "beads";
-  leaf: string;
-}) {
-  return (
-    <div className="shell-leaf-view">
-      <header className="shell-crumb-bar">
-        <span className="shell-crumb">{repo.displayName}</span>
-        <span className="shell-crumb-sep">/</span>
-        <span className="shell-crumb">{section}</span>
-        <span className="shell-crumb-sep">/</span>
-        <span className="shell-crumb shell-crumb-active">{leaf}</span>
-      </header>
-      <div className="shell-leaf-body">
-        {section === "github" ? (
-          repo.hasGithub ? (
-            <GithubLeafView repo={repo} leaf={leaf} />
-          ) : (
-            <NoSideMsg side="github" repo={repo.displayName} />
-          )
-        ) : repo.hasBeads ? (
-          <BeadsLeafView repo={repo} leaf={leaf} />
-        ) : (
-          <NoSideMsg side="beads" repo={repo.displayName} />
-        )}
-      </div>
-    </div>
-  );
-}
-
-function GithubLeafView({ repo, leaf }: { repo: RepoNode; leaf: string }) {
+function GithubTabView({ repo, tab }: { repo: RepoNode; tab: GithubTab }) {
   const events = useGithubStore((s) => s.events);
   const prs = useGithubStore((s) => s.prs);
   const issues = useGithubStore((s) => s.issues);
@@ -81,121 +43,85 @@ function GithubLeafView({ repo, leaf }: { repo: RepoNode; leaf: string }) {
   const loading = useGithubStore((s) => s.loading);
   const error = useGithubStore((s) => s.error);
 
-  const filteredEvents = useMemo(
-    () => events.filter((e) => e.repo === repo.fullName),
-    [events, repo.fullName],
-  );
-  const filteredPrs = useMemo(
-    () => prs.filter((p) => p.repo === repo.fullName),
-    [prs, repo.fullName],
-  );
-  const filteredIssues = useMemo(
-    () => issues.filter((i) => i.repo === repo.fullName),
-    [issues, repo.fullName],
-  );
-  const filteredReleases = useMemo(
-    () => releases.filter((r) => r.repo_full_name === repo.fullName),
-    [releases, repo.fullName],
-  );
+  const filtered = useMemo(() => ({
+    events: events.filter((e) => e.repo === repo.fullName),
+    prs: prs.filter((p) => p.repo === repo.fullName),
+    issues: issues.filter((i) => i.repo === repo.fullName),
+    releases: releases.filter((r) => r.repo_full_name === repo.fullName),
+  }), [events, prs, issues, releases, repo.fullName]);
 
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
 
-  if (error) return <p className="shell-error-msg">{error}</p>;
-  if (loading && events.length === 0) return <p className="shell-loading">Loading…</p>;
+  if (error) return <p className="ide-error-msg">{error}</p>;
+  if (loading && events.length === 0) return <p className="ide-loading">Loading…</p>;
 
-  if (leaf === "activity") {
-    return filteredEvents.length > 0 ? (
-      <ActivityTimeline
-        events={filteredEvents}
-        selectedId={selectedEventId}
-        onSelect={(e) => setSelectedEventId(e.id)}
-      />
-    ) : (
-      <Empty label="No activity recorded for this repository." />
-    );
+  const owner = repo.fullName.includes("/") ? repo.fullName.split("/")[0] : "";
+  const name = repo.fullName.includes("/") ? repo.fullName.split("/")[1] : repo.fullName;
+
+  switch (tab) {
+    case "activity":
+      return filtered.events.length > 0
+        ? <ActivityTimeline events={filtered.events} selectedId={selectedEventId} onSelect={(e) => setSelectedEventId(e.id)} />
+        : <Empty>No activity for {repo.displayName}.</Empty>;
+    case "prs":
+      return filtered.prs.length > 0
+        ? <PrTimeline prs={filtered.prs} />
+        : <Empty>No pull requests for {repo.displayName}.</Empty>;
+    case "issues":
+      return filtered.issues.length > 0
+        ? <IssueTimeline issues={filtered.issues} />
+        : <Empty>No issues for {repo.displayName}.</Empty>;
+    case "releases":
+      return filtered.releases.length > 0
+        ? <ReleaseTimeline releases={filtered.releases} />
+        : <Empty>No releases for {repo.displayName}.</Empty>;
+    case "readme":
+      return <ReadmeView owner={owner} name={name} />;
+    case "changelog":
+      return <ChangelogView owner={owner} name={name} />;
+    case "reports":
+      return <ReportsView owner={owner} name={name} />;
   }
-  if (leaf === "prs") {
-    return filteredPrs.length > 0 ? (
-      <PrTimeline prs={filteredPrs} />
-    ) : (
-      <Empty label="No pull requests recorded for this repository." />
-    );
-  }
-  if (leaf === "issues") {
-    return filteredIssues.length > 0 ? (
-      <IssueTimeline issues={filteredIssues} />
-    ) : (
-      <Empty label="No issues recorded for this repository." />
-    );
-  }
-  if (leaf === "releases") {
-    return filteredReleases.length > 0 ? (
-      <ReleaseTimeline releases={filteredReleases} />
-    ) : (
-      <Empty label="No releases recorded for this repository." />
-    );
-  }
-  return <Empty label={`Unknown github view: ${leaf}`} />;
 }
 
-function BeadsLeafView({ repo, leaf }: { repo: RepoNode; leaf: string }) {
-  // BeadsRepoView already handles kanban + overlay; treat 'issues' as a wider list
-  // for now (operator wanted separate pages — leaving room for a dedicated feed view).
-  if (leaf === "kanban" || leaf === "issues") {
-    return <BeadsRepoView repo={repo} />;
-  }
-  return <Empty label={`Unknown beads view: ${leaf}`} />;
-}
-
-function NoSideMsg({ side, repo }: { side: "github" | "beads"; repo: string }) {
+function NoSide({ side, repo }: { side: "github" | "beads"; repo: string }) {
   return (
-    <div className="shell-main-empty">
-      <h2 className="shell-main-empty-title">No /{side} data for /{repo}</h2>
-      <p className="shell-main-empty-hint">
-        This repository has no {side} side attached. Pick another leaf from the sidebar.
-      </p>
+    <div className="ide-empty">
+      <h2>No {side} data for {repo}</h2>
+      <p>This repository has no {side} side attached. Pick another repo from the sidebar or switch surfaces.</p>
     </div>
   );
 }
 
-function Empty({ label }: { label: string }) {
-  return <p className="shell-github-empty">{label}</p>;
+function Empty({ children }: { children: React.ReactNode }) {
+  return <p className="ide-empty-msg">{children}</p>;
 }
 
-function EmptyState() {
-  const repos = useShellStore(selectRepos);
-  const select = useShellStore((s) => s.select);
+function EmptyState({
+  repos, onPick, surface,
+}: {
+  repos: RepoNode[];
+  onPick: (r: string) => void;
+  surface: "github" | "beads";
+}) {
   const recent = useMemo(() => {
     return [...repos]
+      .filter((r) => (surface === "github" ? r.hasGithub : r.hasBeads))
       .filter((r) => r.lastActivityAt)
       .sort((a, b) => (b.lastActivityAt ?? "").localeCompare(a.lastActivityAt ?? ""))
-      .slice(0, 3);
-  }, [repos]);
-
+      .slice(0, 5);
+  }, [repos, surface]);
   return (
-    <div className="shell-main-empty">
-      <h2 className="shell-main-empty-title">Pick a repository</h2>
-      <p className="shell-main-empty-hint">
-        Expand a repo in the sidebar, then pick <code>activity</code>, <code>pull-requests</code>, <code>issues</code>, <code>releases</code>, or <code>kanban</code>.
-      </p>
-      <ul className="shell-main-empty-cards">
+    <div className="ide-empty ide-empty-state">
+      <h2>Pick a {surface === "github" ? "repository" : "project"}</h2>
+      <p>Pick from the sidebar, or jump into a recently active one:</p>
+      <ul className="ide-empty-cards">
         {recent.map((r) => (
-          <li key={r.fullName} className="shell-main-empty-card">
-            <button
-              type="button"
-              className="shell-main-empty-card-btn"
-              onClick={() =>
-                select(
-                  r.fullName,
-                  r.hasGithub ? "github" : "beads",
-                  r.hasGithub ? "activity" : "kanban",
-                )
-              }
-            >
-              <span className="shell-main-empty-card-name">{r.displayName}</span>
-              <span className="shell-main-empty-card-meta">
-                {r.openBeadsCount > 0 ? `${r.openBeadsCount} open beads` : "no open beads"}
-                {r.lastActivityAt ? ` · ${new Date(r.lastActivityAt).toLocaleDateString()}` : ""}
+          <li key={r.fullName}>
+            <button type="button" className="ide-empty-card" onClick={() => onPick(r.fullName)}>
+              <span className="ide-empty-card-name">{r.displayName}</span>
+              <span className="ide-empty-card-meta">
+                {r.lastActivityAt ? new Date(r.lastActivityAt).toLocaleDateString() : "—"}
               </span>
             </button>
           </li>
