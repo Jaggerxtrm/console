@@ -10,6 +10,7 @@ import {
   selectRepos,
 } from "../../stores/shell.ts";
 import type { RepoNode } from "../../../types/shell.ts";
+import { BeadsRepoView } from "../beads/BeadsRepoView.tsx";
 
 function StubView({ repo, section }: { repo: RepoNode; section: "github" | "beads" }) {
   const sections =
@@ -33,6 +34,17 @@ function StubView({ repo, section }: { repo: RepoNode; section: "github" | "bead
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+function NoSideMsg({ side, repo }: { side: "github" | "beads"; repo: string }) {
+  return (
+    <div className="shell-main-empty">
+      <h2 className="shell-main-empty-title">No /{side} data for /{repo}</h2>
+      <p className="shell-main-empty-hint">
+        This repository has no {side} side attached. Pick another section from the sidebar.
+      </p>
     </div>
   );
 }
@@ -91,7 +103,15 @@ export function MainPane() {
       key={selection ? `${selection.repo}:${selection.section}` : "empty"}
     >
       {selection && repo ? (
-        <StubView repo={repo} section={selection.section} />
+        selection.section === "beads" ? (
+          repo.hasBeads ? (
+            <BeadsRepoView repo={repo} />
+          ) : (
+            <NoSideMsg side="beads" repo={repo.displayName} />
+          )
+        ) : (
+          <StubView repo={repo} section={selection.section} />
+        )
       ) : (
         <EmptyState />
       )}

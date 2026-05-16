@@ -11,6 +11,20 @@ import type {
   Interaction,
 } from "../../types/beads.ts";
 
+// OpenPr is the slice of /api/github/prs returned to beads UI for cross-linking
+// beads to live GitHub PRs. Kept as a type-only export to avoid duplicate fetcher
+// surfaces; gitboard's main github client owns the fetch.
+export interface OpenPr {
+  repo: string;
+  number: number;
+  title: string;
+  body: string | null;
+  state: string;
+  url: string | null;
+  updated_at: string | null;
+  merged_at: string | null;
+}
+
 const API_BASE = import.meta.env.VITE_BEADS_API_URL || "";
 
 async function jsonFetch<T>(path: string): Promise<T> {
