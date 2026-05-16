@@ -2807,8 +2807,8 @@ body {
  * ============================================================ */
 
 .shell-sidebar {
-  background: var(--surface-primary);
-  border-right: 1px solid var(--border-subtle);
+  background: #000;
+  border-right: 1px solid #1c1c1c;
   color: var(--text-secondary);
   display: flex;
   flex-direction: column;
@@ -3002,13 +3002,12 @@ body {
   line-height: 1;
 }
 
-/* Collapsed sidebar: hide tree + title, keep only the toggle button accessible.
- * Use visibility:hidden + aria-hidden equivalent (aria-hidden on tree omitted; tree
- * is wrapped in a region that is naturally hidden via display:none on collapse).
- * prefers-reduced-motion is honoured by the sidebar transition above. */
-.shell-sidebar[data-collapsed] .shell-sidebar-title { visibility: hidden; }
+/* Collapsed sidebar: hide tree, keep only the toggle button.
+ * Title is omitted in markup when collapsed (Sidebar.tsx) so toggle centers cleanly
+ * inside the 48px width. */
 .shell-sidebar[data-collapsed] .shell-tree { display: none; }
 .shell-sidebar[data-collapsed] .shell-sidebar-header { justify-content: center; padding: 0; }
+.shell-sidebar[data-collapsed] .shell-sidebar-toggle { height: 28px; width: 28px; }
 
 /* Mobile drawer pattern: <768px viewport. Sidebar slides over content from left;
  * collapsed state hides it entirely off-screen. Hamburger/toggle lives in shell-sidebar-header. */
@@ -3482,3 +3481,119 @@ body {
   font-size: 12px;
   margin: 12px 0 0;
 }
+
+/* ============================================================
+ * forge-ci9: black bg, third-level sidebar, per-leaf MainPane
+ * ============================================================ */
+
+/* Black everywhere */
+body, .shell-app, .shell-main {
+  background: #000 !important;
+}
+.shell-sidebar { background: #000 !important; }
+
+/* Sidebar section (level-2) rows: /github · /beads */
+.shell-row-section {
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding-left: 22px;
+  position: relative;
+}
+.shell-row-section::before {
+  background: #1c1c1c;
+  content: "";
+  height: 100%;
+  left: 14px;
+  position: absolute;
+  top: 0;
+  width: 1px;
+}
+.shell-section-name {
+  color: var(--text-primary);
+  flex: 1;
+  font-weight: 500;
+}
+
+/* Sidebar leaf (level-3) rows: activity / prs / issues / releases / kanban */
+.shell-row-leaf {
+  color: var(--text-secondary);
+  font-size: 12px;
+  padding-left: 40px;
+  position: relative;
+}
+.shell-row-leaf::before {
+  background: #1c1c1c;
+  content: "";
+  height: 100%;
+  left: 26px;
+  position: absolute;
+  top: 0;
+  width: 1px;
+}
+.shell-row-leaf[data-selected] {
+  background: #111;
+  color: var(--text-primary);
+}
+.shell-row-leaf[data-selected]::after {
+  background: var(--accent);
+  bottom: 0;
+  content: "";
+  left: 0;
+  position: absolute;
+  top: 0;
+  width: 3px;
+}
+.shell-leaf-icon {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.shell-row-leaf[data-selected] .shell-leaf-icon { color: var(--accent); }
+.shell-leaf-label {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.shell-leaf-count {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Repo row: pad properly so repo-icon + name align under chevron */
+.shell-row-repo .shell-leaf-icon {
+  color: var(--text-muted);
+}
+
+/* MainPane leaf view */
+.shell-leaf-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.shell-crumb-bar {
+  align-items: center;
+  background: #000;
+  border-bottom: 1px solid #1c1c1c;
+  color: var(--text-muted);
+  display: flex;
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  gap: 6px;
+  padding: 10px 16px;
+}
+.shell-crumb { color: var(--text-secondary); }
+.shell-crumb-active { color: var(--text-primary); font-weight: 500; }
+.shell-crumb-sep { color: var(--text-disabled); }
+.shell-leaf-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.shell-loading { color: var(--text-muted); font-size: 12px; padding: 24px; }
+
+/* Make sure sidebar header content stays visible when collapsed */
+.shell-sidebar[data-collapsed] .shell-sidebar-toggle { color: var(--text-primary); }

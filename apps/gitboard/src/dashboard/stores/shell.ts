@@ -4,7 +4,7 @@
 // navigation state (forge-5w9 UX note).
 
 import { create } from "zustand";
-import type { RepoNode, RepoSection, SidebarSelection } from "../../types/shell.ts";
+import type { LeafId, RepoNode, RepoSection, SidebarSelection } from "../../types/shell.ts";
 
 const LS = {
   expanded: "forge-5w9:expanded",
@@ -40,8 +40,8 @@ export interface ShellState {
   sidebarCollapsed: boolean;
 
   setRepos: (repos: RepoNode[]) => void;
-  toggleExpand: (repo: string) => void;
-  select: (repo: string, section: RepoSection) => void;
+  toggleExpand: (key: string) => void;
+  select: (repo: string, section: RepoSection, leaf: LeafId) => void;
   clearSelection: () => void;
   toggleSidebar: () => void;
 }
@@ -54,17 +54,17 @@ export const useShellStore = create<ShellState>((set) => ({
 
   setRepos: (repos) => set({ repos }),
 
-  toggleExpand: (repo) =>
+  toggleExpand: (key) =>
     set((state) => {
       const next = new Set(state.expanded);
-      if (next.has(repo)) next.delete(repo);
-      else next.add(repo);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       writeJSON(LS.expanded, Array.from(next));
       return { expanded: next };
     }),
 
-  select: (repo, section) => {
-    const selection: SidebarSelection = { repo, section };
+  select: (repo, section, leaf) => {
+    const selection: SidebarSelection = { repo, section, leaf };
     writeJSON(LS.selection, selection);
     set({ selection });
   },
