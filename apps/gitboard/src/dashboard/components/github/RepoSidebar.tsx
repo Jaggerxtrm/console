@@ -92,16 +92,16 @@ export function RepoSidebar({ repos, stats, selectedRepos, unreadRepos = new Set
 
   return (
     <div className="gitboard-repo-rail" style={{
-      width,
-      minWidth: width,
-      maxWidth: width,
+      width: `clamp(160px, ${width}px, 480px)`,
+      minWidth: 160,
+      maxWidth: 480,
       background: "var(--surface-secondary)",
       borderRight: "1px solid var(--border-subtle)",
       display: "flex",
       flexDirection: "column",
       overflow: "hidden",
       position: "relative",
-      flexShrink: 0,
+      flex: "0 1 auto",
     }}>
       {/* Resize handle */}
       <div

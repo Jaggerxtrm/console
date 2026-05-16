@@ -25,7 +25,7 @@ function DashboardShell({ view }: { view: View }) {
   const isPreview = view === "design-preview";
 
   return (
-    <div className={isPreview ? "westworld-app design-preview-container" : "westworld-app"} style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--surface-primary)', color: 'var(--text-primary)', fontFamily: 'var(--font-ui)' }}>
+    <div className={isPreview ? "westworld-app design-preview-container" : "westworld-app"} style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', minWidth: 0, background: 'var(--surface-primary)', color: 'var(--text-primary)', fontFamily: 'var(--font-ui)' }}>
       <header className="ww-topbar" style={{
         display: 'flex',
         alignItems: 'center',
@@ -105,7 +105,7 @@ function DashboardShell({ view }: { view: View }) {
           </a>
         </div>
       </header>
-      <main className="gitboard-main" style={{ flex: 1, minHeight: 0 }}>
+      <main className="gitboard-main" style={{ flex: 1, minHeight: 0, minWidth: 0 }}>
         {isPreview ? (
           <DesignPreview />
         ) : activeTab === "github" ? (
