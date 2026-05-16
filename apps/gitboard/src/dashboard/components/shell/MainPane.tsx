@@ -9,34 +9,8 @@ import {
   selectActiveSection,
   selectRepos,
 } from "../../stores/shell.ts";
-import type { RepoNode } from "../../../types/shell.ts";
 import { BeadsRepoView } from "../beads/BeadsRepoView.tsx";
-
-function StubView({ repo, section }: { repo: RepoNode; section: "github" | "beads" }) {
-  const sections =
-    section === "github"
-      ? ["Recent activity", "Pull requests", "Issues", "Releases"]
-      : ["Kanban", "Open issues", "Memories"];
-  return (
-    <div className="shell-main-stub">
-      <header className="shell-main-stub-header">
-        <span className="shell-main-stub-crumb">/{repo.displayName}</span>
-        <span className="shell-main-stub-crumb-sep">·</span>
-        <span className="shell-main-stub-crumb shell-main-stub-crumb-active">/{section}</span>
-      </header>
-      <ul className="shell-main-stub-list">
-        {sections.map((s) => (
-          <li key={s} className="shell-main-stub-section">
-            <span className="shell-main-stub-section-title">{s}</span>
-            <span className="shell-main-stub-section-note">
-              wired in forge-5w9.{section === "github" ? "8" : "7"}
-            </span>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
+import { GithubRepoView } from "../github/GithubRepoView.tsx";
 
 function NoSideMsg({ side, repo }: { side: "github" | "beads"; repo: string }) {
   return (
@@ -109,8 +83,10 @@ export function MainPane() {
           ) : (
             <NoSideMsg side="beads" repo={repo.displayName} />
           )
+        ) : repo.hasGithub ? (
+          <GithubRepoView repo={repo} />
         ) : (
-          <StubView repo={repo} section={selection.section} />
+          <NoSideMsg side="github" repo={repo.displayName} />
         )
       ) : (
         <EmptyState />

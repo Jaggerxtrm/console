@@ -6,6 +6,7 @@ import type { SidebarSelection } from "../types/shell.ts";
 import { useRepoTree } from "./hooks/useRepoTree.ts";
 import { Sidebar } from "./components/shell/Sidebar.tsx";
 import { MainPane } from "./components/shell/MainPane.tsx";
+import { useGithubActivity } from "./hooks/useGithubActivity.ts";
 
 type Tab = SidebarSelection["section"];
 type View = "dashboard" | "design-preview";
@@ -30,6 +31,7 @@ export function App() {
 }
 
 function ShellApp() {
+  useGithubActivity();  // populate github store for GithubRepoView + sidebar chips
   useRepoTree();
   return (
     <div className="shell-app">

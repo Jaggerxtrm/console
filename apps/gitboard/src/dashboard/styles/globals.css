@@ -3449,3 +3449,36 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .shell-skeleton-col-head, .shell-skeleton-card { animation: none; }
 }
+
+/* forge-5w9.8: GithubRepoView — stacked sections with sticky headers */
+.shell-github-view {
+  display: flex;
+  flex-direction: column;
+  gap: 48px;
+  padding: 0 20px 32px;
+}
+.shell-github-section {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.shell-github-section-head {
+  align-items: baseline;
+  background: var(--surface-primary);
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 12px 0;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+.shell-github-section-body {
+  padding-top: 12px;
+}
+.shell-github-empty {
+  color: var(--text-muted);
+  font-size: 12px;
+  margin: 12px 0 0;
+}
