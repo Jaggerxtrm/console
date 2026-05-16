@@ -4,6 +4,7 @@ import { GithubPanel } from "./components/github/GithubPanel.tsx";
 // forge-5w9.1 placeholder — selection type will drive MainPane swap in 5w9.6.
 import type { SidebarSelection } from "../types/shell.ts";
 import { useRepoTree } from "./hooks/useRepoTree.ts";
+import { Sidebar } from "./components/shell/Sidebar.tsx";
 
 type Tab = SidebarSelection["section"];
 type View = "dashboard" | "design-preview";
@@ -19,8 +20,21 @@ const BEADBOARD_URL = import.meta.env.VITE_BEADBOARD_URL || "/beadboard";
 export function App() {
   const path = window.location.pathname;
   const view: View = path.endsWith("/design-preview") || path.endsWith("/preview") ? "design-preview" : "dashboard";
-
+  // forge-5w9.4 preview: /gitboard/shell-preview renders the new Sidebar standalone for visual QA
+  if (path.endsWith("/shell-preview")) return <ShellPreview />;
   return <DashboardShell view={view} />;
+}
+
+function ShellPreview() {
+  useRepoTree();
+  return (
+    <div style={{ display: "flex", minHeight: "100vh", background: "var(--surface-primary)", color: "var(--text-primary)", fontFamily: "var(--font-ui)" }}>
+      <Sidebar />
+      <main style={{ flex: 1, padding: 24, color: "var(--text-muted)", fontSize: 13 }}>
+        Right pane placeholder — sidebar preview (forge-5w9.4). Open browser console for aggregation log.
+      </main>
+    </div>
+  );
 }
 
 function DashboardShell({ view }: { view: View }) {
