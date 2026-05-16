@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { LinkExternalIcon } from "@primer/octicons-react";
 import { GithubPanel } from "./components/github/GithubPanel.tsx";
+// forge-5w9.1 placeholder — selection type will drive MainPane swap in 5w9.6.
+import type { SidebarSelection } from "../types/shell.ts";
 
-type Tab = "github" | "beads";
+type Tab = SidebarSelection["section"];
 type View = "dashboard" | "design-preview";
 
 const TABS: Array<{ id: Tab; label: string }> = [
