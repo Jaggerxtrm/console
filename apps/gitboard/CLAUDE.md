@@ -117,6 +117,7 @@ Key conventions:
 | `AGENT_FORGE_DB` | `~/.agent-forge/state.db` | SQLite database path |
 | `PORT` | `3000` | API server port |
 | `GITHUB_TOKEN` | (from `gh auth token`) | GitHub API auth fallback |
+| `VITE_BEADS_API_URL` | `""` (same-origin) | Override base for `dashboard/lib/beads-api.ts`. Default uses gitboard's own server, which mounts `/api/beads/*` via `server.ts:6,35`; set only for split-host setups. |
 
 ## Key Design Constraints
 

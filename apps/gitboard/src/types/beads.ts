@@ -1,16 +1,29 @@
-// Beadboard domain types
+// Beadboard domain types. Ported from apps/beadboard/src/types/beads.ts
+// (forge-5w9.2) — kept as superset to support BeadIssueDetail and project source health.
 
-export type Status = "open" | "in_progress" | "blocked" | "in_review" | "closed";
-export type Priority = 0 | 1 | 2 | 3 | 4;
-export type IssueType = "bug" | "feature" | "task" | "epic" | "chore";
+export type Status = "open" | "in_progress" | "blocked" | "in_review" | "closed" | (string & {});
+export type Priority = 0 | 1 | 2 | 3 | 4 | (number & {});
+export type IssueType = "bug" | "feature" | "task" | "epic" | "chore" | (string & {});
+export type ProjectSourceKind = "dolt" | "sqlite" | "jsonl" | "unknown";
+export type ProjectSourceState = "available" | "missing" | "unhealthy";
+
+export interface ProjectSourceHealth {
+  kind: ProjectSourceKind;
+  state: ProjectSourceState;
+  path?: string;
+  detail?: string;
+}
 
 export interface BeadsProject {
-  id: string;              // Project ID from metadata.json
-  name: string;            // Display name
-  path: string;            // Absolute path to repo root
-  beadsPath: string;       // Path to .beads/ directory
-  doltPort?: number;       // Dolt server port if running
-  doltDatabase?: string;   // Dolt database name
+  id: string;
+  name: string;
+  path: string;
+  beadsPath: string;
+  doltPort?: number;
+  doltDatabase?: string;
+  source?: ProjectSourceKind;
+  sourceHealth?: ProjectSourceHealth[];
+  sourcePriority?: ProjectSourceKind[];
   status: "active" | "idle" | "error";
   lastScanned: string;
   issueCount: number;
@@ -20,6 +33,7 @@ export interface BeadIssue {
   id: string;
   title: string;
   description: string | null;
+  notes?: string | null;
   status: Status;
   priority: Priority;
   issue_type: IssueType;
@@ -29,24 +43,25 @@ export interface BeadIssue {
   updated_at: string;
   closed_at?: string;
   close_reason?: string;
-  
-  // Project reference
   project_id: string;
-  
-  // Dependencies
   dependencies: BeadDependency[];
   parent_id?: string;
   related_ids: string[];
-  
-  // Labels
   labels: string[];
+}
+
+export interface BeadIssueDetail extends BeadIssue {
+  dependents: BeadDependency[];
+  children?: BeadDependency[];
+  source: ProjectSourceKind;
+  sourceHealth: ProjectSourceHealth[];
 }
 
 export interface BeadDependency {
   id: string;
   title: string;
   status: Status;
-  dependency_type: "blocks" | "blocked_by" | "related" | "parent";
+  dependency_type: "blocks" | "blocked_by" | "related" | "parent" | "parent-child" | (string & {});
 }
 
 export interface Memory {
@@ -83,7 +98,6 @@ export interface AgentSession {
   project_id: string;
 }
 
-// API types
 export interface IssueFilters {
   project_id?: string;
   status?: Status[];
@@ -92,4 +106,14 @@ export interface IssueFilters {
   search?: string;
   limit?: number;
   offset?: number;
+}
+
+export interface BeadsStats {
+  total: number;
+  open: number;
+  in_progress: number;
+  blocked: number;
+  closed: number;
+  by_priority: Record<string, number>;
+  by_type: Record<string, number>;
 }
