@@ -46,11 +46,16 @@ const TYPE_CONFIG: Record<string, { label: string; icon: typeof IssueOpenedIcon;
 
 type FeedItem =
   | { kind: "empty" }
-  | { kind: "completed-header" }
+  | { kind: "in-progress-header"; count: number }
+  | { kind: "in-progress-empty" }
+  | { kind: "open-header"; count: number; readyCount: number }
+  | { kind: "closed-header"; count: number }
   | { kind: "issue"; issue: BeadIssue; depth: number; childCount: number; relation: "parent" | "epic" | "blocked" };
 
 export function IssueFeed({ issues, closedIssues = [], selectedIssueId, selectedIssueDetail, loadingDetailId, onIssueSelect, getAgent, projectId, prByIssueId }: IssueFeedProps) {
   const parentRef = useRef<HTMLDivElement>(null);
+  const [showOpen, setShowOpen] = useState(true);
+  const [showClosed, setShowClosed] = useState(false);
   const allIssues = useMemo(() => [...issues, ...closedIssues], [closedIssues, issues]);
   const issueById = useMemo(() => new Map(allIssues.map((issue) => [issue.id, issue])), [allIssues]);
   const blockingChildren = useMemo(() => groupChildrenByBlocker(issues, issueById), [issueById, issues]);
@@ -58,31 +63,41 @@ export function IssueFeed({ issues, closedIssues = [], selectedIssueId, selected
   const activeChildren = useMemo(() => groupChildrenByParent(issues, issueById, blockedChildIds), [blockedChildIds, issueById, issues]);
   const closedChildren = useMemo(() => groupChildrenByParent(closedIssues, issueById, new Set()), [closedIssues, issueById]);
   const topLevelIssues = useMemo(() => issues.filter((issue) => !blockedChildIds.has(issue.id) && !getParentId(issue, issueById)), [blockedChildIds, issueById, issues]);
+  const inProgressIssues = useMemo(
+    () => issues.filter((issue) => issue.status === "in_progress").sort((a, b) => String(b.updated_at ?? b.created_at).localeCompare(String(a.updated_at ?? a.created_at))),
+    [issues],
+  );
+  const readyCount = useMemo(() => issues.filter((issue) => getDisplayStatus(issue) === "open").length, [issues]);
   const completedIssues = useMemo(
     () => closedIssues.filter((issue) => !getParentId(issue, issueById)).sort((a, b) => getCompletedAt(b).localeCompare(getCompletedAt(a))),
     [closedIssues, issueById],
   );
   const items = useMemo<FeedItem[]>(() => {
-    const next: FeedItem[] = [];
-    if (topLevelIssues.length === 0 && completedIssues.length === 0) return [{ kind: "empty" }];
-    for (const issue of topLevelIssues) {
-      appendIssueTree(next, issue, activeChildren, blockingChildren, 0, "parent");
+    const next: FeedItem[] = [{ kind: "in-progress-header", count: inProgressIssues.length }];
+    if (inProgressIssues.length === 0) next.push({ kind: "in-progress-empty" });
+    for (const issue of inProgressIssues) next.push({ kind: "issue", issue, depth: 0, relation: "parent", childCount: 0 });
+    next.push({ kind: "open-header", count: issues.length, readyCount });
+    if (topLevelIssues.length === 0 && completedIssues.length === 0 && inProgressIssues.length === 0) return [...next, { kind: "empty" }];
+    if (showOpen) {
+      for (const issue of topLevelIssues) {
+        appendIssueTree(next, issue, activeChildren, blockingChildren, 0, "parent");
+      }
     }
-    if (completedIssues.length > 0) {
-      next.push({ kind: "completed-header" });
+    next.push({ kind: "closed-header", count: closedIssues.length });
+    if (showClosed) {
       for (const issue of completedIssues) appendIssueTree(next, issue, closedChildren, new Map(), 0, "parent");
     }
     return next;
-  }, [activeChildren, blockingChildren, closedChildren, completedIssues, topLevelIssues]);
+  }, [activeChildren, blockingChildren, closedChildren, closedIssues.length, completedIssues, inProgressIssues, issues.length, readyCount, showClosed, showOpen, topLevelIssues]);
 
   const rowVirtualizer = useVirtualizer({
     count: items.length,
     getScrollElement: () => parentRef.current,
     estimateSize: (index) => {
       const item = items[index];
-      if (item.kind === "completed-header") return 28;
-      if (item.kind === "empty") return 40;
-      return item.issue.id === selectedIssueId ? 240 : 40;
+      if (item.kind === "in-progress-header" || item.kind === "open-header" || item.kind === "closed-header") return 28;
+      if (item.kind === "in-progress-empty" || item.kind === "empty") return 32;
+      return item.issue.id === selectedIssueId ? 260 : 52;
     },
     overscan: 8,
     measureElement: (el) => el?.getBoundingClientRect().height ?? 0,
@@ -102,8 +117,18 @@ export function IssueFeed({ issues, closedIssues = [], selectedIssueId, selected
             >
               {item.kind === "empty" ? (
                 <EmptyFeed />
-              ) : item.kind === "completed-header" ? (
-                <div className="feed-section-title">Completed</div>
+              ) : item.kind === "in-progress-empty" ? (
+                <div className="feed-section-empty">no in_progress issues...</div>
+              ) : item.kind === "in-progress-header" ? (
+                <div className="feed-section-title"><span>▸ in_progress:{item.count}</span></div>
+              ) : item.kind === "open-header" ? (
+                <button type="button" className="feed-section-title feed-section-toggle" onClick={() => setShowOpen((value) => !value)} aria-expanded={showOpen}>
+                  <span>{showOpen ? "▾" : "▸"} open:{item.count}, ready:{item.readyCount}</span>
+                </button>
+              ) : item.kind === "closed-header" ? (
+                <button type="button" className="feed-section-title feed-section-toggle" onClick={() => setShowClosed((value) => !value)} aria-expanded={showClosed}>
+                  <span>{showClosed ? "▾" : "▸"} closed:{item.count}</span>
+                </button>
               ) : (
                 <IssueRow
                   issue={item.issue}
@@ -139,13 +164,13 @@ export function IssueRow({ issue, detail, isExpanded, isLoadingDetail, agent, de
     <article className={`row ${displayStatus} ${isEpic ? "epic" : ""} ${isExpanded ? "is-expanded" : ""} ${depth > 0 ? "is-child" : ""} ${relation === "blocked" ? "is-blocked-child" : relation === "epic" ? "is-epic-child" : "is-parent-child"}`} style={{ "--bead-depth": depth } as CSSProperties}>
       <button type="button" className="row-main" onClick={onClick} aria-expanded={isExpanded} aria-controls={`issue-dossier-${issue.id}`}>
         <span className="issue-identity"><span className="id">{issue.id}</span><span className="identity-separator">/</span><span className="title">{issue.title}</span></span>
-        <span className="issue-classification" title={`P${issue.priority} ${type.label.toUpperCase()} ${statusLabel} ${formatCompactDate(issue.updated_at)}`}>
+        <span className="issue-classification">
           <span className="priority-mark" style={{ color: type.color }}>P{issue.priority}</span>
           <span className="type-mark" style={{ color: type.color }}>{type.label}</span>
           <span className="state">{statusLabel}</span>
           <span className="meta-item">{formatCompactDate(issue.updated_at)}</span>
           {childCount > 0 && <><span className="identity-separator">/</span><span className="meta-item">{childCount} children</span></>}
-          {dependencyCount > 0 && <><span className="identity-separator">/</span>{renderInlineDeps(issue, dependencyCount)}</>}
+          {dependencyCount > 0 && renderRelationshipGroups(issue, dependencyCount, issueById)}
           {prLink && (
             <>
               <span className="identity-separator">/</span>
@@ -477,7 +502,7 @@ function groupChildrenByParent(issues: BeadIssue[], issueById: Map<string, BeadI
 function getParentId(issue: BeadIssue, issueById: Map<string, BeadIssue>): string | null {
   if (issue.parent_id && issueById.has(issue.parent_id)) return issue.parent_id;
   const parentDependency = issue.dependencies.find((dependency) =>
-    (dependency.dependency_type === "parent-child" || dependency.dependency_type === "parent" || dependency.dependency_type === "relates-to")
+    (dependency.dependency_type === "parent-child" || dependency.dependency_type === "parent")
     && issueById.has(dependency.id),
   );
   return parentDependency?.id ?? null;
@@ -490,19 +515,31 @@ function EmptyFeed() { return <div className="bead-empty-note">No issues</div>; 
 const DEP_KIND_LABEL: Record<string, string> = {
   blocks: "blocks",
   blocked_by: "blocked by",
+  tracks: "tracks",
+  related: "related",
+  "relates-to": "related",
   parent: "parent",
   "parent-child": "parent",
-  related: "related",
   "discovered-from": "discovered from",
+  until: "until",
+  "caused-by": "caused by",
+  validates: "validates",
+  supersedes: "supersedes",
 };
 
 const DEP_KIND_GLYPH: Record<string, string> = {
   blocks: "↪",
   blocked_by: "↩",
+  tracks: "◌",
+  related: "•",
+  "relates-to": "•",
   parent: "⊃",
   "parent-child": "⊃",
-  related: "•",
   "discovered-from": "↑",
+  until: "⌛",
+  "caused-by": "⚠",
+  validates: "✓",
+  supersedes: "⤴",
 };
 
 const DEP_STATUS_ICON: Record<string, string> = {
@@ -514,24 +551,44 @@ const DEP_STATUS_ICON: Record<string, string> = {
   deferred: "❄",
 };
 
-function renderInlineDeps(issue: BeadIssue, fallbackCount: number): ReactNode {
-  const visible = issue.dependencies.filter((d) => d.dependency_type !== "parent-child").slice(0, 2);
-  if (visible.length === 0) {
+function renderRelationshipGroups(issue: BeadIssue, fallbackCount: number, issueById: Map<string, BeadIssue>): ReactNode {
+  const dependencies = issue.dependencies.filter((d) => d.dependency_type !== "parent-child");
+  if (dependencies.length === 0) {
     if (fallbackCount === 0) return <span className="bead-row-dep-empty">—</span>;
-    return <span>{fallbackCount} deps</span>;
+    return <><span className="identity-separator">/</span><span className="meta-item">{fallbackCount} deps</span></>;
   }
-  const total = issue.dependencies.filter((d) => d.dependency_type !== "parent-child").length;
-  const more = total - visible.length;
+  const order = ["blocked_by", "blocks", "tracks", "discovered-from", "until", "caused-by", "validates", "supersedes", "related", "relates-to", "parent"];
+  const grouped = dependencies.reduce((out, dependency) => {
+    const list = out.get(dependency.dependency_type) ?? [];
+    list.push(dependency);
+    out.set(dependency.dependency_type, list);
+    return out;
+  }, new Map<string, BeadDependency[]>());
+  const kinds = [...order, ...[...grouped.keys()].filter((kind) => !order.includes(kind)).sort()].filter((kind) => grouped.has(kind));
+  const getDependencyTitle = (dependency: BeadDependency) => {
+    const relatedIssue = issueById.get(dependency.id);
+    const title = relatedIssue?.title?.trim() || dependency.title?.trim();
+    if (!title) return `${DEP_KIND_LABEL[dependency.dependency_type] ?? dependency.dependency_type}: ${dependency.id}`;
+    const relatedType = relatedIssue ? TYPE_CONFIG[String(relatedIssue.issue_type)] : null;
+    const summary = relatedIssue && relatedType ? ` — P${relatedIssue.priority} ${relatedType.label.toUpperCase()}` : "";
+    return `${DEP_KIND_LABEL[dependency.dependency_type] ?? dependency.dependency_type}: ${dependency.id} — ${title}${summary}`;
+  };
   return (
-    <span className="bead-row-deps">
-      {visible.map((d) => (
-        <span key={`row-dep-${d.id}`} className={`bead-row-dep bead-row-dep-${d.dependency_type}`} title={`${DEP_KIND_LABEL[d.dependency_type] ?? d.dependency_type}: ${d.id}`}>
-          <span className="bead-row-dep-glyph">{DEP_KIND_GLYPH[d.dependency_type] ?? "·"}</span>
-          <span className="bead-row-dep-id">{d.id}</span>
+    <>
+      {kinds.map((kind) => (
+        <span key={`row-dep-group-${kind}`} className="bead-row-dep-group">
+          <span className="bead-row-dep-kind">{DEP_KIND_LABEL[kind] ?? kind}:</span>
+          <span className="bead-row-deps">
+            {grouped.get(kind)!.map((d) => (
+              <span key={`row-dep-${kind}-${d.id}`} className={`bead-row-dep bead-row-dep-${d.dependency_type}`} title={getDependencyTitle(d)}>
+                <span className="bead-row-dep-glyph">{DEP_KIND_GLYPH[d.dependency_type] ?? "·"}</span>
+                <span className="bead-row-dep-id">{d.id}</span>
+              </span>
+            ))}
+          </span>
         </span>
       ))}
-      {more > 0 && <span className="bead-row-dep-more">+{more}</span>}
-    </span>
+    </>
   );
 }
 
@@ -545,7 +602,8 @@ function DependencyTree({ issue, dependencies, childDeps, issueById }: { issue: 
     }
     return out;
   }, [dependencies]);
-  const order: Array<string> = ["parent", "parent-child", "blocked_by", "blocks", "discovered-from", "related"];
+  const order: Array<string> = ["parent", "parent-child", "blocked_by", "blocks", "tracks", "discovered-from", "until", "caused-by", "validates", "supersedes", "related", "relates-to"];
+  const orderedKinds = [...order, ...[...grouped.keys()].filter((kind) => !order.includes(kind)).sort()];
   const resolveTitle = (d: BeadDependency) => d.title?.trim() ? d.title : (issueById.get(d.id)?.title ?? "");
   const resolveStatus = (d: BeadDependency) => issueById.get(d.id)?.status ?? d.status;
   return (
@@ -556,7 +614,7 @@ function DependencyTree({ issue, dependencies, childDeps, issueById }: { issue: 
         <span className="bead-dep-tree-title" title={issue.title}>{issue.title}</span>
         <span className="bead-dep-tree-kind">[root]</span>
       </div>
-      {order.flatMap((kind) => {
+      {orderedKinds.flatMap((kind) => {
         const list = grouped.get(kind);
         if (!list || list.length === 0) return [];
         return list.map((d) => {

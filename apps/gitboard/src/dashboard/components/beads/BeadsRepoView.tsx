@@ -1,11 +1,7 @@
 // BeadsRepoView (forge-7xu). Loads ALL data for the selected project once,
-// then dispatches to one of 5 tab views: kanban, feed, triage, closed, memories.
+// then dispatches to one of the Beads tab views: feed, triage, memories.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  CheckIcon,
-} from "@primer/octicons-react";
-import { KanbanBoard } from "./KanbanBoard.tsx";
 import { IssueFeed } from "./IssueFeed.tsx";
 import { IssueOverlay } from "./IssueOverlay.tsx";
 import { beadsApi } from "../../lib/beads-api.ts";
@@ -119,13 +115,6 @@ export function BeadsRepoView({ repo, tab }: { repo: RepoNode; tab: BeadsTab }) 
 
   return (
     <div className="ide-beads-pane">
-      {tab === "kanban" && (
-        <KanbanBoard
-          issues={[...state.issues, ...state.closedIssues]}
-          projectId={state.project.id}
-          interactions={state.interactions}
-        />
-      )}
       {tab === "feed" && (
         <IssueFeed
           issues={state.issues}
@@ -141,14 +130,11 @@ export function BeadsRepoView({ repo, tab }: { repo: RepoNode; tab: BeadsTab }) 
       {tab === "triage" && (
         <TriagePanel issues={state.issues} closedIssues={state.closedIssues} onIssueSelect={onIssueSelect} />
       )}
-      {tab === "closed" && (
-        <ClosedIssuesPanel issues={state.closedIssues} />
-      )}
       {tab === "memories" && (
         <MemoriesPanel memories={state.memories} />
       )}
 
-      {tab !== "kanban" && tab !== "feed" && selectedIssue && (
+      {tab !== "feed" && selectedIssue && (
         <IssueOverlay
           issue={selectedIssue}
           detail={detail}
@@ -163,30 +149,6 @@ export function BeadsRepoView({ repo, tab }: { repo: RepoNode; tab: BeadsTab }) 
 }
 
 // ── Closed ────────────────────────────────────────────────────────────────────
-
-function ClosedIssuesPanel({ issues }: { issues: BeadIssue[] }) {
-  if (issues.length === 0) {
-    return <div className="ide-empty"><p>No closed issues yet.</p></div>;
-  }
-  return (
-    <div className="ide-list">
-      {issues.map((i) => (
-        <article key={i.id} className="ide-list-card">
-          <header className="ide-list-card-head">
-            <span className="ide-list-card-id">{i.id}</span>
-            <span className="ide-list-card-tag">{i.issue_type}</span>
-          </header>
-          <h3 className="ide-list-card-title">{i.title}</h3>
-          {i.close_reason && (
-            <p className="ide-list-card-meta">
-              <CheckIcon size={12} /> {i.close_reason}
-            </p>
-          )}
-        </article>
-      ))}
-    </div>
-  );
-}
 
 // ── Memories ──────────────────────────────────────────────────────────────────
 

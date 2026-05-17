@@ -61,7 +61,7 @@ export interface BeadDependency {
   id: string;
   title: string;
   status: Status;
-  dependency_type: "blocks" | "blocked_by" | "related" | "parent" | "parent-child" | (string & {});
+  dependency_type: "blocks" | "blocked_by" | "tracks" | "related" | "relates-to" | "parent" | "parent-child" | "discovered-from" | "until" | "caused-by" | "validates" | "supersedes" | (string & {});
 }
 
 export interface Memory {

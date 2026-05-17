@@ -13,7 +13,7 @@ export type GithubTab =
   | "changelog"
   | "reports";
 
-export type BeadsTab = "kanban" | "feed" | "triage" | "closed" | "memories";
+export type BeadsTab = "feed" | "triage" | "memories";
 
 export type TabId = GithubTab | BeadsTab;
 
@@ -28,16 +28,14 @@ export const GITHUB_TABS: { id: GithubTab; label: string }[] = [
 ];
 
 export const BEADS_TABS: { id: BeadsTab; label: string }[] = [
-  { id: "kanban",    label: "Kanban" },
   { id: "feed",      label: "Feed" },
   { id: "triage",    label: "Triage" },
-  { id: "closed",    label: "Closed" },
   { id: "memories",  label: "Memories" },
 ];
 
 export const DEFAULT_TAB: Record<Surface, TabId> = {
   github: "activity",
-  beads: "kanban",
+  beads: "feed",
 };
 
 export interface GithubChips {
