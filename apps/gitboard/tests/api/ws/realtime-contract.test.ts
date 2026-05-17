@@ -33,7 +33,7 @@ describe("realtime contract", () => {
       channel: "github:activity",
       event: "new_event",
       seq: 1,
-      version: REALTIME_PROTOCOL_VERSION,
+      version: String(REALTIME_PROTOCOL_VERSION),
       data: { id: "e1" },
     });
     expect(typeof msg.ts).toBe("string");
@@ -61,7 +61,7 @@ describe("realtime contract", () => {
     const handler = new WsHandler(reg);
     const raw = makeRaw();
     const id = handler.connect(raw);
-    handler.handleMessage(id, JSON.stringify({ action: "subscribe", channel: "github:activity", version: 0 }));
+    handler.handleMessage(id, JSON.stringify({ action: "subscribe", channel: "github:activity", version: "0" }));
     expect(raw.close).toHaveBeenCalledWith(4001);
   });
 

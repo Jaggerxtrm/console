@@ -7,7 +7,7 @@ export type WsMessage = {
   data?: unknown;
   id?: string;
   seq?: number;
-  version?: number;
+  version?: string;
   boot_id?: string;
 };
 
@@ -44,9 +44,9 @@ export class WsClient {
       for (const channel of this.subscriptions) {
         const since_seq = this.lastSeqByChannel.get(channel) ?? 0;
         if (since_seq > 0 && this.bootId) {
-          this._send({ action: "resume", channel, since_seq, boot_id: this.bootId, version: REALTIME_PROTOCOL_VERSION });
+          this._send({ action: "resume", channel, since_seq, boot_id: this.bootId, version: String(REALTIME_PROTOCOL_VERSION) });
         }
-        this._send({ type: "subscribe", channel, version: REALTIME_PROTOCOL_VERSION });
+        this._send({ type: "subscribe", channel, version: String(REALTIME_PROTOCOL_VERSION) });
       }
     };
 
@@ -89,7 +89,7 @@ export class WsClient {
 
   subscribe(channel: string): void {
     this.subscriptions.add(channel);
-    this._send({ type: "subscribe", channel, version: REALTIME_PROTOCOL_VERSION });
+    this._send({ type: "subscribe", channel, version: String(REALTIME_PROTOCOL_VERSION) });
   }
 
   unsubscribe(channel: string): void {

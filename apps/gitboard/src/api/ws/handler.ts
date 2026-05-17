@@ -11,7 +11,7 @@ export interface WsConnection {
 type SubscribeMessage = {
   action: "subscribe";
   channel: ChannelName;
-  version: number;
+  version: string;
 };
 
 type UnsubscribeMessage = {
@@ -113,7 +113,7 @@ export class WsHandler {
 
     if (action === "subscribe") {
       const version = (msg as Partial<SubscribeMessage>).version;
-      if (version !== REALTIME_PROTOCOL_VERSION) {
+      if (version !== String(REALTIME_PROTOCOL_VERSION)) {
         this.connections.get(connId)?.raw.close(4001);
         return;
       }

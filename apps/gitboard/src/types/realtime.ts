@@ -16,7 +16,7 @@ export type RealtimeEnvelope<E extends string, D> = {
   event: E;
   seq: number;
   ts: string;
-  version: number;
+  version: string;
   boot_id: string;
   data: D;
 };

@@ -9,6 +9,7 @@ export const TABLES = [
   "github_repos",
   "github_prs",
   "github_issues",
+  "github_repo_poll_state",
 ] as const;
 
 export type TableName = (typeof TABLES)[number];
@@ -172,6 +173,16 @@ CREATE TABLE IF NOT EXISTS github_issues (
 
 CREATE INDEX IF NOT EXISTS idx_gh_issues_repo  ON github_issues(repo, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_gh_issues_state ON github_issues(state, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS github_repo_poll_state (
+  repo                  TEXT PRIMARY KEY,
+  last_issue_updated_at  DATETIME,
+  last_pr_updated_at     DATETIME,
+  last_activity_at       DATETIME,
+  issue_etag            TEXT,
+  pr_etag               TEXT,
+  paused_until          DATETIME
+);
 `;
 
 export function createDatabase(path: string): Database {

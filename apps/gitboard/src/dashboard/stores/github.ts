@@ -45,7 +45,9 @@ export interface GithubState {
   markRepoUnread: (fullName: string) => void;
   clearRepoUnread: (fullName: string) => void;
   setPrs: (prs: GithubPr[]) => void;
+  upsertPr: (pr: GithubPr) => void;
   setIssues: (issues: GithubIssue[]) => void;
+  upsertIssue: (issue: GithubIssue) => void;
   setReleases: (releases: GithubRelease[]) => void;
 }
 
@@ -124,7 +126,15 @@ export const useGithubStore = create<GithubState>((set) => ({
 
   setPrs: (prs) => set({ prs }),
 
+  upsertPr: (pr) => set((s) => ({
+    prs: [pr, ...s.prs.filter((item) => !(item.repo === pr.repo && item.number === pr.number))].sort((a, b) => (b.updated_at ?? b.created_at).localeCompare(a.updated_at ?? a.created_at)),
+  })),
+
   setIssues: (issues) => set({ issues }),
+
+  upsertIssue: (issue) => set((s) => ({
+    issues: [issue, ...s.issues.filter((item) => !(item.repo === issue.repo && item.number === issue.number))].sort((a, b) => (b.updated_at ?? b.created_at).localeCompare(a.updated_at ?? a.created_at)),
+  })),
 
   setReleases: (releases) => set({ releases }),
 }));

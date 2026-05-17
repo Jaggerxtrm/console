@@ -69,7 +69,7 @@ describe("WsClient.subscribe", () => {
     mockWs.triggerOpen();
     client.subscribe("github:activity");
     const msg = JSON.parse(mockWs.sent[mockWs.sent.length - 1]);
-    expect(msg).toEqual({ type: "subscribe", channel: "github:activity", version: 1 });
+    expect(msg).toEqual({ type: "subscribe", channel: "github:activity", version: "1" });
   });
 
   it("re-subscribes on reconnect", () => {
@@ -87,7 +87,7 @@ describe("WsClient.subscribe", () => {
     client.connect();
     client.subscribe("github:activity");
     firstSocket.triggerOpen();
-    firstSocket.triggerMessage({ type: "event", channel: "github:activity", event: "new_event", seq: 7, data: {}, version: 1, boot_id: "boot-1" });
+    firstSocket.triggerMessage({ type: "event", channel: "github:activity", event: "new_event", seq: 7, data: {}, version: "1", boot_id: "boot-1" });
 
     const secondSocket = new MockWs();
     wsFactory.mockImplementation(() => secondSocket);
@@ -96,7 +96,7 @@ describe("WsClient.subscribe", () => {
     secondSocket.triggerOpen();
 
     const resumeMsg = secondSocket.sent.map((entry) => JSON.parse(entry)).find((msg) => msg.action === "resume");
-    expect(resumeMsg).toEqual({ action: "resume", channel: "github:activity", since_seq: 7, boot_id: "boot-1", version: 1 });
+    expect(resumeMsg).toEqual({ action: "resume", channel: "github:activity", since_seq: 7, boot_id: "boot-1", version: "1" });
     vi.useRealTimers();
   });
 });
@@ -109,7 +109,7 @@ describe("WsClient.onMessage", () => {
     const received: unknown[] = [];
     client.onMessage((msg) => received.push(msg));
 
-    mockWs.triggerMessage({ type: "event", channel: "github:activity", event: "new_event", seq: 1, data: {}, version: 1, boot_id: "boot-1" });
+    mockWs.triggerMessage({ type: "event", channel: "github:activity", event: "new_event", seq: 1, data: {}, version: "1", boot_id: "boot-1" });
     expect(received).toHaveLength(1);
   });
 

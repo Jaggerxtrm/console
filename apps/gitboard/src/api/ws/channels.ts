@@ -24,7 +24,7 @@ export interface RealtimeEnvelope<E extends string = string, D = unknown> {
   event: E;
   seq: number;
   ts: string;
-  version: number;
+  version: string;
   boot_id: string;
   data: D;
 }
@@ -59,7 +59,7 @@ export class ChannelRegistry {
     }
   }
 
-  publish(channel: ChannelName, event: string, data: unknown): RealtimeEnvelope {
+  publish(channel: ChannelName, event: string, data: unknown, version?: string): RealtimeEnvelope {
     const seq = (this.sequenceByChannel.get(channel) ?? 0) + 1;
     this.sequenceByChannel.set(channel, seq);
     const envelope: RealtimeEnvelope = {
@@ -68,7 +68,7 @@ export class ChannelRegistry {
       event,
       seq,
       ts: new Date().toISOString(),
-      version: REALTIME_PROTOCOL_VERSION,
+      version: version ?? String(REALTIME_PROTOCOL_VERSION),
       boot_id: this.bootId,
       data,
     };

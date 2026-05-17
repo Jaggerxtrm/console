@@ -12,6 +12,12 @@ export interface ServerOptions {
   hostname?: string;
 }
 
+let currentRegistry: ChannelRegistry | null = null;
+
+export function getCurrentRegistry(): ChannelRegistry | null {
+  return currentRegistry;
+}
+
 const repoRoot = process.cwd().endsWith("/apps/gitboard") ? join(process.cwd(), "../..") : process.cwd();
 const gitboardDist = join(repoRoot, "apps/gitboard/dist/dashboard");
 // beadboardDist removed (forge-5w9.9) — frontend deprecated; /beadboard redirects to /gitboard.
@@ -23,6 +29,7 @@ export function createApp(db: Database): {
 } {
   const app = new Hono();
   const registry = new ChannelRegistry();
+  currentRegistry = registry;
   const wsHandler = new WsHandler(registry);
 
   app.use("*", cors());
