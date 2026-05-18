@@ -8,12 +8,14 @@ import type {
   SidebarSelection,
   Surface,
   TabId,
+  ThemeMode,
 } from "../../types/shell.ts";
 import { DEFAULT_TAB } from "../../types/shell.ts";
 
 const LS = {
   selection: "forge-5w9:selection",
   collapsed: "forge-5w9:sidebarCollapsed",
+  theme: "forge-vk47:theme",
 };
 
 function readJSON<T>(key: string, fallback: T): T {
@@ -39,23 +41,27 @@ const initialSelection = readJSON<SidebarSelection>(LS.selection, {
   repo: null,
 });
 const initialCollapsed = readJSON<boolean>(LS.collapsed, false);
+const initialTheme = readJSON<ThemeMode>(LS.theme, "dark");
 
 export interface ShellState {
   repos: RepoNode[];
   selection: SidebarSelection;
   sidebarCollapsed: boolean;
+  theme: ThemeMode;
 
   setRepos: (repos: RepoNode[]) => void;
   setSurface: (surface: Surface) => void;       // switching surface resets tab to default
   setTab: (tab: TabId) => void;
   setRepo: (repo: string | null) => void;
   toggleSidebar: () => void;
+  toggleTheme: () => void;
 }
 
 export const useShellStore = create<ShellState>((set) => ({
   repos: [],
   selection: initialSelection,
   sidebarCollapsed: initialCollapsed,
+  theme: initialTheme === "light" ? "light" : "dark",
 
   setRepos: (repos) => set({ repos }),
 
@@ -90,8 +96,16 @@ export const useShellStore = create<ShellState>((set) => ({
       writeJSON(LS.collapsed, next);
       return { sidebarCollapsed: next };
     }),
+
+  toggleTheme: () =>
+    set((state) => {
+      const next: ThemeMode = state.theme === "dark" ? "light" : "dark";
+      writeJSON(LS.theme, next);
+      return { theme: next };
+    }),
 }));
 
 export const selectSelection = (s: ShellState) => s.selection;
 export const selectRepos = (s: ShellState) => s.repos;
 export const selectSidebarCollapsed = (s: ShellState) => s.sidebarCollapsed;
+export const selectTheme = (s: ShellState) => s.theme;

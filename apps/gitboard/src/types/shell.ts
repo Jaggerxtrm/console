@@ -3,6 +3,7 @@
 // Sidebar = single-level repo list. MainPane renders (surface, tab, repo).
 
 export type Surface = "github" | "beads";
+export type ThemeMode = "dark" | "light";
 
 export type GithubTab =
   | "activity"

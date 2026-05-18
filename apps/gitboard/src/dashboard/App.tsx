@@ -4,6 +4,7 @@ import { GithubPanel } from "./components/github/GithubPanel.tsx";
 import { useRepoTree } from "./hooks/useRepoTree.ts";
 import { TopBar } from "./components/shell/TopBar.tsx";
 import { Sidebar } from "./components/shell/Sidebar.tsx";
+import { useShellStore, selectTheme } from "./stores/shell.ts";
 import { MainPane } from "./components/shell/MainPane.tsx";
 import { useGithubActivity } from "./hooks/useGithubActivity.ts";
 
@@ -30,10 +31,11 @@ export function App() {
 }
 
 function ShellApp() {
+  const theme = useShellStore(selectTheme);
   useGithubActivity();
   useRepoTree();
   return (
-    <div className="ide-shell">
+    <div className="ide-shell" data-theme={theme}>
       <TopBar />
       <div className="ide-body">
         <Sidebar />
