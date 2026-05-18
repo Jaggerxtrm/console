@@ -75,7 +75,7 @@ describe("WsHandler", () => {
     const handler = new WsHandler(reg);
     const raw = makeRaw();
     const id = handler.connect(raw);
-    handler.handleMessage(id, JSON.stringify({ action: "subscribe", channel: "github:activity" }));
+    handler.handleMessage(id, JSON.stringify({ action: "subscribe", channel: "github:activity", version: "1" }));
     reg.publish("github:activity", "new_event", { id: "e99" });
     expect(raw.sent).toHaveLength(1);
   });
@@ -85,7 +85,7 @@ describe("WsHandler", () => {
     const handler = new WsHandler(reg);
     const raw = makeRaw();
     const id = handler.connect(raw);
-    handler.handleMessage(id, JSON.stringify({ action: "subscribe", channel: "system" }));
+    handler.handleMessage(id, JSON.stringify({ action: "subscribe", channel: "system", version: "1" }));
     handler.handleMessage(id, JSON.stringify({ action: "unsubscribe", channel: "system" }));
     reg.publish("system", "tick", {});
     expect(raw.sent).toHaveLength(0);
@@ -103,7 +103,7 @@ describe("WsHandler", () => {
     const reg = new ChannelRegistry();
     const handler = new WsHandler(reg);
     expect(() =>
-      handler.handleMessage("nonexistent", JSON.stringify({ action: "subscribe", channel: "system" }))
+      handler.handleMessage("nonexistent", JSON.stringify({ action: "subscribe", channel: "system", version: "1" }))
     ).not.toThrow();
   });
 });

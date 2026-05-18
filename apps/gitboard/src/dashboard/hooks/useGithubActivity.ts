@@ -3,7 +3,7 @@ import { useGithubStore } from "../stores/github.ts";
 import { apiClient } from "../lib/client.ts";
 import { useWebSocket } from "./useWebSocket.ts";
 import type { WsMessage } from "../lib/ws.ts";
-import type { GithubEvent } from "../../types/github.ts";
+import type { GithubEvent, GithubPr, GithubIssue } from "../../types/github.ts";
 
 export function useGithubActivity(): void {
   const {
@@ -19,7 +19,9 @@ export function useGithubActivity(): void {
     setLoading,
     setError,
     setPrs,
+    upsertPr,
     setIssues,
+    upsertIssue,
     setReleases,
   } = useGithubStore();
 
@@ -64,20 +66,26 @@ export function useGithubActivity(): void {
 
   const wsHandler = useCallback(
     (msg: WsMessage) => {
-      if (msg.event === "new_event" && msg.data) {
+      if (msg.event === "github:event.append" && msg.data) {
         const event = msg.data as GithubEvent;
         prependEvent(event);
         markRepoUnread(event.repo);
       }
-      if (msg.event === "new_commits" && msg.data) {
-        const { event } = msg.data as { event: GithubEvent };
-        if (event) {
-          prependEvent(event);
-          markRepoUnread(event.repo);
-        }
+      if (msg.event === "github:pr.upsert" && msg.data) {
+        const pr = msg.data as GithubPr;
+        upsertPr(pr);
+        markRepoUnread(pr.repo);
+      }
+      if (msg.event === "github:issue.upsert" && msg.data) {
+        const issue = msg.data as GithubIssue;
+        upsertIssue(issue);
+        markRepoUnread(issue.repo);
+      }
+      if (msg.event === "github:sync_hint" && msg.data && typeof msg.data === "object" && "repos" in (msg.data as Record<string, unknown>)) {
+        void load();
       }
     },
-    [prependEvent, markRepoUnread]
+    [prependEvent, markRepoUnread, upsertPr, upsertIssue, load]
   );
 
   useWebSocket("github:activity", wsHandler);

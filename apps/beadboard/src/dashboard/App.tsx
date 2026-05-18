@@ -4,6 +4,7 @@ import { IssueFeed, IssueRow, countDependencies } from "./components/beads/Issue
 import { KanbanBoard } from "./components/beads/KanbanBoard.tsx";
 import { ProjectRail, type ProjectRailStats } from "./components/beads/ProjectRail.tsx";
 import { useBeadsStore } from "./stores/beads.ts";
+import { useBeadsLive } from "./hooks/useBeadsLive.ts";
 import { api, type OpenPr } from "./lib/api.ts";
 import type { BeadIssue, BeadIssueDetail, Memory, Interaction } from "../types/beads.ts";
 
@@ -50,7 +51,10 @@ export function App() {
     setMemories,
     setLoading,
     setError,
+    sourceHealthByProject,
   } = useBeadsStore();
+
+  useBeadsLive();
 
   useEffect(() => {
     async function loadProjects() {
@@ -240,6 +244,9 @@ export function App() {
           ))}
         </div>
         {loading && <span className="module-status">Loading...</span>}
+        {selectedProjectId && sourceHealthByProject[selectedProjectId] && (
+          <span className="module-status">{renderSourceHealth(sourceHealthByProject[selectedProjectId])}</span>
+        )}
         {error && <span className="module-status is-error">{error}</span>}
       </header>
       </div>
@@ -298,6 +305,14 @@ function MemoriesPanel({ memories }: { memories: Memory[] }) {
 
 function AgentBadge({ agent }: { agent: string }) {
   return <span style={{ fontSize: 'var(--text-xs)', padding: '2px 6px', background: 'var(--surface-tertiary)', color: 'var(--text-primary)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>{agent}</span>;
+}
+
+function renderSourceHealth(health: { kind: string; state: string; detail?: string }[]) {
+  const primary = health.find((item) => item.state === "available") ?? health[0];
+  if (!primary) return "source: unknown";
+  const drift = health.some((item) => item.detail?.startsWith("drift"));
+  const label = primary.kind === "dolt" ? "Dolt ✓" : primary.kind === "jsonl" ? "JSONL fallback" : primary.kind;
+  return drift ? `${label} drift` : label;
 }
 
 function filterIssues(issues: BeadIssue[], { openOnly, search, quickFilter }: { openOnly: boolean; search: string; quickFilter: "all" | "ready" | "blocked" | "stale"; }) {

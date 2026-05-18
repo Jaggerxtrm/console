@@ -54,6 +54,17 @@ export class DoltClient {
     return issues;
   }
 
+  async getCommitHash(): Promise<string> {
+    await this.connect();
+    const [rows] = await this.connection!.execute<RowDataPacket[]>("SELECT current_branch() AS branch, current_commit() AS commit_hash");
+    const row = rows[0] as RowDataPacket | undefined;
+    return String(row?.commit_hash ?? row?.hash ?? row?.commit ?? "");
+  }
+
+  async getIssuesSince(updatedSince: string): Promise<BeadIssue[]> {
+    return this.getIssues({ limit: 1000, offset: 0, search: undefined }).then((issues) => issues.filter((issue) => issue.updated_at > updatedSince));
+  }
+
   async getIssue(issueId: string): Promise<BeadIssueDetail | null> {
     const [row] = await this.selectIssues({ limit: 1, offset: 0 }, issueId);
     if (!row) return null;
@@ -66,6 +77,10 @@ export class DoltClient {
       source: "dolt",
       sourceHealth: [{ kind: "dolt", state: "available" }],
     };
+  }
+
+  async fetchIssuesSince(updatedSince: string): Promise<BeadIssue[]> {
+    return this.getIssuesSince(updatedSince);
   }
 
   private async selectIssues(filters: IssueFilters, issueId?: string): Promise<RowDataPacket[]> {

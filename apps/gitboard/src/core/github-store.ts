@@ -299,6 +299,54 @@ export function getRepos(db: Database): GithubRepo[] {
   return db.query<GithubRepo, never[]>("SELECT * FROM github_repos ORDER BY full_name").all();
 }
 
+export interface RepoPollState {
+  repo: string;
+  last_issue_updated_at: string | null;
+  last_pr_updated_at: string | null;
+  last_activity_at: string | null;
+  issue_etag: string | null;
+  pr_etag: string | null;
+  paused_until: string | null;
+}
+
+export function getRepoPollState(db: Database, repo: string): RepoPollState {
+  return db.query<RepoPollState, AnyParams>(
+    `SELECT repo, last_issue_updated_at, last_pr_updated_at, last_activity_at, issue_etag, pr_etag, paused_until
+     FROM github_repo_poll_state WHERE repo = $repo`
+  ).get({ $repo: repo }) ?? {
+    repo,
+    last_issue_updated_at: null,
+    last_pr_updated_at: null,
+    last_activity_at: null,
+    issue_etag: null,
+    pr_etag: null,
+    paused_until: null,
+  };
+}
+
+export function upsertRepoPollState(db: Database, state: RepoPollState): void {
+  db.prepare(
+    `INSERT INTO github_repo_poll_state
+      (repo, last_issue_updated_at, last_pr_updated_at, last_activity_at, issue_etag, pr_etag, paused_until)
+     VALUES ($repo, $last_issue_updated_at, $last_pr_updated_at, $last_activity_at, $issue_etag, $pr_etag, $paused_until)
+     ON CONFLICT(repo) DO UPDATE SET
+       last_issue_updated_at = excluded.last_issue_updated_at,
+       last_pr_updated_at = excluded.last_pr_updated_at,
+       last_activity_at = excluded.last_activity_at,
+       issue_etag = excluded.issue_etag,
+       pr_etag = excluded.pr_etag,
+       paused_until = excluded.paused_until`
+  ).run({
+    $repo: state.repo,
+    $last_issue_updated_at: state.last_issue_updated_at,
+    $last_pr_updated_at: state.last_pr_updated_at,
+    $last_activity_at: state.last_activity_at,
+    $issue_etag: state.issue_etag,
+    $pr_etag: state.pr_etag,
+    $paused_until: state.paused_until,
+  } as AnyParams);
+}
+
 export function isTruncated(msg: string): boolean {
   return msg.length >= 70 && !msg.includes('\n');
 }

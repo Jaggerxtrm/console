@@ -1664,16 +1664,6 @@ body {
   margin: 0;
 }
 
-.pr-row::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 9px;
-  bottom: 9px;
-  width: 2px;
-  background: rgba(142,210,220,0.18);
-}
-
 .pr-row:hover {
   background: rgba(255, 255, 255, 0.04);
   box-shadow: none;
@@ -1682,10 +1672,6 @@ body {
 .pr-row.is-expanded {
   background: var(--surface-secondary);
 }
-
-.pr-row.merged::before { background: rgba(159,184,201,0.86); box-shadow: none; }
-.pr-row.closed::before { background: rgba(209,132,127,0.76); box-shadow: none; }
-.pr-row.open::before { background: rgba(142,210,220,0.82); box-shadow: none; }
 
 .pr-row-main {
   display: grid;
@@ -2367,19 +2353,8 @@ body {
   transition: background 160ms ease;
 }
 
-.release-row::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 9px;
-  bottom: 9px;
-  width: 2px;
-  background: rgba(142,210,220,0.18);
-}
-
 .release-row:hover { background: var(--surface-hover); }
 .release-row.is-expanded { background: var(--surface-secondary); }
-.release-row::before { background: rgba(142,210,220,0.82); }
 .release-day-header {
   padding: 4px 12px 3px;
   font-size: var(--text-xs);
@@ -2432,19 +2407,6 @@ body {
   transition: background 160ms ease;
   margin: 0;
 }
-
-.issue-row::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 9px;
-  bottom: 9px;
-  width: 2px;
-  background: rgba(142,210,220,0.18);
-}
-
-.issue-row.open::before { background: rgba(137,201,165,0.82); }
-.issue-row.closed::before { background: rgba(116,134,139,0.72); }
 
 .issue-row:hover {
   background: rgba(255, 255, 255, 0.04);
@@ -3818,19 +3780,64 @@ body:has(.shell-app) { background: #000 !important; }
   --surface-backdrop: #000;
   --surface-elevated: #000;
   --surface-primary: #000;
-  --surface-secondary: #000;
-  --surface-tertiary: #000;
-  --surface-quaternary: #000;
+  --surface-secondary: #050505;
+  --surface-tertiary: #0c0c0c;
+  --surface-quaternary: #1c1c1c;
   --surface-1: #000;
-  --surface-2: #000;
-  --surface-3: #000;
+  --surface-2: #050505;
+  --surface-3: #0c0c0c;
+  --surface-hover: rgba(255, 255, 255, 0.04);
   --bg-hover: #0c0c0c;
-  background: #000;
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-default: #1c1c1c;
+  --border-strong: #2a2a2a;
+  --border: var(--border-default);
+  --card-border: 1px solid var(--border-default);
+  --text-primary: #f8fafc;
+  --text-secondary: #cbd5e1;
+  --text-muted: #94a3b8;
+  --text-disabled: #475569;
+  --accent-dim: rgba(142, 210, 220, 0.08);
+  --accent-soft: rgba(142, 210, 220, 0.18);
+  --row-hover: rgba(255, 255, 255, 0.025);
+  --chrome-bg: var(--bg);
+  --chrome-border: var(--border-default);
+  background: var(--bg);
   color: var(--text-primary);
   display: flex;
   flex-direction: column;
   font-family: var(--font-ui);
   min-height: 100vh;
+}
+
+.ide-shell[data-theme="light"] {
+  --bg: #fff;
+  --surface-backdrop: #fff;
+  --surface-elevated: #fff;
+  --surface-primary: #fff;
+  --surface-secondary: #f8fafc;
+  --surface-tertiary: #f1f5f9;
+  --surface-quaternary: #e2e8f0;
+  --surface-1: #fff;
+  --surface-2: #f8fafc;
+  --surface-3: #f1f5f9;
+  --surface-hover: rgba(15, 23, 42, 0.045);
+  --bg-hover: #f8fafc;
+  --border-subtle: rgba(15, 23, 42, 0.09);
+  --border-default: #e5e7eb;
+  --border-strong: #cbd5e1;
+  --border: var(--border-default);
+  --card-border: 1px solid var(--border-default);
+  --text-primary: #0f172a;
+  --text-secondary: #334155;
+  --text-muted: #64748b;
+  --text-disabled: #94a3b8;
+  --accent-dim: rgba(8, 145, 178, 0.08);
+  --accent-soft: rgba(8, 145, 178, 0.16);
+  --row-hover: rgba(15, 23, 42, 0.035);
+  --chrome-bg: var(--bg);
+  --chrome-border: var(--border-default);
+  color-scheme: light;
 }
 
 .ide-body {
@@ -4324,3 +4331,168 @@ body:has(.ide-shell) { overflow: hidden; }
 .ide-stat-chip-release { color: #14b8a6; }
 .ide-stat-chip-beads { color: var(--accent); }
 .ide-repo-row.is-active .ide-stat-chip { filter: brightness(1.18); }
+
+/* forge-vk47: global black/white switch. Keep the sparse shell; only tokens/surfaces change. */
+.ide-theme-toggle {
+  align-items: center;
+  align-self: center;
+  background: transparent;
+  border: 0;
+  border-left: 1px solid var(--chrome-border);
+  color: var(--text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  flex-shrink: 0;
+  height: 100%;
+  justify-content: center;
+  margin-left: auto;
+  min-width: 70px;
+  padding: 0 14px;
+}
+.ide-theme-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.ide-theme-track {
+  align-items: center;
+  background: var(--surface-tertiary);
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  display: inline-grid;
+  grid-template-columns: 20px 20px;
+  height: 24px;
+  padding: 1px;
+  position: relative;
+  transition: background 120ms, border-color 120ms;
+  width: 44px;
+}
+.ide-theme-toggle:hover .ide-theme-track {
+  background: var(--surface-hover);
+  border-color: var(--border-strong);
+}
+.ide-theme-option {
+  align-items: center;
+  color: var(--text-disabled);
+  display: inline-flex;
+  height: 20px;
+  justify-content: center;
+  position: relative;
+  transition: color 120ms;
+  z-index: 1;
+}
+.ide-theme-thumb {
+  background: var(--text-primary);
+  border-radius: 999px;
+  box-shadow: 0 0 0 1px var(--border-subtle);
+  height: 20px;
+  left: 1px;
+  position: absolute;
+  top: 1px;
+  transition: transform 160ms ease-out, background 120ms;
+  width: 20px;
+}
+.ide-shell[data-theme="dark"] .ide-theme-option-light,
+.ide-shell[data-theme="light"] .ide-theme-option-dark {
+  color: var(--surface-primary);
+}
+.ide-shell[data-theme="light"] .ide-theme-thumb {
+  transform: translateX(20px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .ide-theme-thumb { transition: none; }
+}
+
+body:has(.ide-shell[data-theme="light"]) { background: #fff !important; }
+
+.ide-shell[data-theme="light"],
+.ide-shell[data-theme="light"] .ide-topbar,
+.ide-shell[data-theme="light"] .ide-topbar-switch,
+.ide-shell[data-theme="light"] .ide-sidebar,
+.ide-shell[data-theme="light"] .ide-main,
+.ide-shell[data-theme="light"] .shell-main,
+.ide-shell[data-theme="light"] main,
+.ide-shell[data-theme="light"] .bead-feed {
+  background: var(--bg) !important;
+}
+
+.ide-shell[data-theme="light"] .ide-topbar,
+.ide-shell[data-theme="light"] .ide-sidebar-header {
+  border-bottom-color: var(--chrome-border);
+}
+.ide-shell[data-theme="light"] .ide-topbar-switch,
+.ide-shell[data-theme="light"] .ide-sidebar,
+.ide-shell[data-theme="light"] .ide-theme-toggle {
+  border-color: var(--chrome-border);
+}
+
+.ide-shell[data-theme="light"] .ide-surface-btn.is-active,
+.ide-shell[data-theme="light"] .ide-sidebar-count,
+.ide-shell[data-theme="light"] .ide-repo-badge,
+.ide-shell[data-theme="light"] .ide-empty code,
+.ide-shell[data-theme="light"] .ide-empty-card,
+.ide-shell[data-theme="light"] .ide-btn,
+.ide-shell[data-theme="light"] .ide-list-card,
+.ide-shell[data-theme="light"] .ide-list-card-tag,
+.ide-shell[data-theme="light"] .ide-triage-section,
+.ide-shell[data-theme="light"] .ide-triage-row,
+.ide-shell[data-theme="light"] .ide-stat,
+.ide-shell[data-theme="light"] .ide-skeleton-col,
+.ide-shell[data-theme="light"] .ide-skeleton-head,
+.ide-shell[data-theme="light"] .ide-skeleton-card,
+.ide-shell[data-theme="light"] .feed-section-title {
+  background: var(--surface-primary);
+}
+
+.ide-shell[data-theme="light"] .ide-empty-card,
+.ide-shell[data-theme="light"] .ide-btn,
+.ide-shell[data-theme="light"] .ide-list-card,
+.ide-shell[data-theme="light"] .ide-triage-section,
+.ide-shell[data-theme="light"] .ide-triage-row,
+.ide-shell[data-theme="light"] .ide-stat,
+.ide-shell[data-theme="light"] .ide-skeleton-col {
+  border-color: var(--border-default);
+}
+
+.ide-shell[data-theme="light"] .ide-sidebar-toggle:hover,
+.ide-shell[data-theme="light"] .ide-repo-row:hover,
+.ide-shell[data-theme="light"] .ide-empty-card:hover,
+.ide-shell[data-theme="light"] .ide-btn:hover,
+.ide-shell[data-theme="light"] .ide-triage-row:hover,
+.ide-shell[data-theme="light"] .pr-row:hover,
+.ide-shell[data-theme="light"] .issue-row:hover,
+.ide-shell[data-theme="light"] .release-row:hover,
+.ide-shell[data-theme="light"] .row:hover {
+  background: var(--row-hover);
+}
+
+.ide-shell[data-theme="light"] .ide-repo-row.is-active,
+.ide-shell[data-theme="light"] .row.is-expanded,
+.ide-shell[data-theme="light"] .pr-row.is-expanded,
+.ide-shell[data-theme="light"] .issue-row.is-expanded,
+.ide-shell[data-theme="light"] .release-row.is-expanded {
+  background: var(--accent-dim);
+}
+
+.ide-shell[data-theme="light"] .ide-repo-row.is-active .ide-repo-badge {
+  background: var(--accent-soft);
+}
+
+.ide-shell[data-theme="light"] .pr-timeline,
+.ide-shell[data-theme="light"] .pr-day-header,
+.ide-shell[data-theme="light"] .release-day-header,
+.ide-shell[data-theme="light"] .feed-section-empty,
+.ide-shell[data-theme="light"] .bead-body-text code,
+.ide-shell[data-theme="light"] .bead-body-text pre {
+  background: var(--surface-secondary);
+}
+
+.ide-shell[data-theme="light"] .bead-dossier-meta-strip {
+  border-color: var(--border-subtle);
+}
+
+.ide-shell[data-theme="light"] .identity-separator,
+.ide-shell[data-theme="light"] .row.is-child .id::before,
+.ide-shell[data-theme="light"] .row.is-parent-child .id::before,
+.ide-shell[data-theme="light"] .row.is-blocked-child .id::before {
+  color: rgba(8, 145, 178, 0.45);
+}

@@ -1,0 +1,139 @@
+import { watch, type FSWatcher } from "node:fs";
+import { join } from "node:path";
+import type { ChannelRegistry } from "../../../gitboard/src/api/ws/channels.ts";
+import type { BeadDependency, BeadIssue, BeadsProject, Memory, ProjectSourceHealth } from "../types/beads.ts";
+import { ProjectScanner } from "./project-scanner.ts";
+import { DoltClient } from "./dolt-client.ts";
+import { BeadsReader } from "./beads-reader.ts";
+
+const ACTIVE_POLL_MS = 2_000;
+const IDLE_POLL_MS = 10_000;
+const WATCH_DEBOUNCE_MS = 1_000;
+const COALESCE_MS = 1_500;
+const MAX_BATCH = 50;
+
+type Snapshot = { issues: BeadIssue[]; deps: BeadDependency[]; memories: Memory[]; kv: Array<{ key: string; value: unknown; project_id: string }> };
+type PendingEvent = { projectId: string; source: "dolt" | "jsonl" | "sqlite"; version: string; event: string; data: Record<string, unknown> };
+
+export class BeadsChangeWatcher {
+  private timer: ReturnType<typeof setTimeout> | null = null;
+  private flushTimer: ReturnType<typeof setTimeout> | null = null;
+  private stopped = false;
+  private watchers = new Map<string, FSWatcher>();
+  private previous = new Map<string, Snapshot>();
+  private queue: PendingEvent[] = [];
+
+  constructor(private readonly options: { scanner?: ProjectScanner; registry: ChannelRegistry }) {}
+
+  private get scanner(): ProjectScanner {
+    return this.options.scanner ?? new ProjectScanner({ searchPath: process.env.XDG_PROJECTS_DIR || "/home" });
+  }
+  private get registry(): ChannelRegistry { return this.options.registry; }
+
+  start(): void { void this.loop(); }
+  stop(): void { this.stopped = true; if (this.timer) clearTimeout(this.timer); if (this.flushTimer) clearTimeout(this.flushTimer); for (const watcher of this.watchers.values()) watcher.close(); }
+
+  private async loop(): Promise<void> {
+    if (this.stopped) return;
+    const projects = await this.scanner.scanAll();
+    for (const project of projects) {
+      await this.ensureWatcher(project);
+      await this.poll(project);
+    }
+    this.timer = setTimeout(() => void this.loop(), projects.length > 0 ? ACTIVE_POLL_MS : IDLE_POLL_MS);
+  }
+
+  private async ensureWatcher(project: BeadsProject): Promise<void> {
+    if (this.watchers.has(project.id)) return;
+    try {
+      let debounce: ReturnType<typeof setTimeout> | null = null;
+      const watcher = watch(join(project.beadsPath, "issues.jsonl"), { persistent: false }, () => {
+        if (debounce) clearTimeout(debounce);
+        debounce = setTimeout(() => void this.poll(project), WATCH_DEBOUNCE_MS);
+      });
+      this.watchers.set(project.id, watcher);
+    } catch (error) {
+      if ((error as { code?: string }).code !== "ENOENT") console.error("[beads-change-watcher] watch failed", project.id, error);
+    }
+  }
+
+  private async poll(project: BeadsProject): Promise<void> {
+    const commitHash = await this.getCommitHash(project);
+    const snapshot = await this.readSnapshot(project);
+    const previous = this.previous.get(project.id);
+    const health = this.buildHealth(project, commitHash, previous, snapshot);
+    this.previous.set(project.id, snapshot);
+    this.enqueue({ projectId: project.id, source: commitHash ? "dolt" : "jsonl", version: commitHash ?? String(Date.now()), event: "beads:source_health", data: { health } });
+    this.diffAndQueue(project.id, previous, snapshot, commitHash ?? String(Date.now()));
+  }
+
+  private diffAndQueue(projectId: string, previous: Snapshot | undefined, next: Snapshot, version: string): void {
+    const prevIssues = new Map(previous?.issues.map((issue) => [issue.id, issue]) ?? []);
+    const nextIssues = new Map(next.issues.map((issue) => [issue.id, issue]));
+    for (const issue of next.issues) {
+      const before = prevIssues.get(issue.id);
+      this.enqueue({ projectId, source: "dolt", version, event: "beads:issue.upsert", data: { issue } });
+      if (before?.status !== "closed" && issue.status === "closed") this.enqueue({ projectId, source: "dolt", version, event: "beads:issue.close", data: { issueId: issue.id } });
+      if (!before && issue.status === "closed") this.enqueue({ projectId, source: "dolt", version, event: "beads:issue.close", data: { issueId: issue.id } });
+      if (!before?.labels?.length && issue.labels.length > 0) this.enqueue({ projectId, source: "dolt", version, event: "beads:issue.flagged", data: { issue } });
+      if (before?.labels?.length && issue.labels.length === 0) this.enqueue({ projectId, source: "dolt", version, event: "beads:issue.unflagged", data: { issue } });
+      if (before?.parent_id == null && issue.parent_id != null) this.enqueue({ projectId, source: "dolt", version, event: "beads:issue.superseded", data: { issue } });
+      if (before?.status !== "deferred" && issue.status === "deferred") this.enqueue({ projectId, source: "dolt", version, event: "beads:issue.deferred", data: { issue } });
+    }
+    for (const issue of previous?.issues ?? []) if (!nextIssues.has(issue.id)) this.enqueue({ projectId, source: "dolt", version, event: "beads:issue.delete", data: { issueId: issue.id } });
+    this.diffList(projectId, previous?.deps ?? [], next.deps, version, "beads:dep.upsert", "beads:dep.delete", "id");
+    this.diffList(projectId, previous?.memories ?? [], next.memories, version, "beads:memory.upsert", "beads:memory.delete", "id");
+    this.diffList(projectId, previous?.kv ?? [], next.kv, version, "beads:kv.upsert", "beads:kv.delete", "key");
+  }
+
+  private diffList<T extends Record<string, unknown>>(projectId: string, previous: T[], next: T[], version: string, upsertEvent: string, deleteEvent: string, key: keyof T): void {
+    const prev = new Map(previous.map((item) => [String(item[key]), item]));
+    const nextIds = new Set(next.map((item) => String(item[key])));
+    for (const item of next) this.enqueue({ projectId, source: "dolt", version, event: upsertEvent, data: { [key]: item[key], ...item } });
+    for (const item of previous) if (!nextIds.has(String(item[key]))) this.enqueue({ projectId, source: "dolt", version, event: deleteEvent, data: { [key]: item[key] } });
+  }
+
+  private enqueue(event: PendingEvent): void {
+    this.queue.push(event);
+    if (this.queue.length >= MAX_BATCH) { this.flush(true); return; }
+    if (!this.flushTimer) this.flushTimer = setTimeout(() => this.flush(false), COALESCE_MS);
+  }
+
+  private flush(overflow: boolean): void {
+    if (this.flushTimer) clearTimeout(this.flushTimer);
+    this.flushTimer = null;
+    const batch = this.queue.splice(0, this.queue.length);
+    if (batch.length === 0) return;
+    if (overflow || batch.length > MAX_BATCH) {
+      this.registry.publish("beads:changes", "beads:sync_hint", { reason: "overflow" }, batch.at(-1)?.version);
+      return;
+    }
+    const grouped = new Map<string, PendingEvent[]>();
+    for (const item of batch) grouped.set(item.projectId, [...(grouped.get(item.projectId) ?? []), item]);
+    for (const [projectId, events] of grouped) this.registry.publish("beads:changes", "beads:batch", { project_id: projectId, issues: events.filter((e) => e.event === "beads:issue.upsert").map((e) => e.data.issue), dependencies: events.filter((e) => e.event === "beads:dep.upsert").map((e) => e.data as BeadDependency), memories: events.filter((e) => e.event === "beads:memory.upsert").map((e) => e.data as Memory), kv: events.filter((e) => e.event === "beads:kv.upsert").map((e) => e.data as { key: string; value: unknown; project_id: string }) }, events.at(-1)?.version);
+    for (const item of batch) this.registry.publish("beads:changes", item.event, { projectId: item.projectId, source: item.source, ...item.data }, item.version);
+  }
+
+  private async readSnapshot(project: BeadsProject): Promise<Snapshot> {
+    const issues = await this.readIssues(project);
+    return { issues, deps: issues.flatMap((issue) => issue.dependencies), memories: await this.readMemories(project), kv: [] };
+  }
+
+  private async readIssues(project: BeadsProject): Promise<BeadIssue[]> {
+    try { if (project.doltPort) return await new DoltClient({ host: "127.0.0.1", port: project.doltPort, database: project.doltDatabase }).getIssues({ limit: 1000 }); } catch {}
+    try { return (await Bun.file(join(project.beadsPath, "issues.jsonl")).text()).split("\n").flatMap((line) => BeadsReader.parseIssueLine(line)).map((issue) => ({ ...issue, project_id: project.id })); } catch { return []; }
+  }
+
+  private async readMemories(project: BeadsProject): Promise<Memory[]> {
+    try { return (await Bun.file(join(project.beadsPath, "knowledge.jsonl")).text()).split("\n").flatMap((line) => BeadsReader.parseMemoryLine(line)).map((memory) => ({ ...memory, project_id: project.id })); } catch { return []; }
+  }
+
+  private async getCommitHash(project: BeadsProject): Promise<string | null> {
+    if (!project.doltPort) return null;
+    try { const client = new DoltClient({ host: "127.0.0.1", port: project.doltPort, database: project.doltDatabase }); await client.connect(); return await client.getCommitHash(); } catch { return null; }
+  }
+
+  private buildHealth(project: BeadsProject, commitHash: string | null, previous?: Snapshot, next?: Snapshot): ProjectSourceHealth[] {
+    return [{ kind: "dolt", state: commitHash ? "available" : "missing", detail: commitHash ?? "fallback" }, { kind: "jsonl", state: "available", path: join(project.beadsPath, "issues.jsonl"), detail: previous && next && previous.issues.length !== next.issues.length ? "drift" : undefined }];
+  }
+}

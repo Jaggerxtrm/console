@@ -164,6 +164,10 @@ export class ProjectScanner {
     }
   }
 
+  async probeSourceHealth(beadsPath: string, doltPort?: number): Promise<ProjectSourceHealth[]> {
+    return this.detectSourceHealth(beadsPath, doltPort);
+  }
+
   private async detectSourceHealth(beadsPath: string, doltPort?: number): Promise<ProjectSourceHealth[]> {
     const candidates: ProjectSourceHealth[] = [];
     candidates.push({

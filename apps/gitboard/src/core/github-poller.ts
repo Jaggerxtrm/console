@@ -7,8 +7,12 @@ import {
   upsertPr,
   upsertIssue,
   getRepos,
+  getRepoPollState,
+  upsertRepoPollState,
 } from "./github-store.ts";
-import type { GithubEvent, GithubCommit } from "./github-store.ts";
+import type { GithubEvent, GithubCommit, GithubPr, GithubIssue, GithubRepo } from "./github-store.ts";
+import type { ChannelRegistry } from "../api/ws/channels.ts";
+import type { GithubRealtimeEvent } from "../types/realtime.ts";
 
 export interface RawGithubCommit {
   sha: string;
@@ -29,6 +33,7 @@ export interface RawGithubEvent {
 export interface PollerOptions {
   intervalMs?: number;
   backfillPages?: number;
+  registry?: ChannelRegistry;
 }
 
 export function getGithubToken(): string {
@@ -178,12 +183,16 @@ export class GithubPoller {
   private intervalMs: number;
   private backfillPages: number;
   private timer: ReturnType<typeof setInterval> | null = null;
+  private registry: ChannelRegistry | null;
+  private etags = new Map<string, string>();
+  private pausedUntil = 0;
 
   constructor(db: Database, token: string, options: PollerOptions = {}) {
     this.db = db;
     this.token = token;
     this.intervalMs = options.intervalMs ?? 5 * 60 * 1000;
     this.backfillPages = options.backfillPages ?? 3;
+    this.registry = options.registry ?? null;
   }
 
   // ---------------------------------------------------------------------------
@@ -199,25 +208,54 @@ export class GithubPoller {
     };
   }
 
-  /** Generic GET against the GitHub REST API. Returns null on error. */
-  private async apiGet<T>(path: string): Promise<T | null> {
+  private parseRateLimit(response: Response): { remaining: number; limit: number } | null {
+    const remaining = Number(response.headers.get("X-RateLimit-Remaining") ?? NaN);
+    const limit = Number(response.headers.get("X-RateLimit-Limit") ?? NaN);
+    if (!Number.isFinite(remaining) || !Number.isFinite(limit)) return null;
+    return { remaining, limit };
+  }
+
+  private maybePauseForRateLimit(response: Response): boolean {
+    const rate = this.parseRateLimit(response);
+    if (!rate) return false;
+    if (rate.remaining < 500) {
+      this.pausedUntil = Date.now() + 60_000;
+      return true;
+    }
+    if (this.pausedUntil > 0 && rate.remaining > rate.limit * 0.8) {
+      this.pausedUntil = 0;
+    }
+    return false;
+  }
+
+  private getEtagKey(repo: string, endpoint: string): string {
+    return `${repo}:${endpoint}`;
+  }
+
+  private getIfNoneMatch(repo: string, endpoint: string): Record<string, string> {
+    const etag = this.etags.get(this.getEtagKey(repo, endpoint));
+    return etag ? { "If-None-Match": etag } : {};
+  }
+
+  private rememberEtag(repo: string, endpoint: string, response: Response): void {
+    const etag = response.headers.get("ETag");
+    if (etag) this.etags.set(this.getEtagKey(repo, endpoint), etag);
+  }
+
+  /** Generic GET against GitHub REST API. Returns null on 304/error. */
+  private async apiGet<T>(path: string, repo = "global", endpoint = path): Promise<T | null> {
+    if (this.pausedUntil > Date.now()) return null;
     const url = path.startsWith("https://") ? path : `https://api.github.com${path}`;
     let response: Response;
     try {
-      response = await fetch(url, { headers: this.headers });
+      response = await fetch(url, { headers: { ...this.headers, ...this.getIfNoneMatch(repo, endpoint) } });
     } catch {
       return null;
     }
+    if (response.status === 304) return null;
     if (!response.ok) return null;
-    const remaining = response.headers.get("X-RateLimit-Remaining");
-    const limit = response.headers.get("X-RateLimit-Limit");
-    if (remaining && limit) {
-      const ratio = parseInt(remaining) / parseInt(limit);
-      if (ratio < 0.1) {
-        console.warn(`[github-poller] Rate limit at ${Math.round(ratio * 100)}% — backing off`);
-        await Bun.sleep(60_000);
-      }
-    }
+    this.maybePauseForRateLimit(response);
+    this.rememberEtag(repo, endpoint, response);
     return (await response.json()) as T;
   }
 
@@ -304,7 +342,22 @@ export class GithubPoller {
     return this.apiGet<PRResponse>(`/repos/${repo}/pulls/${number}`);
   }
 
-  private async fetchAndUpsertIssues(repo: string): Promise<void> {
+  private getRepoActiveWindow(repo: GithubRepo, state: ReturnType<typeof getRepoPollState>): number {
+    const recentActivity = state.last_activity_at ? Date.now() - new Date(state.last_activity_at).getTime() : Number.POSITIVE_INFINITY;
+    if (recentActivity <= 60 * 60 * 1000) return 60_000;
+    if (recentActivity > 24 * 60 * 60 * 1000) return 30 * 60_000;
+    return 10 * 60_000;
+  }
+
+  private publishGithubEvent(event: GithubRealtimeEvent, data: GithubPr | GithubIssue | Record<string, unknown>, version: string): void {
+    this.registry?.publish("github:activity", event, data, version);
+  }
+
+  private shouldStopOnWatermark(updatedAt: string, watermark: string | null): boolean {
+    return watermark !== null && updatedAt <= watermark;
+  }
+
+  private async pollIssues(repo: string, watermark: string | null): Promise<string | null> {
     interface IssueResponse {
       number: number;
       title: string;
@@ -320,42 +373,36 @@ export class GithubPoller {
       pull_request?: object;
     }
 
-    let page = 1;
-    while (true) {
-      const items = await this.apiGet<IssueResponse[]>(
-        `/repos/${repo}/issues?state=all&per_page=100&page=${page}`
-      );
-      if (!items || items.length === 0) break;
-
-      for (const item of items) {
-        if (item.pull_request) continue;
-
-        const labelNames = item.labels.length > 0
-          ? JSON.stringify(item.labels.map((l) => l.name))
-          : null;
-
-        upsertIssue(this.db, {
-          repo,
-          number: item.number,
-          title: item.title,
-          body: item.body,
-          state: item.state,
-          author: item.user.login,
-          url: item.html_url,
-          comment_count: item.comments,
-          label_names: labelNames,
-          created_at: item.created_at,
-          updated_at: item.updated_at,
-          closed_at: item.closed_at,
-        });
-      }
-
-      if (items.length < 100) break;
-      page++;
+    const items = await this.apiGet<IssueResponse[]>(`/repos/${repo}/issues?state=all&since=${encodeURIComponent(watermark ?? "1970-01-01T00:00:00Z")}&per_page=100`, repo, "issues");
+    if (!items) return watermark;
+    let latest = watermark;
+    for (const item of items) {
+      if (item.pull_request) continue;
+      if (this.shouldStopOnWatermark(item.updated_at, watermark)) break;
+      const issue: GithubIssue = {
+        repo,
+        number: item.number,
+        title: item.title,
+        body: item.body,
+        state: item.state,
+        author: item.user.login,
+        url: item.html_url,
+        comment_count: item.comments,
+        label_names: item.labels.length > 0 ? JSON.stringify(item.labels.map((l) => l.name)) : null,
+        created_at: item.created_at,
+        updated_at: item.updated_at,
+        closed_at: item.closed_at,
+      };
+      const existing = this.db.query<GithubIssue, { $repo: string; $number: number }>("SELECT * FROM github_issues WHERE repo = $repo AND number = $number").get({ $repo: repo, $number: item.number });
+      const changed = !existing || existing.updated_at !== issue.updated_at;
+      upsertIssue(this.db, issue);
+      if (changed || !existing) this.publishGithubEvent("github:issue.upsert", issue, issue.updated_at ?? issue.created_at);
+      latest = latest === null || item.updated_at > latest ? item.updated_at : latest;
     }
+    return latest;
   }
 
-  async backfillPrsAndIssues(repos: string[]): Promise<void> {
+  private async pollPullRequests(repo: string, watermark: string | null): Promise<string | null> {
     interface PullsResponse {
       number: number;
       title: string;
@@ -371,50 +418,65 @@ export class GithubPoller {
       updated_at: string;
     }
 
+    const prs = await this.apiGet<PullsResponse[]>(`/repos/${repo}/pulls?state=all&sort=updated&direction=desc&per_page=100`, repo, "pulls");
+    if (!prs) return watermark;
+    let latest = watermark;
+    for (const pr of prs) {
+      if (this.shouldStopOnWatermark(pr.updated_at, watermark)) break;
+      const record: GithubPr = {
+        repo,
+        number: pr.number,
+        title: pr.title,
+        body: pr.body,
+        state: pr.merged_at !== null && pr.state === "closed" ? "merged" : pr.state,
+        author: pr.user.login,
+        url: pr.html_url,
+        additions: null,
+        deletions: null,
+        changed_files: null,
+        comment_count: pr.comments,
+        label_names: pr.labels.length > 0 ? JSON.stringify(pr.labels.map((l) => l.name)) : null,
+        created_at: pr.created_at,
+        updated_at: pr.updated_at,
+        merged_at: pr.merged_at,
+        closed_at: pr.closed_at,
+      };
+      const existing = this.db.query<GithubPr, { $repo: string; $number: number }>("SELECT * FROM github_prs WHERE repo = $repo AND number = $number").get({ $repo: repo, $number: pr.number });
+      const changed = !existing || existing.updated_at !== record.updated_at;
+      upsertPr(this.db, record);
+      if (changed || !existing) this.publishGithubEvent("github:pr.upsert", record, record.updated_at ?? record.created_at);
+      latest = latest === null || pr.updated_at > latest ? pr.updated_at : latest;
+    }
+    return latest;
+  }
+
+  async pollRepos(): Promise<void> {
+    const repos = getRepos(this.db).filter((repo) => repo.tracked);
     for (const repo of repos) {
-      console.log(`[github-poller] Backfilling PRs for ${repo}`);
-      let page = 1;
-      while (true) {
-        const prs = await this.apiGet<PullsResponse[]>(
-          `/repos/${repo}/pulls?state=all&per_page=100&page=${page}`
-        );
-        if (!prs || prs.length === 0) break;
-
-        for (const pr of prs) {
-          const labelNames = pr.labels.length > 0
-            ? JSON.stringify(pr.labels.map((l) => l.name))
-            : null;
-          const state = pr.merged_at !== null && pr.state === "closed" ? "merged" : pr.state;
-          upsertPr(this.db, {
-            repo,
-            number: pr.number,
-            title: pr.title,
-            body: pr.body,
-            state,
-            author: pr.user.login,
-            url: pr.html_url,
-            additions: null,
-            deletions: null,
-            changed_files: null,
-            comment_count: pr.comments,
-            label_names: labelNames,
-            created_at: pr.created_at,
-            updated_at: pr.updated_at,
-            merged_at: pr.merged_at,
-            closed_at: pr.closed_at,
-          });
-        }
-
-        if (prs.length < 100) break;
-        page++;
+      const state = getRepoPollState(this.db, repo.full_name);
+      const nextInterval = this.getRepoActiveWindow(repo, state);
+      if (state.paused_until && new Date(state.paused_until).getTime() > Date.now()) continue;
+      const issueUpdatedAt = await this.pollIssues(repo.full_name, state.last_issue_updated_at);
+      const prUpdatedAt = await this.pollPullRequests(repo.full_name, state.last_pr_updated_at);
+      upsertRepoPollState(this.db, {
+        repo: repo.full_name,
+        last_issue_updated_at: issueUpdatedAt,
+        last_pr_updated_at: prUpdatedAt,
+        last_activity_at: new Date().toISOString(),
+        issue_etag: state.issue_etag,
+        pr_etag: state.pr_etag,
+        paused_until: this.pausedUntil > Date.now() ? new Date(this.pausedUntil).toISOString() : null,
+      });
+      if (process.env.NODE_ENV !== "test" && nextInterval > 0) {
+        await new Promise((resolve) => setTimeout(resolve, nextInterval));
       }
+    }
+  }
 
-      console.log(`[github-poller] Backfilling issues for ${repo}`);
-      try {
-        await this.fetchAndUpsertIssues(repo);
-      } catch (err) {
-        console.warn(`[github-poller] Issue backfill failed for ${repo}:`, err);
-      }
+  async backfillPrsAndIssues(repos: string[]): Promise<void> {
+    for (const repo of repos) {
+      await this.pollIssues(repo, null);
+      await this.pollPullRequests(repo, null);
     }
   }
 
@@ -595,8 +657,9 @@ export class GithubPoller {
     this.timer = setInterval(async () => {
       try {
         await this.pollUser(username);
+        await this.pollRepos();
       } catch (err) {
-        console.error(`[github-poller] Error polling user events:`, err);
+        console.error(`[github-poller] Error polling GitHub:`, err);
       }
     }, this.intervalMs);
   }

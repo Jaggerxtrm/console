@@ -1,9 +1,14 @@
+import { REALTIME_PROTOCOL_VERSION } from "../../types/realtime.ts";
+
 export type WsMessage = {
   type: string;
   channel?: string;
   event?: string;
   data?: unknown;
   id?: string;
+  seq?: number;
+  version?: string;
+  boot_id?: string;
 };
 
 export type WsHandler = (msg: WsMessage) => void;
@@ -15,6 +20,8 @@ export class WsClient {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectDelay = 1000;
   private closed = false;
+  private lastSeqByChannel = new Map<string, number>();
+  private bootId: string | null = null;
 
   constructor(private url: string) {}
 
@@ -34,15 +41,22 @@ export class WsClient {
 
     this.ws.onopen = () => {
       this.reconnectDelay = 1000;
-      // Re-subscribe all channels
       for (const channel of this.subscriptions) {
-        this._send({ type: "subscribe", channel });
+        const since_seq = this.lastSeqByChannel.get(channel) ?? 0;
+        if (since_seq > 0 && this.bootId) {
+          this._send({ action: "resume", channel, since_seq, boot_id: this.bootId, version: String(REALTIME_PROTOCOL_VERSION) });
+        }
+        this._send({ type: "subscribe", channel, version: String(REALTIME_PROTOCOL_VERSION) });
       }
     };
 
     this.ws.onmessage = (evt) => {
       try {
         const msg = JSON.parse(evt.data as string) as WsMessage;
+        if (msg.type === "event" && msg.channel && typeof msg.seq === "number") {
+          this.lastSeqByChannel.set(msg.channel, msg.seq);
+          if (msg.boot_id) this.bootId = msg.boot_id;
+        }
         for (const h of this.handlers) h(msg);
       } catch {
         // ignore parse errors
@@ -75,11 +89,12 @@ export class WsClient {
 
   subscribe(channel: string): void {
     this.subscriptions.add(channel);
-    this._send({ type: "subscribe", channel });
+    this._send({ type: "subscribe", channel, version: String(REALTIME_PROTOCOL_VERSION) });
   }
 
   unsubscribe(channel: string): void {
     this.subscriptions.delete(channel);
+    this.lastSeqByChannel.delete(channel);
     this._send({ type: "unsubscribe", channel });
   }
 

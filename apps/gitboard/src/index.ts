@@ -3,7 +3,7 @@ import { dirname } from "node:path";
 import { createDatabase } from "./core/store.ts";
 import { GithubPoller, getGithubToken, getAuthenticatedUsername } from "./core/github-poller.ts";
 import { discoverAndInsert } from "./core/github-discover.ts";
-import { startServer } from "./api/server.ts";
+import { startServer, getCurrentRegistry } from "./api/server.ts";
 
 const DB_PATH = process.env.AGENT_FORGE_DB ?? `${process.env.HOME}/.agent-forge/state.db`;
 mkdirSync(dirname(DB_PATH), { recursive: true });
@@ -28,7 +28,7 @@ try {
   // Auto-discover repos on first run so the DB is populated
   await discoverAndInsert(db);
 
-  const poller = new GithubPoller(db, token);
+  const poller = new GithubPoller(db, token, { registry: getCurrentRegistry() ?? undefined });
 
   console.log(`[gitboard] Backfilling events for user ${username}...`);
   await poller.backfill(username);

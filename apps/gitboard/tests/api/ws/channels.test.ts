@@ -22,6 +22,7 @@ describe("ChannelRegistry", () => {
       type: "event",
       channel: "github:activity",
       event: "new_event",
+      seq: 1,
       data: { id: "e1" },
     });
   });

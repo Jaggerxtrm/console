@@ -13,6 +13,7 @@ describe("useBeadsStore", () => {
       selectedIssue: null,
       memories: [],
       agentSessions: [],
+      sourceHealthByProject: {},
       loading: false,
       error: null,
     });
@@ -69,6 +70,31 @@ describe("useBeadsStore", () => {
     it("sets closed issues separately", () => {
       const closedIssue = { ...mockIssue, id: "forge-002", status: "closed" as const };
       useBeadsStore.getState().setClosedIssues([closedIssue]);
+      expect(useBeadsStore.getState().closedIssues).toHaveLength(1);
+    });
+
+    it("upserts issue at front and replaces by id", () => {
+      const older = { ...mockIssue, updated_at: "2025-01-01T00:00:00Z" };
+      const newer = { ...mockIssue, updated_at: "2025-01-02T00:00:00Z", title: "Updated" };
+      useBeadsStore.getState().setIssues([older]);
+      useBeadsStore.getState().upsertIssue(newer);
+      expect(useBeadsStore.getState().issues[0].title).toBe("Updated");
+      expect(useBeadsStore.getState().issues).toHaveLength(1);
+    });
+
+    it("moves issue to closed and removes by id", () => {
+      useBeadsStore.getState().setIssues([mockIssue]);
+      useBeadsStore.getState().moveToClosed(mockIssue.id);
+      expect(useBeadsStore.getState().issues).toHaveLength(0);
+      expect(useBeadsStore.getState().closedIssues[0].id).toBe(mockIssue.id);
+    });
+
+    it("removes issue from both lanes", () => {
+      const closedIssue = { ...mockIssue, id: "forge-002", status: "closed" as const };
+      useBeadsStore.getState().setIssues([mockIssue]);
+      useBeadsStore.getState().setClosedIssues([closedIssue]);
+      useBeadsStore.getState().removeIssue(mockIssue.id);
+      expect(useBeadsStore.getState().issues).toHaveLength(0);
       expect(useBeadsStore.getState().closedIssues).toHaveLength(1);
     });
 

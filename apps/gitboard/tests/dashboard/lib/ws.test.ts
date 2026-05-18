@@ -29,12 +29,14 @@ class MockWs {
 }
 
 let mockWs: MockWs;
+let wsFactory: ReturnType<typeof vi.fn>;
 const OriginalWebSocket = globalThis.WebSocket;
 
 beforeEach(() => {
   mockWs = new MockWs();
+  wsFactory = vi.fn(() => mockWs);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (globalThis as any).WebSocket = vi.fn(() => mockWs);
+  (globalThis as any).WebSocket = wsFactory;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (globalThis as any).WebSocket.OPEN = 1;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -67,7 +69,7 @@ describe("WsClient.subscribe", () => {
     mockWs.triggerOpen();
     client.subscribe("github:activity");
     const msg = JSON.parse(mockWs.sent[mockWs.sent.length - 1]);
-    expect(msg).toEqual({ type: "subscribe", channel: "github:activity" });
+    expect(msg).toEqual({ type: "subscribe", channel: "github:activity", version: "1" });
   });
 
   it("re-subscribes on reconnect", () => {
@@ -76,6 +78,26 @@ describe("WsClient.subscribe", () => {
     client.subscribe("github:activity");
     mockWs.triggerOpen();
     expect(mockWs.sent.some((s) => s.includes("github:activity"))).toBe(true);
+  });
+
+  it("reconnect sends resume payload with last seen since_seq + boot_id", () => {
+    vi.useFakeTimers();
+    const firstSocket = mockWs;
+    const client = new WsClient("ws://localhost/ws");
+    client.connect();
+    client.subscribe("github:activity");
+    firstSocket.triggerOpen();
+    firstSocket.triggerMessage({ type: "event", channel: "github:activity", event: "new_event", seq: 7, data: {}, version: "1", boot_id: "boot-1" });
+
+    const secondSocket = new MockWs();
+    wsFactory.mockImplementation(() => secondSocket);
+    firstSocket.close();
+    vi.runAllTimers();
+    secondSocket.triggerOpen();
+
+    const resumeMsg = secondSocket.sent.map((entry) => JSON.parse(entry)).find((msg) => msg.action === "resume");
+    expect(resumeMsg).toEqual({ action: "resume", channel: "github:activity", since_seq: 7, boot_id: "boot-1", version: "1" });
+    vi.useRealTimers();
   });
 });
 
@@ -87,7 +109,7 @@ describe("WsClient.onMessage", () => {
     const received: unknown[] = [];
     client.onMessage((msg) => received.push(msg));
 
-    mockWs.triggerMessage({ type: "event", channel: "github:activity", event: "new_event", data: {} });
+    mockWs.triggerMessage({ type: "event", channel: "github:activity", event: "new_event", seq: 1, data: {}, version: "1", boot_id: "boot-1" });
     expect(received).toHaveLength(1);
   });
 

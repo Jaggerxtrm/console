@@ -1,10 +1,11 @@
 // TopBar (forge-7xu). Surface switch [GitHub | Beads] on the left,
 // tab strip on the right.
 
-import { MarkGithubIcon, ProjectIcon } from "@primer/octicons-react";
+import { MarkGithubIcon, MoonIcon, ProjectIcon, SunIcon } from "@primer/octicons-react";
 import {
   useShellStore,
   selectSelection,
+  selectTheme,
 } from "../../stores/shell.ts";
 import {
   BEADS_TABS,
@@ -15,8 +16,10 @@ import {
 
 export function TopBar() {
   const selection = useShellStore(selectSelection);
+  const theme = useShellStore(selectTheme);
   const setSurface = useShellStore((s) => s.setSurface);
   const setTab = useShellStore((s) => s.setTab);
+  const toggleTheme = useShellStore((s) => s.toggleTheme);
 
   const tabs = selection.surface === "github" ? GITHUB_TABS : BEADS_TABS;
 
@@ -52,6 +55,23 @@ export function TopBar() {
           </button>
         ))}
       </nav>
+      <button
+        type="button"
+        className="ide-theme-toggle"
+        aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+        title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+        onClick={toggleTheme}
+      >
+        <span className="ide-theme-track" aria-hidden="true">
+          <span className="ide-theme-option ide-theme-option-light">
+            <SunIcon size={12} />
+          </span>
+          <span className="ide-theme-option ide-theme-option-dark">
+            <MoonIcon size={12} />
+          </span>
+          <span className="ide-theme-thumb" />
+        </span>
+      </button>
     </header>
   );
 }
