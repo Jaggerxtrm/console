@@ -27,11 +27,15 @@ export function useSpecialistOwnership(beadId: string | null, enabled = true): S
         }
 
         const data = (await res.json()) as { jobs?: Array<{ jobId?: string | null; specialist?: string | null; status?: string; chainKind?: string | null; repoSlug?: string }> };
-        // Surface only currently-live jobs (running/starting/waiting). Skip done/error/cancelled history.
+        // Prefer a currently-live job; otherwise surface the most recent terminal error/cancelled
+        // for traceability ("which specialist failed on this bead"). Skip 'done' — successful past
+        // runs belong in the per-bead history view (forge-4hmt), not the chip.
         const live = data.jobs?.find((j) => j.status === "running" || j.status === "starting" || j.status === "waiting");
+        const fallback = !live ? data.jobs?.find((j) => j.status === "error" || j.status === "cancelled") : undefined;
+        const chosen = live ?? fallback;
         if (!cancelled) {
-          const role = live?.specialist || live?.chainKind || null;
-          setJob(role && live?.status && live.repoSlug ? { role, state: live.status, repoSlug: live.repoSlug, jobId: live.jobId ?? null } : null);
+          const role = chosen?.specialist || chosen?.chainKind || null;
+          setJob(role && chosen?.status && chosen.repoSlug ? { role, state: chosen.status, repoSlug: chosen.repoSlug, jobId: chosen.jobId ?? null } : null);
         }
       } catch {
         if (!cancelled) setJob(null);

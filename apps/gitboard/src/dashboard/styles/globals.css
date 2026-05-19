@@ -3384,6 +3384,18 @@ body {
 .specialist-owner-badge.state-waiting {
   color: var(--text-muted);
 }
+.specialist-owner-badge.state-error,
+.specialist-owner-badge.state-cancelled {
+  background: color-mix(in srgb, #ef4444 10%, transparent);
+  border-color: color-mix(in srgb, #ef4444 45%, transparent);
+  color: #ef4444;
+}
+.ide-shell[data-theme="light"] .specialist-owner-badge.state-error,
+.ide-shell[data-theme="light"] .specialist-owner-badge.state-cancelled {
+  color: #b91c1c;
+  background: color-mix(in srgb, #b91c1c 10%, transparent);
+  border-color: color-mix(in srgb, #b91c1c 40%, transparent);
+}
 
 /* forge-5w9.7: BeadsRepoView wrapper layout */
 .shell-beads-view {

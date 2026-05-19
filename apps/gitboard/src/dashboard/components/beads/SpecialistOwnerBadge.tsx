@@ -4,12 +4,12 @@ interface SpecialistOwnerBadgeProps {
   job: SpecialistOwnershipJob;
 }
 
-const LIVE_STATES = new Set(["starting", "running", "waiting"]);
+const VISIBLE_STATES = new Set(["starting", "running", "waiting", "error", "cancelled"]);
 
 export function SpecialistOwnerBadgeForBead({ beadId }: { beadId: string }) {
   const job = useSpecialistOwnership(beadId);
   if (!job) return null;
-  if (!LIVE_STATES.has(job.state)) return null;
+  if (!VISIBLE_STATES.has(job.state)) return null;
   return <SpecialistOwnerBadge job={job} />;
 }
 
