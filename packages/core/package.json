@@ -13,6 +13,10 @@
       "import": "./dist/types/index.js",
       "types": "./dist/types/index.d.ts"
     },
+    "./terminal/protocol": {
+      "import": "./dist/terminal/protocol.js",
+      "types": "./dist/terminal/protocol.d.ts"
+    },
     "./utils/date": {
       "import": "./dist/utils/date.js",
       "types": "./dist/utils/date.d.ts"
