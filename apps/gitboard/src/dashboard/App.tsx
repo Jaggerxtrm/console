@@ -67,7 +67,7 @@ function DashboardShell({ view }: { view: View }) {
       }}>
         <a
           href="/gitboard"
-          style={{ fontSize: 'var(--text-xs)', fontWeight: 600, letterSpacing: '0.1em', color: 'var(--text-muted)', textTransform: 'uppercase', textDecoration: 'none' }}
+          style={{ fontSize: 'var(--text-xs)', fontWeight: 600, letterSpacing: '0.1em', color: 'var(--text-muted)', textTransform: 'none', textDecoration: 'none' }}
         >
           xtrm.wtf
         </a>
@@ -111,7 +111,7 @@ function DashboardShell({ view }: { view: View }) {
           </a>
         </nav>
         <div className="ww-action-cluster" style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
-          <span className="ww-system-state"><i /> OPERATIONAL</span>
+          <span className="ww-system-state"><i /> operational</span>
           <a 
             href="/beadboard" 
             target="_blank" 
@@ -175,12 +175,12 @@ const TRACE_LINES = [
 ];
 
 const NODES = [
-  { label: "INTAKE", x: 14, y: 24, tone: "calm" },
-  { label: "POLICY", x: 38, y: 16, tone: "hot" },
-  { label: "ORCH", x: 58, y: 34, tone: "calm" },
-  { label: "MODEL", x: 32, y: 58, tone: "calm" },
-  { label: "EDGE", x: 78, y: 54, tone: "warn" },
-  { label: "AUDIT", x: 60, y: 76, tone: "calm" },
+  { label: "intake", x: 14, y: 24, tone: "calm" },
+  { label: "policy", x: 38, y: 16, tone: "hot" },
+  { label: "orch", x: 58, y: 34, tone: "calm" },
+  { label: "model", x: 32, y: 58, tone: "calm" },
+  { label: "edge", x: 78, y: 54, tone: "warn" },
+  { label: "audit", x: 60, y: 76, tone: "calm" },
 ];
 
 const FEED = [

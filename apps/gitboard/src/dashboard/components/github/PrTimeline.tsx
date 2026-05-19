@@ -29,12 +29,12 @@ type PrStateTone = "open" | "merged" | "closed";
 
 function prStateStyle(state: string): { Icon: React.ElementType; color: string; tone: PrStateTone; label: string } {
   if (state === "merged") {
-    return { Icon: GitMergeIcon, color: "var(--accent-purple)", tone: "merged", label: "MERGED" };
+    return { Icon: GitMergeIcon, color: "var(--accent-purple)", tone: "merged", label: "merged" };
   }
   if (state === "closed") {
-    return { Icon: GitPullRequestClosedIcon, color: "var(--accent-red)", tone: "closed", label: "CLOSED · NOT MERGED" };
+    return { Icon: GitPullRequestClosedIcon, color: "var(--accent-red)", tone: "closed", label: "closed · not merged" };
   }
-  return { Icon: GitPullRequestIcon, color: "var(--accent-blue)", tone: "open", label: "OPEN" };
+  return { Icon: GitPullRequestIcon, color: "var(--accent-blue)", tone: "open", label: "open" };
 }
 
 function formatDateTime(iso: string | null | undefined): string {
@@ -524,12 +524,12 @@ function PrRow({
             <span>{repoShort}</span>
             <span>{pr.author}</span>
             <span>{time}</span>
-            {pr.comment_count > 0 && <span>{pr.comment_count} comments</span>}
           </div>
         </div>
         <PrStatePill pr={pr} />
         <span className="pr-row-diff">
-          {pr.changed_files != null && <em>{pr.changed_files} files</em>}
+          {pr.changed_files != null && <em>{pr.changed_files} file{pr.changed_files === 1 ? "" : "s"}</em>}
+          {pr.comment_count > 0 && <em>{pr.comment_count} comment{pr.comment_count === 1 ? "" : "s"}</em>}
           {pr.additions != null && <b className="is-add">+{pr.additions}</b>}
           {pr.deletions != null && <b className="is-del">−{pr.deletions}</b>}
         </span>
@@ -550,7 +550,7 @@ function VirtualizedPrTimeline({ prs }: { prs: GithubPr[] }) {
   const rowVirtualizer = useVirtualizer({
     count: items.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: (i) => items[i].kind === "header" ? 24 : 40,
+    estimateSize: (i) => items[i].kind === "header" ? 24 : 48,
     overscan: 5,
     measureElement: (el) => el?.getBoundingClientRect().height ?? 0,
   });

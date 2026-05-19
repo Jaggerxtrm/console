@@ -137,7 +137,7 @@ export function RepoSidebar({ repos, stats, selectedRepos, unreadRepos = new Set
             fontSize: 11,
             fontWeight: 600,
             letterSpacing: "0.05em",
-            textTransform: "uppercase",
+            textTransform: "none",
             textAlign: "left",
             width: "100%",
             flexShrink: 0,
@@ -158,7 +158,7 @@ export function RepoSidebar({ repos, stats, selectedRepos, unreadRepos = new Set
                   fontWeight: 600,
                   letterSpacing: "0.05em",
                   color: "var(--text-muted)",
-                  textTransform: "uppercase",
+                  textTransform: "none",
                 }}
               >
                 {groupName}

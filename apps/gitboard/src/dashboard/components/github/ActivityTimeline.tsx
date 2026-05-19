@@ -157,28 +157,31 @@ function EventRow({ evt, selected, hovered, expanded = false, onSelect, onMouseE
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
       style={{
+        boxSizing: "border-box",
         display: "flex",
-        alignItems: "flex-start",
+        alignItems: "center",
         gap: 0,
-        padding: "8px 12px",
-        borderRadius: "var(--radius-md)",
+        minHeight: "var(--row-height)",
+        padding: "0 16px 0 18px",
+        borderRadius: 0,
+        borderBottom: 0,
         borderLeft: selected ? `2px solid ${color}` : "2px solid transparent",
-        background: selected ? "var(--surface-tertiary)" : hovered ? "rgba(255,255,255,0.04)" : "transparent",
+        background: selected ? "var(--surface-secondary)" : hovered ? "var(--surface-hover)" : "var(--surface-primary)",
         cursor: "pointer",
         transition: "var(--transition-fast)",
         minWidth: 0,
       }}
     >
       {/* Indicator dot */}
-      <div style={{ width: 6, height: 6, borderRadius: "var(--radius-pill)", background: color, flexShrink: 0, marginTop: 5, marginRight: 8 }} />
+      <div style={{ width: 6, height: 6, borderRadius: "var(--radius-pill)", background: color, flexShrink: 0, marginRight: 8 }} />
 
       {/* Time */}
-      <span style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)", width: 44, flexShrink: 0, paddingTop: 2 }}>
+      <span style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)", width: 44, flexShrink: 0 }}>
         {formatTime(evt.created_at)}
       </span>
 
       {/* Icon */}
-      <span style={{ color, flexShrink: 0, marginRight: 8, marginTop: 1, width: 16 }}>
+      <span style={{ color, flexShrink: 0, marginRight: 8, width: 16 }}>
         <EventIcon type={evt.type} action={evt.action} />
       </span>
 
@@ -190,13 +193,13 @@ function EventRow({ evt, selected, hovered, expanded = false, onSelect, onMouseE
             {evt.repo}
           </span>
           <span style={{ color: "var(--text-muted)", fontSize: "var(--text-xs)", flexShrink: 0 }}>·</span>
-          <span style={{ fontSize: "var(--text-base)", fontWeight: 500, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <span style={{ fontSize: "12px", fontWeight: 540, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {evt.title ?? evt.type}
           </span>
         </div>
 
         {/* Line 2: branch + commit count + chevron */}
-        <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 1 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 0 }}>
           {evt.branch && (
             <span style={{
               fontSize: "var(--text-xs)",
@@ -236,11 +239,13 @@ function EventRow({ evt, selected, hovered, expanded = false, onSelect, onMouseE
 function DayHeader({ label }: { label: string }) {
   return (
     <div className="timeline-day-header" style={{
-      padding: "6px 16px",
-      fontSize: "var(--text-xs)",
+      boxSizing: "border-box",
+      height: 24,
+      padding: "4px 18px 0",
+      fontSize: "var(--header-font-size)",
       fontWeight: 600,
       color: "var(--text-muted)",
-      textTransform: "uppercase",
+      textTransform: "none",
       letterSpacing: "0.05em",
       background: "var(--surface-primary)",
       borderBottom: "1px solid var(--border-subtle)",
@@ -278,7 +283,7 @@ function VirtualizedTimeline({ events, selectedId, onSelect }: Props) {
   const rowVirtualizer = useVirtualizer({
     count: items.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: (i) => items[i].kind === "header" ? 32 : 68,
+    estimateSize: (i) => items[i].kind === "header" ? 24 : 40,
     overscan: 5,
     measureElement: (el) => el?.getBoundingClientRect().height ?? 0,
   });

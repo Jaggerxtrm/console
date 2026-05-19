@@ -194,7 +194,7 @@ export function EventDetail({ event, commits }: Props) {
           <div>
             <div style={{
               fontSize: "var(--text-xs)",
-              textTransform: "uppercase",
+              textTransform: "none",
               letterSpacing: "0.05em",
               color: "var(--text-muted)",
               marginBottom: 8,

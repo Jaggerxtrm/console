@@ -35,8 +35,8 @@ function TabBar({
     { id: "prs", label: `Pull Requests${prCount > 0 ? ` (${prCount})` : ""}` },
     { id: "issues", label: `Issues${issueCount > 0 ? ` (${issueCount})` : ""}` },
     { id: "releases", label: `Releases${releaseCount > 0 ? ` (${releaseCount})` : ""}` },
-    { id: "readme", label: "README", disabled: !hasRepo },
-    { id: "changelog", label: "CHANGELOG", disabled: !hasRepo },
+    { id: "readme", label: "readme", disabled: !hasRepo },
+    { id: "changelog", label: "changelog", disabled: !hasRepo },
     { id: "reports", label: "Reports", disabled: !hasRepo },
   ];
 

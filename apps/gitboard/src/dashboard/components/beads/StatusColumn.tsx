@@ -36,7 +36,7 @@ export function StatusColumn({ title, description, status, issues, selectedId, o
       <div style={{ padding: "7px 9px", borderBottom: "1px solid var(--border-subtle)", background: "var(--surface-secondary)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <span style={{ color: config.color, display: "inline-flex", lineHeight: 0 }}><StatusIcon size={13} /></span>
-          <h3 style={{ fontSize: "var(--text-xs)", fontWeight: 750, color: "var(--text-primary)", margin: 0, letterSpacing: "0.04em", textTransform: "uppercase" }}>{title}</h3>
+          <h3 style={{ fontSize: "var(--header-font-size)", fontWeight: 750, color: "var(--text-primary)", margin: 0, letterSpacing: "0.04em", textTransform: "none" }}>{title}</h3>
           <span style={{ marginLeft: "auto", fontSize: "var(--text-xs)", color: "var(--text-primary)", background: "var(--surface-tertiary)", border: "1px solid var(--border-subtle)", padding: "1px 6px", borderRadius: "var(--radius-sm)" }}>{issues.length}</span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 3, fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>

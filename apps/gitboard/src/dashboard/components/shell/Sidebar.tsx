@@ -55,7 +55,7 @@ export function Sidebar() {
       <div className="ide-sidebar-header">
         {!collapsed && (
           <span className="ide-sidebar-title">
-            {selection.surface === "github" ? "REPOSITORIES" : "PROJECTS"}
+            {selection.surface === "github" ? "Repositories" : "Projects"}
             <span className="ide-sidebar-count">{filtered.length}</span>
           </span>
         )}

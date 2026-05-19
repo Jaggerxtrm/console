@@ -51,8 +51,8 @@ export function RepoDossier({ repo, onClose }: Props) {
   if (!parsed) return null;
 
   const tabs: { id: Tab; label: string; Icon: React.ElementType; count?: number | null }[] = [
-    { id: "readme", label: "README", Icon: BookIcon },
-    { id: "changelog", label: "CHANGELOG", Icon: FileBadgeIcon },
+    { id: "readme", label: "readme", Icon: BookIcon },
+    { id: "changelog", label: "changelog", Icon: FileBadgeIcon },
     { id: "reports", label: "Reports", Icon: HistoryIcon, count: reportCount },
   ];
 

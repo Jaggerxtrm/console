@@ -28,12 +28,14 @@ function DayHeader({ label }: { label: string }) {
   return (
     <div
       style={{
-        padding: "4px 12px 3px",
-        fontSize: "var(--text-xs)",
+        boxSizing: "border-box",
+        height: 24,
+        padding: "4px 18px 0",
+        fontSize: "var(--header-font-size)",
         color: "var(--text-muted)",
         fontWeight: 600,
         letterSpacing: "0.05em",
-        textTransform: "uppercase",
+        textTransform: "none",
         borderBottom: "1px solid var(--border-subtle)",
         background: "var(--surface-primary)",
       }}

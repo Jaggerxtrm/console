@@ -624,7 +624,7 @@ function renderRelationshipGroups(issue: BeadIssue, fallbackCount: number, issue
     const title = relatedIssue?.title?.trim() || dependency.title?.trim();
     if (!title) return `${DEP_KIND_LABEL[dependency.dependency_type] ?? dependency.dependency_type}: ${dependency.id}`;
     const relatedType = relatedIssue ? TYPE_CONFIG[String(relatedIssue.issue_type)] : null;
-    const summary = relatedIssue && relatedType ? ` — P${relatedIssue.priority} ${relatedType.label.toUpperCase()}` : "";
+    const summary = relatedIssue && relatedType ? ` — P${relatedIssue.priority} ${relatedType.label.toLowerCase()}` : "";
     return `${DEP_KIND_LABEL[dependency.dependency_type] ?? dependency.dependency_type}: ${dependency.id} — ${title}${summary}`;
   };
   return (

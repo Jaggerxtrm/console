@@ -67,7 +67,7 @@ export function BeadCard({ issue, onClick, agent, isExpanded = false, prLink = n
     >
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
         <span style={{ display: "inline-flex", color: type.color, lineHeight: 0 }}><TypeIcon size={13} /></span>
-        <span style={{ fontSize: "var(--text-xs)", fontWeight: 750, color: type.color, letterSpacing: "0.05em", textTransform: "uppercase" }}>{type.label}</span>
+        <span style={{ fontSize: "var(--text-xs)", fontWeight: 750, color: type.color, letterSpacing: "0.05em", textTransform: "none" }}>{type.label}</span>
         <span style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)", color: "var(--text-muted)", marginLeft: "auto" }}>{issue.id}</span>
       </div>
 
