@@ -8,7 +8,7 @@ export function createObservabilityDao(pool: AttachPoolLike) {
   return {
     jobsByBead: (beadId: string) => sortDesc(readJobs(pool, `WHERE bead_id = ?`, ``, [beadId])),
     inFlightJobs: () => sortDesc(readJobs(pool, `WHERE status IN (${IN_FLIGHT_STATUSES.map(() => "?").join(",")})`, ``, [...IN_FLIGHT_STATUSES])),
-    recentJobs: (limit: number) => sortDesc(readJobs(pool, `WHERE status IN (${HISTORY_STATUSES.map(() => "?").join(",")})`, `LIMIT ?`, [...HISTORY_STATUSES, String(limit)])),
+    recentJobs: (limit: number) => sortDesc(readJobs(pool, `WHERE status IN (${HISTORY_STATUSES.map(() => "?").join(",")})`, ``, [...HISTORY_STATUSES])).slice(0, limit),
     chainById: (chainId: string) => sortChain(readJobs(pool, `WHERE chain_id = ?`, ``, [chainId])) as SpecialistChain[],
     epicById: (epicId: string) => sortAsc(readJobs(pool, `WHERE epic_id = ?`, ``, [epicId])) as EpicRun[],
   };

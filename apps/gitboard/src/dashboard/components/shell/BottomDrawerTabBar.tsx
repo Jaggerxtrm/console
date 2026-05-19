@@ -1,20 +1,26 @@
 import type { ReactNode } from "react";
+import { GearIcon, TerminalIcon, TrashIcon, XIcon } from "@primer/octicons-react";
+import type { BottomDrawerTab } from "./BottomDrawer.tsx";
 
-export type BottomDrawerTab = "logs" | "specialists";
-
-export function BottomDrawerTabBar({ activeTab, onSelect }: { activeTab: BottomDrawerTab; onSelect: (tab: BottomDrawerTab) => void; }) {
+export function BottomDrawerTabBar({ activeTab, open, onSelect, onClose, onClearLogs }: { activeTab: BottomDrawerTab; open: boolean; onSelect: (tab: BottomDrawerTab) => void; onClose: () => void; onClearLogs: () => void; }) {
   return (
     <div className="bottom-drawer-tabbar" role="tablist" aria-label="Bottom drawer tabs">
-      <TabButton active={activeTab === "logs"} onClick={() => onSelect("logs")}>Logs</TabButton>
-      <TabButton active={activeTab === "specialists"} onClick={() => onSelect("specialists")}>Specialists</TabButton>
+      <div className="bottom-drawer-tabs">
+        <TabButton active={activeTab === "logs"} onClick={() => onSelect("logs")} icon={<TerminalIcon size={12} />}>Logs</TabButton>
+        <TabButton active={activeTab === "specialists"} onClick={() => onSelect("specialists")} icon={<GearIcon size={12} />}>Specialists</TabButton>
+      </div>
+      <div className="bottom-drawer-actions">
+        {activeTab === "logs" && <IconButton title="clear logs" onClick={onClearLogs}><TrashIcon size={12} /></IconButton>}
+        <IconButton title={open ? "close drawer" : "open drawer"} onClick={onClose}><XIcon size={12} /></IconButton>
+      </div>
     </div>
   );
 }
 
-function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode; }) {
-  return (
-    <button type="button" role="tab" aria-selected={active} className={active ? "bottom-drawer-tab is-active" : "bottom-drawer-tab"} onClick={onClick}>
-      {children}
-    </button>
-  );
+function TabButton({ active, onClick, icon, children }: { active: boolean; onClick: () => void; icon: ReactNode; children: ReactNode; }) {
+  return <button type="button" role="tab" aria-selected={active} className={active ? "bottom-drawer-tab is-active" : "bottom-drawer-tab"} onClick={onClick}>{icon}<span>{children}</span></button>;
+}
+
+function IconButton({ title, onClick, children }: { title: string; onClick: () => void; children: ReactNode; }) {
+  return <button type="button" className="bottom-drawer-icon-btn" title={title} aria-label={title} onClick={onClick}>{children}</button>;
 }

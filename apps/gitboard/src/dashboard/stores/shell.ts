@@ -45,7 +45,7 @@ const initialSelection = readJSON<SidebarSelection>(LS.selection, {
 });
 const initialCollapsed = readJSON<boolean>(LS.collapsed, false);
 const initialTheme = readJSON<ThemeMode>(LS.theme, "dark");
-const initialDrawerOpen = readJSON<boolean>(LS.drawerOpen, true);
+const initialDrawerOpen = readJSON<boolean>(LS.drawerOpen, false);
 const initialDrawerHeight = readJSON<number>(LS.drawerHeight, 240);
 const initialDrawerTab = readJSON<"logs" | "specialists">(LS.drawerTab, "logs");
 
