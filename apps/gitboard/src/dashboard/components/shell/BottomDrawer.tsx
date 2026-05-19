@@ -4,8 +4,6 @@ import { SpecialistsTabPanel } from "../beads/SpecialistsTabPanel.tsx";
 import { LogsTabPanel } from "./LogsTabPanel.tsx";
 import { useShellStore } from "../../stores/shell.ts";
 
-console.log("[drawer] BottomDrawer module loaded — onMouseDown+document version A");
-
 export type BottomDrawerTab = "logs" | "specialists";
 
 const MAXIMIZED_OFFSET = 24;
@@ -63,7 +61,6 @@ function startResize(event: ReactMouseEvent<HTMLDivElement>, setDrawerHeight: (h
 
   const onMove = (moveEvent: globalThis.MouseEvent) => {
     const newH = window.innerHeight - moveEvent.clientY;
-    console.log("[drawer] move", moveEvent.clientY, "→ h", newH);
     setDrawerHeight(newH);
   };
   const onUp = () => {
@@ -84,13 +81,11 @@ function toggleMaximize(
 ) {
   if (restoredHeight === null) {
     const maximizedHeight = window.innerHeight - MAXIMIZED_OFFSET;
-    console.log("[drawer] toggleMaximize current=", currentHeight, "restored=", maximizedHeight);
     setRestoredHeight(currentHeight);
     setDrawerHeight(maximizedHeight);
     return;
   }
 
-  console.log("[drawer] toggleMaximize current=", currentHeight, "restored=", restoredHeight);
   setDrawerHeight(restoredHeight);
   setRestoredHeight(null);
 }

@@ -4385,6 +4385,7 @@ body:has(.shell-app) { background: #000 !important; }
   overflow: hidden;
 }
 .ide-main > * { flex: 1; min-height: 0; min-width: 0; }
+.ide-main > .bottom-drawer { flex: 0 0 auto; }
 .ide-main > .ide-empty,
 .ide-main > .ide-empty-msg,
 .ide-main > .ide-error,
