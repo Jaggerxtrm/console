@@ -130,7 +130,7 @@ export const useShellStore = create<ShellState>((set) => ({
 
   setDrawerHeight: (height) =>
     set(() => {
-      const maxHeight = typeof window !== "undefined" ? window.innerHeight - 100 : 600;
+      const maxHeight = typeof window !== "undefined" ? window.innerHeight - 24 : 600;
       const next = Math.max(120, Math.min(maxHeight, Math.round(height)));
       writeJSON(LS.drawerHeight, next);
       return { drawerHeight: next };

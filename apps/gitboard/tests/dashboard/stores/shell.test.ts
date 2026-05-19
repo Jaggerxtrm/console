@@ -35,7 +35,7 @@ describe("shell store drawer persistence", () => {
     useShellStore.getState().setDrawerHeight(10);
     expect(useShellStore.getState().drawerHeight).toBe(120);
     useShellStore.getState().setDrawerHeight(999);
-    expect(useShellStore.getState().drawerHeight).toBe(700);
+    expect(useShellStore.getState().drawerHeight).toBe(776);
   });
 
   it("defaults drawer height to 75vh on fresh load", async () => {
