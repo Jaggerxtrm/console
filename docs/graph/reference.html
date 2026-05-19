@@ -1,0 +1,985 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width,initial-scale=1" />
+        <title>graph reference</title>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=JetBrains+Mono:ital,wght@0,400;0,500;1,400;1,500&display=swap"
+            rel="stylesheet"
+        />
+        <style>
+            :root {
+                --bg: #0b0c0e;
+                --surface: #131418;
+                --surface-2: #1a1b1f;
+                --border: rgba(255, 255, 255, 0.05);
+                --border-strong: rgba(255, 255, 255, 0.1);
+                --text: #e8e8ea;
+                --text-2: #9e9fa4;
+                --text-3: #6b6c72;
+                --text-4: #4a4b50;
+                --text-5: #303135;
+
+                --p0: #e5594b;
+                --p1: #d8851a;
+                --p2: #6b6c72;
+
+                --state-ready: #4faa7f;
+                --state-wip: #4d9de0;
+                --state-blocked: #b05e2c;
+                --state-gate: #d8851a;
+                --state-closed: #4a4b50;
+
+                /* one color per relationship type */
+                --r-blocks: #c84d3c;
+                --r-parent: #4a4b50;
+                --r-caused: #b0594b;
+                --r-validates: #4d9de0;
+                --r-tracks: #4faa7f;
+                --r-discovered: #8b82e8;
+                --r-until: #d8851a;
+                --r-supersedes: #5a4d6e;
+                --r-related: #6b6c72;
+
+                /* agent palette */
+                --a-exec: #e2734c;
+                --a-ci: #4fb8b0;
+                --a-build: #e0a04a;
+                --a-audit: #d86887;
+                --a-orch: #d8b84a;
+
+                --sans: "Geist", system-ui, sans-serif;
+                --mono: "JetBrains Mono", ui-monospace, "SF Mono", monospace;
+            }
+            * {
+                box-sizing: border-box;
+            }
+            html,
+            body {
+                margin: 0;
+                padding: 0;
+            }
+            body {
+                background: var(--bg);
+                color: var(--text);
+                font-family: var(--sans);
+                font-size: 12.5px;
+                line-height: 1.45;
+                -webkit-font-smoothing: antialiased;
+            }
+            .app {
+                max-width: 1180px;
+                margin: 0 auto;
+                padding: 32px 40px;
+            }
+
+            /* ============ HEADER ============ */
+            header {
+                display: flex;
+                align-items: baseline;
+                gap: 14px;
+                padding-bottom: 18px;
+                border-bottom: 1px solid var(--border);
+            }
+            .path {
+                font-family: var(--mono);
+                font-size: 12px;
+                color: var(--text-2);
+            }
+            .path b {
+                color: var(--text);
+                font-weight: 500;
+            }
+            .path .sl {
+                color: var(--text-4);
+                margin: 0 1px;
+            }
+            .sub {
+                font-family: var(--mono);
+                font-size: 11px;
+                color: var(--text-4);
+                font-style: italic;
+            }
+            .spacer {
+                flex: 1;
+            }
+            .cnt {
+                font-family: var(--mono);
+                font-size: 11px;
+                color: var(--text-3);
+                font-style: italic;
+            }
+            .cnt b {
+                color: var(--text-2);
+                font-style: normal;
+                font-weight: 500;
+            }
+
+            /* ============ CANVAS ============ */
+            .canvas {
+                position: relative;
+                width: 1100px;
+                height: 540px;
+                margin: 24px auto 0;
+            }
+            .canvas svg {
+                position: absolute;
+                inset: 0;
+                width: 1100px;
+                height: 540px;
+                pointer-events: none;
+                overflow: visible;
+            }
+            .layer-guide {
+                stroke: rgba(255, 255, 255, 0.04);
+                stroke-dasharray: 2 4;
+            }
+            .col-lbl {
+                position: absolute;
+                font-family: var(--mono);
+                font-size: 10px;
+                color: var(--text-4);
+                font-style: italic;
+                letter-spacing: 0.4px;
+            }
+
+            /* ============ NODE ============ */
+            .node {
+                position: absolute;
+                width: 260px;
+                height: 28px;
+                background: var(--surface);
+                border: 1px solid var(--border-strong);
+                border-left: 3px solid var(--text-5);
+                border-radius: 4px;
+                display: flex;
+                align-items: center;
+                gap: 7px;
+                padding: 0 7px 0 9px;
+                font-family: var(--mono);
+                font-size: 10.5px;
+                color: var(--text-2);
+                z-index: 2;
+            }
+            .node[data-p="0"] {
+                border-left-color: var(--p0);
+            }
+            .node[data-p="1"] {
+                border-left-color: var(--p1);
+            }
+            .node[data-p="2"] {
+                border-left-color: var(--text-5);
+            }
+
+            .gl {
+                font-family: var(--mono);
+                font-size: 12px;
+                flex: 0 0 12px;
+            }
+            .gl.r {
+                color: var(--state-ready);
+                opacity: 0.85;
+            }
+            .gl.w {
+                color: var(--state-wip);
+            }
+            .gl.b {
+                color: var(--state-blocked);
+            }
+            .gl.gt {
+                color: var(--state-gate);
+            }
+            .gl.e {
+                color: #8b82e8;
+            }
+            .gl.c {
+                color: var(--state-closed);
+            }
+            .gl.x {
+                color: var(--state-closed);
+            }
+
+            .id {
+                font-family: var(--mono);
+                font-size: 10.5px;
+                color: var(--text-4);
+                flex: 0 0 auto;
+            }
+            .id b {
+                color: var(--text);
+                font-weight: 500;
+            }
+
+            .tt {
+                flex: 1;
+                font-family: var(--sans);
+                font-size: 11px;
+                color: var(--text);
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+
+            .ag {
+                font-family: var(--mono);
+                font-size: 9.5px;
+                font-style: italic;
+                flex: 0 0 auto;
+                display: inline-flex;
+                align-items: center;
+                gap: 4px;
+                padding: 1px 6px;
+                border-radius: 3px;
+                background: rgba(255, 255, 255, 0.02);
+                border: 1px solid var(--border);
+                color: var(--text-3);
+            }
+            .ag .agd {
+                width: 5px;
+                height: 5px;
+                border-radius: 50%;
+                display: inline-block;
+                background: var(--text-5);
+            }
+            .ag b {
+                color: inherit;
+                font-weight: 500;
+                font-style: normal;
+            }
+            .ag.exec {
+                color: var(--a-exec);
+            }
+            .ag.exec .agd {
+                background: var(--a-exec);
+            }
+            .ag.ci {
+                color: var(--a-ci);
+            }
+            .ag.ci .agd {
+                background: var(--a-ci);
+            }
+            .ag.build {
+                color: var(--a-build);
+            }
+            .ag.build .agd {
+                background: var(--a-build);
+            }
+            .ag.audit {
+                color: var(--a-audit);
+            }
+            .ag.audit .agd {
+                background: var(--a-audit);
+            }
+            .ag.orch {
+                color: var(--a-orch);
+            }
+            .ag.orch .agd {
+                background: var(--a-orch);
+            }
+
+            .tag {
+                font-family: var(--mono);
+                font-size: 9.5px;
+                font-weight: 500;
+                flex: 0 0 auto;
+            }
+            .tag.p0 {
+                color: var(--p0);
+            }
+            .tag.p1 {
+                color: var(--p1);
+            }
+            .tag.p2 {
+                color: var(--text-3);
+            }
+
+            /* node states */
+            .node.blkd {
+                background: rgba(176, 94, 44, 0.05);
+            }
+            .node.blkd .tt {
+                color: var(--text-2);
+            }
+            .node.closed {
+                opacity: 0.45;
+                border-style: dashed;
+            }
+            .node.superseded {
+                opacity: 0.4;
+            }
+            .node.superseded .tt {
+                text-decoration: line-through;
+                text-decoration-color: var(--text-4);
+            }
+
+            /* active = currently running agent */
+            .node.act .id b::before {
+                content: "";
+                display: inline-block;
+                width: 4px;
+                height: 4px;
+                border-radius: 50%;
+                background: var(--state-wip);
+                margin-right: 6px;
+                vertical-align: middle;
+                animation: pulse 1.6s infinite ease-in-out;
+            }
+            .node.act .ag .agd {
+                animation: pulse 1.6s infinite ease-in-out;
+            }
+            @keyframes pulse {
+                0%,
+                100% {
+                    opacity: 1;
+                }
+                50% {
+                    opacity: 0.35;
+                }
+            }
+
+            /* ============ EXTERNAL CHIPS ============ */
+            .ext {
+                position: absolute;
+                font-family: var(--mono);
+                font-size: 10px;
+                color: var(--text-3);
+                border: 1px dashed var(--border-strong);
+                border-radius: 14px;
+                padding: 5px 12px;
+                background: transparent;
+                font-style: italic;
+                z-index: 2;
+            }
+            .ext b {
+                color: var(--text-2);
+                font-weight: 500;
+                font-style: normal;
+            }
+            .ext.mil {
+                border-color: var(--r-until);
+                color: var(--r-until);
+            }
+            .ext.mil b {
+                color: var(--r-until);
+            }
+
+            /* ============ SVG ============ */
+            .elabel {
+                font-family: "JetBrains Mono", monospace;
+                font-size: 9.5px;
+                font-style: italic;
+                paint-order: stroke;
+                stroke: var(--bg);
+                stroke-width: 3;
+                stroke-linejoin: round;
+            }
+            .elabel.blocks {
+                fill: var(--r-blocks);
+            }
+            .elabel.parent {
+                fill: var(--r-parent);
+            }
+            .elabel.caused {
+                fill: var(--r-caused);
+            }
+            .elabel.validates {
+                fill: var(--r-validates);
+            }
+            .elabel.tracks {
+                fill: var(--r-tracks);
+            }
+            .elabel.discovered {
+                fill: var(--r-discovered);
+            }
+            .elabel.until {
+                fill: var(--r-until);
+            }
+            .elabel.supersedes {
+                fill: var(--r-supersedes);
+            }
+            .elabel.related {
+                fill: var(--r-related);
+            }
+
+            /* ============ LEGEND ============ */
+            .legend {
+                margin-top: 32px;
+                padding-top: 18px;
+                border-top: 1px solid var(--border);
+                display: grid;
+                gap: 14px;
+            }
+            .legend-row {
+                display: flex;
+                align-items: baseline;
+                gap: 18px;
+                flex-wrap: wrap;
+                font-family: var(--mono);
+                font-size: 10.5px;
+            }
+            .legend-lbl {
+                color: var(--text-4);
+                font-style: italic;
+                min-width: 90px;
+                display: inline-block;
+            }
+            .legend-item {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                color: var(--text-2);
+            }
+            .legend-item em {
+                color: var(--text-4);
+                font-style: italic;
+            }
+            .swatch {
+                width: 22px;
+                display: inline-block;
+                vertical-align: middle;
+            }
+            .swatch.line {
+                height: 1px;
+            }
+            .swatch.line2 {
+                height: 2px;
+            }
+            .swatch.dash {
+                background: transparent !important;
+                border-top: 1px dashed;
+            }
+            .swatch.dot {
+                background: transparent !important;
+                border-top: 1px dotted;
+            }
+            .swatch.smdot {
+                background: transparent !important;
+                border-top: 1px dotted;
+                opacity: 0.7;
+            }
+            .swatch.gl {
+                width: auto;
+                font-family: var(--mono);
+                font-size: 12px;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="app">
+            <header>
+                <span class="path"
+                    ><b>unitAI</b><span class="sl">/</span><b>graph</b></span
+                >
+                <span class="sub"
+                    >─ reference layout · all 9 rel types · 1 active agent</span
+                >
+                <span class="spacer"></span>
+                <span class="cnt"
+                    ><b>8</b> nodes · <b>2</b> external · <b>9</b> edges</span
+                >
+            </header>
+
+            <div class="canvas">
+                <svg viewBox="0 0 1100 540" xmlns="http://www.w3.org/2000/svg">
+                    <defs>
+                        <marker
+                            id="m-blocks"
+                            viewBox="0 0 10 10"
+                            refX="9"
+                            refY="5"
+                            markerWidth="7"
+                            markerHeight="7"
+                            orient="auto-start-reverse"
+                        >
+                            <path d="M 0 0 L 10 5 L 0 10 Z" fill="#C84D3C" />
+                        </marker>
+                        <marker
+                            id="m-parent"
+                            viewBox="0 0 10 10"
+                            refX="9"
+                            refY="5"
+                            markerWidth="4"
+                            markerHeight="4"
+                            orient="auto-start-reverse"
+                        >
+                            <circle cx="5" cy="5" r="2.5" fill="#4A4B50" />
+                        </marker>
+                        <marker
+                            id="m-caused"
+                            viewBox="0 0 10 10"
+                            refX="9"
+                            refY="5"
+                            markerWidth="6"
+                            markerHeight="6"
+                            orient="auto-start-reverse"
+                        >
+                            <path d="M 0 0 L 10 5 L 0 10 Z" fill="#B0594B" />
+                        </marker>
+                        <marker
+                            id="m-validates"
+                            viewBox="0 0 10 10"
+                            refX="9"
+                            refY="5"
+                            markerWidth="6"
+                            markerHeight="6"
+                            orient="auto-start-reverse"
+                        >
+                            <path d="M 0 0 L 10 5 L 0 10 Z" fill="#4D9DE0" />
+                        </marker>
+                        <marker
+                            id="m-tracks"
+                            viewBox="0 0 10 10"
+                            refX="9"
+                            refY="5"
+                            markerWidth="6"
+                            markerHeight="6"
+                            orient="auto-start-reverse"
+                        >
+                            <path
+                                d="M 1 1 L 9 5 L 1 9"
+                                fill="none"
+                                stroke="#4FAA7F"
+                                stroke-width="1.5"
+                            />
+                        </marker>
+                        <marker
+                            id="m-discovered"
+                            viewBox="0 0 10 10"
+                            refX="9"
+                            refY="5"
+                            markerWidth="6"
+                            markerHeight="6"
+                            orient="auto-start-reverse"
+                        >
+                            <path d="M 0 0 L 10 5 L 0 10 Z" fill="#8B82E8" />
+                        </marker>
+                        <marker
+                            id="m-until"
+                            viewBox="0 0 10 10"
+                            refX="9"
+                            refY="5"
+                            markerWidth="6"
+                            markerHeight="6"
+                            orient="auto-start-reverse"
+                        >
+                            <path d="M 0 0 L 10 5 L 0 10 Z" fill="#D8851A" />
+                        </marker>
+                        <marker
+                            id="m-supersedes"
+                            viewBox="0 0 10 10"
+                            refX="9"
+                            refY="5"
+                            markerWidth="7"
+                            markerHeight="7"
+                            orient="auto-start-reverse"
+                        >
+                            <path d="M 0 0 L 10 5 L 0 10 Z" fill="#5A4D6E" />
+                        </marker>
+                    </defs>
+
+                    <!-- layer guides -->
+                    <line
+                        class="layer-guide"
+                        x1="335"
+                        y1="20"
+                        x2="335"
+                        y2="530"
+                    />
+                    <line
+                        class="layer-guide"
+                        x1="725"
+                        y1="20"
+                        x2="725"
+                        y2="530"
+                    />
+
+                    <!-- ============ EDGES ============ -->
+
+                    <!-- blocks: r1 → r2  (straight, heavy, red) -->
+                    <path
+                        d="M 290 90 L 380 90"
+                        stroke="#C84D3C"
+                        stroke-width="2"
+                        fill="none"
+                        marker-end="url(#m-blocks)"
+                    />
+                    <text class="elabel blocks" x="310" y="83">blocks</text>
+
+                    <!-- caused-by: r5 → r2  (right-to-left, red-brown) -->
+                    <path
+                        d="M 770 90 L 640 90"
+                        stroke="#B0594B"
+                        stroke-width="1.2"
+                        fill="none"
+                        marker-end="url(#m-caused)"
+                    />
+                    <text class="elabel caused" x="678" y="83">caused-by</text>
+
+                    <!-- supersedes: r1 → r6  (curve down-right, muted purple) -->
+                    <path
+                        d="M 290 90 C 460 100, 580 170, 770 170"
+                        stroke="#5A4D6E"
+                        stroke-width="1.5"
+                        fill="none"
+                        marker-end="url(#m-supersedes)"
+                    />
+                    <text class="elabel supersedes" x="425" y="135">
+                        supersedes
+                    </text>
+
+                    <!-- parent-child: e1 → e1c  (top arc, dim small-dot) -->
+                    <path
+                        d="M 290 252 C 330 240, 350 240, 380 252"
+                        stroke="#4A4B50"
+                        stroke-width="1"
+                        stroke-dasharray="1 3"
+                        fill="none"
+                        marker-end="url(#m-parent)"
+                    />
+                    <text class="elabel parent" x="315" y="237">parent</text>
+
+                    <!-- validates: e1c → e1  (bottom arc, blue) -->
+                    <path
+                        d="M 380 268 C 350 280, 330 280, 290 268"
+                        stroke="#4D9DE0"
+                        stroke-width="1.2"
+                        fill="none"
+                        marker-end="url(#m-validates)"
+                    />
+                    <text class="elabel validates" x="307" y="297">
+                        validates
+                    </text>
+
+                    <!-- tracks: e1c → ext-trk  (dashed green) -->
+                    <path
+                        d="M 640 260 L 765 260"
+                        stroke="#4FAA7F"
+                        stroke-width="1.2"
+                        stroke-dasharray="4 3"
+                        fill="none"
+                        marker-end="url(#m-tracks)"
+                    />
+                    <text class="elabel tracks" x="675" y="253">tracks</text>
+
+                    <!-- until: e1c → ext-mil  (dashed amber, down-right) -->
+                    <path
+                        d="M 640 268 C 700 290, 720 330, 770 330"
+                        stroke="#D8851A"
+                        stroke-width="1.2"
+                        stroke-dasharray="3 3"
+                        fill="none"
+                        marker-end="url(#m-until)"
+                    />
+                    <text class="elabel until" x="660" y="312">
+                        until · 2026-05-20
+                    </text>
+
+                    <!-- discovered-from: r2 → r3  (long curve, purple) -->
+                    <path
+                        d="M 510 104 C 560 200, 600 380, 510 446"
+                        stroke="#8B82E8"
+                        stroke-width="1.2"
+                        fill="none"
+                        marker-end="url(#m-discovered)"
+                    />
+                    <text class="elabel discovered" x="552" y="280">
+                        discovered-from
+                    </text>
+
+                    <!-- related: r4 ↔ r3  (dotted, no arrowheads, symmetric) -->
+                    <path
+                        d="M 290 460 L 380 460"
+                        stroke="#6B6C72"
+                        stroke-width="1"
+                        stroke-dasharray="1 3"
+                        fill="none"
+                    />
+                    <text class="elabel related" x="310" y="453">related</text>
+                </svg>
+
+                <!-- layer labels -->
+                <div class="col-lbl" style="left: 95px; top: 10px">
+                    l0 · sources
+                </div>
+                <div class="col-lbl" style="left: 485px; top: 10px">
+                    l1 · downstream
+                </div>
+                <div class="col-lbl" style="left: 875px; top: 10px">
+                    l2 · further / external
+                </div>
+
+                <!-- ============ NODES ============ -->
+                <!-- row 1, y≈80 -->
+                <div class="node" data-p="0" style="left: 30px; top: 76px">
+                    <span class="gl r">◯</span>
+                    <span class="id">unitAI-<b>dmu9q</b></span>
+                    <span class="tt"
+                        >executor worktree-index contamination</span
+                    >
+                    <span class="ag exec"
+                        ><span class="agd"></span><b>exec/</b>7a3</span
+                    >
+                    <span class="tag p0">P0</span>
+                </div>
+                <div
+                    class="node blkd"
+                    data-p="0"
+                    style="left: 420px; top: 76px"
+                >
+                    <span class="gl b">◇</span>
+                    <span class="id">unitAI-<b>6xm0f</b></span>
+                    <span class="tt">Fix specialists fresh-install docs</span>
+                    <span class="ag exec"
+                        ><span class="agd"></span><b>exec/</b>8e2</span
+                    >
+                    <span class="tag p0">P0</span>
+                </div>
+                <div
+                    class="node closed"
+                    data-p="0"
+                    style="left: 810px; top: 76px"
+                >
+                    <span class="gl c">✓</span>
+                    <span class="id">unitAI-<b>0wz2p</b></span>
+                    <span class="tt">bd worktree create (merged)</span>
+                    <span class="ag exec"
+                        ><span class="agd"></span><b>exec/</b>7a3</span
+                    >
+                    <span class="tag p0">P0</span>
+                </div>
+
+                <!-- row 2, y≈156 -->
+                <div
+                    class="node closed superseded"
+                    data-p="2"
+                    style="left: 810px; top: 156px"
+                >
+                    <span class="gl x">✕</span>
+                    <span class="id">unitAI-<b>old3z</b></span>
+                    <span class="tt">Daemonize serena per-workspace</span>
+                    <span class="ag"><span class="agd"></span><b>—</b></span>
+                    <span class="tag p2">P2</span>
+                </div>
+
+                <!-- row 3, y≈246 -->
+                <div class="node" data-p="1" style="left: 30px; top: 246px">
+                    <span class="gl e">◈</span>
+                    <span class="id">unitAI-<b>ye5s9</b></span>
+                    <span class="tt">Epic: production-harden specialists</span>
+                    <span class="ag orch"
+                        ><span class="agd"></span><b>orch/</b>main</span
+                    >
+                    <span class="tag p1">P1</span>
+                </div>
+                <div
+                    class="node act"
+                    data-p="0"
+                    style="left: 420px; top: 246px"
+                >
+                    <span class="gl w">◐</span>
+                    <span class="id">unitAI-<b>1j9om</b></span>
+                    <span class="tt"
+                        >verify specialists npm package payload</span
+                    >
+                    <span class="ag ci"
+                        ><span class="agd"></span><b>ci/</b>3d1</span
+                    >
+                    <span class="tag p0">P0</span>
+                </div>
+
+                <!-- external chips at right -->
+                <div class="ext" style="left: 765px; top: 248px">
+                    <em>external</em> · <b>xtrm-tools</b>
+                    <span style="color: var(--text-5)">/</span> release
+                </div>
+                <div class="ext mil" style="left: 765px; top: 318px">
+                    <em>milestone</em> · <b>release/2026-05-20</b>
+                </div>
+
+                <!-- row 5, y≈446 -->
+                <div class="node" data-p="2" style="left: 30px; top: 446px">
+                    <span class="gl r">◯</span>
+                    <span class="id">unitAI-<b>cww2s</b></span>
+                    <span class="tt"
+                        >Audit specialists release/build drift</span
+                    >
+                    <span class="ag audit"
+                        ><span class="agd"></span><b>audit/</b>1f9</span
+                    >
+                    <span class="tag p2">P2</span>
+                </div>
+                <div class="node" data-p="1" style="left: 420px; top: 446px">
+                    <span class="gl r">◯</span>
+                    <span class="id">unitAI-<b>dnqas</b></span>
+                    <span class="tt"
+                        >Release gate: trigger xtrm-tools validation</span
+                    >
+                    <span class="ag build"
+                        ><span class="agd"></span><b>build/</b>5f3</span
+                    >
+                    <span class="tag p1">P1</span>
+                </div>
+            </div>
+
+            <!-- ============ LEGEND ============ -->
+            <div class="legend">
+                <div class="legend-row">
+                    <span class="legend-lbl">node states:</span>
+                    <span class="legend-item"
+                        ><span
+                            class="swatch gl"
+                            style="color: var(--state-ready)"
+                            >◯</span
+                        >
+                        ready</span
+                    >
+                    <span class="legend-item"
+                        ><span class="swatch gl" style="color: var(--state-wip)"
+                            >◐</span
+                        >
+                        wip <em>· pulsing = running now</em></span
+                    >
+                    <span class="legend-item"
+                        ><span
+                            class="swatch gl"
+                            style="color: var(--state-blocked)"
+                            >◇</span
+                        >
+                        blocked</span
+                    >
+                    <span class="legend-item"
+                        ><span
+                            class="swatch gl"
+                            style="color: var(--state-gate)"
+                            >⊡</span
+                        >
+                        gate</span
+                    >
+                    <span class="legend-item"
+                        ><span class="swatch gl" style="color: #8b82e8">◈</span>
+                        epic</span
+                    >
+                    <span class="legend-item"
+                        ><span
+                            class="swatch gl"
+                            style="color: var(--state-closed)"
+                            >✓</span
+                        >
+                        closed</span
+                    >
+                    <span class="legend-item"
+                        ><span
+                            class="swatch gl"
+                            style="color: var(--state-closed)"
+                            >✕</span
+                        >
+                        superseded</span
+                    >
+                </div>
+
+                <div class="legend-row">
+                    <span class="legend-lbl">priority:</span>
+                    <span class="legend-item"
+                        ><span
+                            class="swatch line2"
+                            style="background: var(--p0)"
+                        ></span>
+                        P0 <em>· left band</em></span
+                    >
+                    <span class="legend-item"
+                        ><span
+                            class="swatch line2"
+                            style="background: var(--p1)"
+                        ></span>
+                        P1</span
+                    >
+                    <span class="legend-item"
+                        ><span
+                            class="swatch line2"
+                            style="background: var(--text-5)"
+                        ></span>
+                        P2</span
+                    >
+                </div>
+
+                <div class="legend-row">
+                    <span class="legend-lbl">edges · hard:</span>
+                    <span class="legend-item"
+                        ><span
+                            class="swatch line2"
+                            style="background: var(--r-blocks)"
+                        ></span>
+                        blocks</span
+                    >
+                    <span class="legend-item"
+                        ><span
+                            class="swatch line"
+                            style="background: var(--r-caused)"
+                        ></span>
+                        caused-by</span
+                    >
+                    <span class="legend-item"
+                        ><span
+                            class="swatch line"
+                            style="background: var(--r-validates)"
+                        ></span>
+                        validates</span
+                    >
+                    <span class="legend-item"
+                        ><span
+                            class="swatch line"
+                            style="background: var(--r-supersedes)"
+                        ></span>
+                        supersedes</span
+                    >
+                    <span class="legend-item"
+                        ><span
+                            class="swatch line"
+                            style="background: var(--r-discovered)"
+                        ></span>
+                        discovered-from</span
+                    >
+                </div>
+
+                <div class="legend-row">
+                    <span class="legend-lbl">edges · soft:</span>
+                    <span class="legend-item"
+                        ><span
+                            class="swatch dash"
+                            style="border-top-color: var(--r-tracks)"
+                        ></span>
+                        tracks <em>· follow without gating</em></span
+                    >
+                    <span class="legend-item"
+                        ><span
+                            class="swatch dash"
+                            style="border-top-color: var(--r-until)"
+                        ></span>
+                        until <em>· time/condition</em></span
+                    >
+                </div>
+
+                <div class="legend-row">
+                    <span class="legend-lbl">edges · info:</span>
+                    <span class="legend-item"
+                        ><span
+                            class="swatch smdot"
+                            style="border-top-color: var(--r-parent)"
+                        ></span>
+                        parent-child <em>· structural, dim</em></span
+                    >
+                    <span class="legend-item"
+                        ><span
+                            class="swatch dot"
+                            style="border-top-color: var(--r-related)"
+                        ></span>
+                        related <em>· symmetric, no arrow</em></span
+                    >
+                </div>
+            </div>
+        </div>
+    </body>
+</html>

@@ -26,3 +26,7 @@ e4494c9598b9
 # bv (beads viewer) local config and caches
 .bv/
 .playwright-mcp/
+# bd worktree
+.xtrm/worktrees/gitboard-xt-pi-5zrh/
+# bd worktree
+.xtrm/worktrees/gitboard-xt-claude-1ers/
