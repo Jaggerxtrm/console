@@ -6,6 +6,7 @@ import { TopBar } from "./components/shell/TopBar.tsx";
 import { Sidebar } from "./components/shell/Sidebar.tsx";
 import { useShellStore, selectTheme } from "./stores/shell.ts";
 import { MainPane } from "./components/shell/MainPane.tsx";
+import { BeadSideDrawer } from "./pages/console/BeadSideDrawer.tsx";
 import { useGithubActivity } from "./hooks/useGithubActivity.ts";
 
 type Tab = "github" | "beads";
@@ -21,9 +22,8 @@ const BEADBOARD_URL = import.meta.env.VITE_BEADBOARD_URL || "/beadboard";
 
 export function App() {
   const path = window.location.pathname;
-  if (path.endsWith("/console") && useShellStore.getState().selection.surface !== "console") {
-    useShellStore.getState().setSurface("console");
-  }
+  const selection = useShellStore.getState().selection;
+  if ((selection.surface as string) === "beads") useShellStore.getState().setSurface("console");
   // /gitboard/legacy → old TabBar shell (preserved for parity testing)
   // /gitboard/design-preview, /preview → design preview
   // default → unified IDE shell (forge-7xu)
@@ -43,6 +43,7 @@ function ShellApp() {
       <div className="ide-body">
         <Sidebar />
         <MainPane />
+        <BeadSideDrawer />
       </div>
     </div>
   );
