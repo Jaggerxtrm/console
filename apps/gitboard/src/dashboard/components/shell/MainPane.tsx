@@ -9,9 +9,11 @@ import { IssueTimeline } from "../github/IssueTimeline.tsx";
 import { ReleaseTimeline } from "../github/ReleaseTimeline.tsx";
 import { ReadmeView, ChangelogView, ReportsView } from "../github/RepoContentPanels.tsx";
 import { BeadsRepoView } from "../beads/BeadsRepoView.tsx";
+import { Graph } from "../../pages/console/Graph.tsx";
 import { Observability } from "../../pages/console/Observability.tsx";
+import { Specialists } from "../../pages/console/Specialists.tsx";
 import { BottomDrawer } from "./BottomDrawer.tsx";
-import type { BeadsTab, GithubTab, RepoNode } from "../../../types/shell.ts";
+import type { GithubTab, RepoNode } from "../../../types/shell.ts";
 import type { GithubEvent, GithubPr, GithubIssue, GithubRelease } from "../../../types/github.ts";
 
 export function MainPane() {
@@ -34,14 +36,27 @@ export function MainPane() {
   const repo = useMemo(() => (selection.repo ? repos.find((r) => r.fullName === selection.repo) ?? null : null), [selection.repo, repos]);
 
   let inner: ReactNode;
-  if (selection.surface === "console") {
-    inner = <Observability />;
-  } else if (!repo) {
-    inner = <EmptyState repos={repos} onPick={setRepo} surface={selection.surface} />;
-  } else if (selection.surface === "github") {
-    inner = repo.hasGithub ? <GithubTabView repo={repo} tab={selection.tab as GithubTab} /> : <NoSide side="github" repo={repo.displayName} />;
+  if (selection.surface === "github") {
+    inner = !repo ? <EmptyState repos={repos} onPick={setRepo} surface="github" /> : repo.hasGithub ? <GithubTabView repo={repo} tab={selection.tab as GithubTab} /> : <NoSide side="github" repo={repo.displayName} />;
   } else {
-    inner = repo.hasBeads ? <BeadsRepoView repo={repo} tab={selection.tab as BeadsTab} /> : <NoSide side="beads" repo={repo.displayName} />;
+    switch (selection.tab) {
+      case "feed":
+      case "triage":
+      case "memories":
+        inner = !repo ? <EmptyState repos={repos} onPick={setRepo} surface="beads" /> : repo.hasBeads ? <BeadsRepoView repo={repo} tab={selection.tab} /> : <NoSide side="beads" repo={repo.displayName} />;
+        break;
+      case "graph":
+        inner = <Graph repo={repo} />;
+        break;
+      case "observability":
+        inner = <Observability />;
+        break;
+      case "specialists":
+        inner = <Specialists />;
+        break;
+      default:
+        inner = <Observability />;
+    }
   }
 
   return (

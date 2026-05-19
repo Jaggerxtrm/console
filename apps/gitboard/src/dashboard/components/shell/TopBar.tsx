@@ -1,14 +1,14 @@
-// TopBar (forge-7xu). Surface switch [GitHub | Beads] on the left,
-// tab strip on the right.
+// TopBar (forge-7xu). Surface switch [GitHub | Console] on left,
+// tab strip on right.
 
-import { GraphIcon, MarkGithubIcon, MoonIcon, ProjectIcon, SunIcon } from "@primer/octicons-react";
+import { BookIcon, ColumnsIcon, GearIcon, GraphIcon, ListUnorderedIcon, MarkGithubIcon, MoonIcon, PulseIcon, ShareAndroidIcon, SunIcon } from "@primer/octicons-react";
 import {
   useShellStore,
   selectSelection,
   selectTheme,
 } from "../../stores/shell.ts";
+import type { ReactNode } from "react";
 import {
-  BEADS_TABS,
   CONSOLE_TABS,
   GITHUB_TABS,
   type Surface,
@@ -22,7 +22,7 @@ export function TopBar() {
   const setTab = useShellStore((s) => s.setTab);
   const toggleTheme = useShellStore((s) => s.toggleTheme);
 
-  const tabs = selection.surface === "github" ? GITHUB_TABS : selection.surface === "beads" ? BEADS_TABS : CONSOLE_TABS;
+  const tabs = selection.surface === "github" ? GITHUB_TABS : CONSOLE_TABS;
 
   return (
     <header className="ide-topbar" role="banner">
@@ -35,13 +35,6 @@ export function TopBar() {
           onSelect={setSurface}
         />
         <SurfaceButton
-          id="beads"
-          label="Beads"
-          icon={<ProjectIcon size={14} />}
-          active={selection.surface === "beads"}
-          onSelect={setSurface}
-        />
-        <SurfaceButton
           id="console"
           label="Console"
           icon={<GraphIcon size={14} />}
@@ -50,21 +43,7 @@ export function TopBar() {
         />
       </div>
       <nav className="ide-topbar-tabs" role="tablist" aria-label={`${selection.surface} tabs`}>
-        {selection.surface === "console" ? CONSOLE_TABS.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            role="tab"
-            aria-selected={selection.tab === t.id}
-            aria-disabled={t.id === "specialists" ? true : undefined}
-            title={t.id === "specialists" ? "Coming soon — forge-e23" : undefined}
-            className={selection.tab === t.id ? "ide-tab is-active" : t.id === "specialists" ? "ide-tab is-disabled" : "ide-tab"}
-            onClick={t.id === "specialists" ? undefined : () => setTab(t.id as TabId)}
-            disabled={t.id === "specialists"}
-          >
-            {t.label}
-          </button>
-        )) : tabs.map((t) => (
+        {tabs.map((t) => (
           <button
             key={t.id}
             type="button"
@@ -73,7 +52,8 @@ export function TopBar() {
             className={selection.tab === t.id ? "ide-tab is-active" : "ide-tab"}
             onClick={() => setTab(t.id as TabId)}
           >
-            {t.label}
+            <span className="ide-tab-icon" aria-hidden="true" style={{ display: "inline-flex", marginRight: 6 }}>{selection.surface === "console" ? consoleIcon(t.id) : null}</span>
+            <span>{t.label}</span>
           </button>
         ))}
       </nav>
@@ -98,6 +78,18 @@ export function TopBar() {
   );
 }
 
+function consoleIcon(id: TabId) {
+  switch (id) {
+    case "feed": return <ListUnorderedIcon size={12} />;
+    case "triage": return <ColumnsIcon size={12} />;
+    case "memories": return <BookIcon size={12} />;
+    case "graph": return <ShareAndroidIcon size={12} />;
+    case "observability": return <PulseIcon size={12} />;
+    case "specialists": return <GearIcon size={12} />;
+    default: return null;
+  }
+}
+
 function SurfaceButton({
   id,
   label,
@@ -107,7 +99,7 @@ function SurfaceButton({
 }: {
   id: Surface;
   label: string;
-  icon: React.ReactNode;
+  icon: ReactNode;
   active: boolean;
   onSelect: (s: Surface) => void;
 }) {

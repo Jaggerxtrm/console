@@ -1,19 +1,20 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { LinkExternalIcon } from "@primer/octicons-react";
 import { GithubPanel } from "./components/github/GithubPanel.tsx";
 import { useRepoTree } from "./hooks/useRepoTree.ts";
 import { TopBar } from "./components/shell/TopBar.tsx";
 import { Sidebar } from "./components/shell/Sidebar.tsx";
 import { useShellStore, selectTheme } from "./stores/shell.ts";
+import type { TabId } from "../types/shell.ts";
 import { MainPane } from "./components/shell/MainPane.tsx";
 import { useGithubActivity } from "./hooks/useGithubActivity.ts";
 
-type Tab = "github" | "beads";
+type Tab = "github" | "console";
 type View = "dashboard" | "design-preview";
 
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: "github", label: "GitHub" },
-  { id: "beads", label: "Beads" },
+  { id: "console", label: "Console" },
 ];
 
 // Beadboard is served from the same server at /beadboard
@@ -21,8 +22,18 @@ const BEADBOARD_URL = import.meta.env.VITE_BEADBOARD_URL || "/beadboard";
 
 export function App() {
   const path = window.location.pathname;
-  if (path.endsWith("/console") && useShellStore.getState().selection.surface !== "console") {
-    useShellStore.getState().setSurface("console");
+  if (path.includes("/gitboard/beads")) {
+    const store = useShellStore.getState();
+    if (store.selection.surface !== "console" || store.selection.tab !== routeTab(path)) {
+      store.setSurface("console");
+      const tab = routeTab(path);
+      if (tab) store.setTab(tab);
+    }
+  } else if (path.endsWith("/console") || path.includes("/gitboard/console/")) {
+    const store = useShellStore.getState();
+    if (store.selection.surface !== "console") store.setSurface("console");
+    const tab = routeTab(path);
+    if (tab) store.setTab(tab);
   }
   // /gitboard/legacy → old TabBar shell (preserved for parity testing)
   // /gitboard/design-preview, /preview → design preview
@@ -35,6 +46,12 @@ export function App() {
 
 function ShellApp() {
   const theme = useShellStore(selectTheme);
+  const selection = useShellStore((s) => s.selection);
+  const setSurface = useShellStore((s) => s.setSurface);
+  useEffect(() => {
+    const persistedSurface = selection.surface as string;
+    if (persistedSurface === "beads") setSurface("console");
+  }, [selection.surface, setSurface]);
   useGithubActivity();
   useRepoTree();
   return (
@@ -316,4 +333,15 @@ function MetricCard({ name, value, delta, state }: { name: string; value: string
       </div>
     </article>
   );
+}
+
+function routeTab(path: string): TabId | null {
+  if (path.includes("/beads/triage")) return "triage";
+  if (path.includes("/beads/memories")) return "memories";
+  if (path.includes("/beads/feed") || path.endsWith("/beads")) return "feed";
+  if (path.includes("/console/graph")) return "graph";
+  if (path.includes("/console/specialists")) return "specialists";
+  if (path.includes("/console/observability")) return "observability";
+  if (path.endsWith("/console")) return "observability";
+  return null;
 }
