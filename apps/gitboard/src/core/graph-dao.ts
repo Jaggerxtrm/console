@@ -54,11 +54,9 @@ function getObservabilityDao() {
 }
 
 function resolveProject(projects: BeadsProject[], projectId: string | null | undefined): BeadsProject | null {
-  if (projectId) {
-    const match = projects.find((project) => project.id === projectId || project.name === projectId);
-    if (match) return match;
-  }
-  return projects[0] ?? null;
+  if (!projectId) return null;
+  const match = projects.find((project) => project.id === projectId || project.name === projectId);
+  return match ?? null;
 }
 
 async function readIssues(project: BeadsProject): Promise<BeadIssue[]> {
