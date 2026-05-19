@@ -1753,7 +1753,7 @@ body {
   background: transparent;
   color: var(--accent-blue);
   border-radius: 0;
-  font-size: 9px;
+  font-size: var(--header-font-size);
   font-weight: 700;
   letter-spacing: 0.10em;
   text-transform: none;
