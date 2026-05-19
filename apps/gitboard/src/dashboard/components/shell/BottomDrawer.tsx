@@ -1,8 +1,10 @@
-import { useEffect, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { BottomDrawerTabBar } from "./BottomDrawerTabBar.tsx";
 import { SpecialistsTabPanel } from "../beads/SpecialistsTabPanel.tsx";
 import { LogsTabPanel } from "./LogsTabPanel.tsx";
 import { useShellStore } from "../../stores/shell.ts";
+
+console.log("[drawer] BottomDrawer module loaded — onMouseDown+document version A");
 
 export type BottomDrawerTab = "logs" | "specialists";
 
@@ -28,7 +30,13 @@ export function BottomDrawer() {
 
   return (
     <section className="bottom-drawer" data-open={open} style={{ height }}>
-      <div className="bottom-drawer-resizer" role="separator" aria-orientation="horizontal" tabIndex={0} onPointerDown={(event) => startResize(event, setDrawerHeight)} />
+      <div
+        className="bottom-drawer-resizer"
+        role="separator"
+        aria-orientation="horizontal"
+        tabIndex={0}
+        onMouseDown={(event) => startResize(event, setDrawerHeight)}
+      />
       <BottomDrawerTabBar
         activeTab={tab}
         open={open}
@@ -46,50 +54,26 @@ export function BottomDrawer() {
   );
 }
 
-function startResize(event: ReactPointerEvent<HTMLDivElement>, setDrawerHeight: (height: number) => void) {
-  if (event.pointerType === "mouse" && event.button !== 0) return;
+function startResize(event: ReactMouseEvent<HTMLDivElement>, setDrawerHeight: (height: number) => void) {
+  if (event.button !== 0) return;
 
-  const target = event.currentTarget;
-  const releaseListeners = () => {
-    document.removeEventListener("pointermove", onDocumentMove);
-    document.removeEventListener("pointerup", onDocumentUp);
-    document.removeEventListener("pointercancel", onDocumentUp);
-    target.removeEventListener("pointermove", onTargetMove);
-    target.removeEventListener("pointerup", onTargetUp);
-    target.removeEventListener("pointercancel", onTargetUp);
+  event.preventDefault();
+  document.body.style.userSelect = "none";
+  document.body.style.cursor = "row-resize";
+
+  const onMove = (moveEvent: globalThis.MouseEvent) => {
+    const newH = window.innerHeight - moveEvent.clientY;
+    console.log("[drawer] move", moveEvent.clientY, "→ h", newH);
+    setDrawerHeight(newH);
   };
-  const onDocumentMove = (moveEvent: globalThis.PointerEvent) => {
-    setDrawerHeight(window.innerHeight - moveEvent.clientY);
-  };
-  const onTargetMove = (moveEvent: globalThis.PointerEvent) => {
-    setDrawerHeight(window.innerHeight - moveEvent.clientY);
-  };
-  const onDocumentUp = (upEvent: globalThis.PointerEvent) => {
-    if (target.hasPointerCapture(upEvent.pointerId)) {
-      target.releasePointerCapture(upEvent.pointerId);
-    }
-    releaseListeners();
-  };
-  const onTargetUp = (upEvent: globalThis.PointerEvent) => {
-    if (target.hasPointerCapture(upEvent.pointerId)) {
-      target.releasePointerCapture(upEvent.pointerId);
-    }
-    releaseListeners();
+  const onUp = () => {
+    document.removeEventListener("mousemove", onMove);
+    document.body.style.userSelect = "";
+    document.body.style.cursor = "";
   };
 
-  try {
-    target.setPointerCapture(event.pointerId);
-    event.preventDefault();
-    target.addEventListener("pointermove", onTargetMove);
-    target.addEventListener("pointerup", onTargetUp);
-    target.addEventListener("pointercancel", onTargetUp);
-  } catch {
-    console.warn("BottomDrawer resize pointer capture failed; using document fallback.");
-    event.preventDefault();
-    document.addEventListener("pointermove", onDocumentMove);
-    document.addEventListener("pointerup", onDocumentUp);
-    document.addEventListener("pointercancel", onDocumentUp);
-  }
+  document.addEventListener("mousemove", onMove);
+  document.addEventListener("mouseup", onUp, { once: true });
 }
 
 function toggleMaximize(
@@ -99,11 +83,14 @@ function toggleMaximize(
   setDrawerHeight: (height: number) => void,
 ) {
   if (restoredHeight === null) {
+    const maximizedHeight = window.innerHeight - MAXIMIZED_OFFSET;
+    console.log("[drawer] toggleMaximize current=", currentHeight, "restored=", maximizedHeight);
     setRestoredHeight(currentHeight);
-    setDrawerHeight(window.innerHeight - MAXIMIZED_OFFSET);
+    setDrawerHeight(maximizedHeight);
     return;
   }
 
+  console.log("[drawer] toggleMaximize current=", currentHeight, "restored=", restoredHeight);
   setDrawerHeight(restoredHeight);
   setRestoredHeight(null);
 }
