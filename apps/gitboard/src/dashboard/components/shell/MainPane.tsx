@@ -46,7 +46,7 @@ export function MainPane() {
         inner = !repo ? <EmptyState repos={repos} onPick={setRepo} surface="beads" /> : repo.hasBeads ? <BeadsRepoView repo={repo} tab={selection.tab} /> : <NoSide side="beads" repo={repo.displayName} />;
         break;
       case "graph":
-        inner = <Graph repo={repo} />;
+        inner = <Graph />;
         break;
       case "observability":
         inner = <Observability />;

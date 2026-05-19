@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { layoutGraph } from "../../../../../src/dashboard/pages/console/graph/layout.ts";
-import type { GraphEdge, GraphNode } from "../../../../../src/dashboard/pages/console/graph/types.ts";
+import type { GraphEdge, GraphNode } from "../../../../../src/types/graph.ts";
 
 const nodes: GraphNode[] = [
   { id: "a", title: "Alpha", type: "task", priority: 1, status: "open", assignee: null, closed_at: null, superseded_by: null },

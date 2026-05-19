@@ -1,4 +1,4 @@
-import type { GraphEdgeType } from "./types.ts";
+import type { GraphEdgeType } from "../../../../types/graph.ts";
 
 export const EDGE_STYLE_VARS: Record<GraphEdgeType, { token: string; width: number; dash?: string }> = {
   blocks: { token: "var(--graph-edge-blocks)", width: 1.8 },

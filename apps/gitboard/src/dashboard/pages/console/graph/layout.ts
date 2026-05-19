@@ -1,6 +1,6 @@
 // Weighted layered LR layout. Edge weights: blocks=5, supersedes=3, parent-child=0.5, discovered-from=2, validates=2, caused-by=2, tracks=1, until=1, related=0.2.
 
-import type { GraphEdge, GraphEdgeType, GraphNode } from "./types.ts";
+import type { GraphEdge, GraphEdgeType, GraphNode } from "../../../../types/graph.ts";
 
 export interface LayoutNode extends GraphNode {
   x: number;

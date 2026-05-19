@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { GraphResponse } from "../pages/console/graph/types.ts";
+import type { GraphResponse } from "../../types/graph.ts";
 
 const CACHE = new Map<string, GraphResponse>();
 
