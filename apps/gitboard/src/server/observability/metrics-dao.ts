@@ -63,7 +63,7 @@ export function createMetricsDao(pool: AttachPoolLike) {
   return { summary: (range: TimeRange): ObservabilitySummary => pool.withAttached((db, attached) => summarize(db, attached, range)) };
 }
 
-function summarize(db: { prepare(sql: string): { all(...params: unknown[]): unknown[] } }, attached: ReadonlyArray<{ alias: string }>, range: TimeRange): ObservabilitySummary {
+function summarize(db: { prepare(sql: string): { all(...params: unknown[]): unknown[]; run(...params: unknown[]): unknown } }, attached: ReadonlyArray<{ alias: string }>, range: TimeRange): ObservabilitySummary {
   const cutoff = range === "all" ? 0 : Date.now() - (range === "7d" ? 7 : 30) * 86400000;
   const rows = attached.flatMap(({ alias }) => loadRows(db, alias, cutoff));
   return {
@@ -82,7 +82,8 @@ function summarize(db: { prepare(sql: string): { all(...params: unknown[]): unkn
   };
 }
 
-function loadRows(db: { prepare(sql: string): { all(...params: unknown[]): unknown[] } }, alias: string, cutoff: number): Row[] {
+function loadRows(db: { prepare(sql: string): { all(...params: unknown[]): unknown[]; run(...params: unknown[]): unknown } }, alias: string, cutoff: number): Row[] {
+  if (!hasSpecialistJobMetrics(db, alias)) return [];
   return db.prepare(`
     SELECT COALESCE(j.specialist, 'unknown') AS specialist, COALESCE(m.model, 'unknown') AS model,
       j.job_id, j.bead_id, j.status, COALESCE(m.elapsed_ms, COALESCE(m.completed_at_ms, 0) - COALESCE(m.started_at_ms, 0), 0) AS elapsed_ms,
@@ -94,6 +95,15 @@ function loadRows(db: { prepare(sql: string): { all(...params: unknown[]): unkno
     LEFT JOIN ${alias}.specialist_results AS r ON r.job_id = j.job_id
     WHERE COALESCE(m.updated_at_ms, j.updated_at_ms, 0) >= ?
   `).all(cutoff) as Row[];
+}
+
+function hasSpecialistJobMetrics(db: { prepare(sql: string): { all(...params: unknown[]): unknown[]; run(...params: unknown[]): unknown } }, alias: string): boolean {
+  try {
+    db.prepare(`SELECT 1 FROM ${alias}.specialist_job_metrics LIMIT 0`).run();
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function sumTokens(rows: Row[]): TokenTotals {
