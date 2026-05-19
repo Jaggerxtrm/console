@@ -1,4 +1,4 @@
-import { useMemo, type MouseEvent as ReactMouseEvent } from "react";
+import { useEffect, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { BottomDrawerTabBar } from "./BottomDrawerTabBar.tsx";
 import { SpecialistsTabPanel } from "../beads/SpecialistsTabPanel.tsx";
 import { LogsTabPanel } from "./LogsTabPanel.tsx";
@@ -6,8 +6,7 @@ import { useShellStore } from "../../stores/shell.ts";
 
 export type BottomDrawerTab = "logs" | "specialists";
 
-const MIN_HEIGHT = 120;
-const MAX_HEIGHT = 600;
+const MAXIMIZED_OFFSET = 60;
 
 export function BottomDrawer() {
   const open = useShellStore((s) => s.drawerOpen);
@@ -16,28 +15,41 @@ export function BottomDrawer() {
   const setDrawerOpen = useShellStore((s) => s.setDrawerOpen);
   const setDrawerHeight = useShellStore((s) => s.setDrawerHeight);
   const setDrawerTab = useShellStore((s) => s.setDrawerTab);
+  const [restoredHeight, setRestoredHeight] = useState<number | null>(null);
+  const isMaximized = restoredHeight !== null;
 
-  const clampedHeight = useMemo(() => clamp(height, MIN_HEIGHT, MAX_HEIGHT), [height]);
+  useEffect(() => {
+    if (!open) {
+      setRestoredHeight(null);
+    }
+  }, [open]);
 
   if (!open) return null;
 
   return (
-    <section className="bottom-drawer" data-open={open} style={{ height: clampedHeight }}>
+    <section className="bottom-drawer" data-open={open} style={{ height }}>
       <div className="bottom-drawer-resizer" role="separator" aria-orientation="horizontal" tabIndex={0} onMouseDown={(event) => startResize(event, setDrawerHeight)} />
-      <BottomDrawerTabBar activeTab={tab} open={open} onSelect={(next) => { setDrawerTab(next); setDrawerOpen(true); }} onClose={() => setDrawerOpen(false)} onClearLogs={() => {}} />
+      <BottomDrawerTabBar
+        activeTab={tab}
+        open={open}
+        isMaximized={isMaximized}
+        onSelect={(next) => {
+          setDrawerTab(next);
+          setDrawerOpen(true);
+        }}
+        onClose={() => setDrawerOpen(false)}
+        onClearLogs={() => {}}
+        onToggleMaximize={() => toggleMaximize(height, restoredHeight, setRestoredHeight, setDrawerHeight)}
+      />
       <div className="bottom-drawer-body">{tab === "logs" ? <LogsTabPanel onClear={() => {}} /> : <SpecialistsTabPanel />}</div>
     </section>
   );
 }
 
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
-}
-
 function startResize(event: ReactMouseEvent, setDrawerHeight: (height: number) => void) {
   event.preventDefault();
   const onMove = (moveEvent: globalThis.MouseEvent) => {
-    setDrawerHeight(clamp(window.innerHeight - moveEvent.clientY, MIN_HEIGHT, MAX_HEIGHT));
+    setDrawerHeight(window.innerHeight - moveEvent.clientY);
   };
   const onUp = () => {
     window.removeEventListener("mousemove", onMove);
@@ -45,4 +57,20 @@ function startResize(event: ReactMouseEvent, setDrawerHeight: (height: number) =
   };
   window.addEventListener("mousemove", onMove);
   window.addEventListener("mouseup", onUp);
+}
+
+function toggleMaximize(
+  currentHeight: number,
+  restoredHeight: number | null,
+  setRestoredHeight: (height: number | null) => void,
+  setDrawerHeight: (height: number) => void,
+) {
+  if (restoredHeight === null) {
+    setRestoredHeight(currentHeight);
+    setDrawerHeight(window.innerHeight - MAXIMIZED_OFFSET);
+    return;
+  }
+
+  setDrawerHeight(restoredHeight);
+  setRestoredHeight(null);
 }

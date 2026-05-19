@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
-import { GearIcon, TerminalIcon, TrashIcon, XIcon } from "@primer/octicons-react";
+import { GearIcon, ScreenFullIcon, ScreenNormalIcon, TerminalIcon, TrashIcon, XIcon } from "@primer/octicons-react";
 import type { BottomDrawerTab } from "./BottomDrawer.tsx";
 
-export function BottomDrawerTabBar({ activeTab, open, onSelect, onClose, onClearLogs }: { activeTab: BottomDrawerTab; open: boolean; onSelect: (tab: BottomDrawerTab) => void; onClose: () => void; onClearLogs: () => void; }) {
+export function BottomDrawerTabBar({ activeTab, open, isMaximized, onSelect, onClose, onClearLogs, onToggleMaximize }: { activeTab: BottomDrawerTab; open: boolean; isMaximized: boolean; onSelect: (tab: BottomDrawerTab) => void; onClose: () => void; onClearLogs: () => void; onToggleMaximize: () => void; }) {
   return (
     <div className="bottom-drawer-tabbar" role="tablist" aria-label="Bottom drawer tabs">
       <div className="bottom-drawer-tabs">
@@ -11,6 +11,7 @@ export function BottomDrawerTabBar({ activeTab, open, onSelect, onClose, onClear
       </div>
       <div className="bottom-drawer-actions">
         {activeTab === "logs" && <IconButton title="clear logs" onClick={onClearLogs}><TrashIcon size={12} /></IconButton>}
+        <IconButton title={isMaximized ? "restore drawer" : "maximize drawer"} onClick={onToggleMaximize}>{isMaximized ? <ScreenNormalIcon size={12} /> : <ScreenFullIcon size={12} />}</IconButton>
         <IconButton title={open ? "close drawer" : "open drawer"} onClick={onClose}><XIcon size={12} /></IconButton>
       </div>
     </div>
