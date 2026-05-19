@@ -135,14 +135,14 @@ describe("setLoading / setError", () => {
 
 describe("repoStats", () => {
   it("setRepoStats stores stats keyed by full_name", () => {
-    const stat: RepoStat = { full_name: "owner/api", pushes: 5, prs_open: 2, prs_closed: 1 };
+    const stat: RepoStat = { full_name: "owner/api", pushes: 5, prs_open: 2, prs_closed: 1, issues_open: 3, releases: 1, last_event_at: "2026-03-07T10:00:00Z" };
     useGithubStore.getState().setRepoStats([stat]);
     expect(useGithubStore.getState().repoStats["owner/api"].pushes).toBe(5);
   });
 
   it("replaces previous stats on new setRepoStats call", () => {
-    useGithubStore.getState().setRepoStats([{ full_name: "owner/api", pushes: 5, prs_open: 0, prs_closed: 0 }]);
-    useGithubStore.getState().setRepoStats([{ full_name: "owner/new", pushes: 1, prs_open: 0, prs_closed: 0 }]);
+    useGithubStore.getState().setRepoStats([{ full_name: "owner/api", pushes: 5, prs_open: 0, prs_closed: 0, issues_open: 0, releases: 0, last_event_at: null }]);
+    useGithubStore.getState().setRepoStats([{ full_name: "owner/new", pushes: 1, prs_open: 0, prs_closed: 0, issues_open: 0, releases: 0, last_event_at: null }]);
     expect(useGithubStore.getState().repoStats["owner/api"]).toBeUndefined();
     expect(useGithubStore.getState().repoStats["owner/new"].pushes).toBe(1);
   });

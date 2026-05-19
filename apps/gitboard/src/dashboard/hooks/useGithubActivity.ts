@@ -81,7 +81,7 @@ export function useGithubActivity(): void {
         upsertIssue(issue);
         markRepoUnread(issue.repo);
       }
-      if (msg.event === "github:sync_hint" && msg.data && typeof msg.data === "object" && "repos" in (msg.data as Record<string, unknown>)) {
+      if (msg.event === "github:sync_hint") {
         void load();
       }
     },

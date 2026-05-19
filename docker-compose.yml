@@ -1,29 +1,20 @@
 services:
-  xtrm:
-    container_name: xtrm
+  gitboard:
+    container_name: gitboard
     build:
       context: .
       dockerfile: Dockerfile
-    ports:
-      - "3000:3000"
-    volumes:
-      # XTRM data
-      - xtrm-data:/home/xtrm/.xtrm
-      # Projects for beadboard
-      - /home/dawid/dev:/home/xtrm/projects:ro,Z
-      - /home/dawid/.beads:/home/xtrm/.beads-host:ro,Z
-    environment:
-      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
-      - PORT=3000
-      - HOME=/home/xtrm
-      - XDG_PROJECTS_DIR=/home/xtrm/projects
+    network_mode: host
     restart: unless-stopped
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-
-networks:
-  default:
-    driver: bridge
+    env_file:
+      - .env
+    environment:
+      PORT: "3000"
+      AGENT_FORGE_DB: /data/state.db
+      PROJECTS_DIR: /projects
+    volumes:
+      - gitboard-state:/data
+      - ${HOME}/projects:/projects:ro
 
 volumes:
-  xtrm-data:
+  gitboard-state:

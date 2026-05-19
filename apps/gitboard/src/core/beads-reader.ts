@@ -14,7 +14,7 @@ export class BeadsReader {
    */
   async getIssues(filters: IssueFilters): Promise<BeadIssue[]> {
     const conditions: string[] = [];
-    const params: Record<string, unknown> = {};
+    const params: Record<string, string | number | bigint | Uint8Array | null> = {};
 
     if (filters.status && filters.status.length > 0) {
       const placeholders = filters.status.map((_, i) => `$status${i}`).join(", ");
@@ -57,7 +57,7 @@ export class BeadsReader {
         updated_at: string | null;
         closed_at: string | null;
         close_reason: string | null;
-      }, Record<string, unknown>>(
+      }, Record<string, string | number | bigint | Uint8Array | null>>(
         `SELECT * FROM issues ${where} ORDER BY priority ASC, created_at DESC LIMIT $limit OFFSET $offset`
       )
       .all(params);

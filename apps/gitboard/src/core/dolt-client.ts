@@ -9,7 +9,7 @@ import type { BeadIssue, BeadDependency, IssueFilters } from "../types/beads.ts"
 export interface DoltConfig {
   host: string;
   port: number;
-  user: string;
+  user?: string;
   database?: string;
 }
 
@@ -20,8 +20,8 @@ export class DoltClient {
   constructor(config: DoltConfig) {
     this.config = {
       database: "dolt",
-      user: "root",
       ...config,
+      user: config.user ?? "root",
     };
   }
 
@@ -100,7 +100,7 @@ export class DoltClient {
        ${where}
        ORDER BY priority ASC, created_at DESC 
        LIMIT ? OFFSET ?`,
-      [...params, limit, offset]
+      [...params, limit, offset] as any[]
     );
 
     // Fetch dependencies and labels for each issue

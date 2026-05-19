@@ -32,17 +32,28 @@ describe("GithubPoller loop", () => {
     await rm(tmpDir, { recursive: true, force: true });
   });
 
-  it("polls repo prs/issues and publishes upserts", async () => {
+  it("paginates repo prs/issues and publishes upserts", async () => {
     const registry = new ChannelRegistry();
     const events: unknown[] = [];
     registry.subscribe("github:activity", { id: "t1", send: (msg) => events.push(msg) });
     fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = typeof input === "string" ? input : input instanceof URL ? input.href : (input as Request).url;
+      const page = new URL(url).searchParams.get("page");
       if (url.includes("/issues")) {
-        return mockResponse([{ number: 1, title: "Issue", body: null, state: "open", user: { login: "alice" }, html_url: "u", comments: 0, labels: [], created_at: "2026-03-06T10:00:00Z", updated_at: "2026-03-06T10:01:00Z", closed_at: null }]);
+        if (page === "1") {
+          return mockResponse(Array.from({ length: 100 }, (_, index) => ({ number: index + 1, title: `Issue ${index + 1}`, body: null, state: "open", user: { login: "alice" }, html_url: "u", comments: 0, labels: [], created_at: "2026-03-06T10:00:00Z", updated_at: `2026-03-06T10:${String(index + 1).padStart(2, "0")}:00Z`, closed_at: null })));
+        }
+        if (page === "2") {
+          return mockResponse([{ number: 101, title: "Issue 101", body: null, state: "open", user: { login: "alice" }, html_url: "u", comments: 0, labels: [], created_at: "2026-03-06T10:00:00Z", updated_at: "2026-03-06T12:00:00Z", closed_at: null }]);
+        }
       }
       if (url.includes("/pulls")) {
-        return mockResponse([{ number: 2, title: "PR", body: null, state: "open", merged_at: null, closed_at: null, user: { login: "bob" }, html_url: "u2", comments: 0, labels: [], created_at: "2026-03-06T10:00:00Z", updated_at: "2026-03-06T10:02:00Z" }]);
+        if (page === "1") {
+          return mockResponse(Array.from({ length: 100 }, (_, index) => ({ number: index + 1, title: `PR ${index + 1}`, body: null, state: "open", merged_at: null, closed_at: null, user: { login: "bob" }, html_url: "u2", comments: 0, labels: [], created_at: "2026-03-06T10:00:00Z", updated_at: `2026-03-06T11:${String(index + 1).padStart(2, "0")}:00Z` })));
+        }
+        if (page === "2") {
+          return mockResponse([{ number: 101, title: "PR 101", body: null, state: "open", merged_at: null, closed_at: null, user: { login: "bob" }, html_url: "u2", comments: 0, labels: [], created_at: "2026-03-06T10:00:00Z", updated_at: "2026-03-06T12:00:00Z" }]);
+        }
       }
       return mockResponse([], { status: 404 });
     });
@@ -51,8 +62,8 @@ describe("GithubPoller loop", () => {
     const poller = new GithubPoller(db, "token", { registry });
     await poller.pollRepos();
 
-    expect(getIssues(db, { repo })).toHaveLength(1);
-    expect(getPrs(db, { repo })).toHaveLength(1);
+    expect(getIssues(db, { repo, limit: 200 })).toHaveLength(101);
+    expect(getPrs(db, { repo, limit: 200 })).toHaveLength(101);
     expect(events.some((msg) => JSON.stringify(msg).includes("github:issue.upsert"))).toBe(true);
     expect(events.some((msg) => JSON.stringify(msg).includes("github:pr.upsert"))).toBe(true);
     expect(fetchSpy as { toHaveBeenCalled: () => void }).toHaveBeenCalled();

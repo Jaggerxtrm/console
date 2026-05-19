@@ -13,6 +13,7 @@ import {
 import type { GithubEvent, GithubCommit, GithubPr, GithubIssue, GithubRepo } from "./github-store.ts";
 import type { ChannelRegistry } from "../api/ws/channels.ts";
 import type { GithubRealtimeEvent } from "../types/realtime.ts";
+import { emit, makeLogEntry } from "./logger.ts";
 
 export interface RawGithubCommit {
   sha: string;
@@ -220,6 +221,7 @@ export class GithubPoller {
     if (!rate) return false;
     if (rate.remaining < 500) {
       this.pausedUntil = Date.now() + 60_000;
+      emit(makeLogEntry("poller", "rate_limit.changed", "warn", undefined, { remaining: rate.remaining, limit: rate.limit, pausedUntil: this.pausedUntil }));
       return true;
     }
     if (this.pausedUntil > 0 && rate.remaining > rate.limit * 0.8) {
@@ -252,8 +254,14 @@ export class GithubPoller {
     } catch {
       return null;
     }
-    if (response.status === 304) return null;
-    if (!response.ok) return null;
+    if (response.status === 304) {
+      emit(makeLogEntry("poller", "etag.hit_304", "debug", undefined, { repo, endpoint }));
+      return null;
+    }
+    if (!response.ok) {
+      emit(makeLogEntry("poller", "etag.miss", "debug", undefined, { repo, endpoint, status: response.status }));
+      return null;
+    }
     this.maybePauseForRateLimit(response);
     this.rememberEtag(repo, endpoint, response);
     return (await response.json()) as T;
@@ -373,31 +381,36 @@ export class GithubPoller {
       pull_request?: object;
     }
 
-    const items = await this.apiGet<IssueResponse[]>(`/repos/${repo}/issues?state=all&since=${encodeURIComponent(watermark ?? "1970-01-01T00:00:00Z")}&per_page=100`, repo, "issues");
-    if (!items) return watermark;
     let latest = watermark;
-    for (const item of items) {
-      if (item.pull_request) continue;
-      if (this.shouldStopOnWatermark(item.updated_at, watermark)) break;
-      const issue: GithubIssue = {
-        repo,
-        number: item.number,
-        title: item.title,
-        body: item.body,
-        state: item.state,
-        author: item.user.login,
-        url: item.html_url,
-        comment_count: item.comments,
-        label_names: item.labels.length > 0 ? JSON.stringify(item.labels.map((l) => l.name)) : null,
-        created_at: item.created_at,
-        updated_at: item.updated_at,
-        closed_at: item.closed_at,
-      };
-      const existing = this.db.query<GithubIssue, { $repo: string; $number: number }>("SELECT * FROM github_issues WHERE repo = $repo AND number = $number").get({ $repo: repo, $number: item.number });
-      const changed = !existing || existing.updated_at !== issue.updated_at;
-      upsertIssue(this.db, issue);
-      if (changed || !existing) this.publishGithubEvent("github:issue.upsert", issue, issue.updated_at ?? issue.created_at);
-      latest = latest === null || item.updated_at > latest ? item.updated_at : latest;
+    const MAX_PAGES = 20;
+    for (let page = 1; page <= MAX_PAGES; page++) {
+const items = await this.apiGet<IssueResponse[]>(`/repos/${repo}/issues?state=all&since=${encodeURIComponent(watermark ?? "1970-01-01T00:00:00Z")}&per_page=100&page=${page}`, repo, "issues");
+      if (!items) return latest;
+      let watermarkHit = false;
+      for (const item of items) {
+        if (item.pull_request) continue;
+        if (this.shouldStopOnWatermark(item.updated_at, watermark)) { watermarkHit = true; break; }
+        const issue: GithubIssue = {
+          repo,
+          number: item.number,
+          title: item.title,
+          body: item.body,
+          state: item.state,
+          author: item.user.login,
+          url: item.html_url,
+          comment_count: item.comments,
+          label_names: item.labels.length > 0 ? JSON.stringify(item.labels.map((l) => l.name)) : null,
+          created_at: item.created_at,
+          updated_at: item.updated_at,
+          closed_at: item.closed_at,
+        };
+        const existing = this.db.query<GithubIssue, { $repo: string; $number: number }>("SELECT * FROM github_issues WHERE repo = $repo AND number = $number").get({ $repo: repo, $number: item.number });
+        const changed = !existing || existing.updated_at !== issue.updated_at;
+        upsertIssue(this.db, issue);
+        if (changed || !existing) this.publishGithubEvent("github:issue.upsert", issue, issue.updated_at ?? issue.created_at);
+        latest = latest === null || item.updated_at > latest ? item.updated_at : latest;
+      }
+      if (watermarkHit || items.length < 100 || this.pausedUntil > Date.now()) return latest;
     }
     return latest;
   }
@@ -418,34 +431,39 @@ export class GithubPoller {
       updated_at: string;
     }
 
-    const prs = await this.apiGet<PullsResponse[]>(`/repos/${repo}/pulls?state=all&sort=updated&direction=desc&per_page=100`, repo, "pulls");
-    if (!prs) return watermark;
     let latest = watermark;
-    for (const pr of prs) {
-      if (this.shouldStopOnWatermark(pr.updated_at, watermark)) break;
-      const record: GithubPr = {
-        repo,
-        number: pr.number,
-        title: pr.title,
-        body: pr.body,
-        state: pr.merged_at !== null && pr.state === "closed" ? "merged" : pr.state,
-        author: pr.user.login,
-        url: pr.html_url,
-        additions: null,
-        deletions: null,
-        changed_files: null,
-        comment_count: pr.comments,
-        label_names: pr.labels.length > 0 ? JSON.stringify(pr.labels.map((l) => l.name)) : null,
-        created_at: pr.created_at,
-        updated_at: pr.updated_at,
-        merged_at: pr.merged_at,
-        closed_at: pr.closed_at,
-      };
-      const existing = this.db.query<GithubPr, { $repo: string; $number: number }>("SELECT * FROM github_prs WHERE repo = $repo AND number = $number").get({ $repo: repo, $number: pr.number });
-      const changed = !existing || existing.updated_at !== record.updated_at;
-      upsertPr(this.db, record);
-      if (changed || !existing) this.publishGithubEvent("github:pr.upsert", record, record.updated_at ?? record.created_at);
-      latest = latest === null || pr.updated_at > latest ? pr.updated_at : latest;
+    const MAX_PAGES = 20;
+    for (let page = 1; page <= MAX_PAGES; page++) {
+const prs = await this.apiGet<PullsResponse[]>(`/repos/${repo}/pulls?state=all&sort=updated&direction=desc&per_page=100&page=${page}`, repo, "pulls");
+      if (!prs) return latest;
+      let watermarkHit = false;
+      for (const pr of prs) {
+        if (this.shouldStopOnWatermark(pr.updated_at, watermark)) { watermarkHit = true; break; }
+        const record: GithubPr = {
+          repo,
+          number: pr.number,
+          title: pr.title,
+          body: pr.body,
+          state: pr.merged_at !== null && pr.state === "closed" ? "merged" : pr.state,
+          author: pr.user.login,
+          url: pr.html_url,
+          additions: null,
+          deletions: null,
+          changed_files: null,
+          comment_count: pr.comments,
+          label_names: pr.labels.length > 0 ? JSON.stringify(pr.labels.map((l) => l.name)) : null,
+          created_at: pr.created_at,
+          updated_at: pr.updated_at,
+          merged_at: pr.merged_at,
+          closed_at: pr.closed_at,
+        };
+        const existing = this.db.query<GithubPr, { $repo: string; $number: number }>("SELECT * FROM github_prs WHERE repo = $repo AND number = $number").get({ $repo: repo, $number: pr.number });
+        const changed = !existing || existing.updated_at !== record.updated_at;
+        upsertPr(this.db, record);
+        if (changed || !existing) this.publishGithubEvent("github:pr.upsert", record, record.updated_at ?? record.created_at);
+        latest = latest === null || pr.updated_at > latest ? pr.updated_at : latest;
+      }
+      if (watermarkHit || prs.length < 100 || this.pausedUntil > Date.now()) return latest;
     }
     return latest;
   }
@@ -623,6 +641,8 @@ export class GithubPoller {
 
   async backfill(username: string): Promise<void> {
     console.log(`[github-poller] Backfilling user events for ${username} (up to ${this.backfillPages} pages)`);
+    const startedAt = Date.now();
+    emit(makeLogEntry("poller", "cycle.start", "info", undefined, { username, phase: "backfill" }));
 
     for (let page = 1; page <= this.backfillPages; page++) {
       const url = `https://api.github.com/users/${username}/events?per_page=100&page=${page}`;
@@ -649,17 +669,22 @@ export class GithubPoller {
     if (repos.length > 0) {
       await this.backfillPrsAndIssues(repos.map((r) => r.full_name));
     }
+    emit(makeLogEntry("poller", "cycle.complete", "info", undefined, { username, phase: "backfill", repos: repos.length, durationMs: Date.now() - startedAt }));
   }
 
   start(username: string): void {
     if (this.timer) return;
     console.log(`[github-poller] Starting poll loop for ${username}, interval=${this.intervalMs}ms`);
     this.timer = setInterval(async () => {
+      const startedAt = Date.now();
+      emit(makeLogEntry("poller", "cycle.start", "info", undefined, { username, phase: "poll" }));
       try {
         await this.pollUser(username);
         await this.pollRepos();
+        emit(makeLogEntry("poller", "cycle.complete", "info", undefined, { username, phase: "poll", durationMs: Date.now() - startedAt }));
       } catch (err) {
         console.error(`[github-poller] Error polling GitHub:`, err);
+        emit(makeLogEntry("poller", "error", "error", "poll loop failed", { error: (err as Error).message }));
       }
     }, this.intervalMs);
   }

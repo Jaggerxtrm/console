@@ -1,10 +1,11 @@
 import { watch, type FSWatcher } from "node:fs";
 import { join } from "node:path";
 import type { ChannelRegistry } from "../../../gitboard/src/api/ws/channels.ts";
-import type { BeadDependency, BeadIssue, BeadsProject, Memory, ProjectSourceHealth } from "../types/beads.ts";
+import type { BeadDependency, BeadIssue, BeadsProject, Memory } from "../types/beads.ts";
 import { ProjectScanner } from "./project-scanner.ts";
 import { DoltClient } from "./dolt-client.ts";
 import { BeadsReader } from "./beads-reader.ts";
+import { emit, makeLogEntry } from "../../../gitboard/src/core/logger.ts";
 
 const ACTIVE_POLL_MS = 2_000;
 const IDLE_POLL_MS = 10_000;
@@ -21,7 +22,9 @@ export class BeadsChangeWatcher {
   private stopped = false;
   private watchers = new Map<string, FSWatcher>();
   private previous = new Map<string, Snapshot>();
+  private lastCommitHash = new Map<string, string>();
   private queue: PendingEvent[] = [];
+  private lastHealth = new Map<string, boolean>();
 
   constructor(private readonly options: { scanner?: ProjectScanner; registry: ChannelRegistry }) {}
 
@@ -59,11 +62,40 @@ export class BeadsChangeWatcher {
 
   private async poll(project: BeadsProject): Promise<void> {
     const commitHash = await this.getCommitHash(project);
+    const prevHash = this.lastCommitHash.get(project.id);
+    const haveSnapshot = this.previous.has(project.id);
+
+    // Fast path: commit hash unchanged AND we already have a snapshot →
+    // nothing diffed since last tick. Emit health and skip the expensive
+    // readSnapshot (which would otherwise SELECT up to 1000 rows + 3 batched
+    // IN-clause hydration queries per project per 2s on a stable repo).
+    if (commitHash && prevHash === commitHash && haveSnapshot) {
+      emit(makeLogEntry("watcher", "poll.skipped", "debug", undefined, { projectId: project.id }));
+      this.enqueue({
+        projectId: project.id,
+        source: "dolt",
+        version: commitHash,
+        event: "beads:source_health",
+        data: { projectId: project.id, source: "dolt", drift: false, healthy: true },
+      });
+      return;
+    }
+
+    emit(makeLogEntry("watcher", "poll.snapshot_read", "info", undefined, { projectId: project.id }));
     const snapshot = await this.readSnapshot(project);
     const previous = this.previous.get(project.id);
-    const health = this.buildHealth(project, commitHash, previous, snapshot);
+    const drift = Boolean(previous && previous.issues.length !== snapshot.issues.length);
     this.previous.set(project.id, snapshot);
-    this.enqueue({ projectId: project.id, source: commitHash ? "dolt" : "jsonl", version: commitHash ?? String(Date.now()), event: "beads:source_health", data: { health } });
+    if (commitHash) this.lastCommitHash.set(project.id, commitHash);
+    const healthy = Boolean(commitHash);
+    const priorHealthy = this.lastHealth.get(project.id);
+    if (priorHealthy !== healthy) {
+      this.lastHealth.set(project.id, healthy);
+      emit(makeLogEntry("watcher", "source_health.changed", "info", undefined, { projectId: project.id, healthy, source: commitHash ? "dolt" : "jsonl" }));
+    }
+    else this.lastCommitHash.delete(project.id);
+    if (drift) emit(makeLogEntry("watcher", "drift.detected", "warn", undefined, { projectId: project.id }));
+    this.enqueue({ projectId: project.id, source: commitHash ? "dolt" : "jsonl", version: commitHash ?? String(Date.now()), event: "beads:source_health", data: { projectId: project.id, source: commitHash ? "dolt" : "jsonl", drift, healthy } });
     this.diffAndQueue(project.id, previous, snapshot, commitHash ?? String(Date.now()));
   }
 
@@ -81,13 +113,12 @@ export class BeadsChangeWatcher {
       if (before?.status !== "deferred" && issue.status === "deferred") this.enqueue({ projectId, source: "dolt", version, event: "beads:issue.deferred", data: { issue } });
     }
     for (const issue of previous?.issues ?? []) if (!nextIssues.has(issue.id)) this.enqueue({ projectId, source: "dolt", version, event: "beads:issue.delete", data: { issueId: issue.id } });
-    this.diffList(projectId, previous?.deps ?? [], next.deps, version, "beads:dep.upsert", "beads:dep.delete", "id");
-    this.diffList(projectId, previous?.memories ?? [], next.memories, version, "beads:memory.upsert", "beads:memory.delete", "id");
+    this.diffList<Record<string, unknown>>(projectId, previous?.deps as unknown as Record<string, unknown>[] ?? [], next.deps as unknown as Record<string, unknown>[], version, "beads:dep.upsert", "beads:dep.delete", "id");
+    this.diffList<Record<string, unknown>>(projectId, previous?.memories as unknown as Record<string, unknown>[] ?? [], next.memories as unknown as Record<string, unknown>[], version, "beads:memory.upsert", "beads:memory.delete", "id");
     this.diffList(projectId, previous?.kv ?? [], next.kv, version, "beads:kv.upsert", "beads:kv.delete", "key");
   }
 
   private diffList<T extends Record<string, unknown>>(projectId: string, previous: T[], next: T[], version: string, upsertEvent: string, deleteEvent: string, key: keyof T): void {
-    const prev = new Map(previous.map((item) => [String(item[key]), item]));
     const nextIds = new Set(next.map((item) => String(item[key])));
     for (const item of next) this.enqueue({ projectId, source: "dolt", version, event: upsertEvent, data: { [key]: item[key], ...item } });
     for (const item of previous) if (!nextIds.has(String(item[key]))) this.enqueue({ projectId, source: "dolt", version, event: deleteEvent, data: { [key]: item[key] } });
@@ -104,13 +135,14 @@ export class BeadsChangeWatcher {
     this.flushTimer = null;
     const batch = this.queue.splice(0, this.queue.length);
     if (batch.length === 0) return;
+    emit(makeLogEntry("watcher", "batch.published", "info", undefined, { count: batch.length }));
     if (overflow || batch.length > MAX_BATCH) {
       this.registry.publish("beads:changes", "beads:sync_hint", { reason: "overflow" }, batch.at(-1)?.version);
       return;
     }
     const grouped = new Map<string, PendingEvent[]>();
     for (const item of batch) grouped.set(item.projectId, [...(grouped.get(item.projectId) ?? []), item]);
-    for (const [projectId, events] of grouped) this.registry.publish("beads:changes", "beads:batch", { project_id: projectId, issues: events.filter((e) => e.event === "beads:issue.upsert").map((e) => e.data.issue), dependencies: events.filter((e) => e.event === "beads:dep.upsert").map((e) => e.data as BeadDependency), memories: events.filter((e) => e.event === "beads:memory.upsert").map((e) => e.data as Memory), kv: events.filter((e) => e.event === "beads:kv.upsert").map((e) => e.data as { key: string; value: unknown; project_id: string }) }, events.at(-1)?.version);
+    for (const [projectId, events] of grouped) this.registry.publish("beads:changes", "beads:batch", { project_id: projectId, issues: events.filter((e) => e.event === "beads:issue.upsert").map((e) => e.data.issue), dependencies: events.filter((e) => e.event === "beads:dep.upsert").map((e) => e.data as unknown as BeadDependency), memories: events.filter((e) => e.event === "beads:memory.upsert").map((e) => e.data as unknown as Memory), kv: events.filter((e) => e.event === "beads:kv.upsert").map((e) => e.data as { key: string; value: unknown; project_id: string }) }, events.at(-1)?.version);
     for (const item of batch) this.registry.publish("beads:changes", item.event, { projectId: item.projectId, source: item.source, ...item.data }, item.version);
   }
 
@@ -120,7 +152,14 @@ export class BeadsChangeWatcher {
   }
 
   private async readIssues(project: BeadsProject): Promise<BeadIssue[]> {
-    try { if (project.doltPort) return await new DoltClient({ host: "127.0.0.1", port: project.doltPort, database: project.doltDatabase }).getIssues({ limit: 1000 }); } catch {}
+    const client = project.doltPort ? new DoltClient({ host: "127.0.0.1", port: project.doltPort, database: project.doltDatabase }) : null;
+    if (client && !client.isBreakerOpen()) {
+      try {
+        return await client.getIssues({ limit: 1000 });
+      } catch {
+        // fall through to JSONL
+      }
+    }
     try { return (await Bun.file(join(project.beadsPath, "issues.jsonl")).text()).split("\n").flatMap((line) => BeadsReader.parseIssueLine(line)).map((issue) => ({ ...issue, project_id: project.id })); } catch { return []; }
   }
 
@@ -133,7 +172,4 @@ export class BeadsChangeWatcher {
     try { const client = new DoltClient({ host: "127.0.0.1", port: project.doltPort, database: project.doltDatabase }); await client.connect(); return await client.getCommitHash(); } catch { return null; }
   }
 
-  private buildHealth(project: BeadsProject, commitHash: string | null, previous?: Snapshot, next?: Snapshot): ProjectSourceHealth[] {
-    return [{ kind: "dolt", state: commitHash ? "available" : "missing", detail: commitHash ?? "fallback" }, { kind: "jsonl", state: "available", path: join(project.beadsPath, "issues.jsonl"), detail: previous && next && previous.issues.length !== next.issues.length ? "drift" : undefined }];
-  }
 }

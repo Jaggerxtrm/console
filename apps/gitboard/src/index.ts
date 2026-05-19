@@ -4,10 +4,12 @@ import { createDatabase } from "./core/store.ts";
 import { GithubPoller, getGithubToken, getAuthenticatedUsername } from "./core/github-poller.ts";
 import { discoverAndInsert } from "./core/github-discover.ts";
 import { startServer, getCurrentRegistry } from "./api/server.ts";
+import { setLogLevel } from "./core/logger.ts";
 
 const DB_PATH = process.env.AGENT_FORGE_DB ?? `${process.env.HOME}/.agent-forge/state.db`;
 mkdirSync(dirname(DB_PATH), { recursive: true });
 const PORT = Number(process.env.PORT ?? 3000);
+setLogLevel((process.env.LOG_LEVEL as "debug" | "info" | "warn" | "error" | undefined) ?? "info");
 
 const db = createDatabase(DB_PATH);
 console.log(`[gitboard] Database initialized at ${DB_PATH}`);

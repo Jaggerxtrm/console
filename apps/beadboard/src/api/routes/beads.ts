@@ -289,17 +289,35 @@ async function getStatsFromProject(projectId: string): Promise<{
   }
 
   const issues = await getIssuesFromProject(projectId, { limit: 1000 });
-  const stats = issues.reduce((acc, issue) => {
-    acc.total += 1;
-    if (issue.status in acc) acc[issue.status as keyof typeof acc] += 1;
-    const priorityKey = `p${issue.priority}`;
-    const numericPriorityKey = String(issue.priority);
-    if (priorityKey in acc.by_priority) acc.by_priority[priorityKey] += 1;
-    acc.by_priority[numericPriorityKey] = (acc.by_priority[numericPriorityKey] ?? 0) + 1;
-    const typeKey = issue.issue_type;
-    if (typeKey in acc.by_type) acc.by_type[typeKey] += 1;
-    return acc;
-  }, { total: 0, open: 0, in_progress: 0, blocked: 0, closed: 0, by_priority: { p0: 0, p1: 0, p2: 0, p3: 0, p4: 0 }, by_type: { bug: 0, feature: 0, task: 0, epic: 0, chore: 0 } });
+  type ProjectStats = {
+    total: number;
+    open: number;
+    in_progress: number;
+    blocked: number;
+    closed: number;
+    by_priority: Record<string, number>;
+    by_type: Record<string, number>;
+  };
+  const stats = issues.reduce<ProjectStats>(
+    (acc, issue) => {
+      acc.total += 1;
+      if (issue.status in acc) acc[issue.status as keyof Omit<ProjectStats, "by_priority" | "by_type">] += 1;
+      const priorityKey = `p${issue.priority}`;
+      acc.by_priority[priorityKey] = (acc.by_priority[priorityKey] ?? 0) + 1;
+      const typeKey = issue.issue_type;
+      acc.by_type[typeKey] = (acc.by_type[typeKey] ?? 0) + 1;
+      return acc;
+    },
+    {
+      total: 0,
+      open: 0,
+      in_progress: 0,
+      blocked: 0,
+      closed: 0,
+      by_priority: { p0: 0, p1: 0, p2: 0, p3: 0, p4: 0 },
+      by_type: { bug: 0, feature: 0, task: 0, epic: 0, chore: 0 },
+    },
+  );
 
   return stats;
 }

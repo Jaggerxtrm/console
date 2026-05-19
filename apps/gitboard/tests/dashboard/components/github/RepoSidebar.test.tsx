@@ -10,7 +10,7 @@ const repos = [
 ];
 
 const stats = {
-  "owner/api": { full_name: "owner/api", pushes: 12, prs_open: 2, prs_closed: 3 },
+  "owner/api": { full_name: "owner/api", pushes: 12, prs_open: 2, prs_closed: 3, issues_open: 4, releases: 1, last_event_at: "2026-03-07T10:00:00Z" },
 };
 
 const noop = () => {};

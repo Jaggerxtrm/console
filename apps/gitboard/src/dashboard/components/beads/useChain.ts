@@ -27,19 +27,20 @@ export function useChain(beadId: string | null): ChainState {
     async function loadChain() {
       setLoading(true);
       try {
-        const jobsRes = await fetch(`/api/specialists/jobs?bead_id=${enc(beadId)}`, { signal: controller.signal });
+        const jobsRes = await fetch(`/api/specialists/jobs?bead_id=${enc(beadId ?? "")}`, { signal: controller.signal });
         if (!jobsRes.ok) {
           if (alive) setChain(null);
           return;
         }
         const jobsData = await jobsRes.json() as { jobs?: Array<{ chainId?: string | null; chain_id?: string | null }> };
         const chainId = jobsData.jobs?.find((job) => job.chainId || job.chain_id)?.chainId ?? jobsData.jobs?.find((job) => job.chainId || job.chain_id)?.chain_id ?? null;
-        if (!chainId) {
+        const chainIdParam = chainId ?? "";
+        if (!chainIdParam) {
           if (alive) setChain(null);
           return;
         }
 
-        const chainRes = await fetch(`/api/specialists/chains/${enc(chainId)}`, { signal: controller.signal });
+        const chainRes = await fetch(`/api/specialists/chains/${enc(chainIdParam)}`, { signal: controller.signal });
         if (!chainRes.ok) {
           if (alive) setChain(null);
           return;

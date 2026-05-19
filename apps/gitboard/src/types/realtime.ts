@@ -29,6 +29,9 @@ export type GithubRealtimeEvent =
   | "github:sync_hint"
   | "github:rate_limit";
 
+export type SystemRealtimeEvent = "system:log";
+export type SystemLogPayload = import("./log.ts").LogEntry;
+
 export type BeadsRealtimeEvent =
   | "beads:issue.upsert"
   | "beads:issue.close"

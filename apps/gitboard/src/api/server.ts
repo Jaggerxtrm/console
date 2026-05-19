@@ -4,6 +4,8 @@ import { cors } from "hono/cors";
 import type { Database } from "bun:sqlite";
 import { createGithubRouter } from "./routes/github.ts";
 import { createInternalDoltHealthRouter } from "./routes/internal-dolt-health.ts";
+import { createInternalLogsRouter } from "./routes/internal-logs.ts";
+import { setRealtimePublisher, emit, makeLogEntry } from "../core/logger.ts";
 import { beadsRoutes } from "../../../beadboard/src/api/routes/beads.ts";
 import { createSpecialistsRouter } from "./routes/specialists.ts";
 import { ChannelRegistry } from "./ws/channels.ts";
@@ -38,6 +40,7 @@ export function createApp(db: Database): {
   const registry = new ChannelRegistry();
   currentRegistry = registry;
   const wsHandler = new WsHandler(registry);
+  setRealtimePublisher(registry);
   currentWatcher = new BeadsChangeWatcher({ registry });
   currentWatcher.start();
   currentObservabilityWatcher?.stop();
@@ -45,6 +48,19 @@ export function createApp(db: Database): {
   currentObservabilityWatcher.start();
 
   app.use("*", cors());
+  app.use("*", async (c, next) => {
+    const start = Date.now();
+    try {
+      await next();
+    } catch (error) {
+      emit(makeLogEntry("api", "request.error", "error", "request failed", { path: c.req.path, error: (error as Error).message }));
+      throw error;
+    } finally {
+      const ms = Date.now() - start;
+      if (ms > 500) emit(makeLogEntry("api", "request.slow", "warn", "slow request", { path: c.req.path, ms }));
+      if (c.res.status >= 400) emit(makeLogEntry("api", "request.error", c.res.status >= 500 ? "error" : "warn", "request failed", { path: c.req.path, status: c.res.status }));
+    }
+  });
 
   // Health check
   app.get("/health", (c) => c.json({ status: "ok" }));
@@ -54,6 +70,7 @@ export function createApp(db: Database): {
   app.route("/api/beads", beadsRoutes);
   app.route("/api/specialists", createSpecialistsRouter());
   app.route("/api/internal", createInternalDoltHealthRouter());
+  app.route("/api/internal", createInternalLogsRouter());
 
   // Serve built dashboards in production
   if (process.env.NODE_ENV === "production") {

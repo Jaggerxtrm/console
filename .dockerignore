@@ -1,36 +1,11 @@
-# Dependencies
-node_modules
-
-# Build outputs
-dist
-*.tsbuildinfo
-
-# Test files
-**/*.test.ts
-**/*.spec.ts
-tests
-coverage
-
-# Development files
 .git
-.github
-.gitignore
+.beads
+.xtrm
+.worktrees
+**/node_modules
+node_modules
+dist
+coverage
+*.tsbuildinfo
 .env
 .env.*
-*.log
-*.md
-!README.md
-
-# IDE
-.vscode
-.idea
-*.swp
-*.swo
-
-# OS files
-.DS_Store
-Thumbs.db
-
-# Beads data (mounted at runtime)
-.beads
-beads

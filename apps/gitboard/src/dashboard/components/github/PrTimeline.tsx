@@ -373,11 +373,14 @@ function ConversationEntry({ item }: { item: ConversationItem }) {
           <strong>{item.actor}</strong>
           <span>{item.label}</span>
           <time>{formatDateTime(item.created_at)}</time>
-          {item.url && <a href={item.url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} style={{ display: "inline-flex", alignItems: "center" }}><LinkExternalIcon size={12} /></a>}
+          {item.url && (() => {
+            const url = item.url ?? "";
+            return <a href={url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} style={{ display: "inline-flex", alignItems: "center" }}><LinkExternalIcon size={12} /></a>;
+          })()}
         </div>
         {display && (
           <div>
-            <div className="pr-body-text"><RichPrBody body={showMore ? body : display.visible} /></div>
+            <div className="pr-body-text"><RichPrBody body={showMore ? (body ?? "") : display.visible} /></div>
             {display.hasMore && !showMore && (
               <button className="pr-show-more" onClick={(e) => { e.stopPropagation(); setShowMore(true); }}>
                 show full text

@@ -32,7 +32,7 @@ export class ProjectScanner {
    * Scan all configured paths for beads projects
    */
   async scanAll(): Promise<BeadsProject[]> {
-    const projects: BeadProject[] = [];
+    const projects: BeadsProject[] = [];
 
     const pathsToScan = this.config.scanPaths?.length 
       ? this.config.scanPaths 

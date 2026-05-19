@@ -1,4 +1,5 @@
 import { REALTIME_PROTOCOL_VERSION } from "../../types/realtime.ts";
+import { emit, makeLogEntry } from "../../core/logger.ts";
 import type { ChannelName, ChannelRegistry, Subscriber, WsMessage } from "./channels.ts";
 
 export interface WsConnection {
@@ -39,6 +40,7 @@ export class WsHandler {
     const id = `ws-${this.nextId++}`;
     const conn: WsConnection = { id, raw, subscriptions: new Set() };
     this.connections.set(id, conn);
+    emit(makeLogEntry("ws", "client.connected", "info", undefined, { id }));
 
     const subscriber: Subscriber = {
       id,
@@ -94,6 +96,7 @@ export class WsHandler {
     if (!conn?.subscriber) return;
     this.registry.unsubscribeAll(conn.subscriber);
     this.connections.delete(connId);
+    emit(makeLogEntry("ws", "client.disconnected", "info", undefined, { id: connId }));
   }
 
   handleMessage(connId: string, raw: string): void {
@@ -114,6 +117,7 @@ export class WsHandler {
     if (action === "subscribe") {
       const version = (msg as Partial<SubscribeMessage>).version;
       if (version !== String(REALTIME_PROTOCOL_VERSION)) {
+        emit(makeLogEntry("ws", "subscribe.version_mismatch", "warn", undefined, { id: connId, channel, version }));
         this.connections.get(connId)?.raw.close(4001);
         return;
       }

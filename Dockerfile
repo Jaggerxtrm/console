@@ -1,34 +1,25 @@
-# Single-stage build for XTRM unified app (gitboard + beadboard)
-FROM oven/bun:1.2-alpine
-
+FROM oven/bun:1 AS builder
 WORKDIR /app
 
-# Copy everything
 COPY . .
-
-# Install dependencies at workspace root
 RUN bun install
-
-# Build packages
-RUN bun run build:packages
-
-# Build both dashboards
 RUN cd apps/gitboard && bun run build:dashboard
-RUN cd apps/beadboard && bun run build:dashboard
 
-# Remove broken symlinks
-RUN rm -rf apps/beadboard/node_modules apps/gitboard/node_modules
-
-# Non-root user + data directory
-RUN addgroup -g 1001 -S xtrm && adduser -S xtrm -u 1001 -G xtrm \
- && mkdir -p /home/xtrm/.xtrm && chown xtrm:xtrm /home/xtrm/.xtrm \
- && chown -R xtrm:xtrm /app
-
-USER xtrm
-
-ENV PORT=3000
+FROM oven/bun:1-slim AS runtime
+WORKDIR /app
 ENV NODE_ENV=production
+ENV PORT=3000
+ENV AGENT_FORGE_DB=/data/state.db
+
+COPY --from=builder /app/package.json /app/package.json
+COPY --from=builder /app/bun.lock /app/bun.lock
+COPY --from=builder /app/pnpm-workspace.yaml /app/pnpm-workspace.yaml
+COPY --from=builder /app/apps /app/apps
+COPY --from=builder /app/packages /app/packages
+COPY --from=builder /app/dist /app/dist
+
+RUN bun install --production --frozen-lockfile
+RUN mkdir -p /data /projects
 
 EXPOSE 3000
-
-CMD ["bun", "/app/apps/gitboard/src/index.ts"]
+CMD ["bun", "apps/gitboard/src/index.ts"]
