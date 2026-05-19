@@ -4609,3 +4609,42 @@ body:has(.ide-shell[data-theme="light"]) { background: #fff !important; }
 .ide-shell[data-theme="light"] .row.is-blocked-child .id::before {
   color: rgba(15, 23, 42, 0.45);
 }
+
+.console-specialists-shell { display: flex; height: 100%; min-height: 0; min-width: 0; background: var(--surface-primary); }
+.console-specialists-list-pane { flex: 0 0 60%; min-width: 0; display: flex; flex-direction: column; border-right: 1px solid var(--border-subtle); overflow: hidden; }
+.console-specialists-detail-pane { flex: 0 0 40%; min-width: 0; overflow: hidden; }
+.console-specialists-filters { display: flex; gap: 6px; padding: 8px 10px; border-bottom: 1px solid var(--border-subtle); flex-wrap: wrap; }
+.console-specialists-card-list { overflow: auto; min-height: 0; }
+.console-specialists-card { width: 100%; display: flex; flex-direction: column; gap: 6px; padding: 8px 12px; background: transparent; border: 0; border-bottom: 1px solid var(--border-subtle); color: var(--text-primary); text-align: left; border-radius: 0; }
+.console-specialists-card:hover { background: var(--row-hover); }
+.console-specialists-card.is-selected { border-left: 2px solid var(--accent); padding-left: 11px; }
+.console-specialists-card.is-live { animation: fui-pulse 2.8s ease-in-out infinite; }
+.console-specialists-card-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.console-specialists-card-header { font-family: var(--font-ui); }
+.console-specialists-card-id, .console-specialists-card-count, .console-specialists-card-badge, .console-specialists-role-chip, .console-specialists-detail-id, .console-specialists-job-id, .console-specialists-meta, .console-specialists-open-bead, .console-specialists-empty, .console-specialists-empty-state-message, .console-specialists-detail-empty { font-family: var(--font-mono); }
+.console-specialists-card-id { color: var(--text-muted); flex: 0 0 auto; }
+.console-specialists-card-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); }
+.console-specialists-card-badge { display: inline-flex; align-items: center; gap: 4px; color: var(--text-secondary); text-transform: lowercase; }
+.console-specialists-card-count { color: var(--text-muted); margin-left: auto; }
+.console-specialists-card-roles { flex-wrap: wrap; }
+.console-specialists-role-chip { display: inline-flex; align-items: center; gap: 4px; padding: 0 6px; color: var(--text-secondary); border: 1px solid var(--border-subtle); }
+.console-specialists-card-footer { justify-content: space-between; color: var(--text-muted); }
+.console-specialists-card-footer > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1 1 auto; text-align: right; }
+.console-specialists-detail { height: 100%; min-height: 0; display: flex; flex-direction: column; overflow: auto; padding: 12px; }
+.console-specialists-detail-empty-state { align-items: center; justify-content: center; gap: 8px; color: var(--text-muted); }
+.console-specialists-empty-mark { color: var(--text-muted); }
+.console-specialists-detail-header { display: flex; justify-content: space-between; gap: 12px; align-items: start; margin-bottom: 10px; }
+.console-specialists-detail-id { color: var(--text-muted); }
+.console-specialists-detail-title { color: var(--text-primary); font-family: var(--font-ui); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.console-specialists-open-bead { background: transparent; border: 1px solid var(--border-subtle); color: var(--text-primary); padding: 4px 8px; cursor: pointer; }
+.console-specialists-timeline { display: flex; flex-direction: column; gap: 6px; }
+.console-specialists-timeline-row { display: grid; grid-template-columns: auto 120px 140px 1fr; gap: 8px; align-items: center; padding: 6px 8px; border: 1px solid var(--border-subtle); }
+.console-specialists-status { color: var(--text-secondary); }
+.console-specialists-role, .console-specialists-job-id, .console-specialists-meta { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.console-specialists-role { color: var(--text-primary); }
+.console-specialists-job-id, .console-specialists-meta { color: var(--text-muted); }
+.console-specialists-detail-block { margin-top: 12px; }
+.console-specialists-section-title { color: var(--text-secondary); font-family: var(--font-mono); margin-bottom: 6px; }
+.console-specialists-last-output { white-space: pre-wrap; color: var(--text-primary); border: 1px solid var(--border-subtle); padding: 8px; min-height: 80px; }
+.console-specialists-empty-state-message { display: flex; align-items: center; gap: 6px; color: var(--text-muted); padding: 12px; }
+.console-specialists-empty { display: flex; align-items: center; gap: 6px; color: var(--text-muted); padding: 8px 12px; }
