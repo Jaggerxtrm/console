@@ -38,11 +38,11 @@ function writeJSON(key: string, value: unknown): void {
   }
 }
 
-const initialSelection = (() => {
-  const next = readJSON<SidebarSelection>(LS.selection, { surface: "github", tab: DEFAULT_TAB.github, repo: null });
-  if ((next.surface as string) === "beads") return { surface: "console", tab: DEFAULT_TAB.console, repo: next.repo };
-  return next;
-})();
+const initialSelection = readJSON<SidebarSelection>(LS.selection, {
+  surface: "github",
+  tab: DEFAULT_TAB.github,
+  repo: null,
+});
 const initialCollapsed = readJSON<boolean>(LS.collapsed, false);
 const initialTheme = readJSON<ThemeMode>(LS.theme, "dark");
 const initialDrawerOpen = readJSON<boolean>(LS.drawerOpen, false);

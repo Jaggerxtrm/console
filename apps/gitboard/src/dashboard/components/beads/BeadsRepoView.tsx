@@ -4,7 +4,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { IssueFeed } from "./IssueFeed.tsx";
 import { IssueOverlay } from "./IssueOverlay.tsx";
-import { useBeadSideDrawer } from "../../hooks/useBeadSideDrawer.ts";
 import { beadsApi } from "../../lib/beads-api.ts";
 import type {
   BeadIssue,
@@ -41,8 +40,6 @@ export function BeadsRepoView({ repo, tab }: { repo: RepoNode; tab: BeadsTab }) 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<BeadIssueDetail | null>(null);
   const [loadingDetailId, setLoadingDetailId] = useState<string | null>(null);
-  const setDrawerContext = useBeadSideDrawer((s) => s.setContext);
-  const openDrawer = useBeadSideDrawer((s) => s.open);
 
   const tail = useMemo(() => tailName(repo.fullName), [repo.fullName]);
 
@@ -126,7 +123,6 @@ export function BeadsRepoView({ repo, tab }: { repo: RepoNode; tab: BeadsTab }) 
           selectedIssueDetail={detail}
           loadingDetailId={loadingDetailId}
           onIssueSelect={onIssueSelect}
-          onIssueOpen={openDrawer}
           getAgent={() => null}
           projectId={state.project.id}
         />

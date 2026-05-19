@@ -22,8 +22,6 @@ const BEADBOARD_URL = import.meta.env.VITE_BEADBOARD_URL || "/beadboard";
 
 export function App() {
   const path = window.location.pathname;
-  const selection = useShellStore.getState().selection;
-  if ((selection.surface as string) === "beads") useShellStore.getState().setSurface("console");
   // /gitboard/legacy → old TabBar shell (preserved for parity testing)
   // /gitboard/design-preview, /preview → design preview
   // default → unified IDE shell (forge-7xu)
