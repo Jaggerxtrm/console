@@ -36,6 +36,7 @@ describe("terminal stream protocol", () => {
     expect(validateTerminalStreamMessage({})).toBe(false);
     expect(validateTerminalStreamMessage({ version: 1, kind: "open", streamId: "s", sessionId: "x", timestamp: "t", payload: {} })).toBe(false);
     expect(validateTerminalStreamMessage({ version: "1.0.0", kind: "open", streamId: "s", sessionId: "x", timestamp: "t", payload: { providerKind: "bad", capabilities: [] } })).toBe(false);
+    expect(validateTerminalStreamMessage({ version: "1.0.0", kind: "open", streamId: "s", sessionId: "x", timestamp: "t", payload: { providerKind: "pty", capabilities: ["nope"] } })).toBe(false);
   });
 
   it("allows only valid lifecycle transitions", () => {

@@ -216,7 +216,9 @@ export function validateTerminalStreamMessage(value: unknown): value is Terminal
 
   switch (record.kind) {
     case "open":
-      return isTerminalProviderKind(payload.providerKind) && isStringArray(payload.capabilities);
+      return isTerminalProviderKind(payload.providerKind)
+        && Array.isArray(payload.capabilities)
+        && payload.capabilities.every((capability) => isTerminalCapability(capability));
     case "attach":
       return typeof payload.resume === "boolean";
     case "detach":
