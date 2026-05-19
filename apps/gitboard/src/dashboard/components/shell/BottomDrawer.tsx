@@ -6,7 +6,7 @@ import { useShellStore } from "../../stores/shell.ts";
 
 export type BottomDrawerTab = "logs" | "specialists";
 
-const MAXIMIZED_OFFSET = 60;
+const MAXIMIZED_OFFSET = 24;
 
 export function BottomDrawer() {
   const open = useShellStore((s) => s.drawerOpen);
