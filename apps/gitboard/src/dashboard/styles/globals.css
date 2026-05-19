@@ -1753,9 +1753,9 @@ body {
   background: transparent;
   color: var(--accent-blue);
   border-radius: 0;
-  font-size: var(--header-font-size);
-  font-weight: 700;
-  letter-spacing: 0.10em;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
   text-transform: none;
   white-space: nowrap;
 }
