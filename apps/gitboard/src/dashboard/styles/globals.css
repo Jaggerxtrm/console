@@ -2769,7 +2769,7 @@ body {
  * ============================================================ */
 
 .shell-sidebar {
-  background: #000;
+  background: #101010;
   border-right: 1px solid #1c1c1c;
   color: var(--text-secondary);
   display: flex;
@@ -3167,7 +3167,7 @@ body {
 .module-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; width: 100%; }
 .module-list > * { min-width: 0; }
 .feed-completed-section { margin-top: 16px; border-top: 1px solid var(--border-subtle); }
-.feed-section-title { height: 28px; display: flex; align-items: center; gap: 8px; padding: 0 18px; color: var(--text-muted); font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: none; background: #000; }
+.feed-section-title { height: 28px; display: flex; align-items: center; gap: 8px; padding: 0 18px; color: var(--text-muted); font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: none; background: #101010; }
 .feed-section-title span { color: inherit; }
 .feed-section-toggle { width: 100%; border: 0; text-align: left; cursor: pointer; }
 .feed-section-toggle:hover { color: var(--text-secondary); }
@@ -3511,11 +3511,11 @@ body {
  * forge-ci9: black bg, third-level sidebar, per-leaf MainPane
  * ============================================================ */
 
-/* Black everywhere */
+/* Dark background everywhere */
 body, .shell-app, .shell-main {
-  background: #000 !important;
+  background: #101010 !important;
 }
-.shell-sidebar { background: #000 !important; }
+.shell-sidebar { background: #101010 !important; }
 
 /* Sidebar section (level-2) rows: /github · /beads */
 .shell-row-section {
@@ -3526,7 +3526,7 @@ body, .shell-app, .shell-main {
   position: relative;
 }
 .shell-row-section::before {
-  background: #000;
+  background: #101010;
   content: "";
   height: 100%;
   left: 14px;
@@ -3548,7 +3548,7 @@ body, .shell-app, .shell-main {
   position: relative;
 }
 .shell-row-leaf::before {
-  background: #000;
+  background: #101010;
   content: "";
   height: 100%;
   left: 26px;
@@ -3600,7 +3600,7 @@ body, .shell-app, .shell-main {
 }
 .shell-crumb-bar {
   align-items: center;
-  background: #000;
+  background: #101010;
   border-bottom: 1px solid #1c1c1c;
   color: var(--text-muted);
   display: flex;
@@ -3630,7 +3630,7 @@ body, .shell-app, .shell-main {
  * ============================================================ */
 
 .shell-app {
-  --gb-bg:         #000000;          /* operator: pure black */
+  --gb-bg:         #101010;          /* operator: soft dark */
   --gb-surface-1:  #0a0a0a;          /* row hover, crumb bar */
   --gb-surface-2:  #111111;          /* selected row bg */
   --gb-surface-3:  #1a1a1a;          /* elevated cards */
@@ -3813,7 +3813,7 @@ body, .shell-app, .shell-main {
 }
 
 /* Body bg for the shell route only */
-body:has(.shell-app) { background: #000 !important; }
+body:has(.shell-app) { background: #101010 !important; }
 
 /* ============================================================
  * forge-7xu: Unified IDE Shell — TopBar + Sidebar + MainPane
@@ -3821,14 +3821,14 @@ body:has(.shell-app) { background: #000 !important; }
  * ============================================================ */
 
 .ide-shell {
-  --bg: #141414;
-  --surface-backdrop: #141414;
-  --surface-elevated: #141414;
-  --surface-primary: #141414;
+  --bg: #101010;
+  --surface-backdrop: #101010;
+  --surface-elevated: #101010;
+  --surface-primary: #101010;
   --surface-secondary: #1a1a1a;
   --surface-tertiary: #222222;
   --surface-quaternary: #303030;
-  --surface-1: #141414;
+  --surface-1: #101010;
   --surface-2: #1a1a1a;
   --surface-3: #222222;
   --surface-hover: rgba(255, 255, 255, 0.06);
@@ -3897,7 +3897,7 @@ body:has(.shell-app) { background: #000 !important; }
 /* ── TopBar ───────────────────────────────────────────────────── */
 .ide-topbar {
   align-items: stretch;
-  background: #000;
+  background: #101010;
   border-bottom: 1px solid #1c1c1c;
   display: flex;
   flex-shrink: 0;
@@ -3905,7 +3905,7 @@ body:has(.shell-app) { background: #000 !important; }
 }
 .ide-topbar-switch {
   align-items: stretch;
-  background: #000;
+  background: #101010;
   border-right: 1px solid #1c1c1c;
   display: flex;
   flex-shrink: 0;
@@ -3928,7 +3928,7 @@ body:has(.shell-app) { background: #000 !important; }
 }
 .ide-surface-btn:hover { color: var(--text-primary); }
 .ide-surface-btn.is-active {
-  background: #000;
+  background: #101010;
   color: var(--text-primary);
 }
 .ide-surface-btn:focus-visible {
@@ -3974,7 +3974,7 @@ body:has(.shell-app) { background: #000 !important; }
 
 /* ── Sidebar ──────────────────────────────────────────────────── */
 .ide-sidebar {
-  background: #000;
+  background: #101010;
   border-right: 1px solid #1c1c1c;
   display: flex;
   flex-direction: column;
@@ -4013,7 +4013,7 @@ body:has(.shell-app) { background: #000 !important; }
   text-transform: uppercase;
 }
 .ide-sidebar-count {
-  background: #000;
+  background: #101010;
   border-radius: 3px;
   color: var(--text-muted);
   font-size: 10px;
@@ -4032,7 +4032,7 @@ body:has(.shell-app) { background: #000 !important; }
   justify-content: center;
   width: 22px;
 }
-.ide-sidebar-toggle:hover { background: #000; color: var(--text-primary); }
+.ide-sidebar-toggle:hover { background: #101010; color: var(--text-primary); }
 .ide-sidebar-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
 .ide-sidebar-body {
@@ -4072,7 +4072,7 @@ body:has(.shell-app) { background: #000 !important; }
   transition: background 120ms;
   width: 100%;
 }
-.ide-repo-row:hover { background: #000; color: var(--text-primary); }
+.ide-repo-row:hover { background: #101010; color: var(--text-primary); }
 .ide-repo-row.is-active {
   background: rgba(142, 210, 220, 0.08);
   color: var(--text-primary);
@@ -4098,7 +4098,7 @@ body:has(.shell-app) { background: #000 !important; }
   white-space: nowrap;
 }
 .ide-repo-badge {
-  background: #000;
+  background: #101010;
   border-radius: 3px;
   color: var(--text-muted);
   flex-shrink: 0;
@@ -4115,7 +4115,7 @@ body:has(.shell-app) { background: #000 !important; }
 .shell-main, /* legacy class still around */
 .ide-shell main,
 .ide-shell .shell-main {
-  background: #000;
+  background: #101010;
 }
 
 .ide-empty {
@@ -4131,7 +4131,7 @@ body:has(.shell-app) { background: #000 !important; }
 }
 .ide-empty p { color: var(--text-muted); font-size: 13px; margin: 0 0 16px; }
 .ide-empty code {
-  background: #000;
+  background: #101010;
   border-radius: 3px;
   font-family: var(--font-mono);
   font-size: 12px;
@@ -4152,7 +4152,7 @@ body:has(.shell-app) { background: #000 !important; }
 }
 .ide-empty-card {
   align-items: baseline;
-  background: #000;
+  background: #101010;
   border: 1px solid #1c1c1c;
   border-radius: 4px;
   color: var(--text-secondary);
@@ -4165,7 +4165,7 @@ body:has(.shell-app) { background: #000 !important; }
   transition: background 120ms, border-color 120ms;
   width: 100%;
 }
-.ide-empty-card:hover { background: #000; border-color: var(--accent); }
+.ide-empty-card:hover { background: #101010; border-color: var(--accent); }
 .ide-empty-card-name { color: var(--text-primary); flex: 1; font-weight: 500; }
 .ide-empty-card-meta { color: var(--text-muted); font-size: 11px; }
 
@@ -4173,7 +4173,7 @@ body:has(.shell-app) { background: #000 !important; }
 .ide-error-msg { color: var(--accent-red); font-size: 13px; }
 .ide-btn {
   align-self: flex-start;
-  background: #000;
+  background: #101010;
   border: 1px solid #2a2a2a;
   border-radius: 4px;
   color: var(--text-primary);
@@ -4182,7 +4182,7 @@ body:has(.shell-app) { background: #000 !important; }
   font-size: 12px;
   padding: 6px 14px;
 }
-.ide-btn:hover { background: #000; }
+.ide-btn:hover { background: #101010; }
 .ide-loading { color: var(--text-muted); padding: 24px; font-size: 13px; }
 
 /* MainPane wraps tab content in a scrollable column */
@@ -4199,7 +4199,7 @@ body:has(.shell-app) { background: #000 !important; }
 .ide-beads-pane { height: 100%; min-height: 0; display: flex; flex-direction: column; }
 .ide-list { padding: 20px; display: grid; gap: 10px; }
 .ide-list-card {
-  background: #000;
+  background: #101010;
   border: 1px solid #1c1c1c;
   border-radius: 4px;
   padding: 12px 14px;
@@ -4217,7 +4217,7 @@ body:has(.shell-app) { background: #000 !important; }
   font-family: var(--font-mono);
 }
 .ide-list-card-tag {
-  background: #000;
+  background: #101010;
   border-radius: 3px;
   color: var(--text-muted);
   font-size: 10px;
@@ -4244,7 +4244,7 @@ body:has(.shell-app) { background: #000 !important; }
 /* ── Triage ───────────────────────────────────────────────── */
 .ide-triage { padding: 16px 20px; display: grid; gap: 14px; }
 .ide-triage-section {
-  background: #000;
+  background: #101010;
   border: 1px solid #1c1c1c;
   border-radius: 4px;
   padding: 12px 14px;
@@ -4260,7 +4260,7 @@ body:has(.shell-app) { background: #000 !important; }
 .ide-triage-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
 .ide-triage-row {
   align-items: center;
-  background: #000;
+  background: #101010;
   border: 1px solid #1a1a1a;
   border-radius: 3px;
   color: var(--text-secondary);
@@ -4274,7 +4274,7 @@ body:has(.shell-app) { background: #000 !important; }
   text-align: left;
   width: 100%;
 }
-.ide-triage-row:hover { background: #000; border-color: #2a2a2a; }
+.ide-triage-row:hover { background: #101010; border-color: #2a2a2a; }
 .ide-triage-id { color: var(--text-muted); font-family: var(--font-mono); font-size: 11px; }
 .ide-triage-pri { color: var(--accent-orange); font-family: var(--font-mono); font-size: 11px; }
 .ide-triage-row-title {
@@ -4290,7 +4290,7 @@ body:has(.shell-app) { background: #000 !important; }
   grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
 }
 .ide-stat {
-  background: #000;
+  background: #101010;
   border: 1px solid #1a1a1a;
   border-radius: 3px;
   padding: 8px 10px;
@@ -4303,7 +4303,7 @@ body:has(.shell-app) { background: #000 !important; }
 /* ── Skeleton ─────────────────────────────────────────────── */
 .ide-skeleton { display: flex; gap: 8px; padding: 16px; }
 .ide-skeleton-col {
-  background: #000;
+  background: #101010;
   border: 1px solid #1c1c1c;
   border-radius: 4px;
   display: flex;
@@ -4314,7 +4314,7 @@ body:has(.shell-app) { background: #000 !important; }
 }
 .ide-skeleton-head, .ide-skeleton-card {
   animation: ideSkelPulse 1.4s ease-in-out infinite;
-  background: #000;
+  background: #101010;
   border-radius: 3px;
   height: 12px;
 }
@@ -4376,7 +4376,7 @@ body:has(.shell-app) { background: #000 !important; }
 .drawer-log-level.is-error { color: #e57373; }
 /* forge-qc0: MainPane wrapper must give virtualized timelines a sized parent. */
 .ide-main {
-  background: #000;
+  background: #101010;
   display: flex;
   flex: 1;
   flex-direction: column;
@@ -4393,7 +4393,7 @@ body:has(.shell-app) { background: #000 !important; }
 
 /* forge-qc0: lock .ide-shell to viewport so virtualized timelines get a fixed parent. */
 html, body, #root { height: 100%; }
-body:has(.ide-shell) { overflow: hidden; }
+body:has(.ide-shell) { background: #101010 !important; overflow: hidden; }
 .ide-shell {
   height: 100vh !important;
   min-height: 0 !important;
