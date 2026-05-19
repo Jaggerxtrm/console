@@ -10,7 +10,6 @@ import { ReleaseTimeline } from "../github/ReleaseTimeline.tsx";
 import { ReadmeView, ChangelogView, ReportsView } from "../github/RepoContentPanels.tsx";
 import { BeadsRepoView } from "../beads/BeadsRepoView.tsx";
 import { Observability } from "../../pages/console/Observability.tsx";
-import { Specialists } from "../../pages/console/Specialists.tsx";
 import { BottomDrawer } from "./BottomDrawer.tsx";
 import type { BeadsTab, GithubTab, RepoNode } from "../../../types/shell.ts";
 import type { GithubEvent, GithubPr, GithubIssue, GithubRelease } from "../../../types/github.ts";
@@ -36,7 +35,7 @@ export function MainPane() {
 
   let inner: ReactNode;
   if (selection.surface === "console") {
-    inner = selection.tab === "specialists" ? <Specialists /> : <Observability />;
+    inner = <Observability />;
   } else if (!repo) {
     inner = <EmptyState repos={repos} onPick={setRepo} surface={selection.surface} />;
   } else if (selection.surface === "github") {

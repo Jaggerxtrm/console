@@ -1,14 +1,14 @@
 // TopBar (forge-7xu). Surface switch [GitHub | Beads] on the left,
 // tab strip on the right.
 
-import { GraphIcon, MarkGithubIcon, MoonIcon, SunIcon } from "@primer/octicons-react";
-import type { ReactNode } from "react";
+import { GraphIcon, MarkGithubIcon, MoonIcon, ProjectIcon, SunIcon } from "@primer/octicons-react";
 import {
   useShellStore,
   selectSelection,
   selectTheme,
 } from "../../stores/shell.ts";
 import {
+  BEADS_TABS,
   CONSOLE_TABS,
   GITHUB_TABS,
   type Surface,
@@ -22,7 +22,7 @@ export function TopBar() {
   const setTab = useShellStore((s) => s.setTab);
   const toggleTheme = useShellStore((s) => s.toggleTheme);
 
-  const tabs = selection.surface === "github" ? GITHUB_TABS : CONSOLE_TABS;
+  const tabs = selection.surface === "github" ? GITHUB_TABS : selection.surface === "beads" ? BEADS_TABS : CONSOLE_TABS;
 
   return (
     <header className="ide-topbar" role="banner">
@@ -32,6 +32,13 @@ export function TopBar() {
           label="GitHub"
           icon={<MarkGithubIcon size={14} />}
           active={selection.surface === "github"}
+          onSelect={setSurface}
+        />
+        <SurfaceButton
+          id="beads"
+          label="Beads"
+          icon={<ProjectIcon size={14} />}
+          active={selection.surface === "beads"}
           onSelect={setSurface}
         />
         <SurfaceButton
@@ -49,8 +56,11 @@ export function TopBar() {
             type="button"
             role="tab"
             aria-selected={selection.tab === t.id}
-            className={selection.tab === t.id ? "ide-tab is-active" : "ide-tab"}
-            onClick={() => setTab(t.id as TabId)}
+            aria-disabled={t.id === "specialists" ? true : undefined}
+            title={t.id === "specialists" ? "Coming soon — forge-e23" : undefined}
+            className={selection.tab === t.id ? "ide-tab is-active" : t.id === "specialists" ? "ide-tab is-disabled" : "ide-tab"}
+            onClick={t.id === "specialists" ? undefined : () => setTab(t.id as TabId)}
+            disabled={t.id === "specialists"}
           >
             {t.label}
           </button>
@@ -97,7 +107,7 @@ function SurfaceButton({
 }: {
   id: Surface;
   label: string;
-  icon: ReactNode;
+  icon: React.ReactNode;
   active: boolean;
   onSelect: (s: Surface) => void;
 }) {
