@@ -47,27 +47,49 @@ export function BottomDrawer() {
 }
 
 function startResize(event: ReactPointerEvent<HTMLDivElement>, setDrawerHeight: (height: number) => void) {
-  event.preventDefault();
   if (event.pointerType === "mouse" && event.button !== 0) return;
 
   const target = event.currentTarget;
-  target.setPointerCapture(event.pointerId);
-
-  const onMove = (moveEvent: globalThis.PointerEvent) => {
+  const releaseListeners = () => {
+    document.removeEventListener("pointermove", onDocumentMove);
+    document.removeEventListener("pointerup", onDocumentUp);
+    document.removeEventListener("pointercancel", onDocumentUp);
+    target.removeEventListener("pointermove", onTargetMove);
+    target.removeEventListener("pointerup", onTargetUp);
+    target.removeEventListener("pointercancel", onTargetUp);
+  };
+  const onDocumentMove = (moveEvent: globalThis.PointerEvent) => {
     setDrawerHeight(window.innerHeight - moveEvent.clientY);
   };
-  const onUp = (upEvent: globalThis.PointerEvent) => {
+  const onTargetMove = (moveEvent: globalThis.PointerEvent) => {
+    setDrawerHeight(window.innerHeight - moveEvent.clientY);
+  };
+  const onDocumentUp = (upEvent: globalThis.PointerEvent) => {
     if (target.hasPointerCapture(upEvent.pointerId)) {
       target.releasePointerCapture(upEvent.pointerId);
     }
-    target.removeEventListener("pointermove", onMove);
-    target.removeEventListener("pointerup", onUp);
-    target.removeEventListener("pointercancel", onUp);
+    releaseListeners();
+  };
+  const onTargetUp = (upEvent: globalThis.PointerEvent) => {
+    if (target.hasPointerCapture(upEvent.pointerId)) {
+      target.releasePointerCapture(upEvent.pointerId);
+    }
+    releaseListeners();
   };
 
-  target.addEventListener("pointermove", onMove);
-  target.addEventListener("pointerup", onUp);
-  target.addEventListener("pointercancel", onUp);
+  try {
+    target.setPointerCapture(event.pointerId);
+    event.preventDefault();
+    target.addEventListener("pointermove", onTargetMove);
+    target.addEventListener("pointerup", onTargetUp);
+    target.addEventListener("pointercancel", onTargetUp);
+  } catch {
+    console.warn("BottomDrawer resize pointer capture failed; using document fallback.");
+    event.preventDefault();
+    document.addEventListener("pointermove", onDocumentMove);
+    document.addEventListener("pointerup", onDocumentUp);
+    document.addEventListener("pointercancel", onDocumentUp);
+  }
 }
 
 function toggleMaximize(
