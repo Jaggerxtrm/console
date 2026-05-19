@@ -3629,7 +3629,7 @@ body, .shell-app, .shell-main {
 .shell-sidebar[data-collapsed] .shell-sidebar-toggle { color: var(--text-primary); }
 
 /* ============================================================
- * forge-ci9 visual pass: Dark Mode OLED palette + Fira typography
+ * forge-ci9 visual pass: Dark Mode OLED palette + Inter typography
  * Driven by ui-ux-pro-max --design-system recommendation.
  * Scoped to .shell-app so legacy /gitboard/legacy view is unaffected.
  * ============================================================ */
@@ -3647,8 +3647,8 @@ body, .shell-app, .shell-main {
   --gb-accent:     #22c55e;          /* green-500 — selected leaf, active state */
   --gb-accent-dim: rgba(34,197,94,0.12); /* selected row tint */
   --gb-danger:     #ef4444;
-  --gb-font-ui:    "Fira Sans", system-ui, -apple-system, sans-serif;
-  --gb-font-mono:  "Fira Code", "JetBrains Mono", ui-monospace, monospace;
+  --gb-font-ui:    var(--font-ui);
+  --gb-font-mono:  var(--font-ui);
 
   background: var(--gb-bg) !important;
   color: var(--gb-text);

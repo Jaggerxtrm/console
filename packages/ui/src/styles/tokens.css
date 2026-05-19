@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
 :root {
   --bg: #080d12;
@@ -76,8 +76,8 @@
   --spacing-xl: 28px;
   --spacing-2xl: 36px;
 
-  --font-ui: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-mono: 'JetBrains Mono', 'Cascadia Code', 'Fira Code', monospace;
+  --font-ui: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   --text-xs: 0.75rem;
   --text-sm: 0.8125rem;
   --text-base: 0.875rem;
