@@ -1398,7 +1398,7 @@ body {
   border-color: rgba(255, 255, 255, 0.12);
   background: var(--surface-secondary);
   clip-path: polygon(0 0, calc(100% - var(--ww-cut)) 0, 100% var(--ww-cut), 100% 100%, var(--ww-cut) 100%, 0 calc(100% - var(--ww-cut)));
-  font-size: 10px !important;
+  font-size: var(--header-font-size) !important;
 }
 
 .westworld-app .ww-nav {
@@ -1417,7 +1417,7 @@ body {
   padding: 0 12px !important;
   border-left: 1px solid rgba(255, 255, 255, 0.12) !important;
   border-bottom: 0 !important;
-  font-size: 10px !important;
+  font-size: var(--header-font-size) !important;
   line-height: 24px !important;
 }
 
@@ -1437,7 +1437,7 @@ body {
 .westworld-app .ww-action-cluster > a {
   height: 24px;
   border-radius: 0;
-  font-size: 9px !important;
+  font-size: var(--header-font-size) !important;
 }
 
 .westworld-app .gitboard-shell {
@@ -1455,7 +1455,7 @@ body {
   padding: 0 14px !important;
   border-left-width: 0 !important;
   color: var(--text-muted) !important;
-  font-size: 9px !important;
+  font-size: var(--header-font-size) !important;
   letter-spacing: 0.16em !important;
   background: rgba(6,12,17,0.66) !important;
   font-family: var(--font-ui) !important;
@@ -1471,7 +1471,7 @@ body {
 
 .westworld-app .repo-group-heading {
   padding: 10px 14px 5px !important;
-  font-size: 9px !important;
+  font-size: var(--header-font-size) !important;
   letter-spacing: 0.15em !important;
   color: var(--text-muted) !important;
   font-family: var(--font-ui) !important;
@@ -1529,7 +1529,7 @@ body {
 }
 
 .westworld-app .gitboard-statsbar .gitboard-stat span {
-  font-size: 10px !important;
+  font-size: var(--header-font-size) !important;
   font-family: var(--font-ui) !important;
 }
 
@@ -1560,7 +1560,7 @@ body {
   padding: 0 14px !important;
   border-bottom: 0 !important;
   border-right: 1px solid rgba(255, 255, 255, 0.12) !important;
-  font-size: 10px !important;
+  font-size: var(--header-font-size) !important;
   letter-spacing: 0.10em;
   text-transform: none;
 }
@@ -1577,7 +1577,7 @@ body {
   border-top: 1px solid rgba(255, 255, 255, 0.12);
   background: rgba(16, 16, 16, 0.54) !important;
   color: var(--text-muted) !important;
-  font-size: 9px !important;
+  font-size: var(--header-font-size) !important;
   letter-spacing: 0.16em !important;
   font-family: var(--font-ui) !important;
 }
@@ -1648,7 +1648,7 @@ body {
   border-bottom: 1px solid rgba(255, 255, 255, 0.12);
   background: var(--surface-primary);
   color: var(--text-muted);
-  font-size: 9px;
+  font-size: var(--header-font-size);
   font-weight: 700;
   letter-spacing: 0.16em;
   text-transform: none;
@@ -1827,7 +1827,7 @@ body {
   gap: 10px;
   margin-bottom: 8px;
   color: var(--text-muted);
-  font-size: 9px;
+  font-size: var(--header-font-size);
   font-weight: 700;
   letter-spacing: 0.15em;
   text-transform: none;
@@ -1965,7 +1965,7 @@ body {
   gap: 6px;
   margin-bottom: 6px;
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--header-font-size);
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: none;
@@ -2225,7 +2225,7 @@ body {
 .pr-detail-status {
   margin-left: auto;
   color: var(--text-muted);
-  font-size: 9px;
+  font-size: var(--header-font-size);
   letter-spacing: 0.08em;
   text-transform: none;
 }
@@ -2362,7 +2362,7 @@ body {
 .release-row.is-expanded { background: var(--surface-secondary); }
 .release-day-header {
   padding: 4px 12px 3px;
-  font-size: var(--text-xs);
+  font-size: var(--header-font-size);
   color: var(--text-muted);
   font-weight: 600;
   letter-spacing: 0.05em;
@@ -2804,7 +2804,7 @@ body {
 .shell-sidebar-title {
   color: var(--text-muted);
   flex: 1;
-  font-size: 11px;
+  font-size: var(--header-font-size);
   font-weight: 600;
   letter-spacing: 0.1em;
   text-transform: none;
@@ -3132,7 +3132,7 @@ body {
 }
 .shell-main-stub-section-title {
   color: var(--text-primary);
-  font-size: 13px;
+  font-size: var(--header-font-size);
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: none;
@@ -3172,7 +3172,7 @@ body {
 .module-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; width: 100%; }
 .module-list > * { min-width: 0; }
 .feed-completed-section { margin-top: 16px; border-top: 1px solid var(--border-subtle); }
-.feed-section-title { height: 28px; display: flex; align-items: center; gap: 8px; padding: 0 18px; color: var(--text-muted); font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: none; background: #101010; }
+.feed-section-title { height: 28px; display: flex; align-items: center; gap: 8px; padding: 0 18px; color: var(--text-muted); font-size: var(--header-font-size); font-weight: 700; letter-spacing: 0.08em; text-transform: none; background: #101010; }
 .feed-section-title span { color: inherit; }
 .feed-section-toggle { width: 100%; border: 0; text-align: left; cursor: pointer; }
 .feed-section-toggle:hover { color: var(--text-secondary); }
@@ -3262,7 +3262,7 @@ body {
 .bead-dep-tree-title { color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; font-family: var(--font-ui); font-size: 11px; }
 .bead-dep-tree-kind { color: var(--accent); font-family: var(--font-ui); font-size: 9.5px; text-transform: lowercase; letter-spacing: 0.04em; white-space: nowrap; }
 .bead-expanded-section { margin-top: 10px; padding: 0; border: 0; background: transparent; }
-.bead-section-title { margin-bottom: 6px; color: var(--text-primary); font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: none; }
+.bead-section-title { margin-bottom: 6px; color: var(--text-primary); font-size: var(--header-font-size); font-weight: 600; letter-spacing: 0.04em; text-transform: none; }
 .bead-body-text { color: var(--text-secondary); font-size: 11px; line-height: 1.55; }
 .bead-empty-note { color: var(--text-muted); font-size: 11px; }
 .bead-audit-log { display: grid; gap: 4px; }
@@ -4011,7 +4011,7 @@ body:has(.shell-app) { background: #101010 !important; }
   align-items: center;
   color: var(--text-muted);
   display: inline-flex;
-  font-size: 10.5px;
+  font-size: var(--header-font-size);
   font-weight: 600;
   gap: 8px;
   letter-spacing: 0.12em;
@@ -4049,7 +4049,7 @@ body:has(.shell-app) { background: #101010 !important; }
 .ide-sidebar-group { margin-bottom: 10px; }
 .ide-sidebar-group-title {
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: var(--header-font-size);
   font-weight: 600;
   letter-spacing: 0.12em;
   margin: 10px 12px 4px;
@@ -4256,7 +4256,7 @@ body:has(.shell-app) { background: #101010 !important; }
 }
 .ide-triage-title {
   color: var(--text-primary);
-  font-size: 11px;
+  font-size: var(--header-font-size);
   font-weight: 600;
   letter-spacing: 0.1em;
   margin: 0 0 10px;
@@ -4300,10 +4300,10 @@ body:has(.shell-app) { background: #101010 !important; }
   border-radius: 3px;
   padding: 8px 10px;
 }
-.ide-stat-label { color: var(--text-muted); font-size: 10px; letter-spacing: 0.06em; text-transform: none; }
+.ide-stat-label { color: var(--text-muted); font-size: var(--header-font-size); letter-spacing: 0.06em; text-transform: none; }
 .ide-stat-value { color: var(--text-primary); font-size: 16px; font-weight: 600; margin-top: 2px; }
 .ide-stat-group { margin-top: 10px; }
-.ide-stat-group-label { color: var(--text-muted); font-size: 10px; letter-spacing: 0.08em; margin-bottom: 4px; text-transform: none; }
+.ide-stat-group-label { color: var(--text-muted); font-size: var(--header-font-size); letter-spacing: 0.08em; margin-bottom: 4px; text-transform: none; }
 
 /* ── Skeleton ─────────────────────────────────────────────── */
 .ide-skeleton { display: flex; gap: 8px; padding: 16px; }

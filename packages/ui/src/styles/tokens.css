@@ -78,6 +78,7 @@
 
   --font-ui: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   --font-mono: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --header-font-size: 12.5px;
   --text-xs: 0.75rem;
   --text-sm: 0.8125rem;
   --text-base: 0.875rem;
