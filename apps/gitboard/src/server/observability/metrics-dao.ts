@@ -237,7 +237,8 @@ function parseTokenTrajectory(value: string | null) {
   const items = parseJsonArray(value);
   let input = 0, output = 0, cacheCreation = 0, cacheRead = 0, total = 0;
   for (const item of items) {
-    const usage = firstRecord(item);
+    const item_record = firstRecord(item);
+    const usage = firstRecord(item_record.token_usage);
     input += num(usage.input_tokens);
     output += num(usage.output_tokens);
     cacheCreation += num(usage.cache_creation_tokens);
