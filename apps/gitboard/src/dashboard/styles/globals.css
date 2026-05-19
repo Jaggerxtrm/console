@@ -1639,14 +1639,14 @@ body {
 
 /* Inline PR dossier: GitHub-like PR semantics inside the operational FUI list. */
 .pr-timeline {
-  background: rgba(7, 14, 20, 0.34);
+  background: var(--surface-primary);
 }
 
 .pr-day-header {
   height: 28px;
   padding: 8px 14px 0;
   border-bottom: 1px solid rgba(142,210,220,0.08);
-  background: rgba(5, 11, 16, 0.56);
+  background: var(--surface-primary);
   color: var(--text-muted);
   font-size: 9px;
   font-weight: 700;
@@ -1670,7 +1670,7 @@ body {
 }
 
 .pr-row.is-expanded {
-  background: var(--surface-secondary);
+  background: var(--surface-primary);
 }
 
 .pr-row-main {
@@ -2292,6 +2292,11 @@ body {
 .pr-conversation-entry.review .pr-entry-marker { background: var(--accent-purple); }
 .pr-conversation-entry.commit .pr-entry-marker { background: var(--accent-green); }
 .pr-conversation-entry.event .pr-entry-marker { background: var(--text-muted); }
+
+.pr-conversation-entry.commit,
+.pr-conversation-entry.event {
+  background: var(--surface-primary);
+}
 
 .pr-entry-main {
   min-width: 0;
