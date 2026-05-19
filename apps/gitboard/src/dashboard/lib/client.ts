@@ -12,6 +12,7 @@ import type {
   GithubPrDetail,
   GithubRelease,
 } from "../../types/github.ts";
+import type { ObservabilitySummary, TimeRange } from "../../server/observability/metrics-dao.ts";
 
 export class ApiClient {
   constructor(private baseUrl: string = "") {}
@@ -145,6 +146,10 @@ export class ApiClient {
 
   getRepoStats(): Promise<RepoStatsResponse> {
     return this.get("/api/github/repos/stats");
+  }
+
+  getObservabilitySummary(range: TimeRange): Promise<ObservabilitySummary> {
+    return this.get(`/api/console/observability/summary?range=${range}`);
   }
 }
 

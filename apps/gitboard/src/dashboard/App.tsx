@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Console } from "./pages/console/Console.tsx";
 import { LinkExternalIcon } from "@primer/octicons-react";
 import { GithubPanel } from "./components/github/GithubPanel.tsx";
 import { useRepoTree } from "./hooks/useRepoTree.ts";
@@ -21,6 +22,7 @@ const BEADBOARD_URL = import.meta.env.VITE_BEADBOARD_URL || "/beadboard";
 
 export function App() {
   const path = window.location.pathname;
+  if (path.startsWith("/console")) return <Console />;
   // /gitboard/legacy → old TabBar shell (preserved for parity testing)
   // /gitboard/design-preview, /preview → design preview
   // default → unified IDE shell (forge-7xu)

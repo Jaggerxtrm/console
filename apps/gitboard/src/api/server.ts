@@ -8,6 +8,7 @@ import { createInternalLogsRouter } from "./routes/internal-logs.ts";
 import { setRealtimePublisher, emit, makeLogEntry } from "../core/logger.ts";
 import { beadsRoutes } from "../../../beadboard/src/api/routes/beads.ts";
 import { createSpecialistsRouter } from "./routes/specialists.ts";
+import { createObservabilityRouter } from "./routes/observability.ts";
 import { ChannelRegistry } from "./ws/channels.ts";
 import { WsHandler } from "./ws/handler.ts";
 import { BeadsChangeWatcher } from "../../../beadboard/src/core/beads-change-watcher.ts";
@@ -69,6 +70,7 @@ export function createApp(db: Database): {
   app.route("/api/github", createGithubRouter(db, registry));
   app.route("/api/beads", beadsRoutes);
   app.route("/api/specialists", createSpecialistsRouter());
+  app.route("/api/console/observability", createObservabilityRouter());
   app.route("/api/internal", createInternalDoltHealthRouter());
   app.route("/api/internal", createInternalLogsRouter());
 
@@ -150,6 +152,7 @@ export function startServer(db: Database, options: ServerOptions = {}): void {
   console.log(`[xtrm] Server running at http://${hostname}:${port}`);
   console.log(`[xtrm] - Gitboard: http://${hostname}:${port}/gitboard`);
   console.log(`[xtrm] - Beadboard: http://${hostname}:${port}/beadboard`);
+  console.log(`[xtrm] - Console: http://${hostname}:${port}/console`);
 }
 
 function contentType(path: string): string {
