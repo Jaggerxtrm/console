@@ -17,12 +17,13 @@ function makeDb(path: string, rows: Array<{ beadId: string; chainId: string | nu
         epic_id TEXT,
         chain_kind TEXT,
         status TEXT NOT NULL,
-        updated_at_ms INTEGER NOT NULL
+        updated_at_ms INTEGER NOT NULL,
+        specialist TEXT
       );
     `);
 
-    const insert = db.prepare("INSERT INTO specialist_jobs VALUES (?, ?, ?, ?, ?, ?)");
-    for (const row of rows) insert.run(row.beadId, row.chainId, row.epicId, row.chainKind, row.status, row.updatedAtMs);
+    const insert = db.prepare("INSERT INTO specialist_jobs VALUES (?, ?, ?, ?, ?, ?, ?)");
+    for (const row of rows) insert.run(row.beadId, row.chainId, row.epicId, row.chainKind, row.status, row.updatedAtMs, "explorer");
   } finally {
     db.close();
   }

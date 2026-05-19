@@ -26,6 +26,7 @@ function seedCompat(path) {
       status TEXT NOT NULL,
       updated_at_ms INTEGER NOT NULL
     );`);
+    db.exec("INSERT OR IGNORE INTO specialist_jobs(job_id, specialist, bead_id, status, updated_at_ms) VALUES ('seed-job', 'explorer', 'seed-bead', 'closed', 0);");
   } finally {
     db.close();
   }

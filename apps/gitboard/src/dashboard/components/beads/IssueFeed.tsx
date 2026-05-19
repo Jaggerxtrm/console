@@ -7,6 +7,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { ChevronRightIcon, ChevronDownIcon, GitBranchIcon, LinkIcon, AlertIcon, IssueOpenedIcon, MilestoneIcon, NorthStarIcon, ProjectIcon, ToolsIcon, DependabotIcon, GitPullRequestIcon } from "@primer/octicons-react";
 import type { BeadDependency, BeadIssue, BeadIssueDetail, Interaction } from "../../../types/beads.ts";
 import { beadsApi as api } from "../../lib/beads-api.ts";
+import { SpecialistOwnerBadgeForBead } from "./SpecialistOwnerBadge.tsx";
 
 export interface IssuePrLink {
   number: number;
@@ -187,6 +188,7 @@ export function IssueRow({ issue, detail, isExpanded, isLoadingDetail, agent, de
             </>
           )}
           {agent && <><span className="identity-separator">/</span><span className="agent-badge"><DependabotIcon size={10} /> {agent}</span></>}
+          {displayStatus === "in_progress" && <SpecialistOwnerBadgeForBead beadId={issue.id} />}
         </span>
         <span className="chev">{isExpanded ? <ChevronDownIcon size={12} /> : <ChevronRightIcon size={12} />}</span>
       </button>

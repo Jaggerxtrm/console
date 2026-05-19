@@ -1,7 +1,13 @@
-import type { SpecialistOwnershipJob } from "../../hooks/useSpecialistOwnership.ts";
+import { useSpecialistOwnership, type SpecialistOwnershipJob } from "../../hooks/useSpecialistOwnership.ts";
 
 interface SpecialistOwnerBadgeProps {
   job: SpecialistOwnershipJob;
+}
+
+export function SpecialistOwnerBadgeForBead({ beadId }: { beadId: string }) {
+  const job = useSpecialistOwnership(beadId);
+  if (!job) return null;
+  return <SpecialistOwnerBadge job={job} />;
 }
 
 const STATE_COLORS: Record<string, string> = {

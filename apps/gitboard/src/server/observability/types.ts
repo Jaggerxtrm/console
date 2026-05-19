@@ -6,6 +6,7 @@ export interface SpecialistJob {
   chainKind: string | null;
   status: string;
   updatedAt: string;
+  specialist: string | null;
 }
 
 export interface SpecialistChain extends SpecialistJob {

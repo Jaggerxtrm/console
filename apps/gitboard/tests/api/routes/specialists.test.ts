@@ -192,12 +192,12 @@ function seedRepo(path: string, rows: SeedRow[], schemaOk: boolean): Database {
         epic_id TEXT,
         chain_kind TEXT,
         status TEXT NOT NULL,
-        updated_at_ms INTEGER NOT NULL
+        updated_at_ms INTEGER NOT NULL,
+        specialist TEXT
       );
-      PRAGMA schema_version = 1;
     `);
-    const insert = db.prepare("INSERT INTO specialist_jobs (bead_id, chain_id, epic_id, chain_kind, status, updated_at_ms) VALUES (?, ?, ?, ?, ?, ?)");
-    for (const row of rows) insert.run(row.beadId, row.chainId, row.epicId, row.chainKind, row.status, row.updatedAtMs);
+    const insert = db.prepare("INSERT INTO specialist_jobs (bead_id, chain_id, epic_id, chain_kind, status, updated_at_ms, specialist) VALUES (?, ?, ?, ?, ?, ?, ?)");
+    for (const row of rows) insert.run(row.beadId, row.chainId, row.epicId, row.chainKind, row.status, row.updatedAtMs, "explorer");
   }
   return db;
 }

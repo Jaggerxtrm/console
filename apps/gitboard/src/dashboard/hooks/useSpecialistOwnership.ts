@@ -25,10 +25,11 @@ export function useSpecialistOwnership(beadId: string | null, enabled = true): S
           return;
         }
 
-        const data = (await res.json()) as { jobs?: Array<{ role?: string; state?: string; repoSlug?: string }> };
-        const first = data.jobs?.[0];
+        const data = (await res.json()) as { jobs?: Array<{ specialist?: string | null; status?: string; chainKind?: string | null; repoSlug?: string }> };
+        const live = data.jobs?.find((j) => j.status === "running" || j.status === "starting") ?? data.jobs?.[0];
         if (!cancelled) {
-          setJob(first?.role && first.state && first.repoSlug ? { role: first.role, state: first.state, repoSlug: first.repoSlug } : null);
+          const role = live?.specialist || live?.chainKind || null;
+          setJob(role && live?.status && live.repoSlug ? { role, state: live.status, repoSlug: live.repoSlug } : null);
         }
       } catch {
         if (!cancelled) setJob(null);
