@@ -1572,8 +1572,9 @@ body {
 }
 
 .westworld-app .timeline-day-header {
-  height: 28px;
-  padding: 8px 14px 0 !important;
+  box-sizing: border-box;
+  height: 24px;
+  padding: 4px 18px 0 !important;
   border-top: 1px solid rgba(255, 255, 255, 0.12);
   background: rgba(16, 16, 16, 0.54) !important;
   color: var(--text-muted) !important;
@@ -1583,13 +1584,15 @@ body {
 }
 
 .westworld-app .timeline-row {
-  min-height: var(--ww-row-h);
-  margin: 0 0 1px !important;
-  padding: 8px 12px !important;
-  border: var(--card-border);
-  border-radius: var(--card-radius-md) !important;
+  box-sizing: border-box;
+  min-height: var(--row-height);
+  margin: 0 !important;
+  padding: 0 16px 0 18px !important;
+  border: 0;
+  border-bottom: 1px solid var(--border-subtle);
+  border-radius: 0 !important;
   border-left-width: 0 !important;
-  background: rgba(18, 18, 18, 0.20) !important;
+  background: var(--surface-primary) !important;
 }
 
 .westworld-app .timeline-row::before {
@@ -1643,8 +1646,9 @@ body {
 }
 
 .pr-day-header {
-  height: 28px;
-  padding: 8px 14px 0;
+  box-sizing: border-box;
+  height: 24px;
+  padding: 4px 18px 0;
   border-bottom: 1px solid rgba(255, 255, 255, 0.12);
   background: var(--surface-primary);
   color: var(--text-muted);
@@ -1652,6 +1656,12 @@ body {
   font-weight: 700;
   letter-spacing: 0.16em;
   text-transform: none;
+}
+
+.pr-row,
+.issue-row,
+.release-row {
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .pr-row {
@@ -1680,7 +1690,8 @@ body {
   gap: 8px;
   height: var(--row-height);
   min-height: var(--row-height);
-  padding: 6px 16px 6px 18px;
+  box-sizing: border-box;
+  padding: 0 16px 0 18px;
 }
 
 .pr-row-icon,
@@ -2361,7 +2372,9 @@ body {
 .release-row:hover { background: var(--surface-hover); }
 .release-row.is-expanded { background: var(--surface-secondary); }
 .release-day-header {
-  padding: 4px 12px 3px;
+  box-sizing: border-box;
+  height: 24px;
+  padding: 4px 18px 0;
   font-size: var(--header-font-size);
   color: var(--text-muted);
   font-weight: 600;
@@ -2377,7 +2390,8 @@ body {
   gap: 8px;
   height: var(--row-height);
   min-height: var(--row-height);
-  padding: 6px 16px 6px 18px;
+  box-sizing: border-box;
+  padding: 0 16px 0 18px;
 }
 .release-row-icon,
 .release-chevron { display: inline-flex; align-items: center; justify-content: center; }
@@ -2428,7 +2442,8 @@ body {
   gap: 8px;
   height: var(--row-height);
   min-height: var(--row-height);
-  padding: 6px 16px 6px 18px;
+  box-sizing: border-box;
+  padding: 0 16px 0 18px;
 }
 
 .issue-row-icon,
