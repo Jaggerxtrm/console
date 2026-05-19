@@ -36,8 +36,8 @@ describe("createAttachPool", () => {
 
     expect(attached).toHaveLength(2);
     expect(attached.map((row: { name?: string }) => row.name)).toEqual([
-      "repo_repo-a_0",
-      "repo_repo-b_1",
+      "repo_repo_a_0",
+      "repo_repo_b_1",
     ]);
     expect(warn).toHaveBeenCalledTimes(1);
     expect(String(warn.mock.calls[0]?.[0])).toContain("repo-c");
@@ -54,6 +54,6 @@ describe("createAttachPool", () => {
         .map((row: { name?: string }) => row.name);
     });
 
-    expect(attached).toEqual(["repo_repo-b_1"]);
+    expect(attached).toEqual(["repo_repo_b_1"]);
   });
 });

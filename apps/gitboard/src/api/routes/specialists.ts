@@ -13,8 +13,18 @@ export interface SpecialistsDao {
 
 let defaultDao: SpecialistsDao | null = null;
 
-export function createSpecialistsRouter(dao: SpecialistsDao = getDefaultDao()): Hono {
+export interface SpecialistsRouterOptions {
+  listRepos?: () => ReadonlyArray<{ repoSlug: string }>;
+  getEpoch?: (repoSlug: string) => number;
+}
+
+export function createSpecialistsRouter(
+  dao: SpecialistsDao = getDefaultDao(),
+  options: SpecialistsRouterOptions = {},
+): Hono {
   const router = new Hono();
+  const repoLister = options.listRepos ?? listRepos;
+  const epochGetter = options.getEpoch ?? getEpoch;
 
   router.get("/jobs", (c) => {
     const beadId = c.req.query("bead_id");
@@ -27,7 +37,7 @@ export function createSpecialistsRouter(dao: SpecialistsDao = getDefaultDao()): 
 
   router.get("/jobs/in-flight", (c) => {
     const jobs = dao.inFlightJobs().slice(0, 200);
-    const epoch = Object.fromEntries(listRepos().map((repo) => [repo.repoSlug, getEpoch(repo.repoSlug)]));
+    const epoch = Object.fromEntries(repoLister().map((repo) => [repo.repoSlug, epochGetter(repo.repoSlug)]));
     return c.json({ jobs, epoch });
   });
 

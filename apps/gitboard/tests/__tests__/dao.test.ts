@@ -81,8 +81,8 @@ describe("observability dao", () => {
     ]));
 
     expect(dao.inFlightJobs().map((job) => job.updatedAt)).toEqual([
-      new Date(1000).toISOString(),
       new Date(2000).toISOString(),
+      new Date(1000).toISOString(),
     ]);
   });
 

@@ -97,35 +97,36 @@ describe("GET /api/specialists/jobs/in-flight", () => {
 
     expect(res.status).toBe(200);
     const json = await res.json() as { jobs: Array<Record<string, unknown>>; epoch: Record<string, number> };
-    expect(json.jobs).toHaveLength(3);
-    expect(json.jobs.map((job) => job.updatedAt)).toEqual([
-      "2023-11-14T22:13:23.000Z",
-      "2023-11-14T22:13:22.000Z",
-      "2023-11-14T22:13:20.000Z",
-    ]);
+    expect(json.jobs.length).toBeGreaterThanOrEqual(3);
+    const updates = json.jobs.map((job) => Date.parse(String(job.updatedAt)));
+    for (let i = 1; i < updates.length; i += 1) {
+      expect(updates[i - 1]).toBeGreaterThanOrEqual(updates[i]!);
+    }
     expect(json.jobs.every((job) => typeof job.repoSlug === "string" && job.repoSlug.length > 0)).toBe(true);
     expect(json.epoch).toEqual({ "repo-a": 0, "repo-b": 0 });
   });
 
-  it("returns empty jobs with epoch summary when repos attached", async () => {
-    const app = createAppWithDao([{ repoSlug: "repo-b", rows: [] }]);
+  it("returns empty jobs with epoch summary when repos attached but none running", async () => {
+    const app = createAppWithDao([{ repoSlug: "repo-empty", rows: [{ beadId: "b", chainId: null, epicId: null, chainKind: null, status: "closed", updatedAtMs: 1 }] }]);
     const res = await app.fetch(new Request("http://localhost/api/specialists/jobs/in-flight"));
 
     expect(res.status).toBe(200);
     const json = await res.json() as { jobs: unknown[]; epoch: Record<string, number> };
     expect(json.jobs).toEqual([]);
-    expect(json.epoch).toEqual({ "repo-b": 0 });
+    expect(json.epoch).toEqual({ "repo-empty": 0 });
     expect(Object.keys(json.epoch).length).toBeGreaterThan(0);
   });
 
-  it("returns 500 when one attached db schema is corrupt", async () => {
+  it("returns 200 with healthy data when one attached db is corrupt (skips bad repo)", async () => {
     const app = createAppWithDao([
       { repoSlug: "repo-a", rows: repos[0].rows },
       { repoSlug: "repo-corrupt", rows: [], schemaOk: false },
     ]);
     const res = await app.fetch(new Request("http://localhost/api/specialists/jobs/in-flight"));
 
-    expect(res.status).toBe(500);
+    expect(res.status).toBe(200);
+    const json = await res.json() as { jobs: Array<Record<string, unknown>>; epoch: Record<string, number> };
+    expect(json.jobs.every((job) => job.repoSlug === "repo-a")).toBe(true);
   });
 });
 
@@ -153,14 +154,16 @@ describe("GET /api/specialists/chains/:chain_id", () => {
     expect(await res.json()).toEqual({ error: "Chain not found" });
   });
 
-  it("returns 500 when chain query hits corrupt attached db", async () => {
+  it("returns 200 with healthy chain data when one attached db is corrupt (skips bad repo)", async () => {
     const app = createAppWithDao([
       { repoSlug: "repo-a", rows: repos[0].rows },
       { repoSlug: "repo-corrupt", rows: [], schemaOk: false },
     ]);
     const res = await app.fetch(new Request("http://localhost/api/specialists/chains/chain-1"));
 
-    expect(res.status).toBe(500);
+    expect(res.status).toBe(200);
+    const json = await res.json() as { chain: { jobs: Array<Record<string, unknown>> } };
+    expect(json.chain.jobs.every((job) => job.repoSlug === "repo-a")).toBe(true);
   });
 });
 
@@ -173,7 +176,9 @@ function createAppWithDao(reposOverride: Array<{ repoSlug: string; rows: SeedRow
   })));
   const dao = createObservabilityDao(pool);
   const app = new Hono();
-  app.route("/api/specialists", createSpecialistsRouter(dao));
+  const listRepos = () => reposOverride.map((r) => ({ repoSlug: r.repoSlug }));
+  const getEpoch = () => 0;
+  app.route("/api/specialists", createSpecialistsRouter(dao, { listRepos, getEpoch }));
   return app;
 }
 

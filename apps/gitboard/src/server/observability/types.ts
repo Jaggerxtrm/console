@@ -16,6 +16,11 @@ export interface EpicRun extends SpecialistJob {
   epicId: string;
 }
 
+export interface AttachedRepoRef {
+  alias: string;
+  slug: string;
+}
+
 export interface AttachPoolLike {
-  withAttached<T>(fn: (db: import("bun:sqlite").Database) => T): T;
+  withAttached<T>(fn: (db: import("bun:sqlite").Database, attached: ReadonlyArray<AttachedRepoRef>) => T): T;
 }

@@ -27,10 +27,11 @@ export function createAttachPool(entries: readonly RepoEntry[], options: PoolOpt
   const lru = new Map<string, AttachedRepo>();
   let aliasCounter = 0;
 
-  function withAttached<T>(fn: (db: Database) => T): T {
+  function withAttached<T>(fn: (db: Database, attached: ReadonlyArray<{ alias: string; slug: string }>) => T): T {
     attachHealthyRepos();
     try {
-      return fn(db);
+      const list = Array.from(attached.values()).map((entry) => ({ alias: entry.alias, slug: entry.repoSlug }));
+      return fn(db, list);
     } finally {
       trimToLimit();
     }
@@ -57,14 +58,25 @@ export function createAttachPool(entries: readonly RepoEntry[], options: PoolOpt
   }
 
   function attachRepo(entry: RepoEntry): boolean {
-    const alias = `repo_${entry.repoSlug}_${aliasCounter++}`;
-    const pragma = readSchemaVersion(entry.dbPath);
+    const alias = `repo_${entry.repoSlug.replaceAll(/[^a-zA-Z0-9]/g, "_")}_${aliasCounter++}`;
+    let pragma: number;
+    try {
+      pragma = readSchemaVersion(entry.dbPath);
+    } catch (err) {
+      logger.warn(`Skip observability db ${entry.dbPath}: probe failed (${errorMessage(err)})`);
+      return false;
+    }
     if (!isCompatible(pragma)) {
       logger.warn(`Skip observability db ${entry.dbPath}: schema_version ${pragma} incompatible`);
       return false;
     }
 
-    db.exec(`ATTACH DATABASE '${escapeSql(entry.dbPath)}' AS ${alias}`);
+    try {
+      db.exec(`ATTACH DATABASE '${escapeSql(entry.dbPath)}' AS ${alias}`);
+    } catch (err) {
+      logger.warn(`Skip observability db ${entry.dbPath}: attach failed (${errorMessage(err)})`);
+      return false;
+    }
     const attachedRepo = { ...entry, alias };
     attached.set(entry.dbPath, attachedRepo);
     lru.set(entry.dbPath, attachedRepo);
@@ -79,6 +91,10 @@ export function createAttachPool(entries: readonly RepoEntry[], options: PoolOpt
     } finally {
       probe.close();
     }
+  }
+
+  function errorMessage(err: unknown): string {
+    return err instanceof Error ? err.message : String(err);
   }
 
   function detachRepo(dbPath: string): void {
