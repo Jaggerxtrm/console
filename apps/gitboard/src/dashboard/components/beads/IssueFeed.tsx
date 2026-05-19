@@ -24,6 +24,7 @@ interface IssueFeedProps {
   selectedIssueDetail: BeadIssueDetail | null;
   loadingDetailId: string | null;
   onIssueSelect: (issue: BeadIssue) => void;
+  onIssueOpen?: (issue: BeadIssue) => void;
   getAgent?: (issueId: string) => string | null;
   projectId: string | null;
   prByIssueId?: Map<string, IssuePrLink>;
@@ -54,7 +55,7 @@ type FeedItem =
   | { kind: "closed-header"; count: number }
   | { kind: "issue"; issue: BeadIssue; depth: number; childCount: number; relation: "parent" | "epic" | "blocked" };
 
-export function IssueFeed({ issues, closedIssues = [], selectedIssueId, selectedIssueDetail, loadingDetailId, onIssueSelect, getAgent, projectId, prByIssueId }: IssueFeedProps) {
+export function IssueFeed({ issues, closedIssues = [], selectedIssueId, selectedIssueDetail, loadingDetailId, onIssueSelect, onIssueOpen, getAgent, projectId, prByIssueId }: IssueFeedProps) {
   const parentRef = useRef<HTMLDivElement>(null);
   const [showOpen, setShowOpen] = useState(true);
   const [showClosed, setShowClosed] = useState(false);
@@ -141,6 +142,7 @@ export function IssueFeed({ issues, closedIssues = [], selectedIssueId, selected
                   dependencyCount={countDependencies(item.issue)}
                   childCount={item.childCount}
                   onClick={() => onIssueSelect(item.issue)}
+                  onOpen={() => onIssueOpen?.(item.issue)}
                   depth={item.depth}
                   relation={item.relation}
                   projectId={projectId}
@@ -156,14 +158,14 @@ export function IssueFeed({ issues, closedIssues = [], selectedIssueId, selected
   );
 }
 
-export function IssueRow({ issue, detail, isExpanded, isLoadingDetail, agent, dependencyCount, childCount, onClick, depth = 0, relation = "parent", projectId, issueById, prLink = null }: { issue: BeadIssue; detail: BeadIssueDetail | null; isExpanded: boolean; isLoadingDetail: boolean; agent: string | null; dependencyCount: number; childCount: number; onClick: () => void; depth?: number; relation?: "parent" | "epic" | "blocked"; projectId: string | null; issueById: Map<string, BeadIssue>; prLink?: IssuePrLink | null; }) {
+export function IssueRow({ issue, detail, isExpanded, isLoadingDetail, agent, dependencyCount, childCount, onClick, onOpen, depth = 0, relation = "parent", projectId, issueById, prLink = null }: { issue: BeadIssue; detail: BeadIssueDetail | null; isExpanded: boolean; isLoadingDetail: boolean; agent: string | null; dependencyCount: number; childCount: number; onClick: () => void; onOpen: () => void; depth?: number; relation?: "parent" | "epic" | "blocked"; projectId: string | null; issueById: Map<string, BeadIssue>; prLink?: IssuePrLink | null; }) {
   const isEpic = issue.issue_type === "epic";
   const displayStatus = getDisplayStatus(issue);
   const type = TYPE_CONFIG[String(issue.issue_type)] ?? { label: String(issue.issue_type), icon: IssueOpenedIcon, color: "var(--text-muted)" };
   const statusLabel = (STATUS_LABELS[displayStatus] ?? displayStatus).toLowerCase();
 
   return (
-    <article className={`row ${displayStatus} ${isEpic ? "epic" : ""} ${isExpanded ? "is-expanded" : ""} ${depth > 0 ? "is-child" : ""} ${relation === "blocked" ? "is-blocked-child" : relation === "epic" ? "is-epic-child" : "is-parent-child"}`} style={{ "--bead-depth": depth } as CSSProperties}>
+    <article data-bead-id={issue.id} className={`row ${displayStatus} ${isEpic ? "epic" : ""} ${isExpanded ? "is-expanded" : ""} ${depth > 0 ? "is-child" : ""} ${relation === "blocked" ? "is-blocked-child" : relation === "epic" ? "is-epic-child" : "is-parent-child"}`} style={{ "--bead-depth": depth } as CSSProperties}>
       <button type="button" className="row-main" onClick={onClick} aria-expanded={isExpanded} aria-controls={`issue-dossier-${issue.id}`}>
         <span className="issue-identity"><span className="id">{issue.id}</span><span className="identity-separator">/</span><span className="title">{issue.title}</span></span>
         <span className="issue-classification">
@@ -192,8 +194,8 @@ export function IssueRow({ issue, detail, isExpanded, isLoadingDetail, agent, de
           <SpecialistHistoryChip beadId={issue.id} />
           {displayStatus === "in_progress" && <SpecialistOwnerBadgeForBead beadId={issue.id} />}
         </span>
-        <span className="chev">{isExpanded ? <ChevronDownIcon size={12} /> : <ChevronRightIcon size={12} />}</span>
       </button>
+      <button type="button" className="chev" onClick={onOpen} aria-label={`open ${issue.id} side drawer`}>{isExpanded ? <ChevronDownIcon size={12} /> : <ChevronRightIcon size={12} />}</button>
       {isExpanded && <IssueDossier id={`issue-dossier-${issue.id}`} detail={detail} issue={issue} loading={isLoadingDetail} projectId={projectId} issueById={issueById} />}
     </article>
   );
@@ -276,9 +278,9 @@ export function IssueDossier({ id, detail, issue, loading, projectId, issueById 
   );
 }
 
-function DossierSection({ title, children }: { title: string; children: ReactNode }) { return <section className="bead-expanded-section"><div className="bead-section-title">{title}</div>{children}</section>; }
+export function DossierSection({ title, children }: { title: string; children: ReactNode }) { return <section className="bead-expanded-section"><div className="bead-section-title">{title}</div>{children}</section>; }
 
-function SpecialistHistoryChip({ beadId }: { beadId: string }) {
+export function SpecialistHistoryChip({ beadId }: { beadId: string }) {
   const { count } = useSpecialistHistory(beadId);
   if (count === 0) return null;
   return <span className="meta-item specialist-runs-chip">· {count} run{count === 1 ? "" : "s"}</span>;

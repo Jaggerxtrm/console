@@ -7,6 +7,7 @@ import { Sidebar } from "./components/shell/Sidebar.tsx";
 import { useShellStore, selectTheme } from "./stores/shell.ts";
 import type { TabId } from "../types/shell.ts";
 import { MainPane } from "./components/shell/MainPane.tsx";
+import { BeadSideDrawer } from "./pages/console/BeadSideDrawer.tsx";
 import { useGithubActivity } from "./hooks/useGithubActivity.ts";
 
 type Tab = "github" | "console";
@@ -60,6 +61,7 @@ function ShellApp() {
       <div className="ide-body">
         <Sidebar />
         <MainPane />
+        <BeadSideDrawer />
       </div>
     </div>
   );
