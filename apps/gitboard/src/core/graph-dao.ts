@@ -28,7 +28,7 @@ export function createGraphDao(options: GraphDaoOptions = {}) {
     async getGraph(projectId: string | null | undefined, includeClosed = false): Promise<GraphResponse> {
       const projects = await scanner.scanDirectory();
       const project = resolveProject(projects, projectId);
-      if (!project) return emptyGraph(projectId ?? "");
+      if (!project) return emptyGraph(projectId ?? "", projectFallbackNote(projectId, projects));
 
       const issues = await readIssues(project);
       const specialists = dao ? dao.inFlightJobs().filter((job) => job.repoSlug === project.id || job.repoSlug === project.name) : [];
@@ -156,6 +156,12 @@ function normalizeStatus(status: string): GraphNodeStatus {
   return "open";
 }
 
-function emptyGraph(projectId: string): GraphResponse {
-  return { project_id: projectId, repo_slug: projectId, generated_at: new Date().toISOString(), nodes: [], edges: [], specialists: [] };
+function emptyGraph(projectId: string, project?: string): GraphResponse & { project?: string } {
+  return { project_id: projectId, repo_slug: projectId, generated_at: new Date().toISOString(), nodes: [], edges: [], specialists: [], ...(project ? { project } : {}) };
+}
+
+function projectFallbackNote(projectId: string | null | undefined, projects: BeadsProject[]): string | undefined {
+  if (projectId) return undefined;
+  const selected = projects[0]?.name ?? projects[0]?.id;
+  return selected ? `fallback:selected-repo:${selected}` : "fallback:no-selected-repo";
 }
