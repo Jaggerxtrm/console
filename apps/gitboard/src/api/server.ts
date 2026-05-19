@@ -9,6 +9,7 @@ import { setRealtimePublisher, emit, makeLogEntry } from "../core/logger.ts";
 import { beadsRoutes } from "../../../beadboard/src/api/routes/beads.ts";
 import { createSpecialistsRouter } from "./routes/specialists.ts";
 import { createObservabilityRouter } from "./routes/observability.ts";
+import { createGraphRouter } from "./routes/graph.ts";
 import { ChannelRegistry } from "./ws/channels.ts";
 import { WsHandler } from "./ws/handler.ts";
 import { BeadsChangeWatcher } from "../../../beadboard/src/core/beads-change-watcher.ts";
@@ -71,6 +72,7 @@ export function createApp(db: Database): {
   app.route("/api/beads", beadsRoutes);
   app.route("/api/specialists", createSpecialistsRouter());
   app.route("/api/console/observability", createObservabilityRouter());
+  app.route("/api/console/graph", createGraphRouter());
   app.route("/api/internal", createInternalDoltHealthRouter());
   app.route("/api/internal", createInternalLogsRouter());
 
