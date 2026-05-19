@@ -12,8 +12,6 @@ const STATUS_ICON = {
 } as const;
 
 export function ChainDetailPane({ chain }: { chain: ChainSummary | null }) {
-  const setDrawerOpen = useShellStore((state) => state.setDrawerOpen);
-  const setDrawerTab = useShellStore((state) => state.setDrawerTab);
   const { jobs, loading, error } = useChainDetail(chain?.chainId ?? null);
 
   if (!chain) {
@@ -30,7 +28,7 @@ export function ChainDetailPane({ chain }: { chain: ChainSummary | null }) {
           <div className="console-specialists-detail-id">{chain.rootBeadId}</div>
           <div className="console-specialists-detail-title">{chain.title}</div>
         </div>
-        <button type="button" className="console-specialists-open-bead" onClick={() => { setDrawerTab("specialists"); setDrawerOpen(true); }}>Open bead</button>
+        <button type="button" className="console-specialists-open-bead" onClick={() => { void openBead(chain.rootBeadId); }}>Open bead</button>
       </div>
       {loading ? <div className="console-specialists-detail-empty">Loading chain…</div> : null}
       {error ? <div className="console-specialists-detail-empty">{error}</div> : null}
@@ -47,6 +45,28 @@ export function ChainDetailPane({ chain }: { chain: ChainSummary | null }) {
 
 function EmptyState() {
   return <section className="console-specialists-detail console-specialists-detail-empty-state"><div className="console-specialists-empty-mark"><DotFillIcon size={10} /></div><div>Select a chain to see details</div></section>;
+}
+
+async function openBead(beadId: string): Promise<void> {
+  try {
+    // TODO: direct import once forge-f6qk.4 lands in main
+    const module = await import(/* @vite-ignore */ new URL("../../../hooks/useBeadSideDrawer", import.meta.url).href);
+    const hook = module.useBeadSideDrawer?.();
+    if (hook?.open) {
+      hook.open(beadId);
+      return;
+    }
+  } catch {
+    /* fallback below */
+  }
+
+  try {
+    window.history.pushState({}, "", "/gitboard/console/feed");
+    const target = document.querySelector(`[data-bead-id=\"${CSS.escape(beadId)}\"]`);
+    target?.scrollIntoView({ block: "center" });
+  } catch {
+    // ignore fallback failures
+  }
 }
 
 function TimelineRow({ job }: { job: ChainJob }) {
