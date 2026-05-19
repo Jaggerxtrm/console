@@ -8,6 +8,7 @@ import { ChevronRightIcon, ChevronDownIcon, IssueOpenedIcon, MilestoneIcon, Nort
 import type { BeadDependency, BeadIssue, BeadIssueDetail, Interaction } from "../../../types/beads.ts";
 import { beadsApi as api } from "../../lib/beads-api.ts";
 import { SpecialistOwnerBadgeForBead } from "./SpecialistOwnerBadge.tsx";
+import { useSpecialistHistory } from "../../hooks/useSpecialistHistory.ts";
 
 export interface IssuePrLink {
   number: number;
@@ -188,6 +189,7 @@ export function IssueRow({ issue, detail, isExpanded, isLoadingDetail, agent, de
             </>
           )}
           {agent && <><span className="identity-separator">/</span><span className="agent-badge"><DependabotIcon size={10} /> {agent}</span></>}
+          <SpecialistHistoryChip beadId={issue.id} />
           {displayStatus === "in_progress" && <SpecialistOwnerBadgeForBead beadId={issue.id} />}
         </span>
         <span className="chev">{isExpanded ? <ChevronDownIcon size={12} /> : <ChevronRightIcon size={12} />}</span>
@@ -199,6 +201,7 @@ export function IssueRow({ issue, detail, isExpanded, isLoadingDetail, agent, de
 
 export function IssueDossier({ id, detail, issue, loading, projectId, issueById }: { id: string; detail: BeadIssueDetail | null; issue: BeadIssue; loading: boolean; projectId: string | null; issueById: Map<string, BeadIssue>; }) {
   const [interactions, setInteractions] = useState<Interaction[]>([]);
+  const specialistHistory = useSpecialistHistory(issue.id);
 
   useEffect(() => {
     let cancelled = false;
@@ -238,6 +241,13 @@ export function IssueDossier({ id, detail, issue, loading, projectId, issueById 
           {issue.closed_at && <span><b>Closed</b><strong>{formatCompactDate(issue.closed_at)}</strong></span>}
         </div>
         <DossierSection title="Description"><SafeMarkdown value={detail?.description ?? issue.description} empty="No description." /></DossierSection>
+        {specialistHistory.count > 0 && (
+          <DossierSection title="SPECIALIST ACTIVITY">
+            <div className="bead-specialist-activity" role="list">
+              {specialistHistory.jobs.map((job) => <SpecialistHistoryRow key={`${job.repoSlug}:${job.jobId ?? job.beadId}:${job.updatedAt}`} job={job} />)}
+            </div>
+          </DossierSection>
+        )}
         {(detail?.notes ?? issue.notes) && (
           <DossierSection title="Notes"><SafeMarkdown value={detail?.notes ?? issue.notes} empty="No notes." /></DossierSection>
         )}
@@ -267,6 +277,48 @@ export function IssueDossier({ id, detail, issue, loading, projectId, issueById 
 }
 
 function DossierSection({ title, children }: { title: string; children: ReactNode }) { return <section className="bead-expanded-section"><div className="bead-section-title">{title}</div>{children}</section>; }
+
+function SpecialistHistoryChip({ beadId }: { beadId: string }) {
+  const { count } = useSpecialistHistory(beadId);
+  if (count === 0) return null;
+  return <span className="meta-item specialist-runs-chip">· {count} run{count === 1 ? "" : "s"}</span>;
+}
+
+function SpecialistHistoryRow({ job }: { job: import("../../hooks/useSpecialistHistory.ts").SpecialistHistoryJob }) {
+  const [open, setOpen] = useState(false);
+  const excerpt = truncateExcerpt(job.lastOutput);
+  return (
+    <details className="bead-specialist-activity-row" open={open} onToggle={(event) => setOpen(event.currentTarget.open)}>
+      <summary>
+        <span>{statusIcon(job.status)}</span>
+        <span>{job.specialist ?? job.chainKind ?? "—"}</span>
+        <span>{job.status}</span>
+        <span>{shortId(job.jobId)}</span>
+        <span>{formatElapsed(job.updatedAt)}</span>
+        <span>{excerpt || job.status}</span>
+      </summary>
+      {job.lastOutput ? <div className="bead-specialist-activity-output">{job.lastOutput}</div> : null}
+    </details>
+  );
+}
+
+function statusIcon(status: string): string {
+  if (status === "done") return "✓";
+  if (status === "error") return "✕";
+  if (status === "cancelled") return "↯";
+  if (status === "running" || status === "starting" || status === "waiting") return "●";
+  return "·";
+}
+
+function shortId(id: string | null): string { return id ? id.slice(0, 8) : "—"; }
+
+function truncateExcerpt(value: string | null): string {
+  const text = value?.replace(/\s+/g, " ").trim() ?? "";
+  if (text.length <= 80) return text;
+  return `${text.slice(0, 79)}…`;
+}
+
+function formatElapsed(updatedAt: string): string { const delta = Date.now() - Date.parse(updatedAt); if (!Number.isFinite(delta) || delta < 0) return "now"; const minutes = Math.floor(delta / 60000); if (minutes < 1) return "now"; if (minutes < 60) return `${minutes}m`; const hours = Math.floor(minutes / 60); if (hours < 24) return `${hours}h`; return `${Math.floor(hours / 24)}d`; }
 
 function SafeMarkdown({ value, empty }: { value?: string | null; empty: string }) {
   if (!value?.trim()) return <div className="bead-empty-note">{empty}</div>;
