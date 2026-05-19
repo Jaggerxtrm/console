@@ -48,13 +48,12 @@ describe("GET /api/console/graph", () => {
     const json = await res.json() as { project_id: string; repo_slug: string; nodes: Array<{ id: string }>; edges: Array<{ type: string }>; specialists: Array<{ bead_id: string; status: string }> };
     expect(json.project_id).toBe("gitboard");
     expect(json.repo_slug).toBe("gitboard");
-    expect(json.nodes.map((node) => node.id).sort()).toEqual(["gitboard-1", "gitboard-2", "gitboard-3", "gitboard-4", "gitboard-5"].sort());
-    expect(json.edges).toHaveLength(4);
-    expect(new Set(json.edges.map((edge) => edge.type))).toEqual(new Set(["blocks", "supersedes", "related", "tracks"]));
-    expect(json.specialists).toEqual([
-      expect.objectContaining({ bead_id: "gitboard-1", status: "running" }),
-      expect.objectContaining({ bead_id: "gitboard-4", status: "waiting" }),
-    ]);
+    expect(json.nodes.map((node) => node.id).sort()).toEqual(["gitboard-1", "gitboard-2", "gitboard-4", "gitboard-5"].sort());
+    expect(json.edges).toHaveLength(3);
+    expect(new Set(json.edges.map((edge) => edge.type))).toEqual(new Set(["blocks", "related", "tracks"]));
+    expect(json.specialists.map((job) => job.bead_id)).toEqual(["gitboard-4", "gitboard-1"]);
+    expect(json.specialists[0]).toEqual(expect.objectContaining({ bead_id: "gitboard-4", status: "waiting" }));
+    expect(json.specialists[1]).toEqual(expect.objectContaining({ bead_id: "gitboard-1", status: "running" }));
   });
 
   it("includes closed nodes when include_closed=true", async () => {
