@@ -3817,25 +3817,25 @@ body:has(.shell-app) { background: #000 !important; }
 
 /* ============================================================
  * forge-7xu: Unified IDE Shell — TopBar + Sidebar + MainPane
- * Single-source palette. Sans-serif chrome. Black bg.
+ * Single-source palette. Sans-serif chrome. Soft dark bg.
  * ============================================================ */
 
 .ide-shell {
-  --bg: #000;
-  --surface-backdrop: #000;
-  --surface-elevated: #000;
-  --surface-primary: #000;
-  --surface-secondary: #050505;
-  --surface-tertiary: #0c0c0c;
-  --surface-quaternary: #1c1c1c;
-  --surface-1: #000;
-  --surface-2: #050505;
-  --surface-3: #0c0c0c;
-  --surface-hover: rgba(255, 255, 255, 0.04);
-  --bg-hover: #0c0c0c;
-  --border-subtle: rgba(255, 255, 255, 0.08);
-  --border-default: #1c1c1c;
-  --border-strong: #2a2a2a;
+  --bg: #141414;
+  --surface-backdrop: #141414;
+  --surface-elevated: #141414;
+  --surface-primary: #141414;
+  --surface-secondary: #1a1a1a;
+  --surface-tertiary: #222222;
+  --surface-quaternary: #303030;
+  --surface-1: #141414;
+  --surface-2: #1a1a1a;
+  --surface-3: #222222;
+  --surface-hover: rgba(255, 255, 255, 0.06);
+  --bg-hover: #222222;
+  --border-subtle: rgba(255, 255, 255, 0.1);
+  --border-default: #303030;
+  --border-strong: #3a3a3a;
   --border: var(--border-default);
   --card-border: 1px solid var(--border-default);
   --text-primary: #f8fafc;
