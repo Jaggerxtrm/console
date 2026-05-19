@@ -3352,6 +3352,39 @@ body {
   color: var(--accent-blue);
 }
 
+/* theme-aware accent for the specialist chip — distinct from --accent-blue
+ * which stays pale across themes. Dark = lively cyan, light = readable teal. */
+:root { --specialist-chip-accent: #5cd1e3; }
+.ide-shell[data-theme="light"] { --specialist-chip-accent: #0e7490; }
+
+.specialist-owner-badge {
+  align-items: center;
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--text-muted) 40%, transparent);
+  border-radius: 10px;
+  color: var(--text-muted);
+  display: inline-flex;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  gap: 3px;
+  letter-spacing: 0.02em;
+  padding: 1px 6px;
+  white-space: nowrap;
+}
+.specialist-owner-badge.state-running {
+  background: color-mix(in srgb, var(--specialist-chip-accent) 14%, transparent);
+  border-color: color-mix(in srgb, var(--specialist-chip-accent) 55%, transparent);
+  color: var(--specialist-chip-accent);
+}
+.specialist-owner-badge.state-starting {
+  background: color-mix(in srgb, var(--specialist-chip-accent) 8%, transparent);
+  border-color: color-mix(in srgb, var(--specialist-chip-accent) 35%, transparent);
+  color: color-mix(in srgb, var(--specialist-chip-accent) 75%, var(--text-secondary));
+}
+.specialist-owner-badge.state-waiting {
+  color: var(--text-muted);
+}
+
 /* forge-5w9.7: BeadsRepoView wrapper layout */
 .shell-beads-view {
   display: flex;
