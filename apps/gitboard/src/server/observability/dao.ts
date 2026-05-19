@@ -1,12 +1,14 @@
 import type { AttachPoolLike, EpicRun, SpecialistChain, SpecialistJob } from "./types.js";
 
-const IN_FLIGHT_STATUSES = ["starting", "running"] as const;
+const IN_FLIGHT_STATUSES = ["starting", "running", "waiting"] as const;
+const HISTORY_STATUSES = ["done", "error", "cancelled"] as const;
 const JOB_COLUMNS = "job_id, bead_id, chain_id, epic_id, chain_kind, status, updated_at_ms, specialist";
 
 export function createObservabilityDao(pool: AttachPoolLike) {
   return {
     jobsByBead: (beadId: string) => sortDesc(readJobs(pool, `WHERE bead_id = ?`, ``, [beadId])),
     inFlightJobs: () => sortDesc(readJobs(pool, `WHERE status IN (${IN_FLIGHT_STATUSES.map(() => "?").join(",")})`, ``, [...IN_FLIGHT_STATUSES])),
+    recentJobs: (limit: number) => sortDesc(readJobs(pool, `WHERE status IN (${HISTORY_STATUSES.map(() => "?").join(",")})`, `LIMIT ?`, [...HISTORY_STATUSES, String(limit)])),
     chainById: (chainId: string) => sortChain(readJobs(pool, `WHERE chain_id = ?`, ``, [chainId])) as SpecialistChain[],
     epicById: (epicId: string) => sortAsc(readJobs(pool, `WHERE epic_id = ?`, ``, [epicId])) as EpicRun[],
   };

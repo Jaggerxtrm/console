@@ -4326,6 +4326,56 @@ body:has(.shell-app) { background: #000 !important; }
   .ide-skeleton-head, .ide-skeleton-card { animation: none; }
 }
 
+.ide-main-content {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
+}
+
+.bottom-drawer {
+  background: #000;
+  border-top: 1px solid #1c1c1c;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  min-height: 120px;
+  min-width: 0;
+}
+.bottom-drawer-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.bottom-drawer-tabbar {
+  align-items: center;
+  border-bottom: 1px solid #1c1c1c;
+  display: flex;
+  gap: 2px;
+  padding: 4px 6px 0;
+}
+.bottom-drawer-tab {
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  padding: 8px 10px;
+}
+.bottom-drawer-tab.is-active { color: var(--text-primary); border-bottom-color: var(--accent); }
+.bottom-drawer-resizer { height: 4px; cursor: row-resize; }
+.bottom-drawer-toggle { display: none; }
+.drawer-panel-message { color: var(--text-muted); font-size: 12px; padding: 12px 14px; font-family: var(--font-mono); }
+.drawer-specialists { display: grid; gap: 8px; padding: 8px 0; font-family: var(--font-mono); }
+.drawer-specialists-section { display: grid; gap: 4px; }
+.drawer-specialists-header { color: var(--text-muted); font-size: 11px; padding: 0 14px; text-transform: lowercase; }
+.drawer-specialists-empty { color: var(--text-muted); font-size: 12px; padding: 0 14px 6px; }
+.drawer-specialists-rows { display: grid; }
+.drawer-specialists-row { display: grid; gap: 8px; grid-template-columns: 8ch 12ch 10ch 12ch 10ch 10ch 16ch 6ch; padding: 0 14px; white-space: nowrap; }
+.drawer-specialists-row span { overflow: hidden; text-overflow: ellipsis; }
+.drawer-show-more { background: transparent; border: 0; color: var(--accent); cursor: pointer; font: inherit; font-size: 11px; padding: 4px 14px 0; text-align: left; }
 /* forge-qc0: MainPane wrapper must give virtualized timelines a sized parent. */
 .ide-main {
   background: #000;

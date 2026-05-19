@@ -16,6 +16,9 @@ const LS = {
   selection: "forge-5w9:selection",
   collapsed: "forge-5w9:sidebarCollapsed",
   theme: "forge-vk47:theme",
+  drawerOpen: "forge-gud9:drawerOpen",
+  drawerHeight: "forge-gud9:drawerHeight",
+  drawerTab: "forge-gud9:drawerTab",
 };
 
 function readJSON<T>(key: string, fallback: T): T {
@@ -42,12 +45,18 @@ const initialSelection = readJSON<SidebarSelection>(LS.selection, {
 });
 const initialCollapsed = readJSON<boolean>(LS.collapsed, false);
 const initialTheme = readJSON<ThemeMode>(LS.theme, "dark");
+const initialDrawerOpen = readJSON<boolean>(LS.drawerOpen, true);
+const initialDrawerHeight = readJSON<number>(LS.drawerHeight, 240);
+const initialDrawerTab = readJSON<"logs" | "specialists">(LS.drawerTab, "logs");
 
 export interface ShellState {
   repos: RepoNode[];
   selection: SidebarSelection;
   sidebarCollapsed: boolean;
   theme: ThemeMode;
+  drawerOpen: boolean;
+  drawerHeight: number;
+  drawerTab: "logs" | "specialists";
 
   setRepos: (repos: RepoNode[]) => void;
   setSurface: (surface: Surface) => void;       // switching surface resets tab to default
@@ -55,6 +64,9 @@ export interface ShellState {
   setRepo: (repo: string | null) => void;
   toggleSidebar: () => void;
   toggleTheme: () => void;
+  setDrawerOpen: (open: boolean) => void;
+  setDrawerHeight: (height: number) => void;
+  setDrawerTab: (tab: "logs" | "specialists") => void;
 }
 
 export const useShellStore = create<ShellState>((set) => ({
@@ -62,6 +74,9 @@ export const useShellStore = create<ShellState>((set) => ({
   selection: initialSelection,
   sidebarCollapsed: initialCollapsed,
   theme: initialTheme === "light" ? "light" : "dark",
+  drawerOpen: initialDrawerOpen,
+  drawerHeight: initialDrawerHeight,
+  drawerTab: initialDrawerTab,
 
   setRepos: (repos) => set({ repos }),
 
@@ -102,6 +117,25 @@ export const useShellStore = create<ShellState>((set) => ({
       const next: ThemeMode = state.theme === "dark" ? "light" : "dark";
       writeJSON(LS.theme, next);
       return { theme: next };
+    }),
+
+  setDrawerOpen: (open) =>
+    set(() => {
+      writeJSON(LS.drawerOpen, open);
+      return { drawerOpen: open };
+    }),
+
+  setDrawerHeight: (height) =>
+    set(() => {
+      const next = Math.max(120, Math.min(600, Math.round(height)));
+      writeJSON(LS.drawerHeight, next);
+      return { drawerHeight: next };
+    }),
+
+  setDrawerTab: (tab) =>
+    set(() => {
+      writeJSON(LS.drawerTab, tab);
+      return { drawerTab: tab };
     }),
 }));
 

@@ -8,6 +8,7 @@ import type { AttachPoolLike, SpecialistChain, SpecialistJob } from "../../serve
 export interface SpecialistsDao {
   jobsByBead(beadId: string): SpecialistJob[];
   inFlightJobs(): SpecialistJob[];
+  recentJobs(limit: number): SpecialistJob[];
   chainById(chainId: string): SpecialistChain[];
 }
 
@@ -36,9 +37,11 @@ export function createSpecialistsRouter(
   });
 
   router.get("/jobs/in-flight", (c) => {
-    const jobs = dao.inFlightJobs().slice(0, 200);
+    const limit = parseLimit(c.req.query("limit"), 50);
+    const inFlight = dao.inFlightJobs().slice(0, 200);
+    const recentHistory = dao.recentJobs(limit).slice(0, limit);
     const epoch = Object.fromEntries(repoLister().map((repo) => [repo.repoSlug, epochGetter(repo.repoSlug)]));
-    return c.json({ jobs, epoch });
+    return c.json({ in_flight: inFlight, recent_history: recentHistory, jobs: inFlight, epoch });
   });
 
   router.get("/chains/:chain_id", (c) => {
@@ -52,6 +55,11 @@ export function createSpecialistsRouter(
   });
 
   return router;
+}
+
+function parseLimit(value: string | undefined, fallback: number): number {
+  const parsed = value ? Number(value) : fallback;
+  return Number.isFinite(parsed) && parsed > 0 ? Math.min(Math.floor(parsed), 200) : fallback;
 }
 
 function getDefaultDao(): SpecialistsDao {
