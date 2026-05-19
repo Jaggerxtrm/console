@@ -9,17 +9,11 @@ export function Observability() {
 
   return (
     <section style={shellStyle}>
-      <header style={headerStyle}>
-        <div>
-          <div style={kickerStyle}>Observability</div>
-          <h1 style={titleStyle}>Jobs stats</h1>
-        </div>
-        <div style={toggleWrapStyle}>
-          {(["7d", "30d", "all"] as const).map((item) => (
-            <button key={item} type="button" onClick={() => setRange(item)} style={range === item ? activeToggleStyle : toggleStyle}>{item}</button>
-          ))}
-        </div>
-      </header>
+      <div style={toggleWrapStyle}>
+        {(["7d", "30d", "all"] as const).map((item) => (
+          <button key={item} type="button" onClick={() => setRange(item)} style={range === item ? activeToggleStyle : toggleStyle}>{item}</button>
+        ))}
+      </div>
 
       <MetricTable title="1. Tokens" columns={["Specialist", "Input", "Output", "Cache create", "Cache read", "Total"]} rows={(data?.tokens.bySpecialist ?? []).map((row) => [row.specialist, row.input, row.output, row.cacheCreation, row.cacheRead, row.total])} />
       <MetricTable title="2. Cache hit rate" columns={["Specialist", "Hit rate"]} rows={(data?.cacheHitRate.bySpecialist ?? []).map((row) => [row.specialist, pct(row.hitRate)])} />
@@ -63,11 +57,8 @@ function Cell({ value, header = false, width = 1 }: { value: string | number; he
 function pct(value: number) { return `${Math.round(value * 100)}%`; }
 function isNumeric(value: string | number) { return typeof value === "number" || /^\d/.test(String(value)); }
 
-const shellStyle: CSSProperties = { background: "var(--surface-primary)", color: "var(--text-primary)", minHeight: "100vh", padding: 16, fontFamily: "Inter, sans-serif" };
-const headerStyle: CSSProperties = { display: "flex", justifyContent: "space-between", alignItems: "end", marginBottom: 16 };
-const kickerStyle: CSSProperties = { fontSize: 11, textTransform: "uppercase", color: "var(--text-muted)", letterSpacing: "0.08em" };
-const titleStyle: CSSProperties = { margin: 0, fontSize: 24 };
-const toggleWrapStyle: CSSProperties = { display: "flex", gap: 8 };
+const shellStyle: CSSProperties = { background: "var(--surface-primary)", color: "var(--text-primary)", fontFamily: "Inter, sans-serif" };
+const toggleWrapStyle: CSSProperties = { display: "flex", gap: 8, marginBottom: 12 };
 const toggleStyle: CSSProperties = { background: "transparent", color: "var(--text-muted)", border: "none", borderBottom: "1px solid transparent", padding: "4px 0", fontFamily: "JetBrains Mono, monospace" };
 const activeToggleStyle: CSSProperties = { ...toggleStyle, color: "var(--text-primary)", borderBottomColor: "var(--accent)" };
 const sectionStyle: CSSProperties = { borderTop: "1px solid var(--border-subtle)", paddingTop: 12, marginTop: 12 };

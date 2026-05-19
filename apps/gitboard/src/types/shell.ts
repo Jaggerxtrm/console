@@ -2,7 +2,7 @@
 // Topbar = surface switch [github|beads] + tab strip for the current surface.
 // Sidebar = single-level repo list. MainPane renders (surface, tab, repo).
 
-export type Surface = "github" | "beads";
+export type Surface = "github" | "beads" | "console";
 export type ThemeMode = "dark" | "light";
 
 export type GithubTab =
@@ -15,8 +15,9 @@ export type GithubTab =
   | "reports";
 
 export type BeadsTab = "feed" | "triage" | "memories";
+export type ConsoleTab = "observability" | "specialists";
 
-export type TabId = GithubTab | BeadsTab;
+export type TabId = GithubTab | BeadsTab | ConsoleTab;
 
 export const GITHUB_TABS: { id: GithubTab; label: string }[] = [
   { id: "activity",  label: "Activity" },
@@ -34,9 +35,15 @@ export const BEADS_TABS: { id: BeadsTab; label: string }[] = [
   { id: "memories",  label: "Memories" },
 ];
 
+export const CONSOLE_TABS: { id: ConsoleTab; label: string }[] = [
+  { id: "observability", label: "Observability" },
+  { id: "specialists",   label: "Specialists" },
+];
+
 export const DEFAULT_TAB: Record<Surface, TabId> = {
   github: "activity",
   beads: "feed",
+  console: "observability",
 };
 
 export interface GithubChips {

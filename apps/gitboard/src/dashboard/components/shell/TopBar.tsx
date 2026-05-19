@@ -1,7 +1,7 @@
 // TopBar (forge-7xu). Surface switch [GitHub | Beads] on the left,
 // tab strip on the right.
 
-import { MarkGithubIcon, MoonIcon, ProjectIcon, SunIcon } from "@primer/octicons-react";
+import { GraphIcon, MarkGithubIcon, MoonIcon, ProjectIcon, SunIcon } from "@primer/octicons-react";
 import {
   useShellStore,
   selectSelection,
@@ -9,6 +9,7 @@ import {
 } from "../../stores/shell.ts";
 import {
   BEADS_TABS,
+  CONSOLE_TABS,
   GITHUB_TABS,
   type Surface,
   type TabId,
@@ -21,7 +22,7 @@ export function TopBar() {
   const setTab = useShellStore((s) => s.setTab);
   const toggleTheme = useShellStore((s) => s.toggleTheme);
 
-  const tabs = selection.surface === "github" ? GITHUB_TABS : BEADS_TABS;
+  const tabs = selection.surface === "github" ? GITHUB_TABS : selection.surface === "beads" ? BEADS_TABS : CONSOLE_TABS;
 
   return (
     <header className="ide-topbar" role="banner">
@@ -40,9 +41,30 @@ export function TopBar() {
           active={selection.surface === "beads"}
           onSelect={setSurface}
         />
+        <SurfaceButton
+          id="console"
+          label="Console"
+          icon={<GraphIcon size={14} />}
+          active={selection.surface === "console"}
+          onSelect={setSurface}
+        />
       </div>
       <nav className="ide-topbar-tabs" role="tablist" aria-label={`${selection.surface} tabs`}>
-        {tabs.map((t) => (
+        {selection.surface === "console" ? CONSOLE_TABS.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            role="tab"
+            aria-selected={selection.tab === t.id}
+            aria-disabled={t.id === "specialists" ? true : undefined}
+            title={t.id === "specialists" ? "Coming soon — forge-e23" : undefined}
+            className={selection.tab === t.id ? "ide-tab is-active" : t.id === "specialists" ? "ide-tab is-disabled" : "ide-tab"}
+            onClick={t.id === "specialists" ? undefined : () => setTab(t.id as TabId)}
+            disabled={t.id === "specialists"}
+          >
+            {t.label}
+          </button>
+        )) : tabs.map((t) => (
           <button
             key={t.id}
             type="button"
