@@ -187,6 +187,7 @@ function seedRepo(path: string, rows: SeedRow[], schemaOk: boolean): Database {
   if (schemaOk) {
     db.exec(`
       CREATE TABLE specialist_jobs (
+        job_id TEXT PRIMARY KEY,
         bead_id TEXT NOT NULL,
         chain_id TEXT,
         epic_id TEXT,
@@ -196,8 +197,9 @@ function seedRepo(path: string, rows: SeedRow[], schemaOk: boolean): Database {
         specialist TEXT
       );
     `);
-    const insert = db.prepare("INSERT INTO specialist_jobs (bead_id, chain_id, epic_id, chain_kind, status, updated_at_ms, specialist) VALUES (?, ?, ?, ?, ?, ?, ?)");
-    for (const row of rows) insert.run(row.beadId, row.chainId, row.epicId, row.chainKind, row.status, row.updatedAtMs, "explorer");
+    const insert = db.prepare("INSERT INTO specialist_jobs (job_id, bead_id, chain_id, epic_id, chain_kind, status, updated_at_ms, specialist) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+    let counter = 0;
+    for (const row of rows) { counter += 1; insert.run(`job-${counter}`, row.beadId, row.chainId, row.epicId, row.chainKind, row.status, row.updatedAtMs, "explorer"); }
   }
   return db;
 }

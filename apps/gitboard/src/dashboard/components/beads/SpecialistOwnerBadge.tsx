@@ -4,41 +4,43 @@ interface SpecialistOwnerBadgeProps {
   job: SpecialistOwnershipJob;
 }
 
+const LIVE_STATES = new Set(["starting", "running", "waiting"]);
+
 export function SpecialistOwnerBadgeForBead({ beadId }: { beadId: string }) {
   const job = useSpecialistOwnership(beadId);
   if (!job) return null;
+  if (!LIVE_STATES.has(job.state)) return null;
   return <SpecialistOwnerBadge job={job} />;
 }
 
 const STATE_COLORS: Record<string, string> = {
   starting: "var(--status-blocked)",
   running: "var(--status-open)",
+  waiting: "var(--text-muted)",
 };
 
 export function SpecialistOwnerBadge({ job }: SpecialistOwnerBadgeProps) {
   const color = STATE_COLORS[job.state] ?? "var(--text-muted)";
+  const jobId = job.jobId ? job.jobId.slice(0, 6) : "—";
+  const label = `${job.role}:${jobId}·${job.state}`;
 
   return (
     <span
       style={{
         display: "inline-flex",
         alignItems: "center",
-        gap: 4,
-        padding: "2px 6px",
-        borderRadius: 999,
+        padding: "0 6px",
+        borderRadius: 4,
         border: `1px solid ${color}`,
         color,
-        background: "color-mix(in srgb, currentColor 10%, transparent)",
-        fontSize: "var(--text-xs)",
-        lineHeight: 1.2,
+        fontSize: "inherit",
+        lineHeight: "inherit",
         whiteSpace: "nowrap",
+        fontFamily: "var(--font-mono, monospace)",
       }}
+      title={`${job.role} job ${job.jobId ?? ""} · ${job.state} · ${job.repoSlug}`}
     >
-      <span style={{ fontWeight: 700, textTransform: "capitalize" }}>{job.role}</span>
-      <span>·</span>
-      <span>{job.state}</span>
-      <span>·</span>
-      <span>{job.repoSlug}</span>
+      {label}
     </span>
   );
 }

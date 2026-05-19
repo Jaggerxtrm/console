@@ -1,7 +1,7 @@
 import type { AttachPoolLike, EpicRun, SpecialistChain, SpecialistJob } from "./types.js";
 
 const IN_FLIGHT_STATUSES = ["starting", "running"] as const;
-const JOB_COLUMNS = "bead_id, chain_id, epic_id, chain_kind, status, updated_at_ms, specialist";
+const JOB_COLUMNS = "job_id, bead_id, chain_id, epic_id, chain_kind, status, updated_at_ms, specialist";
 
 export function createObservabilityDao(pool: AttachPoolLike) {
   return {
@@ -50,6 +50,7 @@ function readJobs(pool: AttachPoolLike, whereSql: string, orderSql: string, para
 
 function mapRow(row: Record<string, unknown>): SpecialistJob {
   return {
+    jobId: row.job_id == null ? null : String(row.job_id),
     repoSlug: String(row.repoSlug),
     beadId: String(row.bead_id),
     chainId: row.chain_id == null ? null : String(row.chain_id),

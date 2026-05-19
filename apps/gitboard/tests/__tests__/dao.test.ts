@@ -12,6 +12,7 @@ function makeDb(path: string, rows: Array<{ beadId: string; chainId: string | nu
   try {
     db.exec(`
       CREATE TABLE specialist_jobs (
+        job_id TEXT PRIMARY KEY,
         bead_id TEXT NOT NULL,
         chain_id TEXT,
         epic_id TEXT,
@@ -22,8 +23,9 @@ function makeDb(path: string, rows: Array<{ beadId: string; chainId: string | nu
       );
     `);
 
-    const insert = db.prepare("INSERT INTO specialist_jobs VALUES (?, ?, ?, ?, ?, ?, ?)");
-    for (const row of rows) insert.run(row.beadId, row.chainId, row.epicId, row.chainKind, row.status, row.updatedAtMs, "explorer");
+    const insert = db.prepare("INSERT INTO specialist_jobs VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+    let counter = 0;
+    for (const row of rows) { counter += 1; insert.run(`job-${counter}`, row.beadId, row.chainId, row.epicId, row.chainKind, row.status, row.updatedAtMs, "explorer"); }
   } finally {
     db.close();
   }

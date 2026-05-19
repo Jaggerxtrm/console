@@ -1,4 +1,5 @@
 export interface SpecialistJob {
+  jobId: string | null;
   repoSlug: string;
   beadId: string;
   chainId: string | null;
