@@ -24,7 +24,7 @@ interface IssueFeedProps {
   selectedIssueDetail: BeadIssueDetail | null;
   loadingDetailId: string | null;
   onIssueSelect: (issue: BeadIssue) => void;
-  onIssueOpen: (issue: BeadIssue) => void;
+  onIssueOpen?: (issue: BeadIssue) => void;
   getAgent?: (issueId: string) => string | null;
   projectId: string | null;
   prByIssueId?: Map<string, IssuePrLink>;
@@ -142,7 +142,7 @@ export function IssueFeed({ issues, closedIssues = [], selectedIssueId, selected
                   dependencyCount={countDependencies(item.issue)}
                   childCount={item.childCount}
                   onClick={() => onIssueSelect(item.issue)}
-                  onOpen={() => onIssueOpen(item.issue)}
+                  onOpen={() => onIssueOpen?.(item.issue)}
                   depth={item.depth}
                   relation={item.relation}
                   projectId={projectId}
