@@ -1,4 +1,4 @@
-import { useEffect, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { useEffect, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { BottomDrawerTabBar } from "./BottomDrawerTabBar.tsx";
 import { SpecialistsTabPanel } from "../beads/SpecialistsTabPanel.tsx";
 import { LogsTabPanel } from "./LogsTabPanel.tsx";
@@ -28,7 +28,7 @@ export function BottomDrawer() {
 
   return (
     <section className="bottom-drawer" data-open={open} style={{ height }}>
-      <div className="bottom-drawer-resizer" role="separator" aria-orientation="horizontal" tabIndex={0} onMouseDown={(event) => startResize(event, setDrawerHeight)} />
+      <div className="bottom-drawer-resizer" role="separator" aria-orientation="horizontal" tabIndex={0} onPointerDown={(event) => startResize(event, setDrawerHeight)} />
       <BottomDrawerTabBar
         activeTab={tab}
         open={open}
@@ -46,17 +46,28 @@ export function BottomDrawer() {
   );
 }
 
-function startResize(event: ReactMouseEvent, setDrawerHeight: (height: number) => void) {
+function startResize(event: ReactPointerEvent<HTMLDivElement>, setDrawerHeight: (height: number) => void) {
   event.preventDefault();
-  const onMove = (moveEvent: globalThis.MouseEvent) => {
+  if (event.pointerType === "mouse" && event.button !== 0) return;
+
+  const target = event.currentTarget;
+  target.setPointerCapture(event.pointerId);
+
+  const onMove = (moveEvent: globalThis.PointerEvent) => {
     setDrawerHeight(window.innerHeight - moveEvent.clientY);
   };
-  const onUp = () => {
-    window.removeEventListener("mousemove", onMove);
-    window.removeEventListener("mouseup", onUp);
+  const onUp = (upEvent: globalThis.PointerEvent) => {
+    if (target.hasPointerCapture(upEvent.pointerId)) {
+      target.releasePointerCapture(upEvent.pointerId);
+    }
+    target.removeEventListener("pointermove", onMove);
+    target.removeEventListener("pointerup", onUp);
+    target.removeEventListener("pointercancel", onUp);
   };
-  window.addEventListener("mousemove", onMove);
-  window.addEventListener("mouseup", onUp);
+
+  target.addEventListener("pointermove", onMove);
+  target.addEventListener("pointerup", onUp);
+  target.addEventListener("pointercancel", onUp);
 }
 
 function toggleMaximize(
