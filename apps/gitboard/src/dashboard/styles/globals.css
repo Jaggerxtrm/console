@@ -5110,21 +5110,7 @@ body:has(.ide-shell[data-theme="light"]) { background: #fff !important; }
 }
 .g-now-rows { display: flex; flex-direction: column; gap: 4px; }
 
-/* ---- main grid ----
-   Owns the available vertical space between header/NowStrip and buckets/foot.
-   Clusters and orphans scroll independently inside this region; the parent
-   .g-app has overflow:hidden so the page itself never scrolls. */
-.g-main {
-  flex: 1;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 280px;
-  gap: 16px;
-  margin-top: 16px;
-  min-height: 0;
-}
-@media (max-width: 1080px) {
-  .g-main { grid-template-columns: 1fr; }
-}
+/* ---- cluster grid (forge-2a8a) ---- */
 .g-clusters {
   display: grid;
   grid-template-columns: 1fr;
@@ -5259,9 +5245,6 @@ body:has(.ide-shell[data-theme="light"]) { background: #fff !important; }
 .g-cluster-tag.p0 { color: var(--graph-priority-0); border-color: var(--graph-priority-0); }
 .g-cluster-tag.run { color: var(--graph-state-wip); border-color: var(--graph-state-wip); }
 
-.g-cluster-canvas { position: relative; width: 100%; }
-.g-cluster-svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
-
 /* ---- node (HTML div, 200×26, absolute positioned inside cluster) ---- */
 .g-node {
   position: absolute;
@@ -5377,20 +5360,8 @@ body:has(.ide-shell[data-theme="light"]) { background: #fff !important; }
 .g-elabel.parent     { fill: var(--text-muted); }
 .g-elabel.related    { fill: var(--text-muted); }
 
-/* ---- orphan sidebar ---- */
-.g-orphans {
-  background: rgba(255, 255, 255, 0.012);
-  border: 1px solid var(--border-subtle);
-  border-radius: 6px;
-  padding: 10px 0 8px;
-  align-self: stretch;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-.g-orphans-list { flex: 1; min-height: 0; overflow-y: auto; padding: 0; }
-[data-theme="light"] .g-orphans { background: rgba(15, 23, 42, 0.02); }
+/* ---- orphan header (used by .g-orphans-strip; legacy sidebar removed in
+   forge-2a8a.4) ---- */
 .g-orphans-hd {
   display: flex;
   align-items: baseline;
