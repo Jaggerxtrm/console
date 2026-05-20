@@ -15,6 +15,20 @@ let scannerInstance: ProjectScanner | null = null;
 let observabilityDao: ReturnType<typeof createObservabilityDao> | null = null;
 let observabilityInitialized = false;
 
+const PROJECT_SCAN_TTL_MS = 30_000;
+const ISSUE_CACHE_TTL_MS = 10_000;
+
+interface CacheEntry<T> {
+  value: T;
+  expires: number;
+}
+
+const projectScanCache = new WeakMap<ProjectScanner, CacheEntry<BeadsProject[]>>();
+const projectScanInflight = new WeakMap<ProjectScanner, Promise<BeadsProject[]>>();
+const issueCache = new Map<string, CacheEntry<BeadIssue[]>>();
+const issueInflight = new Map<string, Promise<BeadIssue[]>>();
+let graphEpoch = 0;
+
 export interface GraphDaoOptions {
   scanner?: ProjectScanner;
   observability?: ReturnType<typeof createObservabilityDao>;
@@ -26,15 +40,87 @@ export function createGraphDao(options: GraphDaoOptions = {}) {
 
   return {
     async getGraph(projectId: string | null | undefined, includeClosed = false): Promise<GraphResponse> {
-      const projects = await scanner.scanDirectory();
+      const projects = await scanProjects(scanner);
       const project = resolveProject(projects, projectId);
       if (!project) return emptyGraph(projectId ?? "", projectFallbackNote(projectId, projects));
 
-      const issues = await readIssues(project);
+      const issues = await readIssuesCached(project);
       const specialists = dao ? dao.inFlightJobs().filter((job) => job.repoSlug === project.id || job.repoSlug === project.name) : [];
       return buildGraph(project, issues, specialists, includeClosed);
     },
+    invalidate(projectId?: string | null): void {
+      projectScanCache.delete(scanner);
+      invalidateGraphCache(projectId);
+    },
   };
+}
+
+export function invalidateGraphCache(projectId?: string | null): void {
+  graphEpoch += 1;
+  if (!projectId) {
+    issueCache.clear();
+    projectScanCache.delete(getScanner());
+    return;
+  }
+  for (const key of issueCache.keys()) {
+    if (key.startsWith(`${projectId}:`)) issueCache.delete(key);
+  }
+}
+
+async function scanProjects(scanner: ProjectScanner): Promise<BeadsProject[]> {
+  const now = Date.now();
+  const cached = projectScanCache.get(scanner);
+  if (cached && cached.expires > now) return cached.value;
+
+  const inflight = projectScanInflight.get(scanner);
+  if (inflight) return inflight;
+
+  const promise = scanner.scanDirectory()
+    .then((projects) => {
+      projectScanCache.set(scanner, { value: projects, expires: Date.now() + PROJECT_SCAN_TTL_MS });
+      return projects;
+    })
+    .finally(() => projectScanInflight.delete(scanner));
+  projectScanInflight.set(scanner, promise);
+  return promise;
+}
+
+function issueCacheKey(project: BeadsProject): string {
+  const source = project.source ?? "unknown";
+  const port = project.doltPort ?? "jsonl";
+  return `${project.id}:${project.beadsPath}:${source}:${port}:${project.doltDatabase ?? "dolt"}:${graphEpoch}`;
+}
+
+async function readIssuesCached(project: BeadsProject): Promise<BeadIssue[]> {
+  const key = issueCacheKey(project);
+  const now = Date.now();
+  const cached = issueCache.get(key);
+  if (cached && cached.expires > now) return cached.value;
+
+  const inflight = issueInflight.get(key);
+  if (inflight) return inflight;
+
+  const promise = readIssues(project)
+    .then((issues) => {
+      issueCache.set(key, { value: issues, expires: Date.now() + ISSUE_CACHE_TTL_MS });
+      pruneIssueCache();
+      return issues;
+    })
+    .finally(() => issueInflight.delete(key));
+  issueInflight.set(key, promise);
+  return promise;
+}
+
+function pruneIssueCache(maxEntries = 100): void {
+  const now = Date.now();
+  for (const [key, entry] of issueCache) {
+    if (entry.expires <= now) issueCache.delete(key);
+  }
+  while (issueCache.size > maxEntries) {
+    const oldest = issueCache.keys().next().value;
+    if (oldest === undefined) return;
+    issueCache.delete(oldest);
+  }
 }
 
 function getScanner(): ProjectScanner {
@@ -61,11 +147,13 @@ function resolveProject(projects: BeadsProject[], projectId: string | null | und
 
 async function readIssues(project: BeadsProject): Promise<BeadIssue[]> {
   if (project.doltPort) {
+    const client = new DoltClient({ host: process.env.XDG_PROJECTS_DIR ? "host.docker.internal" : "127.0.0.1", port: project.doltPort, database: project.doltDatabase ?? "dolt" });
     try {
-      const client = new DoltClient({ host: process.env.XDG_PROJECTS_DIR ? "host.docker.internal" : "127.0.0.1", port: project.doltPort, database: project.doltDatabase ?? "dolt" });
       return await client.getIssues({ limit: 1000 });
     } catch {
       return await readIssuesFromJsonl(project.beadsPath);
+    } finally {
+      await client.disconnect().catch(() => undefined);
     }
   }
   return await readIssuesFromJsonl(project.beadsPath);

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, mkdir, writeFile, appendFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Database } from "bun:sqlite";
@@ -67,10 +67,39 @@ describe("GET /api/console/graph", () => {
     expect(openJson.nodes.some((node) => node.id === "gitboard-4")).toBe(true);
     expect(closedJson.nodes.some((node) => node.id === "gitboard-6")).toBe(true);
   });
+
+  it("reuses cached scan and issue data until explicit refresh", async () => {
+    const scanner = new CountingScanner({ searchPath: dir, maxDepth: 2, excludePatterns: ["node_modules", ".git"] });
+    const app = createApp(scanner);
+
+    const firstRes = await app.fetch(new Request("http://localhost/api/console/graph?project_id=gitboard"));
+    const first = await firstRes.json() as { nodes: Array<{ id: string }> };
+    expect(first.nodes.some((node) => node.id === "gitboard-7")).toBe(false);
+
+    await appendFile(join(dir, "gitboard", ".beads", "backup", "issues.jsonl"), `\n${JSON.stringify({ id: "gitboard-7", title: "G", description: null, status: "open", priority: 2, issue_type: "task", owner: null, created_at: "2026-01-01T00:00:00Z", created_by: null, updated_at: "2026-01-01T00:00:00Z", closed_at: null, close_reason: null })}`);
+
+    const cachedRes = await app.fetch(new Request("http://localhost/api/console/graph?project_id=gitboard"));
+    const cached = await cachedRes.json() as { nodes: Array<{ id: string }> };
+    expect(cached.nodes.some((node) => node.id === "gitboard-7")).toBe(false);
+    expect(scanner.scanCount).toBe(1);
+
+    const refreshedRes = await app.fetch(new Request("http://localhost/api/console/graph?project_id=gitboard&refresh=true"));
+    const refreshed = await refreshedRes.json() as { nodes: Array<{ id: string }> };
+    expect(refreshed.nodes.some((node) => node.id === "gitboard-7")).toBe(true);
+    expect(scanner.scanCount).toBe(2);
+  });
 });
 
-function createApp(): Hono {
-  const scanner = new ProjectScanner({ searchPath: dir, maxDepth: 2, excludePatterns: ["node_modules", ".git" ] });
+class CountingScanner extends ProjectScanner {
+  scanCount = 0;
+
+  override async scanDirectory() {
+    this.scanCount += 1;
+    return super.scanDirectory();
+  }
+}
+
+function createApp(scanner = new ProjectScanner({ searchPath: dir, maxDepth: 2, excludePatterns: ["node_modules", ".git" ] })): Hono {
   const pool = createAttachPool([{ repoSlug: "gitboard", repoPath: dir, dbPath: join(dir, "repo.db"), mtimeMs: 0 }]);
   const dao = createGraphDao({ scanner, observability: createObservabilityDao(pool) });
   const app = new Hono();
