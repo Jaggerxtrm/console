@@ -1,14 +1,27 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 import { useObservabilitySummary } from "../../hooks/useObservabilitySummary.ts";
+import { ShellProviderNotice } from "../../components/console/ShellProviderNotice.tsx";
+import type { ShellProviderStatus } from "../../../core/shell-provider-policy.ts";
 
 export function Observability() {
   const [range, setRange] = useState<"7d" | "30d" | "all">("7d");
   const data = useObservabilitySummary(range);
   const tools = data?.toolUsage.totals ?? [];
+  const [status, setStatus] = useState<ShellProviderStatus | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch("/api/console/shell/status", { signal: controller.signal })
+      .then((res) => res.json())
+      .then((payload: ShellProviderStatus) => setStatus(payload))
+      .catch(() => setStatus(null));
+    return () => controller.abort();
+  }, []);
 
   return (
     <section style={shellStyle}>
+      {status ? <ShellProviderNotice status={status} /> : null}
       <div style={toggleWrapStyle}>
         {(["7d", "30d", "all"] as const).map((item) => (
           <button key={item} type="button" onClick={() => setRange(item)} style={range === item ? activeToggleStyle : toggleStyle}>{item}</button>

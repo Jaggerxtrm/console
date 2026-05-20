@@ -10,11 +10,16 @@ import { beadsRoutes } from "../../../beadboard/src/api/routes/beads.ts";
 import { createSpecialistsRouter } from "./routes/specialists.ts";
 import { createObservabilityRouter } from "./routes/observability.ts";
 import { createGraphRouter } from "./routes/graph.ts";
+import { createShellRouter } from "./routes/shell.ts";
+import { createTerminalRouter } from "./routes/terminal.ts";
 import { ChannelRegistry } from "./ws/channels.ts";
 import { WsHandler } from "./ws/handler.ts";
 import { BeadsChangeWatcher } from "../../../beadboard/src/core/beads-change-watcher.ts";
 import { createObservabilityWatcher } from "../server/observability/watcher.ts";
 import { listRepos } from "../server/observability/registry.ts";
+import { getShellProviderStatus, isAllowedShellWebSocketOrigin, isShellWebSocketPath, isVerifiedShellAdminRequest, shouldRejectShellWebSocket } from "../core/shell-provider-policy.ts";
+import { createTerminalProviderRegistry } from "./terminal/provider-registry.ts";
+import { TerminalBridge } from "./terminal/bridge.ts";
 
 export interface ServerOptions {
   port?: number;
@@ -73,6 +78,8 @@ export function createApp(db: Database): {
   app.route("/api/specialists", createSpecialistsRouter());
   app.route("/api/console/observability", createObservabilityRouter());
   app.route("/api/console/graph", createGraphRouter());
+  app.route("/api/console/shell", createShellRouter());
+  app.route("/api/console/terminal", createTerminalRouter());
   app.route("/api/internal", createInternalDoltHealthRouter());
   app.route("/api/internal", createInternalLogsRouter());
 
@@ -111,16 +118,29 @@ export function createApp(db: Database): {
 
 export function startServer(db: Database, options: ServerOptions = {}): void {
   const port = options.port ?? 3000;
-  const hostname = options.hostname ?? (process.env.NODE_ENV === "production" ? "0.0.0.0" : "localhost");
+  const hostname = options.hostname ?? process.env.HOST ?? (process.env.NODE_ENV === "production" ? "0.0.0.0" : "127.0.0.1");
 
   const { app, wsHandler } = createApp(db);
+  const terminalBridge = new TerminalBridge(createTerminalProviderRegistry(process.env));
 
   const server = Bun.serve({
     port,
     hostname,
     fetch(req, server) {
       if (req.headers.get("upgrade") === "websocket") {
-        const upgraded = server.upgrade(req);
+        const path = new URL(req.url).pathname;
+        if (isShellWebSocketPath(path)) {
+          if (!isAllowedShellWebSocketOrigin(req.headers.get("origin"), req.headers.get("host"), process.env)) {
+            return new Response(JSON.stringify({ error: "shell websocket origin denied" }), { status: 403, headers: { "Content-Type": "application/json" } });
+          }
+          const isVerifiedAdmin = isVerifiedShellAdminRequest(req.headers, process.env);
+          const status = getShellProviderStatus(process.env, { isVerifiedAdmin });
+          if (shouldRejectShellWebSocket(path, status)) {
+            return new Response(JSON.stringify({ error: status.disabledReason }), { status: 403, headers: { "Content-Type": "application/json" } });
+          }
+          return terminalBridge.handleUpgrade(req, server, path, { isVerifiedAdmin });
+        }
+        const upgraded = server.upgrade(req, { data: { path } } as never);
         if (!upgraded) {
           return new Response("WebSocket upgrade failed", { status: 400 });
         }
@@ -130,6 +150,13 @@ export function startServer(db: Database, options: ServerOptions = {}): void {
     },
     websocket: {
       open(ws) {
+        const path = (ws.data as { path?: string } | undefined)?.path ?? "";
+        if (path.startsWith("/api/console/terminal/ws")) {
+          const pendingId = (ws.data as { connId?: string } | undefined)?.connId;
+          const id = terminalBridge.connect((data) => ws.send(data), pendingId);
+          (ws as typeof ws & { connId: string }).connId = id;
+          return;
+        }
         const id = wsHandler.connect({
           send: (data) => ws.send(data),
           close: () => ws.close(),
@@ -138,11 +165,21 @@ export function startServer(db: Database, options: ServerOptions = {}): void {
         ws.send(JSON.stringify({ type: "connected", id }));
       },
       message(ws, msg) {
+        const path = (ws.data as { path?: string } | undefined)?.path ?? "";
+        if (path.startsWith("/api/console/terminal/ws")) {
+          void terminalBridge.handleMessage((ws as typeof ws & { connId?: string }).connId ?? "terminal-0", msg.toString());
+          return;
+        }
         const id = (ws as typeof ws & { connId: string }).connId;
         if (id) wsHandler.handleMessage(id, msg.toString());
       },
       close(ws) {
+        const path = (ws.data as { path?: string } | undefined)?.path ?? "";
         const id = (ws as typeof ws & { connId: string }).connId;
+        if (path.startsWith("/api/console/terminal/ws")) {
+          if (id) terminalBridge.disconnect(id);
+          return;
+        }
         if (id) wsHandler.disconnect(id);
       },
     },

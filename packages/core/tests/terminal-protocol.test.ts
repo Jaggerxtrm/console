@@ -18,10 +18,17 @@ describe("terminal stream protocol", () => {
     expect(envelope.version).toBe(TERMINAL_STREAM_PROTOCOL_VERSION);
     expect(envelope.kind).toBe("open");
     expect(validateTerminalStreamMessage(envelope)).toBe(true);
+    expect(validateTerminalStreamMessage(createTerminalStreamEnvelope("open", "stream-1", "session-1", {
+      providerKind: "specialist-feed",
+      capabilities: ["readonly"],
+      jobId: "abc123",
+    }))).toBe(true);
   });
 
   it("validates attach detach input output resize exit error status heartbeat", () => {
-    expect(validateTerminalStreamMessage({ version: "1.0.0", kind: "attach", streamId: "s", sessionId: "x", timestamp: "t", payload: { resume: true } })).toBe(true);
+    expect(validateTerminalStreamMessage({ version: "1.0.0", kind: "attach", streamId: "s", sessionId: "x", timestamp: "t", payload: { resume: true, reattachToken: "tok" } })).toBe(true);
+    expect(validateTerminalStreamMessage({ version: "1.0.0", kind: "attach", streamId: "s", sessionId: "x", timestamp: "t", payload: { resume: true } })).toBe(false);
+    expect(validateTerminalStreamMessage({ version: "1.0.0", kind: "attach", streamId: "s", sessionId: "x", timestamp: "t", payload: { resume: true, token: "tok" } })).toBe(false);
     expect(validateTerminalStreamMessage({ version: "1.0.0", kind: "detach", streamId: "s", sessionId: "x", timestamp: "t", payload: { reason: "done" } })).toBe(true);
     expect(validateTerminalStreamMessage({ version: "1.0.0", kind: "input", streamId: "s", sessionId: "x", timestamp: "t", payload: { data: "ls\n", encoding: "utf8" } })).toBe(true);
     expect(validateTerminalStreamMessage({ version: "1.0.0", kind: "output", streamId: "s", sessionId: "x", timestamp: "t", payload: { data: "out", encoding: "base64", sequence: 1, bytes: 3 } })).toBe(true);
@@ -37,6 +44,7 @@ describe("terminal stream protocol", () => {
     expect(validateTerminalStreamMessage({ version: 1, kind: "open", streamId: "s", sessionId: "x", timestamp: "t", payload: {} })).toBe(false);
     expect(validateTerminalStreamMessage({ version: "1.0.0", kind: "open", streamId: "s", sessionId: "x", timestamp: "t", payload: { providerKind: "bad", capabilities: [] } })).toBe(false);
     expect(validateTerminalStreamMessage({ version: "1.0.0", kind: "open", streamId: "s", sessionId: "x", timestamp: "t", payload: { providerKind: "pty", capabilities: ["nope"] } })).toBe(false);
+    expect(validateTerminalStreamMessage({ version: "1.0.0", kind: "open", streamId: "s", sessionId: "x", timestamp: "t", payload: { providerKind: "specialist-feed", capabilities: ["readonly"], jobId: 42 } })).toBe(false);
   });
 
   it("allows only valid lifecycle transitions", () => {

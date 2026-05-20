@@ -51,10 +51,12 @@ export interface TerminalStreamOpenPayload {
   cwd?: string;
   command?: string;
   title?: string;
+  jobId?: string;
 }
 
 export interface TerminalStreamAttachPayload {
   resume: boolean;
+  reattachToken?: string;
   lastSequence?: number;
 }
 
@@ -99,7 +101,7 @@ export interface TerminalStreamStatusPayload {
   bytesIn: number;
   bytesOut: number;
   backlogBytes: number;
-  note?: string;
+  reattachToken?: string;
 }
 
 export interface TerminalStreamHeartbeatPayload {
@@ -218,9 +220,10 @@ export function validateTerminalStreamMessage(value: unknown): value is Terminal
     case "open":
       return isTerminalProviderKind(payload.providerKind)
         && Array.isArray(payload.capabilities)
-        && payload.capabilities.every((capability) => isTerminalCapability(capability));
+        && payload.capabilities.every((capability) => isTerminalCapability(capability))
+        && (typeof payload.jobId === "string" || !("jobId" in payload));
     case "attach":
-      return typeof payload.resume === "boolean";
+      return typeof payload.resume === "boolean" && typeof payload.reattachToken === "string" && payload.reattachToken.length > 0;
     case "detach":
       return typeof payload.reason === "string" || !("reason" in payload);
     case "input":
@@ -245,7 +248,8 @@ export function validateTerminalStreamMessage(value: unknown): value is Terminal
         && typeof payload.paused === "boolean"
         && typeof payload.bytesIn === "number"
         && typeof payload.bytesOut === "number"
-        && typeof payload.backlogBytes === "number";
+        && typeof payload.backlogBytes === "number"
+        && (typeof payload.reattachToken === "string" || !("reattachToken" in payload));
     case "heartbeat":
       return typeof payload.ack === "number" || !("ack" in payload);
   }

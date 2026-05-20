@@ -4,6 +4,7 @@
 
 import { create } from "zustand";
 import type {
+  DrawerTab,
   RepoNode,
   SidebarSelection,
   Surface,
@@ -50,7 +51,10 @@ function defaultDrawerHeight() {
   return typeof window !== "undefined" ? Math.floor(window.innerHeight * 0.75) : 600;
 }
 const initialDrawerHeight = readJSON<number | null>(LS.drawerHeight, null) ?? defaultDrawerHeight();
-const initialDrawerTab = readJSON<"logs" | "specialists">(LS.drawerTab, "logs");
+const initialDrawerTab = readJSON<DrawerTab>(LS.drawerTab, "logs");
+const initialTerminalSessionId: string | null = null;
+const initialTerminalReattachToken: string | null = null;
+const initialTerminalOutput: string[] = [];
 
 export interface ShellState {
   repos: RepoNode[];
@@ -59,7 +63,10 @@ export interface ShellState {
   theme: ThemeMode;
   drawerOpen: boolean;
   drawerHeight: number;
-  drawerTab: "logs" | "specialists";
+  drawerTab: DrawerTab;
+  terminalSessionId: string | null;
+  terminalReattachToken: string | null;
+  terminalOutput: string[];
 
   setRepos: (repos: RepoNode[]) => void;
   setSurface: (surface: Surface) => void;       // switching surface resets tab to default
@@ -69,7 +76,11 @@ export interface ShellState {
   toggleTheme: () => void;
   setDrawerOpen: (open: boolean) => void;
   setDrawerHeight: (height: number) => void;
-  setDrawerTab: (tab: "logs" | "specialists") => void;
+  setDrawerTab: (tab: DrawerTab) => void;
+  setTerminalSessionId: (sessionId: string | null) => void;
+  setTerminalReattachToken: (token: string | null) => void;
+  appendTerminalOutput: (chunk: string) => void;
+  resetTerminalOutput: () => void;
 }
 
 export const useShellStore = create<ShellState>((set) => ({
@@ -80,6 +91,9 @@ export const useShellStore = create<ShellState>((set) => ({
   drawerOpen: initialDrawerOpen,
   drawerHeight: initialDrawerHeight,
   drawerTab: initialDrawerTab,
+  terminalSessionId: initialTerminalSessionId,
+  terminalReattachToken: initialTerminalReattachToken,
+  terminalOutput: initialTerminalOutput,
 
   setRepos: (repos) => set({ repos }),
 
@@ -141,6 +155,18 @@ export const useShellStore = create<ShellState>((set) => ({
       writeJSON(LS.drawerTab, tab);
       return { drawerTab: tab };
     }),
+
+  setTerminalSessionId: (sessionId) =>
+    set(() => ({ terminalSessionId: sessionId })),
+
+  setTerminalReattachToken: (token) =>
+    set(() => ({ terminalReattachToken: token })),
+
+  appendTerminalOutput: (chunk) =>
+    set((state) => ({ terminalOutput: [...state.terminalOutput, chunk].slice(-2000) })),
+
+  resetTerminalOutput: () =>
+    set(() => ({ terminalOutput: [] })),
 }));
 
 export const selectSelection = (s: ShellState) => s.selection;
