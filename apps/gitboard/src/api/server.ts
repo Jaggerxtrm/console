@@ -11,12 +11,15 @@ import { createSpecialistsRouter } from "./routes/specialists.ts";
 import { createObservabilityRouter } from "./routes/observability.ts";
 import { createGraphRouter } from "./routes/graph.ts";
 import { createShellRouter } from "./routes/shell.ts";
+import { createTerminalRouter } from "./routes/terminal.ts";
 import { ChannelRegistry } from "./ws/channels.ts";
 import { WsHandler } from "./ws/handler.ts";
 import { BeadsChangeWatcher } from "../../../beadboard/src/core/beads-change-watcher.ts";
 import { createObservabilityWatcher } from "../server/observability/watcher.ts";
 import { listRepos } from "../server/observability/registry.ts";
 import { getShellProviderStatus, shouldRejectShellWebSocket } from "../core/shell-provider-policy.ts";
+import { createTerminalProviderRegistry } from "./terminal/provider-registry.ts";
+import { TerminalBridge } from "./terminal/bridge.ts";
 
 export interface ServerOptions {
   port?: number;
@@ -76,6 +79,7 @@ export function createApp(db: Database): {
   app.route("/api/console/observability", createObservabilityRouter());
   app.route("/api/console/graph", createGraphRouter());
   app.route("/api/console/shell", createShellRouter());
+  app.route("/api/console/terminal", createTerminalRouter());
   app.route("/api/internal", createInternalDoltHealthRouter());
   app.route("/api/internal", createInternalLogsRouter());
 
@@ -117,6 +121,7 @@ export function startServer(db: Database, options: ServerOptions = {}): void {
   const hostname = options.hostname ?? (process.env.NODE_ENV === "production" ? "0.0.0.0" : "localhost");
 
   const { app, wsHandler } = createApp(db);
+  const terminalBridge = new TerminalBridge(createTerminalProviderRegistry(process.env));
 
   const server = Bun.serve({
     port,
@@ -127,7 +132,8 @@ export function startServer(db: Database, options: ServerOptions = {}): void {
         if (shouldRejectShellWebSocket(new URL(req.url).pathname, status)) {
           return new Response(JSON.stringify({ error: status.disabledReason }), { status: 403, headers: { "Content-Type": "application/json" } });
         }
-        const upgraded = server.upgrade(req);
+        const path = new URL(req.url).pathname;
+        const upgraded = server.upgrade(req, { data: { path } });
         if (!upgraded) {
           return new Response("WebSocket upgrade failed", { status: 400 });
         }
@@ -137,6 +143,8 @@ export function startServer(db: Database, options: ServerOptions = {}): void {
     },
     websocket: {
       open(ws) {
+        const path = (ws.data as { path?: string } | undefined)?.path ?? "";
+        if (path.startsWith("/api/console/terminal/ws")) return;
         const id = wsHandler.connect({
           send: (data) => ws.send(data),
           close: () => ws.close(),
@@ -145,10 +153,17 @@ export function startServer(db: Database, options: ServerOptions = {}): void {
         ws.send(JSON.stringify({ type: "connected", id }));
       },
       message(ws, msg) {
+        const path = (ws.data as { path?: string } | undefined)?.path ?? "";
+        if (path.startsWith("/api/console/terminal/ws")) {
+          ws.send(terminalBridge.onMessage(msg.toString()));
+          return;
+        }
         const id = (ws as typeof ws & { connId: string }).connId;
         if (id) wsHandler.handleMessage(id, msg.toString());
       },
       close(ws) {
+        const path = (ws.data as { path?: string } | undefined)?.path ?? "";
+        if (path.startsWith("/api/console/terminal/ws")) return;
         const id = (ws as typeof ws & { connId: string }).connId;
         if (id) wsHandler.disconnect(id);
       },
