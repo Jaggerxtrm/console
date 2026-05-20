@@ -133,7 +133,7 @@ export function startServer(db: Database, options: ServerOptions = {}): void {
           return new Response(JSON.stringify({ error: status.disabledReason }), { status: 403, headers: { "Content-Type": "application/json" } });
         }
         const path = new URL(req.url).pathname;
-        const upgraded = server.upgrade(req, { data: { path } });
+        const upgraded = server.upgrade(req, { data: { path } } as never);
         if (!upgraded) {
           return new Response("WebSocket upgrade failed", { status: 400 });
         }
@@ -144,7 +144,11 @@ export function startServer(db: Database, options: ServerOptions = {}): void {
     websocket: {
       open(ws) {
         const path = (ws.data as { path?: string } | undefined)?.path ?? "";
-        if (path.startsWith("/api/console/terminal/ws")) return;
+        if (path.startsWith("/api/console/terminal/ws")) {
+          const id = terminalBridge.connect((data) => ws.send(data));
+          (ws as typeof ws & { connId: string }).connId = id;
+          return;
+        }
         const id = wsHandler.connect({
           send: (data) => ws.send(data),
           close: () => ws.close(),
@@ -155,7 +159,7 @@ export function startServer(db: Database, options: ServerOptions = {}): void {
       message(ws, msg) {
         const path = (ws.data as { path?: string } | undefined)?.path ?? "";
         if (path.startsWith("/api/console/terminal/ws")) {
-          ws.send(terminalBridge.onMessage(msg.toString()));
+          void terminalBridge.handleMessage((ws as typeof ws & { connId?: string }).connId ?? "terminal-0", msg.toString());
           return;
         }
         const id = (ws as typeof ws & { connId: string }).connId;
@@ -163,8 +167,11 @@ export function startServer(db: Database, options: ServerOptions = {}): void {
       },
       close(ws) {
         const path = (ws.data as { path?: string } | undefined)?.path ?? "";
-        if (path.startsWith("/api/console/terminal/ws")) return;
         const id = (ws as typeof ws & { connId: string }).connId;
+        if (path.startsWith("/api/console/terminal/ws")) {
+          if (id) terminalBridge.disconnect(id);
+          return;
+        }
         if (id) wsHandler.disconnect(id);
       },
     },
