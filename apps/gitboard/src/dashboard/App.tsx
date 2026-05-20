@@ -9,6 +9,8 @@ import type { TabId } from "../types/shell.ts";
 import { MainPane } from "./components/shell/MainPane.tsx";
 import { BeadSideDrawer } from "./pages/console/BeadSideDrawer.tsx";
 import { useGithubActivity } from "./hooks/useGithubActivity.ts";
+// SPIKE (forge-2a8a.1) — removed in forge-2a8a.4 cleanup.
+import { ReactFlowSpike } from "./pages/spike/ReactFlowSpike.tsx";
 
 type Tab = "github" | "console";
 type View = "dashboard" | "design-preview";
@@ -42,6 +44,9 @@ export function App() {
   if (path.endsWith("/legacy")) return <DashboardShell view="dashboard" />;
   if (path.endsWith("/design-preview") || path.endsWith("/preview"))
     return <DashboardShell view="design-preview" />;
+  // SPIKE (forge-2a8a.1) — /gitboard/spike/reactflow renders the React Flow PoC.
+  // Removed in forge-2a8a.4 cleanup.
+  if (path.includes("/gitboard/spike/reactflow")) return <ReactFlowSpike />;
   return <ShellApp />;
 }
 
