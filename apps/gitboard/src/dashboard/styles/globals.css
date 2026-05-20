@@ -5134,7 +5134,6 @@ body:has(.ide-shell[data-theme="light"]) { background: #fff !important; }
   padding: 6px 8px 6px;
   min-width: 0;
 }
-[data-theme='light'] .g-cluster { background: rgba(0, 0, 0, 0.018); }
 
 /* Per-cluster React Flow viewport. No chrome — bare canvas under the header. */
 .g-pane {
@@ -5202,8 +5201,11 @@ body:has(.ide-shell[data-theme="light"]) { background: #fff !important; }
 }
 .g-pane .react-flow__controls-button:last-child { border-bottom: 0; }
 .g-pane .react-flow__controls-button:hover {
-  background: var(--surface-hover, rgba(255, 255, 255, 0.04));
+  background: rgba(255, 255, 255, 0.04);
   fill: var(--text-primary);
+}
+[data-theme="light"] .g-pane .react-flow__controls-button:hover {
+  background: rgba(15, 23, 42, 0.05);
 }
 .g-pane .react-flow__controls-button svg { fill: currentColor; }
 /* Bottom orphans strip (forge-2a8a.2 pivot — replaces .g-orphans sidebar). */
