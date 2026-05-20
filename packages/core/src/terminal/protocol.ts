@@ -51,6 +51,7 @@ export interface TerminalStreamOpenPayload {
   cwd?: string;
   command?: string;
   title?: string;
+  jobId?: string;
 }
 
 export interface TerminalStreamAttachPayload {
@@ -219,7 +220,8 @@ export function validateTerminalStreamMessage(value: unknown): value is Terminal
     case "open":
       return isTerminalProviderKind(payload.providerKind)
         && Array.isArray(payload.capabilities)
-        && payload.capabilities.every((capability) => isTerminalCapability(capability));
+        && payload.capabilities.every((capability) => isTerminalCapability(capability))
+        && (typeof payload.jobId === "string" || !("jobId" in payload));
     case "attach":
       return typeof payload.resume === "boolean" && typeof payload.reattachToken === "string" && payload.reattachToken.length > 0;
     case "detach":

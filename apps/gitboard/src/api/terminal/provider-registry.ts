@@ -17,7 +17,7 @@ export interface TerminalProvider {
   kind: TerminalProviderKind;
   enabled: boolean;
   reason?: string;
-  openSession(args: { sessionId: string; capabilities: TerminalCapability[] }): Promise<TerminalProviderSession>;
+  openSession(args: { sessionId: string; capabilities: TerminalCapability[]; jobId?: string }): Promise<TerminalProviderSession>;
 }
 
 export interface TerminalProviderRegistry {
@@ -30,18 +30,14 @@ type HelperMessage =
   | { type: "exit"; code: number | null; signal: string | null }
   | { type: "error"; message: string };
 
+const SPECIALIST_JOB_ID_RE = /^[A-Za-z0-9._:-]{3,128}$/;
+
 export function createTerminalProviderRegistry(env: NodeJS.ProcessEnv = process.env): TerminalProviderRegistry {
   const repoRoot = process.cwd().endsWith("/apps/gitboard") ? join(process.cwd(), "../..") : process.cwd();
   const createProviders = (context: { isVerifiedAdmin?: boolean } = {}): TerminalProvider[] => {
     const shellStatus = getShellProviderStatus(env, { isVerifiedAdmin: context.isVerifiedAdmin === true });
     return [
-      {
-        kind: "specialist-feed",
-        enabled: true,
-        openSession: async () => {
-          throw new Error("specialist-feed session unsupported");
-        },
-      },
+      createSpecialistFeedTerminalProvider(env),
       createNodePtyTerminalProvider(shellStatus, repoRoot, env),
       { kind: "tmux", enabled: false, reason: "provider disabled", openSession: async () => { throw new Error("provider disabled"); } },
       { kind: "ssh", enabled: false, reason: "provider disabled", openSession: async () => { throw new Error("provider disabled"); } },
@@ -51,6 +47,23 @@ export function createTerminalProviderRegistry(env: NodeJS.ProcessEnv = process.
   return {
     list: (context) => createProviders(context).map(({ kind, enabled, reason }) => ({ kind, enabled, reason })),
     get: (kind, context) => createProviders(context).find((provider) => provider.kind === kind),
+  };
+}
+
+function createSpecialistFeedTerminalProvider(env: NodeJS.ProcessEnv): TerminalProvider {
+  const command = env.GITBOARD_SPECIALISTS_BIN || "specialists";
+  return {
+    kind: "specialist-feed",
+    enabled: true,
+    reason: "readonly specialist feed",
+    openSession: async ({ jobId }) => {
+      if (!jobId || !SPECIALIST_JOB_ID_RE.test(jobId)) throw new Error("invalid specialist job id");
+      const child = spawn(command, ["feed", jobId, "--follow"], {
+        env: buildSpecialistFeedEnv(env),
+        stdio: "pipe",
+      });
+      return new ChildProcessTerminalSession(child, { allowInput: false, allowResize: false });
+    },
   };
 }
 
@@ -84,6 +97,56 @@ function createNodePtyTerminalProvider(status: ShellProviderStatus, repoRoot: st
       return new NodePtyHelperSession(child);
     },
   };
+}
+
+class ChildProcessTerminalSession implements TerminalProviderSession {
+  private readonly events = new EventEmitter();
+  private disposed = false;
+
+  constructor(
+    private readonly child: ChildProcessWithoutNullStreams,
+    private readonly options: { allowInput: boolean; allowResize: boolean },
+  ) {
+    this.child.stdout.on("data", (data) => this.emitOutput(data.toString("utf8")));
+    this.child.stderr.on("data", (data) => this.emitOutput(data.toString("utf8")));
+    this.child.on("exit", (code, signal) => {
+      this.disposed = true;
+      this.events.emit("exit", code, signal);
+    });
+    this.child.on("error", (error) => {
+      this.emitOutput(`terminal process error: ${error.message}\r\n`);
+      this.events.emit("exit", 1, null);
+    });
+  }
+
+  onOutput(listener: (data: string) => void): () => void {
+    this.events.on("output", listener);
+    return () => this.events.off("output", listener);
+  }
+
+  onExit(listener: (code: number | null, signal: string | null) => void): () => void {
+    this.events.on("exit", listener);
+    return () => this.events.off("exit", listener);
+  }
+
+  async input(data: string): Promise<void> {
+    if (this.disposed || !this.options.allowInput) return;
+    this.child.stdin.write(data);
+  }
+
+  async resize(_cols: number, _rows: number): Promise<void> {
+    // Readonly specialist-feed streams are not resizable.
+  }
+
+  async dispose(_reason: string): Promise<void> {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.child.kill("SIGTERM");
+  }
+
+  private emitOutput(data: string): void {
+    if (!this.disposed) this.events.emit("output", data);
+  }
 }
 
 class NodePtyHelperSession implements TerminalProviderSession {
@@ -189,6 +252,19 @@ function resolveShell(policy: ShellProviderPolicy): string {
   const fallback = policy.shellAllowlist[0];
   if (!fallback) throw new Error(`shell outside allowlist: ${basename(candidate)}`);
   return fallback;
+}
+
+function buildSpecialistFeedEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return {
+    HOME: env.HOME,
+    PATH: env.PATH ?? "/usr/local/bin:/usr/bin:/bin",
+    USER: env.USER,
+    LOGNAME: env.LOGNAME,
+    LANG: env.LANG,
+    LC_ALL: env.LC_ALL,
+    LC_CTYPE: env.LC_CTYPE,
+    TERM: "xterm-256color",
+  };
 }
 
 function buildSpawnEnv(policy: ShellProviderPolicy, cwd: string, shell: string): NodeJS.ProcessEnv {

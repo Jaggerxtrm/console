@@ -104,7 +104,7 @@ export class TerminalBridge {
       return;
     }
     try {
-      const session = await provider.openSession({ sessionId: msg.sessionId, capabilities: msg.payload.capabilities });
+      const session = await provider.openSession({ sessionId: msg.sessionId, capabilities: msg.payload.capabilities, jobId: msg.payload.jobId });
       const state: SessionState = {
         streamId: msg.streamId,
         session,

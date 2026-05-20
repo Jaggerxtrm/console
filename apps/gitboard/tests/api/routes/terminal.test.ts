@@ -51,6 +51,24 @@ describe("terminal bridge lifecycle", () => {
     })).toBe(true);
   });
 
+  it("passes specialist job id to provider openSession", async () => {
+    let openedJobId: string | undefined;
+    const session = new MockSession();
+    const provider: TerminalProvider = {
+      kind: "specialist-feed",
+      enabled: true,
+      async openSession(args) { openedJobId = args.jobId; return session; },
+    };
+    const bridge = new TerminalBridge(makeRegistry(provider));
+    const sent: unknown[] = [];
+    const conn = bridge.connect((payload) => sent.push(JSON.parse(payload)));
+
+    await bridge.handleMessage(conn, JSON.stringify(createTerminalStreamEnvelope("open", "stream-1", "session-1", { providerKind: "specialist-feed", capabilities: ["readonly"], jobId: "abc123" })));
+
+    expect(openedJobId).toBe("abc123");
+    expect(sent.some((msg) => (msg as { kind: string }).kind === "status")).toBe(true);
+  });
+
   it("rejects disabled provider", async () => {
     const provider: TerminalProvider = { kind: "pty", enabled: false, reason: "node-pty unavailable", async openSession() { throw new Error("x"); } };
     const bridge = new TerminalBridge(makeRegistry(provider));
