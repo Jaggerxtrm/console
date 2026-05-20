@@ -1,8 +1,16 @@
+import type { Database } from "bun:sqlite";
 import type { AttachPoolLike, EpicRun, SpecialistChain, SpecialistJob } from "./types.js";
 
 const IN_FLIGHT_STATUSES = ["starting", "running", "waiting"] as const;
 const HISTORY_STATUSES = ["done", "error", "cancelled"] as const;
-const JOB_COLUMNS = "job_id, bead_id, chain_id, epic_id, chain_kind, status, updated_at_ms, specialist";
+const JOB_COLUMNS_BASE = "job_id, bead_id, chain_id, epic_id, chain_kind, status, updated_at_ms, specialist";
+// `last_output` is on every sp schema we ship, but historical observability dbs
+// in the wild may pre-date it. Probe per-repo once and cache; fall back to a
+// NULL literal in the SELECT if the column is missing so the rest of the join
+// still returns the job's metadata. Keyed by repo slug (stable across pool
+// recreations) rather than attach-alias (changes every time the 2s-TTL bundle
+// rebuilds the pool, which would invalidate the cache).
+const slugHasLastOutput = new Map<string, boolean>();
 
 export function createObservabilityDao(pool: AttachPoolLike) {
   return {
@@ -41,13 +49,27 @@ function readJobs(pool: AttachPoolLike, whereSql: string, orderSql: string, para
     if (attached.length === 0) return [];
 
     const rows = attached.flatMap(({ alias, slug }) => {
-      // chain_kind precedence preserves executor before reviewer, then updated_at_ms ASC.
-      const query = `SELECT '${escapeSql(slug)}' AS repoSlug, ${JOB_COLUMNS} FROM ${alias}.specialist_jobs ${whereSql} ${orderSql}`;
+      const lastOutputExpr = hasLastOutputColumn(db, alias, slug) ? "last_output" : "NULL AS last_output";
+      const query = `SELECT '${escapeSql(slug)}' AS repoSlug, ${JOB_COLUMNS_BASE}, ${lastOutputExpr} FROM ${alias}.specialist_jobs ${whereSql} ${orderSql}`;
       return db.prepare(query).all(...params) as Array<Record<string, unknown>>;
     });
 
     return rows.map(mapRow);
   });
+}
+
+function hasLastOutputColumn(db: Database, alias: string, slug: string): boolean {
+  const cached = slugHasLastOutput.get(slug);
+  if (cached !== undefined) return cached;
+  let present = false;
+  try {
+    const cols = db.prepare(`PRAGMA ${alias}.table_info(specialist_jobs)`).all() as Array<{ name: string }>;
+    present = cols.some((col) => col.name === "last_output");
+  } catch {
+    present = false;
+  }
+  slugHasLastOutput.set(slug, present);
+  return present;
 }
 
 function mapRow(row: Record<string, unknown>): SpecialistJob {
@@ -61,6 +83,7 @@ function mapRow(row: Record<string, unknown>): SpecialistJob {
     status: String(row.status),
     updatedAt: new Date(Number(row.updated_at_ms)).toISOString(),
     specialist: row.specialist == null ? null : String(row.specialist),
+    lastOutput: row.last_output == null ? null : String(row.last_output),
   };
 }
 
