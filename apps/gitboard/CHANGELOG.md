@@ -4,6 +4,19 @@ All notable changes to Agent Forge are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
+## [Unreleased]
+
+### Added
+- **Operational console graph view** — `/console/graph` redesigned around partitioned clusters (`partitionGraph` over `STRUCTURAL_EDGE_TYPES`): WIP strip → cluster panes → orphan sidebar → state buckets. Variable-width HTML chip nodes, edge labels per relationship type, header pill toggles (parent-child / related / deferred). Fixed-height column with internally-scrolling regions and a pinned-bottom info foot.
+- **Shared-server Dolt routing in `project-scanner`** — detects `dolt.shared-server: true` in `.beads/config.yaml`, reads the port from `~/.beads/shared-server/dolt-server.port`, and uses `metadata.json`'s `dolt_database`. Repos like `~/dev/specialists` that don't run their own sql-server now resolve correctly.
+
+### Fixed
+- **`/api/console/graph` hung past 30 s on large repos** — `DoltClient.getIssues` now batches dependency + label hydration into two `WHERE issue_id IN (…)` queries instead of running 2 sub-queries per row. Total query count is constant (3) regardless of `limit`; previously a `limit=1000` request fired 2000+ MySQL round-trips.
+- **Specialist "Last output" was empty everywhere** — `observability/dao.ts` now `SELECT`s `last_output` from `specialist_jobs` (with a `PRAGMA table_info` probe to gracefully fall back to `NULL` on older schemas). Restores excerpts in the cockpit `ChainDetailPane`, inline dossier `· N runs` section, `SpecialistChainGraph`, and bottom-drawer Specialists tab.
+- **Observability watcher hot-loop** — schema-incompatible `.specialists/observability.db` files were being re-probed on every mtime tick (sp processes write continuously), burning 90 %+ CPU and starving the API. `dead`-cache moved to module scope (survives the 2 s TTL pool recreations in `api/routes/specialists.ts`) and keyed by repo slug, not alias. Structural failures (missing `specialist_jobs` table, schema-version mismatch, attach failure) now stay cached for the process lifetime.
+- **Graph edge arrowheads detached from card edges** on reverse and same-layer edges — SVG marker geometry fixed (`markerUnits="userSpaceOnUse"`, `refX` inside `markerWidth`); cross-layer-reverse routing now uses the target node's width.
+- **Graph viewport organization** — deep clusters no longer push the orphan sidebar past the buckets/foot. `.g-app` is now a fixed-height flex column with `overflow: hidden`; clusters and orphans scroll independently; buckets and foot are pinned at the bottom.
+
 ## [0.7.2] — 2026-03-08
 
 ### Decisions
