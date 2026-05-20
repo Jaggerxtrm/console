@@ -27,7 +27,7 @@ type QueryMetric = { latencyMs: number; ok: boolean; at: string };
 
 type DoltRuntimeState = {
   pool: Pool | null;
-  poolKey: string | null;
+  poolKey: string;
   connected: boolean;
   probing: boolean;
   lastProbeAt: number;
@@ -38,28 +38,52 @@ type DoltRuntimeState = {
   probeTimer: ReturnType<typeof setInterval> | null;
 };
 
-const runtime: DoltRuntimeState = {
-  pool: null,
-  poolKey: null,
-  connected: false,
-  probing: false,
-  lastProbeAt: 0,
-  consecutiveFailures: 0,
-  breakerOpenUntil: 0,
-  reconnectAttempts: 0,
-  metrics: [],
-  probeTimer: null,
-};
+const runtimes = new Map<string, DoltRuntimeState>();
+let lastUsedPoolKey: string | null = null;
 
-export function getDoltHealthSnapshot(): { consecutiveFailures: number; breakerOpenUntil: number; latencies: number[] } {
+function createRuntime(key: string): DoltRuntimeState {
   return {
-    consecutiveFailures: runtime.consecutiveFailures,
-    breakerOpenUntil: runtime.breakerOpenUntil,
-    latencies: runtime.metrics.map((metric) => metric.latencyMs),
+    pool: null,
+    poolKey: key,
+    connected: false,
+    probing: false,
+    lastProbeAt: 0,
+    consecutiveFailures: 0,
+    breakerOpenUntil: 0,
+    reconnectAttempts: 0,
+    metrics: [],
+    probeTimer: null,
   };
 }
 
-function poolKey(config: DoltConfig): string {
+function getRuntime(key: string): DoltRuntimeState {
+  lastUsedPoolKey = key;
+  const existing = runtimes.get(key);
+  if (existing) return existing;
+  const runtime = createRuntime(key);
+  runtimes.set(key, runtime);
+  return runtime;
+}
+
+export function getDoltHealthSnapshot(poolKeyOverride?: string): { consecutiveFailures: number; breakerOpenUntil: number; latencies: number[] } {
+  const key = poolKeyOverride ?? lastUsedPoolKey;
+  const runtime = key ? runtimes.get(key) : undefined;
+  return {
+    consecutiveFailures: runtime?.consecutiveFailures ?? 0,
+    breakerOpenUntil: runtime?.breakerOpenUntil ?? 0,
+    latencies: runtime?.metrics.map((metric) => metric.latencyMs) ?? [],
+  };
+}
+
+export function resetDoltRuntimeForTests(): void {
+  for (const runtime of runtimes.values()) {
+    runtime.probeTimer && clearInterval(runtime.probeTimer);
+  }
+  runtimes.clear();
+  lastUsedPoolKey = null;
+}
+
+export function doltPoolKey(config: DoltConfig): string {
   return `${config.host}:${config.port}/${config.database ?? "dolt"}/${config.user ?? "root"}`;
 }
 
@@ -72,7 +96,7 @@ function backoffDelay(attempt: number): number {
   return jitter(delay);
 }
 
-function rememberMetric(latencyMs: number, ok: boolean): void {
+function rememberMetric(runtime: DoltRuntimeState, latencyMs: number, ok: boolean): void {
   runtime.metrics.push({ latencyMs, ok, at: new Date().toISOString() });
   if (runtime.metrics.length > LATENCY_RING_SIZE) runtime.metrics.splice(0, runtime.metrics.length - LATENCY_RING_SIZE);
 }
@@ -98,8 +122,17 @@ export class DoltClient {
     };
   }
 
+  private get poolKey(): string {
+    return doltPoolKey(this.config);
+  }
+
+  private get runtime(): DoltRuntimeState {
+    return getRuntime(this.poolKey);
+  }
+
   private get connected(): boolean {
-    return runtime.connected && runtime.poolKey === poolKey(this.config) && runtime.pool !== null;
+    const runtime = this.runtime;
+    return runtime.connected && runtime.pool !== null;
   }
 
   async connect(): Promise<void> {
@@ -109,10 +142,10 @@ export class DoltClient {
   }
 
   async disconnect(): Promise<void> {
+    const runtime = this.runtime;
     if (!this.connected || !runtime.pool) return;
     await runtime.pool.end();
     runtime.pool = null;
-    runtime.poolKey = null;
     runtime.connected = false;
     runtime.probeTimer && clearInterval(runtime.probeTimer);
     runtime.probeTimer = null;
@@ -123,7 +156,7 @@ export class DoltClient {
   }
 
   isBreakerOpen(): boolean {
-    return Date.now() < runtime.breakerOpenUntil;
+    return Date.now() < this.runtime.breakerOpenUntil;
   }
 
   async getIssues(filters: IssueFilters = {}): Promise<BeadIssue[]> {
@@ -189,26 +222,21 @@ export class DoltClient {
   }
 
   async probeHealth(): Promise<boolean> {
+    const runtime = this.runtime;
     try {
       await this.execute<RowDataPacket[]>("SELECT 1 AS ok");
       runtime.consecutiveFailures = 0;
       runtime.breakerOpenUntil = 0;
       return true;
     } catch {
-      this.recordFailure();
       return false;
     }
   }
 
   private async ensurePool(): Promise<Pool> {
-    if (runtime.pool && runtime.poolKey === poolKey(this.config)) return runtime.pool;
+    const runtime = this.runtime;
+    if (runtime.pool) return runtime.pool;
 
-    if (runtime.pool) {
-      await runtime.pool.end();
-      runtime.pool = null;
-    }
-
-    runtime.poolKey = poolKey(this.config);
     runtime.pool = mysql.createPool({
       host: this.config.host,
       port: this.config.port,
@@ -221,12 +249,13 @@ export class DoltClient {
       keepAliveInitialDelay: 0,
     });
     runtime.connected = true;
-    emit(makeLogEntry("dolt", "reconnect.recovered", "info", undefined, { host: this.config.host, port: this.config.port }));
+    emit(makeLogEntry("dolt", "reconnect.recovered", "info", undefined, { host: this.config.host, port: this.config.port, poolKey: runtime.poolKey }));
     this.ensureProbeLoop();
     return runtime.pool;
   }
 
   private ensureProbeLoop(): void {
+    const runtime = this.runtime;
     if (runtime.probeTimer) return;
     runtime.probeTimer = setInterval(() => {
       void this.runProbe();
@@ -235,9 +264,11 @@ export class DoltClient {
   }
 
   private async runProbe(): Promise<void> {
+    const runtime = this.runtime;
     if (runtime.probing || !runtime.pool) return;
     if (Date.now() < runtime.breakerOpenUntil) return;
     runtime.probing = true;
+    runtime.lastProbeAt = Date.now();
     try {
       await this.execute<RowDataPacket[]>("SELECT 1 AS ok");
       runtime.consecutiveFailures = 0;
@@ -251,16 +282,18 @@ export class DoltClient {
   }
 
   private recordFailure(): void {
+    const runtime = this.runtime;
     runtime.consecutiveFailures += 1;
-    rememberMetric(QUERY_TIMEOUT_MS, false);
+    rememberMetric(runtime, QUERY_TIMEOUT_MS, false);
     if (runtime.consecutiveFailures >= BREAKER_THRESHOLD) {
       runtime.breakerOpenUntil = Date.now() + backoffDelay(runtime.consecutiveFailures);
       runtime.reconnectAttempts = Math.max(runtime.reconnectAttempts, runtime.consecutiveFailures - BREAKER_THRESHOLD + 1);
-      emit(makeLogEntry("breaker", "breaker.opened", "warn", undefined, { consecutiveFailures: runtime.consecutiveFailures, breakerOpenUntil: runtime.breakerOpenUntil }));
+      emit(makeLogEntry("breaker", "breaker.opened", "warn", undefined, { consecutiveFailures: runtime.consecutiveFailures, breakerOpenUntil: runtime.breakerOpenUntil, poolKey: runtime.poolKey }));
     }
   }
 
   private async execute<T extends RowDataPacket[]>(sql: string, params: unknown[] = []): Promise<[T, unknown]> {
+    const runtime = this.runtime;
     if (Date.now() < runtime.breakerOpenUntil) {
       throw new Error("Dolt circuit breaker open");
     }
@@ -270,14 +303,15 @@ export class DoltClient {
     try {
       const result = await withTimeout(pool.execute<T>(sql, params as any[]), QUERY_TIMEOUT_MS);
       const latency = performance.now() - startedAt;
-      rememberMetric(latency, true);
-      if (latency > 100) emit(makeLogEntry("dolt", "query.slow", "warn", undefined, { latencyMs: latency }));
+      rememberMetric(runtime, latency, true);
+      if (latency > 100) emit(makeLogEntry("dolt", "query.slow", "warn", undefined, { latencyMs: latency, poolKey: runtime.poolKey }));
       runtime.consecutiveFailures = 0;
       return result;
     } catch (error) {
       this.recordFailure();
       if ((error as { fatal?: boolean }).fatal) {
         runtime.connected = false;
+        runtime.pool = null;
       }
       throw error;
     }

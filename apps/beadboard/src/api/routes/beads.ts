@@ -7,12 +7,12 @@ import { Hono } from "hono";
 import { Database } from "bun:sqlite";
 import { ProjectScanner } from "../../core/project-scanner.ts";
 import { BeadsReader } from "../../core/beads-reader.ts";
-import { DoltClient } from "../../core/dolt-client.ts";
+import { DoltClient, doltPoolKey } from "../../core/dolt-client.ts";
 import { emit, makeLogEntry } from "../../../../gitboard/src/core/logger.ts";
 import type { BeadIssue, BeadIssueDetail, Memory, Interaction, ProjectSourceKind, BeadsProject } from "../../types/beads.ts";
 
 let scanner: ProjectScanner | null = null;
-const doltClients: Map<number, DoltClient> = new Map();
+const doltClients: Map<string, DoltClient> = new Map();
 const sqliteReaders: Map<string, BeadsReader> = new Map();
 
 function getScanner(): ProjectScanner {
@@ -27,12 +27,12 @@ function getScanner(): ProjectScanner {
   return scanner;
 }
 
-function getDoltClient(port: number): DoltClient {
-  if (!doltClients.has(port)) {
-    const host = process.env.XDG_PROJECTS_DIR ? "host.docker.internal" : "127.0.0.1";
-    doltClients.set(port, new DoltClient({ host, port }));
+function getDoltClient(config: { host: string; port: number; database?: string; user?: string }): DoltClient {
+  const key = doltPoolKey(config);
+  if (!doltClients.has(key)) {
+    doltClients.set(key, new DoltClient(config));
   }
-  return doltClients.get(port)!;
+  return doltClients.get(key)!;
 }
 
 function getSqliteReader(dbPath: string): BeadsReader {
@@ -107,7 +107,8 @@ function degradedSource(project: BeadsProject, status: DoltFailureStatus, messag
 async function getProjectDoltClient(project: BeadsProject): Promise<{ client: DoltClient; runtime: DoltRuntimeInfo } | null> {
   const runtime = await getDoltRuntime(project);
   if (!runtime.port) return null;
-  return { client: getDoltClient(runtime.port), runtime };
+  const host = process.env.XDG_PROJECTS_DIR ? "host.docker.internal" : "127.0.0.1";
+  return { client: getDoltClient({ host, port: runtime.port, database: project.doltDatabase ?? "dolt" }), runtime };
 }
 
 export const beadsRoutes = new Hono();
@@ -141,6 +142,18 @@ beadsRoutes.get("/projects/:id/issues", async (c) => {
   }
 });
 
+beadsRoutes.get("/projects/:id/issues/closed", async (c) => {
+  try {
+    const projectId = c.req.param("id");
+    const limit = Number.parseInt(c.req.query("limit") || "50", 10);
+    const issues = await getClosedIssuesFromProject(projectId, limit);
+    return c.json({ issues: issues.map((issue) => ({ ...issue, project_id: projectId })) });
+  } catch (error) {
+    console.error("[api] Error getting closed issues:", error);
+    return c.json({ error: "Failed to get closed issues" }, 500);
+  }
+});
+
 beadsRoutes.get("/projects/:id/issues/:issueId", async (c) => {
   try {
     const projectId = c.req.param("id");
@@ -152,18 +165,6 @@ beadsRoutes.get("/projects/:id/issues/:issueId", async (c) => {
   } catch (error) {
     console.error("[api] Error getting issue detail:", error);
     return c.json({ error: "Failed to get issue detail" }, 500);
-  }
-});
-
-beadsRoutes.get("/projects/:id/issues/closed", async (c) => {
-  try {
-    const projectId = c.req.param("id");
-    const limit = Number.parseInt(c.req.query("limit") || "50", 10);
-    const issues = await getClosedIssuesFromProject(projectId, limit);
-    return c.json({ issues: issues.map((issue) => ({ ...issue, project_id: projectId })) });
-  } catch (error) {
-    console.error("[api] Error getting closed issues:", error);
-    return c.json({ error: "Failed to get closed issues" }, 500);
   }
 });
 

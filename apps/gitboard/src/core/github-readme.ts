@@ -15,6 +15,8 @@ interface DirEntry {
 }
 
 const TTL_MS = 10 * 60 * 1000;
+const FETCH_TIMEOUT_MS = 2_000;
+const MAX_CACHE_ENTRIES = 200;
 const fileCache = new Map<string, { value: ContentEntry; expires: number }>();
 const dirCache = new Map<string, { value: DirEntry[]; expires: number }>();
 
@@ -22,16 +24,34 @@ function cacheKey(owner: string, repo: string, path: string): string {
   return `${owner}/${repo}::${path}`;
 }
 
+function pruneCache<K, V>(cache: Map<K, V>, maxEntries = MAX_CACHE_ENTRIES): void {
+  while (cache.size > maxEntries) {
+    const oldest = cache.keys().next().value;
+    if (oldest === undefined) return;
+    cache.delete(oldest);
+  }
+}
+
 async function ghFetch(url: string): Promise<Response> {
   const token = getGithubToken();
-  return fetch(url, {
-    headers: {
-      Accept: "application/vnd.github+json",
-      Authorization: `Bearer ${token}`,
-      "X-GitHub-Api-Version": "2022-11-28",
-      "User-Agent": "gitboard",
-    },
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    return await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        Accept: "application/vnd.github+json",
+        Authorization: `Bearer ${token}`,
+        "X-GitHub-Api-Version": "2022-11-28",
+        "User-Agent": "gitboard",
+      },
+    });
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error(`GitHub Contents timed out after ${FETCH_TIMEOUT_MS}ms`);
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 export async function fetchRepoFile(
@@ -65,6 +85,7 @@ export async function fetchRepoFile(
     last_modified: res.headers.get("last-modified"),
   };
   fileCache.set(key, { value, expires: now + TTL_MS });
+  pruneCache(fileCache);
   return value;
 }
 
@@ -82,6 +103,7 @@ export async function listRepoDir(
   const res = await ghFetch(url);
   if (res.status === 404) {
     dirCache.set(key, { value: [], expires: now + TTL_MS });
+    pruneCache(dirCache);
     return [];
   }
   if (!res.ok) throw new Error(`GitHub Contents ${res.status} for ${owner}/${repo}/${path}`);
@@ -89,6 +111,7 @@ export async function listRepoDir(
   const json = (await res.json()) as DirEntry[] | DirEntry;
   const entries = Array.isArray(json) ? json : [json];
   dirCache.set(key, { value: entries, expires: now + TTL_MS });
+  pruneCache(dirCache);
   return entries;
 }
 

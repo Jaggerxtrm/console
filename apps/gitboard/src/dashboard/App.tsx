@@ -53,7 +53,7 @@ function ShellApp() {
     const persistedSurface = selection.surface as string;
     if (persistedSurface === "beads") setSurface("console");
   }, [selection.surface, setSurface]);
-  useGithubActivity();
+  useGithubActivity({ includeLists: false });
   useRepoTree();
   return (
     <div className="ide-shell" data-theme={theme}>

@@ -5,7 +5,8 @@ import { useWebSocket } from "./useWebSocket.ts";
 import type { WsMessage } from "../lib/ws.ts";
 import type { GithubEvent, GithubPr, GithubIssue } from "../../types/github.ts";
 
-export function useGithubActivity(): void {
+export function useGithubActivity(options: { includeLists?: boolean } = {}): void {
+  const includeLists = options.includeLists ?? true;
   const {
     filter,
     setEvents,
@@ -29,36 +30,41 @@ export function useGithubActivity(): void {
     setLoading(true);
     setError(null);
     try {
-      const [eventsRes, reposRes, contribRes, summaryRes, statsRes, prsRes, issuesRes] = await Promise.all([
+      const [eventsRes, reposRes, contribRes, summaryRes, statsRes] = await Promise.all([
         apiClient.getEvents({ ...filter, limit: 50, offset: 0 }),
         apiClient.getRepos(),
         apiClient.getContributions(),
         apiClient.getSummary("today"),
         apiClient.getRepoStats(),
-        apiClient.getPrs({ limit: 1000 }),
-        apiClient.getIssues({ limit: 100 }),
       ]);
-      const releaseResponses = await Promise.all(
-        reposRes.data.map((repo) => apiClient.getReleases({ repo: repo.full_name, limit: 100 })),
-      );
       setEvents(eventsRes.data);
       setRepos(reposRes.data);
       setContributions(contribRes.data);
       setSummary(summaryRes);
       setRepoStats(statsRes.data);
-      setPrs(prsRes.data);
-      setIssues(issuesRes.data);
-      setReleases(
-        releaseResponses
-          .flatMap((response) => response.releases)
-          .sort((a, b) => (b.published_at ?? "").localeCompare(a.published_at ?? "")),
-      );
+
+      if (includeLists) {
+        const [prsRes, issuesRes] = await Promise.all([
+          apiClient.getPrs({ limit: 1000 }),
+          apiClient.getIssues({ limit: 100 }),
+        ]);
+        const releaseResponses = await Promise.all(
+          reposRes.data.map((repo) => apiClient.getReleases({ repo: repo.full_name, limit: 100 })),
+        );
+        setPrs(prsRes.data);
+        setIssues(issuesRes.data);
+        setReleases(
+          releaseResponses
+            .flatMap((response) => response.releases)
+            .sort((a, b) => (b.published_at ?? "").localeCompare(a.published_at ?? "")),
+        );
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load data");
     } finally {
       setLoading(false);
     }
-  }, [filter, setEvents, setRepos, setContributions, setSummary, setRepoStats, setLoading, setError, setPrs, setIssues, setReleases]);
+  }, [filter, includeLists, setEvents, setRepos, setContributions, setSummary, setRepoStats, setLoading, setError, setPrs, setIssues, setReleases]);
 
   useEffect(() => {
     void load();

@@ -38,6 +38,21 @@ afterEach(() => {
 });
 
 describe("useGithubActivity", () => {
+  it("loads core activity shell data without PR, issue, or release fan-out", async () => {
+    vi.mocked(apiClient.getEvents).mockResolvedValueOnce({ data: [], limit: 50, offset: 0 });
+
+    renderHook(() => useGithubActivity({ includeLists: false }));
+
+    await waitFor(() => expect(apiClient.getEvents).toHaveBeenCalled());
+    expect(apiClient.getRepos).toHaveBeenCalledTimes(1);
+    expect(apiClient.getContributions).toHaveBeenCalledTimes(1);
+    expect(apiClient.getSummary).toHaveBeenCalledWith("today");
+    expect(apiClient.getRepoStats).toHaveBeenCalledTimes(1);
+    expect(apiClient.getPrs).not.toHaveBeenCalled();
+    expect(apiClient.getIssues).not.toHaveBeenCalled();
+    expect(apiClient.getReleases).not.toHaveBeenCalled();
+  });
+
   it("reloads on github sync hint envelope without repos field", async () => {
     vi.mocked(apiClient.getEvents).mockResolvedValueOnce({ data: [], limit: 50, offset: 0 });
     renderHook(() => useGithubActivity());

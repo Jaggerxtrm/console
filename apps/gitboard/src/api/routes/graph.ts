@@ -9,7 +9,14 @@ export function createGraphRouter(dao = getDefaultDao()): Hono {
   app.get("/", async (c) => {
     const projectId = c.req.query("project_id");
     const includeClosed = c.req.query("include_closed") === "true";
+    if (c.req.query("refresh") === "true") dao.invalidate(projectId);
     return c.json(await dao.getGraph(projectId, includeClosed));
+  });
+
+  app.post("/invalidate", async (c) => {
+    const body = await c.req.json().catch(() => ({})) as { project_id?: string | null };
+    dao.invalidate(body.project_id);
+    return c.json({ ok: true });
   });
 
   return app;
