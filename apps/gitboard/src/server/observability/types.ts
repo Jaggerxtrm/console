@@ -8,6 +8,7 @@ export interface SpecialistJob {
   status: string;
   updatedAt: string;
   specialist: string | null;
+  lastOutput: string | null;
 }
 
 export interface SpecialistChain extends SpecialistJob {
