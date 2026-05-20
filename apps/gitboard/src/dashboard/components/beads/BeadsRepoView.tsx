@@ -131,17 +131,19 @@ export function BeadsRepoView({ repo, tab }: { repo: RepoNode; tab: BeadsTab }) 
           }
           return;
         }
-        // Single fetch — backend /issues/closed returns 404 on Dolt-backed projects.
-        // The unfiltered /issues endpoint returns everything (open + closed) from Dolt.
-        const [allIssues, memories, interactions] = await Promise.all([
-          beadsApi.listIssues(project.id, { limit: 1000 }).catch(() => [] as BeadIssue[]),
+        const [issues, memories, interactions] = await Promise.all([
+          beadsApi.listIssues(project.id, { status: ["open", "in_progress", "blocked", "in_review"], limit: 100 }).catch(() => [] as BeadIssue[]),
           beadsApi.listMemories(project.id).catch(() => [] as Memory[]),
           beadsApi.listInteractions(project.id).catch(() => [] as Interaction[]),
         ]);
         if (cancelled) return;
-        const issues = allIssues.filter((i) => i.status !== "closed");
-        const closedIssues = allIssues.filter((i) => i.status === "closed");
-        setState({ loading: false, error: null, project, issues, closedIssues, memories, interactions });
+        setState({ loading: false, error: null, project, issues, closedIssues: [], memories, interactions });
+
+        void beadsApi.listClosedIssues(project.id, 50)
+          .then((closedIssues) => {
+            if (!cancelled) setState((current) => current.project?.id === project.id ? { ...current, closedIssues } : current);
+          })
+          .catch(() => undefined);
       } catch (err) {
         if (!cancelled) {
           setState({ ...INITIAL, loading: false, error: err instanceof Error ? err.message : String(err) });

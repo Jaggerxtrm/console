@@ -141,6 +141,18 @@ beadsRoutes.get("/projects/:id/issues", async (c) => {
   }
 });
 
+beadsRoutes.get("/projects/:id/issues/closed", async (c) => {
+  try {
+    const projectId = c.req.param("id");
+    const limit = Number.parseInt(c.req.query("limit") || "50", 10);
+    const issues = await getClosedIssuesFromProject(projectId, limit);
+    return c.json({ issues: issues.map((issue) => ({ ...issue, project_id: projectId })) });
+  } catch (error) {
+    console.error("[api] Error getting closed issues:", error);
+    return c.json({ error: "Failed to get closed issues" }, 500);
+  }
+});
+
 beadsRoutes.get("/projects/:id/issues/:issueId", async (c) => {
   try {
     const projectId = c.req.param("id");
@@ -152,18 +164,6 @@ beadsRoutes.get("/projects/:id/issues/:issueId", async (c) => {
   } catch (error) {
     console.error("[api] Error getting issue detail:", error);
     return c.json({ error: "Failed to get issue detail" }, 500);
-  }
-});
-
-beadsRoutes.get("/projects/:id/issues/closed", async (c) => {
-  try {
-    const projectId = c.req.param("id");
-    const limit = Number.parseInt(c.req.query("limit") || "50", 10);
-    const issues = await getClosedIssuesFromProject(projectId, limit);
-    return c.json({ issues: issues.map((issue) => ({ ...issue, project_id: projectId })) });
-  } catch (error) {
-    console.error("[api] Error getting closed issues:", error);
-    return c.json({ error: "Failed to get closed issues" }, 500);
   }
 });
 
