@@ -84,6 +84,18 @@ export function TerminalTabPanel() {
         return;
       }
       if (msg.kind === "error") {
+        if (msg.payload.code === "not_found" && pendingSessionIdRef.current === msg.sessionId) {
+          const newSessionId = crypto.randomUUID();
+          pendingSessionIdRef.current = newSessionId;
+          reattachTokenRef.current = null;
+          setTerminalSessionId(newSessionId);
+          setTerminalReattachToken(null);
+          resetTerminalOutput();
+          sendTerminalMessage(ws, "open", newSessionId, { providerKind: "pty", capabilities: ["interactive", "resizable"] });
+          setStatus("opening");
+          setError(null);
+          return;
+        }
         setStatus("error");
         setError(`${msg.payload.code}: ${msg.payload.message}`);
       }

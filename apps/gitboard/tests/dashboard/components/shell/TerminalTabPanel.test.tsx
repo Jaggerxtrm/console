@@ -83,6 +83,27 @@ describe("TerminalTabPanel", () => {
     expect(terminalStreamMock).toHaveBeenCalled();
   });
 
+  it("opens a fresh session when stored reattach session is gone", async () => {
+    const { TerminalTabPanel } = await import("../../../../src/dashboard/components/shell/TerminalTabPanel.tsx");
+    const { useShellStore } = await import("../../../../src/dashboard/stores/shell.ts");
+    useShellStore.getState().setTerminalSessionId("stale-session");
+    useShellStore.getState().setTerminalReattachToken("stale-token");
+    useShellStore.getState().appendTerminalOutput("old-output\n");
+
+    render(React.createElement(TerminalTabPanel));
+    const ws = FakeWebSocket.instances[0];
+    ws.open();
+    ws.message({ kind: "error", sessionId: "stale-session", payload: { code: "not_found", message: "session not found" } });
+
+    const messages = ws.sent.map((msg) => JSON.parse(msg));
+    expect(messages[0].kind).toBe("attach");
+    const reopen = messages.find((msg) => msg.kind === "open");
+    expect(reopen?.sessionId).toBeTruthy();
+    expect(reopen?.sessionId).not.toBe("stale-session");
+    expect(useShellStore.getState().terminalReattachToken).toBeNull();
+    expect(useShellStore.getState().terminalOutput).toEqual([]);
+  });
+
   it("sends resize and input over websocket", async () => {
     const { TerminalTabPanel } = await import("../../../../src/dashboard/components/shell/TerminalTabPanel.tsx");
     const { useShellStore } = await import("../../../../src/dashboard/stores/shell.ts");
