@@ -17,8 +17,8 @@ beforeEach(() => {
   useShellStore.setState({ selection: { surface: "console", tab: "graph", repo: "gitboard" } as never });
 });
 
-describe("BeadSideDrawer", () => {
-  it("opens, closes, handles ESC, backdrop, and open in feed", async () => {
+describe("Specialists", () => {
+  it("shows chains, filters, detail, and opens bead from card", async () => {
     const target = document.createElement("div");
     target.setAttribute("data-bead-id", "forge-b2");
     target.scrollIntoView = scroll;
