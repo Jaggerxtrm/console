@@ -104,7 +104,7 @@ export class TerminalBridge {
         this.sessions.delete(msg.sessionId);
       });
       this.sessions.set(msg.sessionId, state);
-      send(JSON.stringify(createTerminalStreamEnvelope("status", msg.streamId, msg.sessionId, { state: "open", attached: true, paused: false, bytesIn: 0, bytesOut: 0, backlogBytes: 0, note: state.reattachToken })));
+      send(JSON.stringify(createTerminalStreamEnvelope("status", msg.streamId, msg.sessionId, { state: "open", attached: true, paused: false, bytesIn: 0, bytesOut: 0, backlogBytes: 0, reattachToken: state.reattachToken })));
     } catch (error) {
       this.sendError(send, msg.streamId, msg.sessionId, "provider_error", error instanceof Error ? error.message : "provider error", true);
     }
@@ -121,7 +121,7 @@ export class TerminalBridge {
     }
     state.attached.add(connectionId);
     state.ownerConnectionId = connectionId;
-    send(JSON.stringify(createTerminalStreamEnvelope("status", streamId, sessionId, { state: "attached", attached: true, paused: false, bytesIn: 0, bytesOut: 0, backlogBytes: 0, note: state.reattachToken })));
+    send(JSON.stringify(createTerminalStreamEnvelope("status", streamId, sessionId, { state: "attached", attached: true, paused: false, bytesIn: 0, bytesOut: 0, backlogBytes: 0, reattachToken: state.reattachToken })));
   }
 
   private detach(connectionId: string, send: Send, sessionId: string, streamId: string): void {

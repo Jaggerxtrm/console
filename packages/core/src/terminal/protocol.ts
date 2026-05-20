@@ -100,7 +100,7 @@ export interface TerminalStreamStatusPayload {
   bytesIn: number;
   bytesOut: number;
   backlogBytes: number;
-  note?: string;
+  reattachToken?: string;
 }
 
 export interface TerminalStreamHeartbeatPayload {
@@ -246,7 +246,8 @@ export function validateTerminalStreamMessage(value: unknown): value is Terminal
         && typeof payload.paused === "boolean"
         && typeof payload.bytesIn === "number"
         && typeof payload.bytesOut === "number"
-        && typeof payload.backlogBytes === "number";
+        && typeof payload.backlogBytes === "number"
+        && (typeof payload.reattachToken === "string" || !("reattachToken" in payload));
     case "heartbeat":
       return typeof payload.ack === "number" || !("ack" in payload);
   }

@@ -33,7 +33,7 @@ describe("terminal bridge lifecycle", () => {
     const sessionId = "session-1";
 
     await bridge.handleMessage(conn, JSON.stringify(createTerminalStreamEnvelope("open", streamId, sessionId, { providerKind: "pty", capabilities: ["interactive", "resizable"] })));
-    const token = (sent.find((msg) => (msg as { kind?: string }).kind === "status") as { payload?: { note?: string } })?.payload?.note;
+    const token = (sent.find((msg) => (msg as { kind?: string }).kind === "status") as { payload?: { reattachToken?: string } })?.payload?.reattachToken;
     await bridge.handleMessage(conn, JSON.stringify(createTerminalStreamEnvelope("attach", streamId, sessionId, { resume: false, token: token ?? "missing" })));
     await bridge.handleMessage(conn, JSON.stringify(createTerminalStreamEnvelope("input", streamId, sessionId, { data: "ls\n", encoding: "utf8" })));
     await bridge.handleMessage(conn, JSON.stringify(createTerminalStreamEnvelope("resize", streamId, sessionId, { cols: 100, rows: 30 })));
@@ -75,7 +75,7 @@ describe("terminal bridge lifecycle", () => {
     const connB = bridge.connect((payload) => sentB.push(JSON.parse(payload)));
 
     await bridge.handleMessage(connA, JSON.stringify(createTerminalStreamEnvelope("open", "stream-1", "session-1", { providerKind: "pty", capabilities: ["interactive"] })));
-    const token = (sentA.find((msg) => (msg as { kind?: string }).kind === "status") as { payload?: { note?: string } })?.payload?.note;
+    const token = (sentA.find((msg) => (msg as { kind?: string }).kind === "status") as { payload?: { reattachToken?: string } })?.payload?.reattachToken;
     bridge.disconnect(connA);
     await bridge.handleMessage(connB, JSON.stringify(createTerminalStreamEnvelope("attach", "stream-1", "session-1", { resume: false, token: token ?? "missing" })));
     await bridge.handleMessage(connB, JSON.stringify(createTerminalStreamEnvelope("input", "stream-1", "session-1", { data: "pwd\n", encoding: "utf8" })));
@@ -137,7 +137,7 @@ describe("terminal bridge lifecycle", () => {
     expect(session.sizes).toEqual([]);
     expect(session.disposed).toEqual([]);
     expect(sentB.filter((msg) => (msg as { kind?: string; payload?: { code?: string } }).kind === "error" && (msg as { payload?: { code?: string } }).payload?.code === "forbidden").length).toBe(3);
-    expect((sentA.find((msg) => (msg as { kind?: string }).kind === "status") as { payload?: { note?: string } })?.payload?.note).toBeTruthy();
+    expect((sentA.find((msg) => (msg as { kind?: string }).kind === "status") as { payload?: { reattachToken?: string } })?.payload?.reattachToken).toBeTruthy();
   });
 
   it("disconnect cleanup disposes unowned session remains protected", async () => {

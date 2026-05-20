@@ -6,7 +6,7 @@ import type { TerminalStreamChunk } from "../terminal/TerminalStream.tsx";
 const TERMINAL_WS_PATH = "/api/console/terminal/ws";
 
 type TerminalEnvelope =
-  | { kind: "status"; sessionId: string; payload: { state: string; attached: boolean; note?: string } }
+  | { kind: "status"; sessionId: string; payload: { state: string; attached: boolean; reattachToken?: string } }
   | { kind: "output"; sessionId: string; payload: { data: string } }
   | { kind: "exit"; sessionId: string; payload: { code: number | null; signal: string | null } }
   | { kind: "error"; sessionId: string; payload: { code: string; message: string } };
@@ -56,9 +56,9 @@ export function TerminalTabPanel() {
       const msg = JSON.parse(event.data as string) as TerminalEnvelope;
       if (msg.kind === "status") {
         pendingSessionIdRef.current = msg.sessionId;
-        if (typeof msg.payload.note === "string" && msg.payload.note.length > 0) {
-          reattachTokenRef.current = msg.payload.note;
-          setTerminalReattachToken(msg.payload.note);
+        if (typeof msg.payload.reattachToken === "string" && msg.payload.reattachToken.length > 0) {
+          reattachTokenRef.current = msg.payload.reattachToken;
+          setTerminalReattachToken(msg.payload.reattachToken);
         }
         setTerminalSessionId(msg.sessionId);
         setStatus(msg.payload.state);

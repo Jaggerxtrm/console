@@ -66,7 +66,7 @@ describe("TerminalTabPanel", () => {
     const { unmount } = render(React.createElement(TerminalTabPanel));
     const first = FakeWebSocket.instances[0];
     first.open();
-    first.message({ kind: "status", sessionId: "session-1", payload: { state: "open", attached: true, note: "token-1" } });
+    first.message({ kind: "status", sessionId: "session-1", payload: { state: "open", attached: true, reattachToken: "token-1" } });
     first.message({ kind: "output", sessionId: "session-1", payload: { data: "echo\n" } });
 
     expect(useShellStore.getState().terminalSessionId).toBe("session-1");
