@@ -35,6 +35,18 @@ export interface PollerOptions {
   intervalMs?: number;
   backfillPages?: number;
   registry?: ChannelRegistry;
+  repoConcurrency?: number;
+}
+
+interface ApiGetResult<T> {
+  data: T | null;
+  status: "ok" | "not_modified" | "error";
+  etag: string | null;
+}
+
+interface RepoEndpointPollResult {
+  watermark: string | null;
+  etag: string | null;
 }
 
 export function getGithubToken(): string {
@@ -185,6 +197,7 @@ export class GithubPoller {
   private backfillPages: number;
   private timer: ReturnType<typeof setInterval> | null = null;
   private registry: ChannelRegistry | null;
+  private repoConcurrency: number;
   private etags = new Map<string, string>();
   private pausedUntil = 0;
 
@@ -194,6 +207,7 @@ export class GithubPoller {
     this.intervalMs = options.intervalMs ?? 5 * 60 * 1000;
     this.backfillPages = options.backfillPages ?? 3;
     this.registry = options.registry ?? null;
+    this.repoConcurrency = Math.max(1, Math.min(options.repoConcurrency ?? 4, 8));
   }
 
   // ---------------------------------------------------------------------------
@@ -217,6 +231,19 @@ export class GithubPoller {
   }
 
   private maybePauseForRateLimit(response: Response): boolean {
+    const retryAfter = Number(response.headers.get("Retry-After") ?? NaN);
+    const resetSeconds = Number(response.headers.get("X-RateLimit-Reset") ?? NaN);
+    if ((response.status === 403 || response.status === 429) && Number.isFinite(retryAfter)) {
+      this.pausedUntil = Date.now() + retryAfter * 1000;
+      emit(makeLogEntry("poller", "rate_limit.changed", "warn", undefined, { status: response.status, retryAfter, pausedUntil: this.pausedUntil }));
+      return true;
+    }
+    if ((response.status === 403 || response.status === 429) && Number.isFinite(resetSeconds)) {
+      this.pausedUntil = Math.max(this.pausedUntil, resetSeconds * 1000);
+      emit(makeLogEntry("poller", "rate_limit.changed", "warn", undefined, { status: response.status, resetSeconds, pausedUntil: this.pausedUntil }));
+      return true;
+    }
+
     const rate = this.parseRateLimit(response);
     if (!rate) return false;
     if (rate.remaining < 500) {
@@ -234,8 +261,8 @@ export class GithubPoller {
     return `${repo}:${endpoint}`;
   }
 
-  private getIfNoneMatch(repo: string, endpoint: string): Record<string, string> {
-    const etag = this.etags.get(this.getEtagKey(repo, endpoint));
+  private getIfNoneMatch(repo: string, endpoint: string, persistedEtag?: string | null): Record<string, string> {
+    const etag = persistedEtag ?? this.etags.get(this.getEtagKey(repo, endpoint));
     return etag ? { "If-None-Match": etag } : {};
   }
 
@@ -246,25 +273,33 @@ export class GithubPoller {
 
   /** Generic GET against GitHub REST API. Returns null on 304/error. */
   private async apiGet<T>(path: string, repo = "global", endpoint = path): Promise<T | null> {
-    if (this.pausedUntil > Date.now()) return null;
+    return (await this.apiGetWithMeta<T>(path, repo, endpoint)).data;
+  }
+
+  private async apiGetWithMeta<T>(path: string, repo = "global", endpoint = path, persistedEtag?: string | null): Promise<ApiGetResult<T>> {
+    if (this.pausedUntil > Date.now()) return { data: null, status: "error", etag: persistedEtag ?? this.etags.get(this.getEtagKey(repo, endpoint)) ?? null };
     const url = path.startsWith("https://") ? path : `https://api.github.com${path}`;
     let response: Response;
     try {
-      response = await fetch(url, { headers: { ...this.headers, ...this.getIfNoneMatch(repo, endpoint) } });
+      response = await fetch(url, { headers: { ...this.headers, ...this.getIfNoneMatch(repo, endpoint, persistedEtag) } });
     } catch {
-      return null;
+      return { data: null, status: "error", etag: persistedEtag ?? this.etags.get(this.getEtagKey(repo, endpoint)) ?? null };
     }
+
+    const responseEtag = response.headers.get("ETag") ?? persistedEtag ?? this.etags.get(this.getEtagKey(repo, endpoint)) ?? null;
     if (response.status === 304) {
+      if (responseEtag) this.etags.set(this.getEtagKey(repo, endpoint), responseEtag);
       emit(makeLogEntry("poller", "etag.hit_304", "debug", undefined, { repo, endpoint }));
-      return null;
+      return { data: null, status: "not_modified", etag: responseEtag };
     }
     if (!response.ok) {
+      this.maybePauseForRateLimit(response);
       emit(makeLogEntry("poller", "etag.miss", "debug", undefined, { repo, endpoint, status: response.status }));
-      return null;
+      return { data: null, status: "error", etag: responseEtag };
     }
     this.maybePauseForRateLimit(response);
     this.rememberEtag(repo, endpoint, response);
-    return (await response.json()) as T;
+    return { data: (await response.json()) as T, status: "ok", etag: responseEtag };
   }
 
   /** Fetch commit list + aggregate diff stats via the Compare API. */
@@ -365,7 +400,7 @@ export class GithubPoller {
     return watermark !== null && updatedAt <= watermark;
   }
 
-  private async pollIssues(repo: string, watermark: string | null): Promise<string | null> {
+  private async pollIssues(repo: string, watermark: string | null, persistedEtag?: string | null): Promise<RepoEndpointPollResult> {
     interface IssueResponse {
       number: number;
       title: string;
@@ -382,10 +417,15 @@ export class GithubPoller {
     }
 
     let latest = watermark;
+    let latestEtag = persistedEtag ?? null;
     const MAX_PAGES = 20;
     for (let page = 1; page <= MAX_PAGES; page++) {
-const items = await this.apiGet<IssueResponse[]>(`/repos/${repo}/issues?state=all&since=${encodeURIComponent(watermark ?? "1970-01-01T00:00:00Z")}&per_page=100&page=${page}`, repo, "issues");
-      if (!items) return latest;
+      const endpoint = page === 1 ? "issues" : `issues:page:${page}`;
+      const result = await this.apiGetWithMeta<IssueResponse[]>(`/repos/${repo}/issues?state=all&since=${encodeURIComponent(watermark ?? "1970-01-01T00:00:00Z")}&per_page=100&page=${page}`, repo, endpoint, page === 1 ? persistedEtag : undefined);
+      if (page === 1) latestEtag = result.etag;
+      if (result.status === "not_modified") return { watermark: latest, etag: latestEtag };
+      const items = result.data;
+      if (!items) return { watermark: latest, etag: latestEtag };
       let watermarkHit = false;
       for (const item of items) {
         if (item.pull_request) continue;
@@ -410,12 +450,12 @@ const items = await this.apiGet<IssueResponse[]>(`/repos/${repo}/issues?state=al
         if (changed || !existing) this.publishGithubEvent("github:issue.upsert", issue, issue.updated_at ?? issue.created_at);
         latest = latest === null || item.updated_at > latest ? item.updated_at : latest;
       }
-      if (watermarkHit || items.length < 100 || this.pausedUntil > Date.now()) return latest;
+      if (watermarkHit || items.length < 100 || this.pausedUntil > Date.now()) return { watermark: latest, etag: latestEtag };
     }
-    return latest;
+    return { watermark: latest, etag: latestEtag };
   }
 
-  private async pollPullRequests(repo: string, watermark: string | null): Promise<string | null> {
+  private async pollPullRequests(repo: string, watermark: string | null, persistedEtag?: string | null): Promise<RepoEndpointPollResult> {
     interface PullsResponse {
       number: number;
       title: string;
@@ -432,10 +472,15 @@ const items = await this.apiGet<IssueResponse[]>(`/repos/${repo}/issues?state=al
     }
 
     let latest = watermark;
+    let latestEtag = persistedEtag ?? null;
     const MAX_PAGES = 20;
     for (let page = 1; page <= MAX_PAGES; page++) {
-const prs = await this.apiGet<PullsResponse[]>(`/repos/${repo}/pulls?state=all&sort=updated&direction=desc&per_page=100&page=${page}`, repo, "pulls");
-      if (!prs) return latest;
+      const endpoint = page === 1 ? "pulls" : `pulls:page:${page}`;
+      const result = await this.apiGetWithMeta<PullsResponse[]>(`/repos/${repo}/pulls?state=all&sort=updated&direction=desc&per_page=100&page=${page}`, repo, endpoint, page === 1 ? persistedEtag : undefined);
+      if (page === 1) latestEtag = result.etag;
+      if (result.status === "not_modified") return { watermark: latest, etag: latestEtag };
+      const prs = result.data;
+      if (!prs) return { watermark: latest, etag: latestEtag };
       let watermarkHit = false;
       for (const pr of prs) {
         if (this.shouldStopOnWatermark(pr.updated_at, watermark)) { watermarkHit = true; break; }
@@ -463,32 +508,59 @@ const prs = await this.apiGet<PullsResponse[]>(`/repos/${repo}/pulls?state=all&s
         if (changed || !existing) this.publishGithubEvent("github:pr.upsert", record, record.updated_at ?? record.created_at);
         latest = latest === null || pr.updated_at > latest ? pr.updated_at : latest;
       }
-      if (watermarkHit || prs.length < 100 || this.pausedUntil > Date.now()) return latest;
+      if (watermarkHit || prs.length < 100 || this.pausedUntil > Date.now()) return { watermark: latest, etag: latestEtag };
     }
-    return latest;
+    return { watermark: latest, etag: latestEtag };
+  }
+
+  private isRepoDue(repo: GithubRepo, state: ReturnType<typeof getRepoPollState>, now = Date.now()): boolean {
+    if (state.paused_until && new Date(state.paused_until).getTime() > now) return false;
+    if (!repo.last_polled_at) return true;
+    const lastPolledAt = new Date(repo.last_polled_at).getTime();
+    if (!Number.isFinite(lastPolledAt)) return true;
+    return now - lastPolledAt >= this.getRepoActiveWindow(repo, state);
+  }
+
+  private latestActivityAt(...values: Array<string | null>): string | null {
+    return values.filter((value): value is string => value !== null).sort().at(-1) ?? null;
+  }
+
+  private markRepoPolled(repo: string, polledAt: string): void {
+    this.db.prepare("UPDATE github_repos SET last_polled_at = $last_polled_at WHERE full_name = $repo").run({ $repo: repo, $last_polled_at: polledAt });
+  }
+
+  private async pollRepo(repo: GithubRepo): Promise<void> {
+    const state = getRepoPollState(this.db, repo.full_name);
+    if (!this.isRepoDue(repo, state)) return;
+
+    const issueResult = await this.pollIssues(repo.full_name, state.last_issue_updated_at, state.issue_etag);
+    const prResult = await this.pollPullRequests(repo.full_name, state.last_pr_updated_at, state.pr_etag);
+    const lastIssueUpdatedAt = issueResult.watermark ?? state.last_issue_updated_at;
+    const lastPrUpdatedAt = prResult.watermark ?? state.last_pr_updated_at;
+    const polledAt = new Date().toISOString();
+    upsertRepoPollState(this.db, {
+      repo: repo.full_name,
+      last_issue_updated_at: lastIssueUpdatedAt,
+      last_pr_updated_at: lastPrUpdatedAt,
+      last_activity_at: this.latestActivityAt(lastIssueUpdatedAt, lastPrUpdatedAt, state.last_activity_at),
+      issue_etag: issueResult.etag ?? state.issue_etag,
+      pr_etag: prResult.etag ?? state.pr_etag,
+      paused_until: this.pausedUntil > Date.now() ? new Date(this.pausedUntil).toISOString() : null,
+    });
+    this.markRepoPolled(repo.full_name, polledAt);
   }
 
   async pollRepos(): Promise<void> {
-    const repos = getRepos(this.db).filter((repo) => repo.tracked);
-    for (const repo of repos) {
-      const state = getRepoPollState(this.db, repo.full_name);
-      const nextInterval = this.getRepoActiveWindow(repo, state);
-      if (state.paused_until && new Date(state.paused_until).getTime() > Date.now()) continue;
-      const issueUpdatedAt = await this.pollIssues(repo.full_name, state.last_issue_updated_at);
-      const prUpdatedAt = await this.pollPullRequests(repo.full_name, state.last_pr_updated_at);
-      upsertRepoPollState(this.db, {
-        repo: repo.full_name,
-        last_issue_updated_at: issueUpdatedAt,
-        last_pr_updated_at: prUpdatedAt,
-        last_activity_at: new Date().toISOString(),
-        issue_etag: state.issue_etag,
-        pr_etag: state.pr_etag,
-        paused_until: this.pausedUntil > Date.now() ? new Date(this.pausedUntil).toISOString() : null,
-      });
-      if (process.env.NODE_ENV !== "test" && nextInterval > 0) {
-        await new Promise((resolve) => setTimeout(resolve, nextInterval));
+    const now = Date.now();
+    const repos = getRepos(this.db).filter((repo) => repo.tracked && this.isRepoDue(repo, getRepoPollState(this.db, repo.full_name), now));
+    let index = 0;
+    const workers = Array.from({ length: Math.min(this.repoConcurrency, repos.length) }, async () => {
+      while (index < repos.length && this.pausedUntil <= Date.now()) {
+        const repo = repos[index++];
+        if (repo) await this.pollRepo(repo);
       }
-    }
+    });
+    await Promise.all(workers);
   }
 
   async backfillPrsAndIssues(repos: string[]): Promise<void> {

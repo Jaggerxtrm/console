@@ -5,7 +5,7 @@ import { join } from "path";
 import { createDatabase } from "../../src/core/store.ts";
 import { GithubPoller } from "../../src/core/github-poller.ts";
 import { ChannelRegistry } from "../../src/api/ws/channels.ts";
-import { getIssues, getPrs } from "../../src/core/github-store.ts";
+import { getIssues, getPrs, getRepoPollState } from "../../src/core/github-store.ts";
 
 const repo = "owner/repo";
 
@@ -86,5 +86,85 @@ describe("GithubPoller loop", () => {
     db.prepare("INSERT INTO github_repos (full_name, display_name, tracked) VALUES ('owner/repo', 'repo', 1)").run();
     await poller.pollRepos();
     expect(calls.length).toBeGreaterThan(0);
+  });
+
+  it("respects Retry-After rate-limit pauses", async () => {
+    const startedAt = Date.now();
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}", {
+      status: 429,
+      headers: { "Retry-After": "3", "X-RateLimit-Remaining": "0", "X-RateLimit-Limit": "5000" },
+    }));
+
+    db.prepare("INSERT INTO github_repos (full_name, display_name, tracked) VALUES ('owner/repo', 'repo', 1)").run();
+    const poller = new GithubPoller(db, "token");
+    await poller.pollRepos();
+
+    const state = getRepoPollState(db, repo);
+    expect(new Date(state.paused_until ?? "").getTime()).toBeGreaterThanOrEqual(startedAt + 3_000);
+  });
+
+  it("processes due repos with bounded concurrency instead of sleeping between repos", async () => {
+    let active = 0;
+    let maxActive = 0;
+    const calls: string[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      calls.push(typeof input === "string" ? input : input instanceof URL ? input.href : (input as Request).url);
+      await new Promise<void>((resolve) => queueMicrotask(resolve));
+      active -= 1;
+      return mockResponse([]);
+    });
+
+    for (const name of ["owner/repo-a", "owner/repo-b", "owner/repo-c"]) {
+      db.prepare("INSERT INTO github_repos (full_name, display_name, tracked) VALUES (?, ?, 1)").run(name, name);
+    }
+
+    const poller = new GithubPoller(db, "token", { repoConcurrency: 2 });
+    await poller.pollRepos();
+
+    expect(calls).toHaveLength(6);
+    expect(maxActive).toBe(2);
+  });
+
+  it("records poll time separately from latest activity so quiet repos are not immediately due again", async () => {
+    const calls: string[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      calls.push(typeof input === "string" ? input : input instanceof URL ? input.href : (input as Request).url);
+      return mockResponse([]);
+    });
+
+    db.prepare("INSERT INTO github_repos (full_name, display_name, tracked) VALUES ('owner/repo', 'repo', 1)").run();
+    const poller = new GithubPoller(db, "token");
+    await poller.pollRepos();
+    await poller.pollRepos();
+
+    expect(calls).toHaveLength(2);
+    const state = getRepoPollState(db, repo);
+    expect(state.last_activity_at).toBeNull();
+    expect(db.query<{ last_polled_at: string | null }, []>("SELECT last_polled_at FROM github_repos WHERE full_name = 'owner/repo'").get()?.last_polled_at).not.toBeNull();
+  });
+
+  it("persists ETags and reuses them on the next due poll", async () => {
+    const requestHeaders: Headers[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (_input, init) => {
+      requestHeaders.push(new Headers(init?.headers));
+      if (requestHeaders.length <= 2) return mockResponse([], {}, { ETag: requestHeaders.length === 1 ? '"issues-v1"' : '"pulls-v1"' });
+      return new Response(null, { status: 304, headers: { "X-RateLimit-Remaining": "1000", "X-RateLimit-Limit": "5000" } });
+    });
+
+    db.prepare("INSERT INTO github_repos (full_name, display_name, tracked) VALUES ('owner/repo', 'repo', 1)").run();
+    const poller = new GithubPoller(db, "token");
+    await poller.pollRepos();
+
+    const firstState = getRepoPollState(db, repo);
+    expect(firstState.issue_etag).toBe('"issues-v1"');
+    expect(firstState.pr_etag).toBe('"pulls-v1"');
+
+    db.prepare("UPDATE github_repos SET last_polled_at = '2020-01-01T00:00:00Z' WHERE full_name = ?").run(repo);
+    await poller.pollRepos();
+
+    expect(requestHeaders[2].get("If-None-Match")).toBe('"issues-v1"');
+    expect(requestHeaders[3].get("If-None-Match")).toBe('"pulls-v1"');
   });
 });
