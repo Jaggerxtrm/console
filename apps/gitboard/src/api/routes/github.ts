@@ -18,12 +18,14 @@ import {
   getIssue,
   getReleases,
 } from "../../core/github-store.ts";
-import { fetchRepoFile, listRepoDir, parseFrontmatter } from "../../core/github-readme.ts";
+import { fetchRepoFile, listRepoDir } from "../../core/github-readme.ts";
 import type { ChannelRegistry } from "../ws/channels.ts";
+import type { GithubPr as StoreGithubPr } from "../../core/github-store.ts";
 
-async function githubApi<T>(path: string): Promise<T> {
+async function githubApi<T>(path: string, signal?: AbortSignal): Promise<T> {
   const token = resolveToken();
   const response = await fetch(`https://api.github.com${path}`, {
+    signal,
     headers: {
       Authorization: `Bearer ${token}`,
       Accept: "application/vnd.github+json",
@@ -35,15 +37,70 @@ async function githubApi<T>(path: string): Promise<T> {
   return await response.json() as T;
 }
 
-async function githubApiPages<T>(path: string, maxPages = 3): Promise<T[]> {
+async function githubApiPages<T>(path: string, maxPages = 3, signal?: AbortSignal): Promise<T[]> {
   const results: T[] = [];
   const separator = path.includes("?") ? "&" : "?";
   for (let page = 1; page <= maxPages; page++) {
-    const items = await githubApi<T[]>(`${path}${separator}per_page=100&page=${page}`);
+    const items = await githubApi<T[]>(`${path}${separator}per_page=100&page=${page}`, signal);
     results.push(...items);
     if (items.length < 100) break;
   }
   return results;
+}
+
+type PrDetailPayload = {
+  pr: StoreGithubPr;
+  comments: Array<{ id: number; author: string; body: string; url: string | null; created_at: string; updated_at: string | null }>;
+  reviews: Array<{ id: number; author: string; state: string; body: string | null; url: string | null; submitted_at: string | null }>;
+  review_comments: Array<{ id: number; author: string; body: string; path: string | null; line: number | null; diff_hunk: string | null; url: string | null; created_at: string; updated_at: string | null }>;
+  commits: Array<{ sha: string; message: string; author: string; url: string | null; committed_at: string }>;
+  files: Array<{ filename: string; status: string; additions: number; deletions: number; changes: number; patch: string | null }>;
+  timeline: Array<{ id: string; event: string; actor: string | null; body: string | null; commit_id: string | null; state: string | null; url: string | null; created_at: string }>;
+  errors: Record<string, string>;
+  cached_at?: string;
+};
+
+const OPEN_PR_DETAIL_CACHE_TTL_MS = 60 * 1000;
+const CLOSED_PR_DETAIL_CACHE_TTL_MS = 10 * 60 * 1000;
+const MAX_PR_DETAIL_CACHE_ENTRIES = 200;
+const prDetailCache = new Map<string, { value: PrDetailPayload; expires: number }>();
+
+function prDetailCacheKey(repo: string, number: number, updatedAt: string | null | undefined): string {
+  return `${repo}#${number}:${updatedAt ?? "unknown"}`;
+}
+
+function prDetailCacheTtl(pr: StoreGithubPr): number {
+  return pr.state === "open" ? OPEN_PR_DETAIL_CACHE_TTL_MS : CLOSED_PR_DETAIL_CACHE_TTL_MS;
+}
+
+function prunePrDetailCache(): void {
+  const now = Date.now();
+  for (const [key, entry] of prDetailCache) {
+    if (entry.expires <= now) prDetailCache.delete(key);
+  }
+  while (prDetailCache.size > MAX_PR_DETAIL_CACHE_ENTRIES) {
+    const oldest = prDetailCache.keys().next().value;
+    if (oldest === undefined) return;
+    prDetailCache.delete(oldest);
+  }
+}
+
+function prDetailSectionTimeoutMs(): number {
+  const value = Number(process.env.GITBOARD_PR_DETAIL_SECTION_TIMEOUT_MS ?? 2500);
+  return Number.isFinite(value) && value > 0 ? value : 2500;
+}
+
+async function withTimeout<T>(label: string, run: (signal: AbortSignal) => Promise<T>): Promise<T> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), prDetailSectionTimeoutMs());
+  try {
+    return await run(controller.signal);
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error(`${label} timed out after ${prDetailSectionTimeoutMs()}ms`);
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function resolveToken(): string {
@@ -231,6 +288,11 @@ export function createGithubRouter(db: Database, registry: ChannelRegistry): Hon
     const pr = getPr(db, repo, number);
     if (!pr) return c.json({ error: "not found" }, 404);
 
+    const cacheKey = prDetailCacheKey(repo, number, pr.updated_at ?? pr.created_at);
+    const cached = prDetailCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && cached.expires > now) return c.json({ ...cached.value, cached_at: new Date(now).toISOString() });
+
     type CommentItem = { id: number; user: { login: string } | null; body: string; html_url: string | null; created_at: string; updated_at: string | null };
     type ReviewItem = { id: number; user: { login: string } | null; state: string; body: string | null; html_url: string | null; submitted_at: string | null };
     type ReviewCommentItem = { id: number; user: { login: string } | null; body: string; path: string | null; line: number | null; diff_hunk: string | null; html_url: string | null; created_at: string; updated_at: string | null };
@@ -239,12 +301,12 @@ export function createGithubRouter(db: Database, registry: ChannelRegistry): Hon
     type TimelineItem = { id?: number | string; event?: string; actor?: { login: string } | null; user?: { login: string } | null; body?: string | null; commit_id?: string | null; state?: string | null; html_url?: string | null; created_at?: string; submitted_at?: string };
 
     const [commentsResult, reviewsResult, reviewCommentsResult, commitsResult, filesResult, timelineResult] = await Promise.allSettled([
-      githubApiPages<CommentItem>(`/repos/${repo}/issues/${number}/comments`),
-      githubApiPages<ReviewItem>(`/repos/${repo}/pulls/${number}/reviews`),
-      githubApiPages<ReviewCommentItem>(`/repos/${repo}/pulls/${number}/comments`),
-      githubApiPages<CommitItem>(`/repos/${repo}/pulls/${number}/commits`),
-      githubApiPages<FileItem>(`/repos/${repo}/pulls/${number}/files`),
-      githubApiPages<TimelineItem>(`/repos/${repo}/issues/${number}/timeline`),
+      withTimeout("comments", (signal) => githubApiPages<CommentItem>(`/repos/${repo}/issues/${number}/comments`, 3, signal)),
+      withTimeout("reviews", (signal) => githubApiPages<ReviewItem>(`/repos/${repo}/pulls/${number}/reviews`, 3, signal)),
+      withTimeout("review_comments", (signal) => githubApiPages<ReviewCommentItem>(`/repos/${repo}/pulls/${number}/comments`, 3, signal)),
+      withTimeout("commits", (signal) => githubApiPages<CommitItem>(`/repos/${repo}/pulls/${number}/commits`, 3, signal)),
+      withTimeout("files", (signal) => githubApiPages<FileItem>(`/repos/${repo}/pulls/${number}/files`, 3, signal)),
+      withTimeout("timeline", (signal) => githubApiPages<TimelineItem>(`/repos/${repo}/issues/${number}/timeline`, 3, signal)),
     ]);
 
     const errors: Record<string, string> = {};
@@ -318,7 +380,12 @@ export function createGithubRouter(db: Database, registry: ChannelRegistry): Hon
         created_at: item.created_at ?? item.submitted_at ?? pr.updated_at ?? pr.created_at,
       })) : [];
 
-    return c.json({ pr, comments, reviews, review_comments, commits, files, timeline, errors });
+    const payload: PrDetailPayload = { pr, comments, reviews, review_comments, commits, files, timeline, errors };
+    if (Object.keys(errors).length === 0) {
+      prDetailCache.set(cacheKey, { value: payload, expires: Date.now() + prDetailCacheTtl(pr) });
+      prunePrDetailCache();
+    }
+    return c.json(payload);
   });
 
   // GET /api/github/prs/:owner/:repo/:number
@@ -372,19 +439,9 @@ export function createGithubRouter(db: Database, registry: ChannelRegistry): Hon
         .filter((e) => e.type === "file" && e.name.endsWith(".md"))
         .sort((a, b) => b.name.localeCompare(a.name));
 
-      const withMeta = await Promise.all(
-        reports.map(async (r) => {
-          let frontmatter: Record<string, string> | null = null;
-          try {
-            const file = await fetchRepoFile(owner, name, r.path);
-            if (file?.content) frontmatter = parseFrontmatter(file.content);
-          } catch {
-            /* skip per-file errors */
-          }
-          return { name: r.name, path: r.path, sha: r.sha, size: r.size, frontmatter };
-        }),
-      );
-      return c.json({ data: withMeta });
+      return c.json({
+        data: reports.map((r) => ({ name: r.name, path: r.path, sha: r.sha, size: r.size, frontmatter: null })),
+      });
     } catch (err) {
       return c.json({ error: err instanceof Error ? err.message : "fetch failed" }, 502);
     }
