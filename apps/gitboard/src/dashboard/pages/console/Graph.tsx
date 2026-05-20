@@ -1,28 +1,45 @@
-// Graph view — sparse-graph optimized layout per docs/graph reference.
+// Graph view — per-cluster React Flow viewports inside a CSS-grid outer shell.
+// Each cluster owns its own bounded pane with its own ReactFlow instance; pan/
+// zoom is per-pane. Inter-cluster edges aren't a thing (clusters are connected
+// components by definition), so each viewport is self-contained.
 //
-// Top-down: header → NOW strip (running) → main grid (clusters | orphan sidebar) →
-// state buckets (inline <details>) → keyboard shortcut foot.
-// No heavy enclosure chrome: each cluster is a subtle bg + 1px border + 6px radius.
-// Nodes are HTML divs (200×26) positioned absolutely inside the cluster canvas; SVG
-// renders edges only.
+// Outer layout (top→bottom):
+//   header (toggles)
+//   NOW strip — HTML, running specialists
+//   .g-clusters — CSS grid of <ClusterPane> (with g-clusters-row for small pairs)
+//   orphans strip — bottom HTML row
+//   Buckets row — <details> blocks
+//   Foot — keyboard hints
 
 import { useMemo, useState, type ReactNode } from "react";
 import { ProjectIcon } from "@primer/octicons-react";
+import {
+  ReactFlow,
+  ReactFlowProvider,
+  Background,
+  Controls,
+} from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
+
 import { useShellStore, selectSelection } from "../../stores/shell.ts";
 import { useGraphData } from "../../hooks/useGraphData.ts";
-import { layoutGraph, type LayoutEdge, type LayoutNode } from "./graph/layout.ts";
-import { computeNodeWidth } from "./graph/GraphSvg.tsx";
-import { partitionGraph, type ClusterGroup, type BucketGroup } from "./graph/clusters.ts";
+import { partitionGraph, type BucketGroup, type ClusterGroup } from "./graph/clusters.ts";
 import { categoryFor, shortJobId, type AgentCategory } from "./graph/agent-roles.ts";
-import { EDGE_STYLE_VARS } from "./graph/edge-styles.ts";
+import { buildClusterFlow } from "./graph/buildFlowGraph.ts";
+import { BeadNode } from "./graph/nodes/BeadNode.tsx";
+import { CustomEdge } from "./graph/edges/CustomEdge.tsx";
+import { EdgeMarkers } from "./graph/edges/EdgeMarkers.tsx";
 import type { GraphNode, GraphSpecialist } from "../../../types/graph.ts";
+
+const NODE_TYPES = { beadNode: BeadNode };
+const EDGE_TYPES = { custom: CustomEdge };
 
 export function Graph() {
   const selection = useShellStore(selectSelection);
   const projectId = selection.repo ? selection.repo.split("/").pop() ?? null : null;
   const { loading, error, data } = useGraphData(projectId);
-  const [showParent, setShowParent] = useState(false);
-  const [showRelated, setShowRelated] = useState(false);
+  const [showParent, setShowParent] = useState(true);
+  const [showRelated, setShowRelated] = useState(true);
   const [revealDeferred, setRevealDeferred] = useState(false);
 
   const specialistByBead = useMemo(() => {
@@ -61,7 +78,7 @@ export function Graph() {
         <span className="g-path">
           <b>{projectId}</b><span className="g-path-sl">/</span><b>graph</b>
         </span>
-        <span className="g-sub">─ organized layout · sparse-graph optimized</span>
+        <span className="g-sub">─ react flow · per-cluster panes</span>
         <span className="g-spacer" />
         <span className="g-cnt">
           <b>{data?.nodes.length ?? 0}</b> nodes · <b>{data?.edges.length ?? 0}</b> edges · <b>{runningCount}</b> running
@@ -76,12 +93,12 @@ export function Graph() {
 
       {partition.wip.length > 0 ? <NowStrip nodes={partition.wip} specialists={specialistByBead} /> : null}
 
-      <div className="g-main">
-        <div className="g-clusters">
-          {renderClusterFlow(partition.clusters, specialistByBead)}
-        </div>
-        {partition.orphans.length > 0 ? <OrphanSidebar nodes={partition.orphans} /> : null}
+      <div className="g-clusters">
+        <EdgeMarkers />
+        {renderClusterFlow(partition.clusters, specialistByBead)}
       </div>
+
+      {partition.orphans.length > 0 ? <OrphanStrip nodes={partition.orphans} /> : null}
 
       {bucketTotal > 0 ? <BucketsRow buckets={partition.buckets} /> : null}
 
@@ -101,28 +118,7 @@ function HeaderToggle({ on, onClick, dotClass, label, hint }: { on: boolean; onC
 }
 
 // ============================================================================
-// NOW strip (pinned WIP)
-// ============================================================================
-
-function NowStrip({ nodes, specialists }: { nodes: GraphNode[]; specialists: Map<string, GraphSpecialist> }) {
-  const runningNow = nodes.filter((n) => specialists.get(n.id)?.status === "running");
-  const count = runningNow.length || nodes.length;
-  return (
-    <section className="g-now">
-      <div className="g-now-lbl">
-        <span className="g-glyph w">◐</span> now · {count} running
-      </div>
-      <div className="g-now-rows">
-        {nodes.map((n) => (
-          <NodeChip key={n.id} node={n} specialist={specialists.get(n.id) ?? null} wide />
-        ))}
-      </div>
-    </section>
-  );
-}
-
-// ============================================================================
-// Clusters flow — big cluster full width, small (≤3) cluster pair two-per-row
+// Cluster flow — pack ≤3-node clusters two-per-row, full-width for the rest
 // ============================================================================
 
 function renderClusterFlow(clusters: ClusterGroup[], specialists: Map<string, GraphSpecialist>): ReactNode[] {
@@ -149,15 +145,16 @@ function renderClusterFlow(clusters: ClusterGroup[], specialists: Map<string, Gr
 }
 
 function ClusterPane({ cluster, specialists }: { cluster: ClusterGroup; specialists: Map<string, GraphSpecialist> }) {
-  const nodeWidths = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const n of cluster.nodes) map.set(n.id, computeNodeWidth(n, specialists.get(n.id) ?? null));
-    return map;
-  }, [cluster, specialists]);
+  const flow = useMemo(() => buildClusterFlow(cluster, specialists), [cluster, specialists]);
+  // Pane height tracks dagre's natural layout so the whole graph fits without
+  // an internal scrollbar. Only a floor (120) for tiny clusters; the page-level
+  // .g-app scroll handles overflow when many clusters stack.
+  const paneHeight = Math.max(flow.height + 24, 120);
+  // Key on the cluster's shape so toggling parent-child / related (which changes
+  // edge count + dagre layout) remounts the ReactFlow and runs `fitView` again
+  // — otherwise the camera keeps the previous transform and content clips.
+  const flowKey = `${cluster.id}:${flow.nodes.length}:${flow.edges.length}`;
 
-  const layout = useMemo(() => layoutGraph(cluster.nodes, cluster.edges, nodeWidths), [cluster, nodeWidths]);
-
-  // Sub-header context (epic glyph if name leads with an id that's an epic).
   const leadingId = cluster.name.split(/[\s·]/)[0];
   const epicNode = cluster.nodes.find((n) => n.id === leadingId && n.type === "epic");
 
@@ -175,118 +172,81 @@ function ClusterPane({ cluster, specialists }: { cluster: ClusterGroup; speciali
           {cluster.edges.length} edges
         </em>
       </div>
-      <div className="g-cluster-canvas" style={{ height: layout.height }}>
-        <svg className="g-cluster-svg" viewBox={`0 0 ${layout.width} ${layout.height}`} preserveAspectRatio="xMinYMin meet">
-          <Edges edges={layout.edges} />
-        </svg>
-        {layout.nodes.map((n) => (
-          <ClusterNode key={n.id} node={n} specialist={specialists.get(n.id) ?? null} width={nodeWidths.get(n.id) ?? 200} />
-        ))}
+      <div className="g-pane" style={{ height: paneHeight }}>
+        <ReactFlowProvider>
+          <ReactFlow
+            key={flowKey}
+            nodes={flow.nodes}
+            edges={flow.edges}
+            nodeTypes={NODE_TYPES}
+            edgeTypes={EDGE_TYPES}
+            nodesDraggable={false}
+            nodesConnectable={false}
+            elementsSelectable={false}
+            zoomOnDoubleClick={false}
+            zoomOnScroll={false}
+            zoomOnPinch
+            panOnScroll={false}
+            panOnDrag
+            preventScrolling={false}
+            fitView
+            fitViewOptions={{ padding: 0.12 }}
+            minZoom={0.2}
+            maxZoom={2}
+            proOptions={{ hideAttribution: true }}
+          >
+            <Background gap={20} color="var(--border-subtle)" />
+            <Controls showInteractive={false} />
+          </ReactFlow>
+        </ReactFlowProvider>
       </div>
     </section>
   );
 }
 
 // ============================================================================
-// Edges (SVG only)
+// NOW strip + Orphan strip (HTML)
 // ============================================================================
 
-function Edges({ edges }: { edges: LayoutEdge[] }) {
+function NowStrip({ nodes, specialists }: { nodes: GraphNode[]; specialists: Map<string, GraphSpecialist> }) {
+  const runningNow = nodes.filter((n) => specialists.get(n.id)?.status === "running");
+  const count = runningNow.length || nodes.length;
   return (
-    <>
-      <defs>
-        {(["blocks", "supersedes", "discovered-from", "validates", "caused-by", "tracks", "until"] as const).map((type) => (
-          <marker
-            key={type}
-            id={`g-arrow-${type}`}
-            markerWidth="9"
-            markerHeight="9"
-            refX="7"
-            refY="4.5"
-            orient="auto"
-            markerUnits="userSpaceOnUse"
-          >
-            <path d="M0.5,1 L9,4.5 L0.5,8 z" fill={EDGE_STYLE_VARS[type].token} />
-          </marker>
+    <section className="g-now">
+      <div className="g-now-lbl">
+        <span className="g-glyph w">◐</span> now · {count} running
+      </div>
+      <div className="g-now-rows">
+        {nodes.map((n) => (
+          <NodeChip key={n.id} node={n} specialist={specialists.get(n.id) ?? null} wide />
         ))}
-        <marker id="g-arrow-parent-child" markerWidth="7" markerHeight="7" refX="5" refY="3.5" orient="auto" markerUnits="userSpaceOnUse">
-          <circle cx="3.5" cy="3.5" r="3" fill={EDGE_STYLE_VARS["parent-child"].token} />
-        </marker>
-      </defs>
-      {edges.map((edge) => {
-        const style = EDGE_STYLE_VARS[edge.type];
-        const [p0, p1, p2, p3] = edge.points;
-        const d = `M ${p0.x} ${p0.y} C ${p1.x} ${p1.y}, ${p2.x} ${p2.y}, ${p3.x} ${p3.y}`;
-        const arrow = edge.type === "related" ? undefined : `url(#g-arrow-${edge.type})`;
-        const mx = (p0.x + 3 * p1.x + 3 * p2.x + p3.x) / 8;
-        const my = (p0.y + 3 * p1.y + 3 * p2.y + p3.y) / 8;
-        return (
-          <g key={`${edge.from}->${edge.to}:${edge.type}`} className={`g-edge edge-${edge.type}`}>
-            <path d={d} fill="none" stroke={style.token} strokeWidth={style.width} strokeDasharray={style.dash} strokeLinecap="round" markerEnd={arrow} />
-            <text x={mx} y={my - 4} className={`g-elabel ${edgeLabelClass(edge.type)}`} textAnchor="middle">
-              {edge.type === "parent-child" ? "parent" : edge.type}
-            </text>
-          </g>
-        );
-      })}
-    </>
+      </div>
+    </section>
   );
 }
 
-function edgeLabelClass(type: string): string {
-  return ({
-    blocks: "blocks",
-    "caused-by": "caused",
-    validates: "validates",
-    supersedes: "supersedes",
-    "discovered-from": "discovered",
-    tracks: "tracks",
-    until: "until",
-    "parent-child": "parent",
-    related: "related",
-  } as Record<string, string>)[type] ?? type;
-}
-
-// ============================================================================
-// Cluster node — HTML div, absolutely positioned inside .g-cluster-canvas
-// ============================================================================
-
-function ClusterNode({ node, specialist, width }: { node: LayoutNode; specialist: GraphSpecialist | null; width: number }) {
-  const isRunning = specialist?.status === "running";
-  const isBlocked = node.status === "blocked";
-  const isEpic = node.type === "epic";
-  const agentCat: AgentCategory = categoryFor(specialist?.role);
-  const classes = [
-    "g-node",
-    isBlocked ? "blkd" : "",
-    isRunning ? "act" : "",
-    isEpic ? "ep" : "",
-  ].filter(Boolean).join(" ");
+function OrphanStrip({ nodes }: { nodes: GraphNode[] }) {
+  const visibleLimit = 18;
+  const [expanded, setExpanded] = useState(false);
+  const visible = expanded ? nodes : nodes.slice(0, visibleLimit);
+  const hidden = nodes.length - visible.length;
   return (
-    <div
-      className={classes}
-      data-p={node.priority}
-      style={{ left: node.x, top: node.y, width }}
-    >
-      <span className={`g-glyph ${glyphClass(node)}`}>{glyphChar(node)}</span>
-      <span className="g-id">
-        {idPrefix(node.id)}<b>{idSuffix(node.id)}</b>
-      </span>
-      <span className="g-tt">{node.title}</span>
-      {specialist ? (
-        <span className={`g-ag ${agentCat}`}>
-          <span className="g-ag-dot" />
-          <b>{specialist.role}</b>/{shortJobId(specialist.job_id)}
-        </span>
-      ) : null}
-      <span className={`g-tag p${node.priority}`}>P{node.priority}</span>
-    </div>
+    <section className="g-orphans-strip">
+      <div className="g-orphans-hd">
+        <span className="g-orphans-ttl">orphans</span>
+        <em>{nodes.length} · no edges</em>
+      </div>
+      <div className="g-orphans-grid">
+        {visible.map((n) => <OrphanRow key={n.id} node={n} />)}
+        {hidden > 0 ? (
+          <div className="g-orphans-more" onClick={() => setExpanded(true)}>
+            <b>+{hidden}</b> more orphans · expand
+          </div>
+        ) : null}
+      </div>
+    </section>
   );
 }
-
-// ============================================================================
-// Compact node-chip (used in NOW strip + orphan sidebar)
-// ============================================================================
 
 function NodeChip({ node, specialist, wide }: { node: GraphNode; specialist: GraphSpecialist | null; wide?: boolean }) {
   const isRunning = specialist?.status === "running";
@@ -313,34 +273,6 @@ function NodeChip({ node, specialist, wide }: { node: GraphNode; specialist: Gra
       ) : null}
       <span className={`g-tag p${node.priority}`}>P{node.priority}</span>
     </div>
-  );
-}
-
-// ============================================================================
-// Orphan sidebar
-// ============================================================================
-
-function OrphanSidebar({ nodes }: { nodes: GraphNode[] }) {
-  const visibleLimit = 18;
-  const [expanded, setExpanded] = useState(false);
-  const visible = expanded ? nodes : nodes.slice(0, visibleLimit);
-  const hidden = nodes.length - visible.length;
-  return (
-    <aside className="g-orphans">
-      <div className="g-orphans-hd">
-        <span className="g-orphans-ttl">orphans</span>
-        <span className="g-spacer" />
-        <em>{nodes.length} · no edges</em>
-      </div>
-      <div className="g-orphans-list">
-        {visible.map((n) => <OrphanRow key={n.id} node={n} />)}
-        {hidden > 0 ? (
-          <div className="g-orphans-more" onClick={() => setExpanded(true)}>
-            <b>+{hidden}</b> more orphans · expand
-          </div>
-        ) : null}
-      </div>
-    </aside>
   );
 }
 
@@ -393,7 +325,7 @@ function BucketDetails({ glyph, name, count, nodes }: { glyph: string; name: str
 }
 
 // ============================================================================
-// Foot — keyboard hints + toggle buttons
+// Foot — keyboard hints
 // ============================================================================
 
 function Foot() {

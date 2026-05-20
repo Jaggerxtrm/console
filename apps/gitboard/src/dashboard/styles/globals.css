@@ -5056,11 +5056,10 @@ body:has(.ide-shell[data-theme="light"]) { background: #fff !important; }
 .g-app {
   display: flex;
   flex-direction: column;
-  height: 100%;
-  min-height: 0;
+  min-height: 100%;
   max-width: 1400px;
   margin: 0 auto;
-  padding: 22px 28px 0;
+  padding: 22px 28px 22px;
   width: 100%;
   font-family: var(--font-ui);
   font-size: 12.5px;
@@ -5111,42 +5110,124 @@ body:has(.ide-shell[data-theme="light"]) { background: #fff !important; }
 }
 .g-now-rows { display: flex; flex-direction: column; gap: 4px; }
 
-/* ---- main grid ----
-   Owns the available vertical space between header/NowStrip and buckets/foot.
-   Clusters and orphans scroll independently inside this region; the parent
-   .g-app has overflow:hidden so the page itself never scrolls. */
-.g-main {
-  flex: 1;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 280px;
-  gap: 16px;
-  margin-top: 16px;
-  min-height: 0;
-}
-@media (max-width: 1080px) {
-  .g-main { grid-template-columns: 1fr; }
-}
+/* ---- cluster grid (forge-2a8a) ---- */
 .g-clusters {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 12px;
+  gap: 14px;
   min-width: 0;
-  min-height: 0;
-  overflow-y: auto;
-  padding-right: 4px;
+  margin-top: 16px;
+  align-content: start;
 }
 .g-clusters-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 @media (max-width: 800px) {
   .g-clusters-row { grid-template-columns: 1fr; }
 }
 
-/* ---- cluster ---- */
+/* ---- cluster ---- (forge-2a8a.2: subtle zone tint, no hard card border — the
+   header sits tight above its pane; the tint + wiring conveys grouping without
+   feeling like a stretched card) */
 .g-cluster {
   background: rgba(255, 255, 255, 0.015);
-  border: 1px solid var(--border-subtle);
-  border-radius: 6px;
-  padding: 12px 12px 10px;
+  border: 0;
+  border-radius: 4px;
+  padding: 6px 8px 6px;
   min-width: 0;
+}
+
+/* Per-cluster React Flow viewport. No chrome — bare canvas under the header. */
+.g-pane {
+  position: relative;
+  width: 100%;
+  min-height: 120px;
+}
+/* HTML edge labels (rendered via EdgeLabelRenderer). Tight mono italic with a
+   matched-surface outline (text-shadow simulating SVG paint-order stroke) so
+   the label reads against the path without needing a hard background pill. */
+.g-flow-elabel {
+  position: absolute;
+  pointer-events: none;
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-style: italic;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  padding: 0 2px;
+  background: transparent;
+  border: 0;
+  white-space: nowrap;
+  opacity: 0.7;
+  z-index: 2;
+  text-shadow:
+    -2px 0 var(--surface-primary), 2px 0 var(--surface-primary),
+    0 -2px var(--surface-primary), 0 2px var(--surface-primary),
+    -1px -1px var(--surface-primary), 1px -1px var(--surface-primary),
+    -1px 1px var(--surface-primary), 1px 1px var(--surface-primary);
+}
+.g-flow-elabel.blocks     { color: var(--graph-edge-blocks); }
+.g-flow-elabel.caused     { color: var(--graph-edge-caused-by); }
+.g-flow-elabel.validates  { color: var(--graph-edge-validates); }
+.g-flow-elabel.tracks     { color: var(--graph-edge-tracks); }
+.g-flow-elabel.until      { color: var(--graph-edge-until); }
+.g-flow-elabel.discovered { color: var(--graph-edge-discovered-from); }
+.g-flow-elabel.supersedes { color: var(--graph-edge-supersedes); }
+.g-flow-elabel.parent     { color: var(--text-muted); }
+.g-flow-elabel.related    { color: var(--text-muted); }
+.g-pane .react-flow__attribution,
+.g-pane .react-flow__panel.react-flow__attribution { display: none; }
+.g-pane .react-flow__node-beadNode {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  width: auto;
+}
+/* Dark-theme override for React Flow's default white Controls. */
+.g-pane .react-flow__controls {
+  background: var(--surface-primary);
+  border: 1px solid var(--border-subtle);
+  box-shadow: none;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.g-pane .react-flow__controls-button {
+  background: var(--surface-primary);
+  border: 0;
+  border-bottom: 1px solid var(--border-subtle);
+  fill: var(--text-secondary);
+  color: var(--text-secondary);
+  width: 22px;
+  height: 22px;
+}
+.g-pane .react-flow__controls-button:last-child { border-bottom: 0; }
+.g-pane .react-flow__controls-button:hover {
+  background: rgba(255, 255, 255, 0.04);
+  fill: var(--text-primary);
+}
+[data-theme="light"] .g-pane .react-flow__controls-button:hover {
+  background: rgba(15, 23, 42, 0.05);
+}
+.g-pane .react-flow__controls-button svg { fill: currentColor; }
+/* Bottom orphans strip (forge-2a8a.2 pivot — replaces .g-orphans sidebar). */
+.g-orphans-strip {
+  margin-top: 16px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border-subtle);
+}
+.g-orphans-strip .g-orphans-hd {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+.g-orphans-strip .g-orphans-ttl { color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.04em; }
+.g-orphans-strip .g-orphans-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 4px 8px;
 }
 [data-theme="light"] .g-cluster { background: rgba(15, 23, 42, 0.025); }
 .g-cluster-hd {
@@ -5165,9 +5246,6 @@ body:has(.ide-shell[data-theme="light"]) { background: #fff !important; }
 .g-cluster-tag { font-style: normal; padding: 0 4px; border: 1px solid var(--border-subtle); font-size: 9px; font-weight: 500; letter-spacing: 0.4px; text-transform: uppercase; }
 .g-cluster-tag.p0 { color: var(--graph-priority-0); border-color: var(--graph-priority-0); }
 .g-cluster-tag.run { color: var(--graph-state-wip); border-color: var(--graph-state-wip); }
-
-.g-cluster-canvas { position: relative; width: 100%; }
-.g-cluster-svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
 
 /* ---- node (HTML div, 200×26, absolute positioned inside cluster) ---- */
 .g-node {
@@ -5284,20 +5362,8 @@ body:has(.ide-shell[data-theme="light"]) { background: #fff !important; }
 .g-elabel.parent     { fill: var(--text-muted); }
 .g-elabel.related    { fill: var(--text-muted); }
 
-/* ---- orphan sidebar ---- */
-.g-orphans {
-  background: rgba(255, 255, 255, 0.012);
-  border: 1px solid var(--border-subtle);
-  border-radius: 6px;
-  padding: 10px 0 8px;
-  align-self: stretch;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-.g-orphans-list { flex: 1; min-height: 0; overflow-y: auto; padding: 0; }
-[data-theme="light"] .g-orphans { background: rgba(15, 23, 42, 0.02); }
+/* ---- orphan header (used by .g-orphans-strip; legacy sidebar removed in
+   forge-2a8a.4) ---- */
 .g-orphans-hd {
   display: flex;
   align-items: baseline;

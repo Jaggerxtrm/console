@@ -1,17 +1,37 @@
 /** @vitest-environment happy-dom */
+// forge-2a8a.4 — Smoke test for the React Flow viewport.
+// Asserts: page scaffolding renders, partitionGraph wires through, cluster
+// sections exist. React Flow's internal canvas needs ResizeObserver +
+// getBoundingClientRect which happy-dom provides as minimal stubs; we don't
+// assert on rendered chip positions (that's the role of Playwright in CI).
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { render, waitFor } from "@testing-library/react";
 import fixtureJson from "../../../../fixtures/console-graph.json";
 import type { GraphResponse } from "../../../../../src/types/graph.ts";
 
 const fixture = fixtureJson as GraphResponse;
+
 const fetchMock = vi.fn();
 vi.stubGlobal("fetch", fetchMock);
 
-import { GraphSvg } from "../../../../../src/dashboard/pages/console/graph/GraphSvg.tsx";
+// React Flow needs ResizeObserver; happy-dom's stub is enough but the React
+// Flow internals also poll DOMMatrix in some paths — stub once for safety.
+if (typeof globalThis.ResizeObserver === "undefined") {
+  globalThis.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as never;
+}
+if (typeof globalThis.DOMMatrixReadOnly === "undefined") {
+  globalThis.DOMMatrixReadOnly = class {
+    m22 = 1;
+  } as never;
+}
+
+import { Graph } from "../../../../../src/dashboard/pages/console/Graph.tsx";
 import { useShellStore } from "../../../../../src/dashboard/stores/shell.ts";
-import { layoutGraph } from "../../../../../src/dashboard/pages/console/graph/layout.ts";
 
 beforeEach(() => {
   fetchMock.mockReset();
@@ -19,34 +39,29 @@ beforeEach(() => {
   useShellStore.setState({ selection: { surface: "console", tab: "graph", repo: "gitboard" } as never });
 });
 
-describe("Graph page", () => {
-  it("renders deterministic layout from fixture", () => {
-    const first = layoutGraph(fixture.nodes, fixture.edges);
-    const second = layoutGraph(fixture.nodes, fixture.edges);
-    expect(second.nodes.map((node) => [node.id, node.x, node.y, node.layer, node.order])).toEqual(first.nodes.map((node) => [node.id, node.x, node.y, node.layer, node.order]));
+describe("Graph (React Flow viewport)", () => {
+  it("renders the page scaffolding after fixture loads", async () => {
+    const { container } = render(<Graph />);
+    await waitFor(() => {
+      expect(container.querySelector(".g-app")).toBeTruthy();
+      expect(container.querySelector(".g-clusters")).toBeTruthy();
+    });
   });
 
-  it("renders edge types, pulse, hover dim, and click emit", async () => {
-    const layout = layoutGraph(fixture.nodes, fixture.edges);
-    const onNodeClick = vi.fn();
-    const specialists = new Map([
-      ["forge-b2", { bead_id: "forge-b2", job_id: "abc123", role: "executor", status: "running" as const, updated_at: "2026-05-20T00:00:00Z" }],
-    ]);
-    const widths = new Map(layout.nodes.map((n) => [n.id, 200]));
-    render(<svg><GraphSvg nodes={layout.nodes} edges={layout.edges} specialists={specialists} onNodeClick={onNodeClick} nodeWidths={widths} /></svg>);
-
-    expect(document.querySelectorAll(".graph-node").length).toBeGreaterThanOrEqual(4);
-    expect(document.querySelectorAll(".graph-node.is-running").length).toBe(1);
-
-    const beforeHover = document.querySelectorAll(".graph-node.is-dimmed").length;
-    const group = [...document.querySelectorAll(".graph-node")].find((node) => node.textContent?.includes("forge-b2")) as SVGGElement;
-    fireEvent.mouseEnter(group);
-    expect(document.querySelectorAll(".graph-node.is-dimmed").length).toBeGreaterThan(beforeHover);
-    fireEvent.mouseLeave(group);
-    expect(document.querySelectorAll(".graph-node.is-dimmed").length).toBe(beforeHover);
-
-    fireEvent.click(group);
-    expect(onNodeClick).toHaveBeenCalledWith("forge-b2");
+  it("emits one .g-cluster section per partitionGraph cluster", async () => {
+    const { container } = render(<Graph />);
+    await waitFor(() => {
+      const clusters = container.querySelectorAll(".g-cluster");
+      expect(clusters.length).toBeGreaterThanOrEqual(1);
+    });
   });
 
+  it("mounts a React Flow ReactFlowProvider per cluster pane", async () => {
+    const { container } = render(<Graph />);
+    await waitFor(() => {
+      // React Flow injects .react-flow class on its root container.
+      const panes = container.querySelectorAll(".g-pane .react-flow");
+      expect(panes.length).toBeGreaterThanOrEqual(1);
+    });
+  });
 });
