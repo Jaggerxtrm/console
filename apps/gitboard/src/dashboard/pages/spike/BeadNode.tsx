@@ -21,7 +21,7 @@ export function BeadNode({ data }: NodeProps) {
     isEpic ? "ep" : "",
   ].filter(Boolean).join(" ");
   return (
-    <div className={classes} data-p={node.priority} style={{ width: 220 }}>
+    <div className={classes} data-p={node.priority} style={{ width: 220, position: "relative" }}>
       <Handle type="target" position={Position.Left} style={{ opacity: 0 }} />
       <span className={`g-glyph ${glyphClass(node)}`}>{glyphChar(node)}</span>
       <span className="g-id">

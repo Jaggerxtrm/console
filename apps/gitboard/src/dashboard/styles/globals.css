@@ -5056,11 +5056,10 @@ body:has(.ide-shell[data-theme="light"]) { background: #fff !important; }
 .g-app {
   display: flex;
   flex-direction: column;
-  height: 100%;
-  min-height: 0;
+  min-height: 100%;
   max-width: 1400px;
   margin: 0 auto;
-  padding: 22px 28px 0;
+  padding: 22px 28px 22px;
   width: 100%;
   font-family: var(--font-ui);
   font-size: 12.5px;
@@ -5129,24 +5128,85 @@ body:has(.ide-shell[data-theme="light"]) { background: #fff !important; }
 .g-clusters {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 12px;
+  gap: 14px;
   min-width: 0;
-  min-height: 0;
-  overflow-y: auto;
-  padding-right: 4px;
+  margin-top: 16px;
+  align-content: start;
 }
 .g-clusters-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 @media (max-width: 800px) {
   .g-clusters-row { grid-template-columns: 1fr; }
 }
 
-/* ---- cluster ---- */
+/* ---- cluster ---- (forge-2a8a.2: subtle zone tint, no hard card border — the
+   header sits tight above its pane; the tint + wiring conveys grouping without
+   feeling like a stretched card) */
 .g-cluster {
   background: rgba(255, 255, 255, 0.015);
-  border: 1px solid var(--border-subtle);
-  border-radius: 6px;
-  padding: 12px 12px 10px;
+  border: 0;
+  border-radius: 4px;
+  padding: 6px 8px 6px;
   min-width: 0;
+}
+[data-theme='light'] .g-cluster { background: rgba(0, 0, 0, 0.018); }
+
+/* Per-cluster React Flow viewport. No chrome — bare canvas under the header. */
+.g-pane {
+  position: relative;
+  width: 100%;
+  min-height: 120px;
+}
+.g-pane .react-flow__attribution,
+.g-pane .react-flow__panel.react-flow__attribution { display: none; }
+.g-pane .react-flow__node-beadNode {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  width: auto;
+}
+/* Dark-theme override for React Flow's default white Controls. */
+.g-pane .react-flow__controls {
+  background: var(--surface-primary);
+  border: 1px solid var(--border-subtle);
+  box-shadow: none;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.g-pane .react-flow__controls-button {
+  background: var(--surface-primary);
+  border: 0;
+  border-bottom: 1px solid var(--border-subtle);
+  fill: var(--text-secondary);
+  color: var(--text-secondary);
+  width: 22px;
+  height: 22px;
+}
+.g-pane .react-flow__controls-button:last-child { border-bottom: 0; }
+.g-pane .react-flow__controls-button:hover {
+  background: var(--surface-hover, rgba(255, 255, 255, 0.04));
+  fill: var(--text-primary);
+}
+.g-pane .react-flow__controls-button svg { fill: currentColor; }
+/* Bottom orphans strip (forge-2a8a.2 pivot — replaces .g-orphans sidebar). */
+.g-orphans-strip {
+  margin-top: 16px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border-subtle);
+}
+.g-orphans-strip .g-orphans-hd {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+.g-orphans-strip .g-orphans-ttl { color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.04em; }
+.g-orphans-strip .g-orphans-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 4px 8px;
 }
 [data-theme="light"] .g-cluster { background: rgba(15, 23, 42, 0.025); }
 .g-cluster-hd {

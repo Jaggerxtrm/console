@@ -1,52 +1,9 @@
-/** @vitest-environment happy-dom */
+// Tests for the legacy SVG renderer were stubbed when layout.ts and GraphSvg.tsx
+// were deleted in forge-2a8a.2. Real tests targeting the React Flow viewport
+// land in forge-2a8a.4 cleanup.
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
-import fixtureJson from "../../../../fixtures/console-graph.json";
-import type { GraphResponse } from "../../../../../src/types/graph.ts";
+import { describe, it } from "vitest";
 
-const fixture = fixtureJson as GraphResponse;
-const fetchMock = vi.fn();
-vi.stubGlobal("fetch", fetchMock);
-
-import { GraphSvg } from "../../../../../src/dashboard/pages/console/graph/GraphSvg.tsx";
-import { useShellStore } from "../../../../../src/dashboard/stores/shell.ts";
-import { layoutGraph } from "../../../../../src/dashboard/pages/console/graph/layout.ts";
-
-beforeEach(() => {
-  fetchMock.mockReset();
-  fetchMock.mockResolvedValue({ ok: true, json: async () => fixture });
-  useShellStore.setState({ selection: { surface: "console", tab: "graph", repo: "gitboard" } as never });
-});
-
-describe("Graph page", () => {
-  it("renders deterministic layout from fixture", () => {
-    const first = layoutGraph(fixture.nodes, fixture.edges);
-    const second = layoutGraph(fixture.nodes, fixture.edges);
-    expect(second.nodes.map((node) => [node.id, node.x, node.y, node.layer, node.order])).toEqual(first.nodes.map((node) => [node.id, node.x, node.y, node.layer, node.order]));
-  });
-
-  it("renders edge types, pulse, hover dim, and click emit", async () => {
-    const layout = layoutGraph(fixture.nodes, fixture.edges);
-    const onNodeClick = vi.fn();
-    const specialists = new Map([
-      ["forge-b2", { bead_id: "forge-b2", job_id: "abc123", role: "executor", status: "running" as const, updated_at: "2026-05-20T00:00:00Z" }],
-    ]);
-    const widths = new Map(layout.nodes.map((n) => [n.id, 200]));
-    render(<svg><GraphSvg nodes={layout.nodes} edges={layout.edges} specialists={specialists} onNodeClick={onNodeClick} nodeWidths={widths} /></svg>);
-
-    expect(document.querySelectorAll(".graph-node").length).toBeGreaterThanOrEqual(4);
-    expect(document.querySelectorAll(".graph-node.is-running").length).toBe(1);
-
-    const beforeHover = document.querySelectorAll(".graph-node.is-dimmed").length;
-    const group = [...document.querySelectorAll(".graph-node")].find((node) => node.textContent?.includes("forge-b2")) as SVGGElement;
-    fireEvent.mouseEnter(group);
-    expect(document.querySelectorAll(".graph-node.is-dimmed").length).toBeGreaterThan(beforeHover);
-    fireEvent.mouseLeave(group);
-    expect(document.querySelectorAll(".graph-node.is-dimmed").length).toBe(beforeHover);
-
-    fireEvent.click(group);
-    expect(onNodeClick).toHaveBeenCalledWith("forge-b2");
-  });
-
+describe("Graph (React Flow migration)", () => {
+  it.skip("rewritten in forge-2a8a.4 cleanup", () => {});
 });
