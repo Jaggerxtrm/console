@@ -9,6 +9,14 @@ export interface SpecialistJob {
   updatedAt: string;
   specialist: string | null;
   lastOutput: string | null;
+  /** Total turn count from specialist_job_metrics.total_turns. Null when the
+   *  metrics row hasn't materialized yet or the repo lacks the metrics table. */
+  turns: number | null;
+  /** Total tool-call count from specialist_job_metrics.total_tools. */
+  tools: number | null;
+  /** Model string from specialist_job_metrics.model (e.g.
+   *  "openai-codex/gpt-5.4-mini"). */
+  model: string | null;
 }
 
 export interface SpecialistChain extends SpecialistJob {

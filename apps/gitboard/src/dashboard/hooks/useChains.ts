@@ -12,9 +12,9 @@ export type ChainStatus = "running" | "waiting" | "done" | "error" | "cancelled"
 
 export interface ChainJob extends SpecialistJob {
   lastOutput: string | null;
-  turns?: number | null;
-  tools?: number | null;
-  model?: string | null;
+  turns: number | null;
+  tools: number | null;
+  model: string | null;
 }
 
 export interface ChainSummary {

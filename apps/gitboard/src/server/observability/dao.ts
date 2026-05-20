@@ -11,6 +11,9 @@ const JOB_COLUMNS_BASE = "job_id, bead_id, chain_id, epic_id, chain_kind, status
 // recreations) rather than attach-alias (changes every time the 2s-TTL bundle
 // rebuilds the pool, which would invalidate the cache).
 const slugHasLastOutput = new Map<string, boolean>();
+// Same pattern for the metrics table — older observability dbs may not have
+// specialist_job_metrics; LEFT JOIN through a missing table would throw.
+const slugHasMetrics = new Map<string, boolean>();
 
 export function createObservabilityDao(pool: AttachPoolLike) {
   return {
@@ -49,8 +52,47 @@ function readJobs(pool: AttachPoolLike, whereSql: string, orderSql: string, para
     if (attached.length === 0) return [];
 
     const rows = attached.flatMap(({ alias, slug }) => {
-      const lastOutputExpr = hasLastOutputColumn(db, alias, slug) ? "last_output" : "NULL AS last_output";
-      const query = `SELECT '${escapeSql(slug)}' AS repoSlug, ${JOB_COLUMNS_BASE}, ${lastOutputExpr} FROM ${alias}.specialist_jobs ${whereSql} ${orderSql}`;
+      const lastOutputExpr = hasLastOutputColumn(db, alias, slug) ? "j.last_output" : "NULL AS last_output";
+      const hasMetrics = hasMetricsTable(db, alias, slug);
+      const hasEvents = hasEventsTable(db, alias, slug);
+      // metrics row only materializes on terminal status (done/error/cancelled),
+      // so for in-flight jobs we fall back to counting events directly.
+      const eventsJoin = hasEvents
+        ? `LEFT JOIN (
+            SELECT job_id,
+              COUNT(CASE WHEN type = 'turn' THEN 1 END) AS turn_count,
+              COUNT(CASE WHEN type = 'tool' THEN 1 END) AS tool_count
+            FROM ${alias}.specialist_events
+            GROUP BY job_id
+          ) AS e ON e.job_id = j.job_id`
+        : "";
+      const metricsJoin = hasMetrics
+        ? `LEFT JOIN ${alias}.specialist_job_metrics AS m ON m.job_id = j.job_id`
+        : "";
+      const turnsExpr = hasMetrics && hasEvents
+        ? "COALESCE(m.total_turns, e.turn_count) AS m_turns"
+        : hasMetrics
+          ? "m.total_turns AS m_turns"
+          : hasEvents
+            ? "e.turn_count AS m_turns"
+            : "NULL AS m_turns";
+      const toolsExpr = hasMetrics && hasEvents
+        ? "COALESCE(m.total_tools, e.tool_count) AS m_tools"
+        : hasMetrics
+          ? "m.total_tools AS m_tools"
+          : hasEvents
+            ? "e.tool_count AS m_tools"
+            : "NULL AS m_tools";
+      const modelExpr = hasMetrics ? "m.model AS m_model" : "NULL AS m_model";
+      const baseCols = JOB_COLUMNS_BASE.split(", ").map((col) => `j.${col}`).join(", ");
+      const query = `
+        SELECT '${escapeSql(slug)}' AS repoSlug, ${baseCols}, ${lastOutputExpr}, ${turnsExpr}, ${toolsExpr}, ${modelExpr}
+        FROM ${alias}.specialist_jobs AS j
+        ${metricsJoin}
+        ${eventsJoin}
+        ${whereSql.replace(/\b(job_id|bead_id|chain_id|epic_id|chain_kind|status|updated_at_ms|specialist)\b/g, "j.$1")}
+        ${orderSql}
+      `;
       return db.prepare(query).all(...params) as Array<Record<string, unknown>>;
     });
 
@@ -72,6 +114,35 @@ function hasLastOutputColumn(db: Database, alias: string, slug: string): boolean
   return present;
 }
 
+function hasMetricsTable(db: Database, alias: string, slug: string): boolean {
+  const cached = slugHasMetrics.get(slug);
+  if (cached !== undefined) return cached;
+  let present = false;
+  try {
+    db.prepare(`SELECT 1 FROM ${alias}.specialist_job_metrics LIMIT 0`).run();
+    present = true;
+  } catch {
+    present = false;
+  }
+  slugHasMetrics.set(slug, present);
+  return present;
+}
+
+const slugHasEvents = new Map<string, boolean>();
+function hasEventsTable(db: Database, alias: string, slug: string): boolean {
+  const cached = slugHasEvents.get(slug);
+  if (cached !== undefined) return cached;
+  let present = false;
+  try {
+    db.prepare(`SELECT 1 FROM ${alias}.specialist_events LIMIT 0`).run();
+    present = true;
+  } catch {
+    present = false;
+  }
+  slugHasEvents.set(slug, present);
+  return present;
+}
+
 function mapRow(row: Record<string, unknown>): SpecialistJob {
   return {
     jobId: row.job_id == null ? null : String(row.job_id),
@@ -84,6 +155,9 @@ function mapRow(row: Record<string, unknown>): SpecialistJob {
     updatedAt: new Date(Number(row.updated_at_ms)).toISOString(),
     specialist: row.specialist == null ? null : String(row.specialist),
     lastOutput: row.last_output == null ? null : String(row.last_output),
+    turns: row.m_turns == null ? null : Number(row.m_turns),
+    tools: row.m_tools == null ? null : Number(row.m_tools),
+    model: row.m_model == null ? null : String(row.m_model),
   };
 }
 
