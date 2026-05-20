@@ -25,6 +25,11 @@ export function createAttachPool(entries: readonly RepoEntry[], options: PoolOpt
   const db = new Database(":memory:", { create: true });
   const attached = new Map<string, AttachedRepo>();
   const lru = new Map<string, AttachedRepo>();
+  // Cache dbs we've already determined to be unhealthy (incompatible schema, probe failed,
+  // attach failed) so the file-watcher can't trigger an infinite re-probe loop on the
+  // same dead db. Each entry stores the mtime at the time we marked it dead — if the file
+  // is rewritten (newer mtime), we drop the cache entry and try again.
+  const dead = new Map<string, { mtimeMs: number; reason: string }>();
   let aliasCounter = 0;
 
   function withAttached<T>(fn: (db: Database, attached: ReadonlyArray<{ alias: string; slug: string }>) => T): T {
@@ -43,6 +48,11 @@ export function createAttachPool(entries: readonly RepoEntry[], options: PoolOpt
         touch(entry.dbPath);
         continue;
       }
+
+      // Skip dbs already known to be unhealthy unless they've been rewritten.
+      const deadEntry = dead.get(entry.dbPath);
+      if (deadEntry && deadEntry.mtimeMs >= entry.mtimeMs) continue;
+      if (deadEntry) dead.delete(entry.dbPath);
 
       if (!ensureCapacity()) break;
       if (!attachRepo(entry)) continue;
@@ -63,24 +73,35 @@ export function createAttachPool(entries: readonly RepoEntry[], options: PoolOpt
     try {
       pragma = readSchemaVersion(entry.dbPath);
     } catch (err) {
-      logger.warn(`Skip observability db ${entry.dbPath}: probe failed (${errorMessage(err)})`);
+      markDead(entry, `probe failed (${errorMessage(err)})`);
       return false;
     }
     if (!isCompatible(pragma)) {
-      logger.warn(`Skip observability db ${entry.dbPath}: schema_version ${pragma} incompatible`);
+      markDead(entry, `schema_version ${pragma} incompatible`);
       return false;
     }
 
     try {
       db.exec(`ATTACH DATABASE '${escapeSql(entry.dbPath)}' AS ${alias}`);
     } catch (err) {
-      logger.warn(`Skip observability db ${entry.dbPath}: attach failed (${errorMessage(err)})`);
+      markDead(entry, `attach failed (${errorMessage(err)})`);
       return false;
     }
     const attachedRepo = { ...entry, alias };
     attached.set(entry.dbPath, attachedRepo);
     lru.set(entry.dbPath, attachedRepo);
     return true;
+  }
+
+  // Cache a dead db with its current mtime. Only log the first time we see this db dead;
+  // subsequent attempts (same mtime) silently skip. The file watcher can fire many times
+  // on a single file change, so the cache stops a runaway log loop.
+  function markDead(entry: RepoEntry, reason: string): void {
+    const prev = dead.get(entry.dbPath);
+    if (!prev || prev.reason !== reason) {
+      logger.warn(`Skip observability db ${entry.dbPath}: ${reason}`);
+    }
+    dead.set(entry.dbPath, { mtimeMs: entry.mtimeMs, reason });
   }
 
   function readSchemaVersion(path: string): number {
