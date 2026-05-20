@@ -52,8 +52,8 @@ function defaultDrawerHeight() {
 }
 const initialDrawerHeight = readJSON<number | null>(LS.drawerHeight, null) ?? defaultDrawerHeight();
 const initialDrawerTab = readJSON<DrawerTab>(LS.drawerTab, "logs");
-const initialTerminalSessionId = readJSON<string | null>("forge-gud9:terminalSessionId", null);
-const initialTerminalOutput = readJSON<string[]>("forge-gud9:terminalOutput", []);
+const initialTerminalSessionId: string | null = null;
+const initialTerminalOutput: string[] = [];
 
 export interface ShellState {
   repos: RepoNode[];
@@ -153,23 +153,13 @@ export const useShellStore = create<ShellState>((set) => ({
     }),
 
   setTerminalSessionId: (sessionId) =>
-    set(() => {
-      writeJSON("forge-gud9:terminalSessionId", sessionId);
-      return { terminalSessionId: sessionId };
-    }),
+    set(() => ({ terminalSessionId: sessionId })),
 
   appendTerminalOutput: (chunk) =>
-    set((state) => {
-      const next = [...state.terminalOutput, chunk].slice(-2000);
-      writeJSON("forge-gud9:terminalOutput", next);
-      return { terminalOutput: next };
-    }),
+    set((state) => ({ terminalOutput: [...state.terminalOutput, chunk].slice(-2000) })),
 
   resetTerminalOutput: () =>
-    set(() => {
-      writeJSON("forge-gud9:terminalOutput", []);
-      return { terminalOutput: [] };
-    }),
+    set(() => ({ terminalOutput: [] })),
 }));
 
 export const selectSelection = (s: ShellState) => s.selection;

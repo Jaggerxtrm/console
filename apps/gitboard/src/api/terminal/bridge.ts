@@ -10,6 +10,8 @@ type SessionState = {
   streamId: string;
   session: TerminalProviderSession;
   attached: Set<string>;
+  ownerConnectionId: string;
+  reattachToken: string;
   seq: number;
   cleanupTimer: ReturnType<typeof setTimeout> | null;
 };
@@ -63,7 +65,7 @@ export class TerminalBridge {
       return;
     }
     if (msg.kind === "open") return this.open(connectionId, send, msg);
-    if (msg.kind === "attach") return this.attach(connectionId, send, msg.sessionId, msg.streamId);
+    if (msg.kind === "attach") return this.attach(connectionId, send, msg.sessionId, msg.streamId, msg.payload.token);
     if (msg.kind === "detach") return this.detach(connectionId, send, msg.sessionId, msg.streamId);
     if (msg.kind === "input") return this.input(connectionId, send, msg.sessionId, msg.streamId, msg.payload.data);
     if (msg.kind === "resize") return this.resize(connectionId, send, msg.sessionId, msg.streamId, msg.payload.cols, msg.payload.rows);
@@ -84,7 +86,15 @@ export class TerminalBridge {
     }
     try {
       const session = await provider.openSession({ sessionId: msg.sessionId, capabilities: msg.payload.capabilities });
-      const state: SessionState = { streamId: msg.streamId, session, attached: new Set([connectionId]), seq: 0, cleanupTimer: null };
+      const state: SessionState = {
+        streamId: msg.streamId,
+        session,
+        attached: new Set([connectionId]),
+        ownerConnectionId: connectionId,
+        reattachToken: crypto.randomUUID(),
+        seq: 0,
+        cleanupTimer: null,
+      };
       state.session.onOutput((data) => {
         state.seq += 1;
         this.broadcast(msg.sessionId, createTerminalStreamEnvelope("output", state.streamId, msg.sessionId, { data, encoding: "utf8", sequence: state.seq, bytes: Buffer.byteLength(data) }));
@@ -94,28 +104,31 @@ export class TerminalBridge {
         this.sessions.delete(msg.sessionId);
       });
       this.sessions.set(msg.sessionId, state);
-      send(JSON.stringify(createTerminalStreamEnvelope("status", msg.streamId, msg.sessionId, { state: "open", attached: true, paused: false, bytesIn: 0, bytesOut: 0, backlogBytes: 0 })));
+      send(JSON.stringify(createTerminalStreamEnvelope("status", msg.streamId, msg.sessionId, { state: "open", attached: true, paused: false, bytesIn: 0, bytesOut: 0, backlogBytes: 0, note: state.reattachToken })));
     } catch (error) {
       this.sendError(send, msg.streamId, msg.sessionId, "provider_error", error instanceof Error ? error.message : "provider error", true);
     }
   }
 
-  private attach(connectionId: string, send: Send, sessionId: string, streamId: string): void {
+  private attach(connectionId: string, send: Send, sessionId: string, streamId: string, token: string | undefined): void {
     const state = this.sessions.get(sessionId);
     if (!state) return this.sendError(send, streamId, sessionId, "not_found", "session not found", true);
     if (state.streamId !== streamId) return this.sendError(send, streamId, sessionId, "stream_mismatch", "stream mismatch", true);
+    if (!token || token !== state.reattachToken) return this.sendError(send, streamId, sessionId, "forbidden", "invalid attach token", false);
     if (state.cleanupTimer) {
       clearTimeout(state.cleanupTimer);
       state.cleanupTimer = null;
     }
     state.attached.add(connectionId);
-    send(JSON.stringify(createTerminalStreamEnvelope("status", streamId, sessionId, { state: "attached", attached: true, paused: false, bytesIn: 0, bytesOut: 0, backlogBytes: 0 })));
+    state.ownerConnectionId = connectionId;
+    send(JSON.stringify(createTerminalStreamEnvelope("status", streamId, sessionId, { state: "attached", attached: true, paused: false, bytesIn: 0, bytesOut: 0, backlogBytes: 0, note: state.reattachToken })));
   }
 
   private detach(connectionId: string, send: Send, sessionId: string, streamId: string): void {
     const state = this.sessions.get(sessionId);
     if (!state) return this.sendError(send, streamId, sessionId, "not_found", "session not found", true);
     if (state.streamId !== streamId) return this.sendError(send, streamId, sessionId, "stream_mismatch", "stream mismatch", true);
+    if (state.ownerConnectionId !== connectionId) return this.sendError(send, streamId, sessionId, "forbidden", "connection not owner", false);
     state.attached.delete(connectionId);
     if (state.attached.size === 0) {
       if (state.cleanupTimer) clearTimeout(state.cleanupTimer);
@@ -129,6 +142,7 @@ export class TerminalBridge {
     const state = this.sessions.get(sessionId);
     if (!state) return this.sendError(send, streamId, sessionId, "not_found", "session not found", true);
     if (state.streamId !== streamId) return this.sendError(send, streamId, sessionId, "stream_mismatch", "stream mismatch", true);
+    if (state.ownerConnectionId !== connectionId) return this.sendError(send, streamId, sessionId, "forbidden", "connection not owner", false);
     try {
       await state.session.input(data);
     } catch (error) {
@@ -140,6 +154,7 @@ export class TerminalBridge {
     const state = this.sessions.get(sessionId);
     if (!state) return this.sendError(send, streamId, sessionId, "not_found", "session not found", true);
     if (state.streamId !== streamId) return this.sendError(send, streamId, sessionId, "stream_mismatch", "stream mismatch", true);
+    if (state.ownerConnectionId !== connectionId) return this.sendError(send, streamId, sessionId, "forbidden", "connection not owner", false);
     try {
       await state.session.resize(cols, rows);
     } catch (error) {
@@ -151,6 +166,7 @@ export class TerminalBridge {
     const state = this.sessions.get(sessionId);
     if (!state) return this.sendError(send, streamId, sessionId, "not_found", "session not found", true);
     if (state.streamId !== streamId) return this.sendError(send, streamId, sessionId, "stream_mismatch", "stream mismatch", true);
+    if (state.ownerConnectionId !== connectionId) return this.sendError(send, streamId, sessionId, "forbidden", "connection not owner", false);
     await state.session.dispose("client_exit");
     this.sessions.delete(sessionId);
   }
