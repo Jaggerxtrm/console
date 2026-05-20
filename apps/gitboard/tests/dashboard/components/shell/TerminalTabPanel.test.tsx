@@ -79,7 +79,7 @@ describe("TerminalTabPanel", () => {
     second.open();
 
     const attach = second.sent.map((msg) => JSON.parse(msg)).find((msg) => msg.kind === "attach");
-    expect(attach?.payload?.token).toBe("token-1");
+    expect(attach?.payload?.reattachToken).toBe("token-1");
     expect(terminalStreamMock).toHaveBeenCalled();
   });
 

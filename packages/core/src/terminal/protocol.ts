@@ -55,7 +55,7 @@ export interface TerminalStreamOpenPayload {
 
 export interface TerminalStreamAttachPayload {
   resume: boolean;
-  token?: string;
+  reattachToken?: string;
   lastSequence?: number;
 }
 
@@ -221,7 +221,7 @@ export function validateTerminalStreamMessage(value: unknown): value is Terminal
         && Array.isArray(payload.capabilities)
         && payload.capabilities.every((capability) => isTerminalCapability(capability));
     case "attach":
-      return typeof payload.resume === "boolean" && typeof payload.token === "string" && payload.token.length > 0;
+      return typeof payload.resume === "boolean" && typeof payload.reattachToken === "string" && payload.reattachToken.length > 0;
     case "detach":
       return typeof payload.reason === "string" || !("reason" in payload);
     case "input":

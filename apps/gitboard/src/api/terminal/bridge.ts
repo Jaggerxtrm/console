@@ -65,7 +65,7 @@ export class TerminalBridge {
       return;
     }
     if (msg.kind === "open") return this.open(connectionId, send, msg);
-    if (msg.kind === "attach") return this.attach(connectionId, send, msg.sessionId, msg.streamId, msg.payload.token);
+    if (msg.kind === "attach") return this.attach(connectionId, send, msg.sessionId, msg.streamId, msg.payload.reattachToken);
     if (msg.kind === "detach") return this.detach(connectionId, send, msg.sessionId, msg.streamId);
     if (msg.kind === "input") return this.input(connectionId, send, msg.sessionId, msg.streamId, msg.payload.data);
     if (msg.kind === "resize") return this.resize(connectionId, send, msg.sessionId, msg.streamId, msg.payload.cols, msg.payload.rows);
@@ -110,11 +110,11 @@ export class TerminalBridge {
     }
   }
 
-  private attach(connectionId: string, send: Send, sessionId: string, streamId: string, token: string | undefined): void {
+  private attach(connectionId: string, send: Send, sessionId: string, streamId: string, reattachToken: string | undefined): void {
     const state = this.sessions.get(sessionId);
     if (!state) return this.sendError(send, streamId, sessionId, "not_found", "session not found", true);
     if (state.streamId !== streamId) return this.sendError(send, streamId, sessionId, "stream_mismatch", "stream mismatch", true);
-    if (!token || token !== state.reattachToken) return this.sendError(send, streamId, sessionId, "forbidden", "invalid attach token", false);
+    if (!reattachToken || reattachToken !== state.reattachToken) return this.sendError(send, streamId, sessionId, "forbidden", "invalid attach token", false);
     if (state.cleanupTimer) {
       clearTimeout(state.cleanupTimer);
       state.cleanupTimer = null;

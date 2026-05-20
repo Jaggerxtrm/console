@@ -21,7 +21,9 @@ describe("terminal stream protocol", () => {
   });
 
   it("validates attach detach input output resize exit error status heartbeat", () => {
-    expect(validateTerminalStreamMessage({ version: "1.0.0", kind: "attach", streamId: "s", sessionId: "x", timestamp: "t", payload: { resume: true } })).toBe(true);
+    expect(validateTerminalStreamMessage({ version: "1.0.0", kind: "attach", streamId: "s", sessionId: "x", timestamp: "t", payload: { resume: true, reattachToken: "tok" } })).toBe(true);
+    expect(validateTerminalStreamMessage({ version: "1.0.0", kind: "attach", streamId: "s", sessionId: "x", timestamp: "t", payload: { resume: true } })).toBe(false);
+    expect(validateTerminalStreamMessage({ version: "1.0.0", kind: "attach", streamId: "s", sessionId: "x", timestamp: "t", payload: { resume: true, token: "tok" } })).toBe(false);
     expect(validateTerminalStreamMessage({ version: "1.0.0", kind: "detach", streamId: "s", sessionId: "x", timestamp: "t", payload: { reason: "done" } })).toBe(true);
     expect(validateTerminalStreamMessage({ version: "1.0.0", kind: "input", streamId: "s", sessionId: "x", timestamp: "t", payload: { data: "ls\n", encoding: "utf8" } })).toBe(true);
     expect(validateTerminalStreamMessage({ version: "1.0.0", kind: "output", streamId: "s", sessionId: "x", timestamp: "t", payload: { data: "out", encoding: "base64", sequence: 1, bytes: 3 } })).toBe(true);

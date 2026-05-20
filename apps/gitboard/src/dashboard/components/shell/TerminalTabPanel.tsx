@@ -35,7 +35,7 @@ export function TerminalTabPanel() {
     ws.onopen = () => {
       const activeSessionId = pendingSessionIdRef.current;
       if (activeSessionId && reattachTokenRef.current) {
-        ws.send(JSON.stringify({ kind: "attach", streamId: activeSessionId, sessionId: activeSessionId, payload: { resume: true, token: reattachTokenRef.current } }));
+        ws.send(JSON.stringify({ kind: "attach", streamId: activeSessionId, sessionId: activeSessionId, payload: { resume: true, reattachToken: reattachTokenRef.current } }));
         setStatus("attached");
         return;
       }

@@ -34,7 +34,7 @@ describe("terminal bridge lifecycle", () => {
 
     await bridge.handleMessage(conn, JSON.stringify(createTerminalStreamEnvelope("open", streamId, sessionId, { providerKind: "pty", capabilities: ["interactive", "resizable"] })));
     const token = (sent.find((msg) => (msg as { kind?: string }).kind === "status") as { payload?: { reattachToken?: string } })?.payload?.reattachToken;
-    await bridge.handleMessage(conn, JSON.stringify(createTerminalStreamEnvelope("attach", streamId, sessionId, { resume: false, token: token ?? "missing" })));
+    await bridge.handleMessage(conn, JSON.stringify(createTerminalStreamEnvelope("attach", streamId, sessionId, { resume: false, reattachToken: token ?? "missing" })));
     await bridge.handleMessage(conn, JSON.stringify(createTerminalStreamEnvelope("input", streamId, sessionId, { data: "ls\n", encoding: "utf8" })));
     await bridge.handleMessage(conn, JSON.stringify(createTerminalStreamEnvelope("resize", streamId, sessionId, { cols: 100, rows: 30 })));
     session.emitOutput("ok\n");
@@ -77,7 +77,7 @@ describe("terminal bridge lifecycle", () => {
     await bridge.handleMessage(connA, JSON.stringify(createTerminalStreamEnvelope("open", "stream-1", "session-1", { providerKind: "pty", capabilities: ["interactive"] })));
     const token = (sentA.find((msg) => (msg as { kind?: string }).kind === "status") as { payload?: { reattachToken?: string } })?.payload?.reattachToken;
     bridge.disconnect(connA);
-    await bridge.handleMessage(connB, JSON.stringify(createTerminalStreamEnvelope("attach", "stream-1", "session-1", { resume: false, token: token ?? "missing" })));
+    await bridge.handleMessage(connB, JSON.stringify(createTerminalStreamEnvelope("attach", "stream-1", "session-1", { resume: false, reattachToken: token ?? "missing" })));
     await bridge.handleMessage(connB, JSON.stringify(createTerminalStreamEnvelope("input", "stream-1", "session-1", { data: "pwd\n", encoding: "utf8" })));
     await bridge.handleMessage(connB, JSON.stringify(createTerminalStreamEnvelope("resize", "stream-1", "session-1", { cols: 10, rows: 10 })));
 
@@ -154,7 +154,7 @@ describe("terminal bridge lifecycle", () => {
     await vi.advanceTimersByTimeAsync(30_000);
     expect(session.disposed).toContain("disconnect");
 
-    await bridge.handleMessage(connB, JSON.stringify(createTerminalStreamEnvelope("attach", "stream-1", "session-1", { resume: false, token: "nope" })));
+    await bridge.handleMessage(connB, JSON.stringify(createTerminalStreamEnvelope("attach", "stream-1", "session-1", { resume: false, reattachToken: "nope" })));
     expect(sentB.some((msg) => (msg as { kind?: string; payload?: { code?: string } }).kind === "error" && (msg as { payload?: { code?: string } }).payload?.code === "not_found")).toBe(true);
     vi.useRealTimers();
   });
