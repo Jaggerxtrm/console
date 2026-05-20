@@ -16,6 +16,10 @@ export default defineConfig({
       allow: ["."],
     },
     proxy: {
+      "/api/console/terminal/ws": {
+        target: "ws://localhost:3000",
+        ws: true,
+      },
       "/api": {
         target: "http://localhost:3000",
         changeOrigin: true,

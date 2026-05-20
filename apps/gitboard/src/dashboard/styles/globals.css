@@ -4403,6 +4403,65 @@ body:has(.shell-app) { background: #101010 !important; }
 .drawer-log-level.is-info { color: var(--text-secondary); }
 .drawer-log-level.is-warn { color: #e8a534; }
 .drawer-log-level.is-error { color: #e57373; }
+
+.terminal-panel {
+  --terminal-font: "JetBrainsMono Nerd Font Mono", "Hack Nerd Font Mono", "SFMono Nerd Font", "JetBrains Mono", "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  background: #060708;
+  color: var(--text-primary);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.terminal-panel-toolbar {
+  align-items: center;
+  background: linear-gradient(180deg, rgba(22, 24, 26, 0.96), rgba(13, 15, 17, 0.96));
+  border-bottom: 1px solid var(--border-subtle);
+  display: grid;
+  flex: 0 0 auto;
+  gap: 10px;
+  grid-template-columns: minmax(180px, 1fr) auto auto;
+  min-height: 32px;
+  padding: 0 10px;
+}
+.terminal-panel-title, .terminal-panel-meta, .terminal-panel-actions { align-items: center; display: inline-flex; min-width: 0; }
+.terminal-panel-title { color: var(--text-primary); font-family: var(--terminal-font); font-size: 12px; gap: 8px; letter-spacing: 0.01em; }
+.terminal-panel-dot { border-radius: 50%; box-shadow: 0 0 10px currentColor; color: var(--text-muted); flex: 0 0 auto; height: 7px; width: 7px; }
+.terminal-panel-dot.is-ok { color: #2dd4bf; }
+.terminal-panel-dot.is-warn { color: #e8a534; }
+.terminal-panel-dot.is-bad { color: #e57373; }
+.terminal-panel-status { color: var(--text-muted); font-size: 11px; text-transform: uppercase; }
+.terminal-panel-meta { color: var(--text-muted); font-family: var(--terminal-font); font-size: 11px; gap: 10px; justify-content: flex-end; }
+.terminal-panel-actions { gap: 4px; justify-content: flex-end; }
+.terminal-panel-actions button { background: transparent; border: 1px solid transparent; color: var(--text-muted); cursor: pointer; font: inherit; font-family: var(--terminal-font); font-size: 11px; height: 22px; padding: 0 7px; }
+.terminal-panel-actions button:hover, .terminal-panel-actions button:focus-visible { background: var(--surface-secondary); border-color: var(--border-subtle); color: var(--text-primary); }
+.terminal-panel-error { background: rgba(229, 115, 115, 0.12); border-bottom: 1px solid rgba(229, 115, 115, 0.28); color: #ffb4ab; flex: 0 0 auto; font-family: var(--terminal-font); font-size: 11px; padding: 6px 10px; }
+
+.terminal-stream {
+  --terminal-bg: #000;
+  --terminal-fg: #d7dde5;
+  --terminal-cursor: #2dd4bf;
+  --terminal-selection: rgba(45, 212, 191, 0.28);
+  --terminal-font: "JetBrainsMono Nerd Font Mono", "Hack Nerd Font Mono", "SFMono Nerd Font", "JetBrains Mono", "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  background: var(--terminal-bg);
+  color: var(--terminal-fg);
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+.terminal-panel-stream { border-top: 1px solid rgba(255, 255, 255, 0.04); }
+.terminal-stream-status { align-items: center; background: var(--surface-primary); border-bottom: 1px solid var(--border-subtle); color: var(--text-muted); display: flex; flex: 0 0 auto; font-family: var(--terminal-font); font-size: 11px; height: 24px; letter-spacing: 0.02em; padding: 0 10px; text-transform: uppercase; }
+.terminal-stream-surface { flex: 1 1 auto; min-height: 0; overflow: hidden; padding: 9px 11px; }
+.terminal-stream .xterm { font-kerning: none; font-variant-ligatures: none; height: 100%; text-rendering: geometricPrecision; }
+.terminal-stream .xterm-rows { font-kerning: none !important; font-variant-ligatures: none !important; letter-spacing: 0 !important; }
+.terminal-stream .xterm-viewport { background: transparent !important; }
+.terminal-stream .xterm-cursor-layer { mix-blend-mode: screen; }
+
 /* forge-qc0: MainPane wrapper must give virtualized timelines a sized parent. */
 .ide-main {
   background: #101010;

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
+import { Terminal } from "xterm";
 import { TerminalStream } from "../../../../src/dashboard/components/terminal/TerminalStream.tsx";
 
 const terminalState = {
@@ -26,6 +27,8 @@ vi.mock("@xterm/addon-fit", () => ({
 
 beforeEach(() => {
   vi.stubGlobal("ResizeObserver", vi.fn().mockImplementation(() => resizeObserver));
+  vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(640);
+  vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(240);
 });
 
 afterEach(() => {
@@ -62,11 +65,21 @@ describe("TerminalStream", () => {
     expect(onInput).toHaveBeenCalledWith("ls\n");
   });
 
-  it("fits and reports resize on mount", () => {
+  it("uses concrete mono font metrics without browser fallback spacing", () => {
+    render(<TerminalStream />);
+
+    expect(Terminal).toHaveBeenCalledWith(expect.objectContaining({
+      fontFamily: expect.stringContaining("JetBrainsMono Nerd Font Mono"),
+      letterSpacing: 0,
+      lineHeight: 1.15,
+    }));
+  });
+
+  it("fits and reports resize on mount", async () => {
     const onResize = vi.fn();
     render(<TerminalStream onResize={onResize} />);
 
-    expect(fitState.fit).toHaveBeenCalled();
+    await vi.waitFor(() => expect(fitState.fit).toHaveBeenCalled());
     expect(onResize).toHaveBeenCalledWith({ cols: 80, rows: 24 });
     expect(resizeObserve).toHaveBeenCalled();
   });

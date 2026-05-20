@@ -16,7 +16,7 @@ class FakeWebSocket {
   static readonly CLOSING = 2;
   static readonly CLOSED = 3;
   static instances: FakeWebSocket[] = [];
-  readyState = WebSocket.CONNECTING;
+  readyState: number = WebSocket.CONNECTING;
   sent: string[] = [];
   onopen: (() => void) | null = null;
   onmessage: ((event: MessageEvent<string>) => void) | null = null;

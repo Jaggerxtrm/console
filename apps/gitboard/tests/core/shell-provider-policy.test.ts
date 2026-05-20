@@ -62,4 +62,13 @@ describe("shell provider policy", () => {
     expect(policy.idleTimeoutMs).toBe(1000);
     expect(policy.hardTtlMs).toBe(2000);
   });
+
+  it("keeps user shell, HOME, and PATH available by default", () => {
+    const policy = parseShellProviderPolicy({ SHELL: "/bin/zsh" } as NodeJS.ProcessEnv);
+
+    expect(policy.shellAllowlist).toContain("/bin/zsh");
+    expect(policy.envScrub).not.toContain("HOME");
+    expect(policy.envScrub).not.toContain("PATH");
+    expect(policy.envScrub).toContain("GITHUB_TOKEN");
+  });
 });

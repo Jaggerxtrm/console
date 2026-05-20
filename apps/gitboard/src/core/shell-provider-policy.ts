@@ -29,8 +29,8 @@ export type ProviderPermission = "readonly" | "shell";
 export type ProviderKind = "specialist-feed" | "pty" | "tmux" | "ssh";
 
 const DEFAULT_CWD_ALLOWLIST = ["/home/dawid/dev/gitboard"];
-const DEFAULT_SHELL_ALLOWLIST = ["/bin/bash", "/bin/sh"];
-const DEFAULT_ENV_SCRUB = ["AWS_SECRET_ACCESS_KEY", "GITHUB_TOKEN", "SSH_AUTH_SOCK", "SSH_AGENT_PID", "NPM_TOKEN", "HOME", "PATH"];
+const DEFAULT_SHELL_ALLOWLIST = Array.from(new Set(["/bin/bash", "/bin/sh", "/bin/zsh", "/usr/bin/zsh", process.env.SHELL].filter((shell): shell is string => Boolean(shell))));
+const DEFAULT_ENV_SCRUB = ["AWS_SECRET_ACCESS_KEY", "GITHUB_TOKEN", "SSH_AUTH_SOCK", "SSH_AGENT_PID", "NPM_TOKEN"];
 
 export function isShellCapableProviderKind(kind: ProviderKind): boolean {
   return kind !== "specialist-feed";
@@ -101,7 +101,35 @@ export function isShellProviderRequestAllowed(status: ShellProviderStatus): bool
 }
 
 export function shouldRejectShellWebSocket(path: string, status: ShellProviderStatus): boolean {
-  return path.startsWith("/api/console/shell") && !status.enabled;
+  return isShellWebSocketPath(path) && !status.enabled;
+}
+
+export function isShellWebSocketPath(path: string): boolean {
+  return path.startsWith("/api/console/shell") || path.startsWith("/api/console/terminal/ws");
+}
+
+export function isAllowedShellWebSocketOrigin(origin: string | null, host: string | null, env: NodeJS.ProcessEnv = process.env): boolean {
+  if (!origin) return false;
+  const allowed = parseList(env.GITBOARD_SHELL_PROVIDER_ALLOWED_ORIGINS, []);
+  if (allowed.includes(origin)) return true;
+  try {
+    const originUrl = new URL(origin);
+    const hostUrl = new URL(`${originUrl.protocol}//${host ?? ""}`);
+    const localHosts = new Set(["localhost", "127.0.0.1", "::1"]);
+    return originUrl.protocol === hostUrl.protocol
+      && originUrl.port === hostUrl.port
+      && localHosts.has(originUrl.hostname)
+      && localHosts.has(hostUrl.hostname);
+  } catch (error) {
+    console.warn("origin check parse failed", { origin, host, error: error instanceof Error ? error.message : String(error) });
+    return false;
+  }
+}
+
+export function isVerifiedShellAdminRequest(headers: Headers, env: NodeJS.ProcessEnv = process.env): boolean {
+  const token = env.GITBOARD_SHELL_PROVIDER_ADMIN_TOKEN;
+  if (!token) return false;
+  return headers.get("x-gitboard-shell-token") === token;
 }
 
 function parseBoolean(value: string | undefined, fallback = false): boolean {
@@ -120,5 +148,6 @@ function parseList(value: string | undefined, fallback: string[]): string[] {
 }
 
 function isRemoteContext(env: NodeJS.ProcessEnv): boolean {
-  return env.NODE_ENV === "production" || env.HOST !== "localhost";
+  const host = env.HOST;
+  return env.NODE_ENV === "production" || (host !== undefined && host !== "localhost" && host !== "127.0.0.1" && host !== "::1");
 }

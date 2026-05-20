@@ -6,6 +6,8 @@ import {
 import type { TerminalProviderRegistry, TerminalProviderSession } from "./provider-registry.ts";
 
 type Send = (payload: string) => void;
+type AuthContext = { isVerifiedAdmin?: boolean };
+type WebSocketUpgradeServer = { upgrade(req: Request, options?: unknown): boolean };
 type SessionState = {
   streamId: string;
   session: TerminalProviderSession;
@@ -17,20 +19,37 @@ type SessionState = {
 };
 
 export class TerminalBridge {
+  private pendingConnectIds: string[] = [];
+
   private readonly sockets = new Map<string, Send>();
+  private readonly authContexts = new Map<string, AuthContext>();
   private readonly sessions = new Map<string, SessionState>();
   private nextSocketId = 1;
 
   constructor(private readonly providers: TerminalProviderRegistry) {}
 
-  connect(send: Send): string {
-    const id = `terminal-${this.nextSocketId++}`;
+  connect(send: Send, connectionId?: string): string {
+    const id = connectionId ?? this.pendingConnectIds.shift() ?? `terminal-${this.nextSocketId++}`;
     this.sockets.set(id, send);
     return id;
   }
 
+  handleUpgrade(req: Request, server: WebSocketUpgradeServer, path: string, authContext: AuthContext = {}): Response | undefined {
+    const id = `terminal-${this.nextSocketId++}`;
+    this.pendingConnectIds.push(id);
+    this.authContexts.set(id, authContext);
+    const upgraded = server.upgrade(req, { data: { path, connId: id } } as never);
+    if (!upgraded) {
+      this.pendingConnectIds = this.pendingConnectIds.filter((pendingId) => pendingId !== id);
+      this.authContexts.delete(id);
+      return new Response("WebSocket upgrade failed", { status: 400 });
+    }
+    return undefined;
+  }
+
   disconnect(connectionId: string): void {
     this.sockets.delete(connectionId);
+    this.authContexts.delete(connectionId);
     for (const [sessionId, state] of this.sessions.entries()) {
       state.attached.delete(connectionId);
       if (state.attached.size === 0) {
@@ -79,7 +98,7 @@ export class TerminalBridge {
       this.sendError(send, msg.streamId, msg.sessionId, "duplicate_session", "session already exists", true);
       return;
     }
-    const provider = this.providers.get(msg.payload.providerKind);
+    const provider = this.providers.get(msg.payload.providerKind, this.authContexts.get(connectionId));
     if (!provider || !provider.enabled) {
       this.sendError(send, msg.streamId, msg.sessionId, "provider_disabled", provider?.reason ?? "provider disabled", true);
       return;

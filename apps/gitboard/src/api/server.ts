@@ -17,7 +17,7 @@ import { WsHandler } from "./ws/handler.ts";
 import { BeadsChangeWatcher } from "../../../beadboard/src/core/beads-change-watcher.ts";
 import { createObservabilityWatcher } from "../server/observability/watcher.ts";
 import { listRepos } from "../server/observability/registry.ts";
-import { getShellProviderStatus, shouldRejectShellWebSocket } from "../core/shell-provider-policy.ts";
+import { getShellProviderStatus, isAllowedShellWebSocketOrigin, isShellWebSocketPath, isVerifiedShellAdminRequest, shouldRejectShellWebSocket } from "../core/shell-provider-policy.ts";
 import { createTerminalProviderRegistry } from "./terminal/provider-registry.ts";
 import { TerminalBridge } from "./terminal/bridge.ts";
 
@@ -118,7 +118,7 @@ export function createApp(db: Database): {
 
 export function startServer(db: Database, options: ServerOptions = {}): void {
   const port = options.port ?? 3000;
-  const hostname = options.hostname ?? (process.env.NODE_ENV === "production" ? "0.0.0.0" : "localhost");
+  const hostname = options.hostname ?? process.env.HOST ?? (process.env.NODE_ENV === "production" ? "0.0.0.0" : "127.0.0.1");
 
   const { app, wsHandler } = createApp(db);
   const terminalBridge = new TerminalBridge(createTerminalProviderRegistry(process.env));
@@ -128,11 +128,18 @@ export function startServer(db: Database, options: ServerOptions = {}): void {
     hostname,
     fetch(req, server) {
       if (req.headers.get("upgrade") === "websocket") {
-        const status = getShellProviderStatus(process.env);
-        if (shouldRejectShellWebSocket(new URL(req.url).pathname, status)) {
-          return new Response(JSON.stringify({ error: status.disabledReason }), { status: 403, headers: { "Content-Type": "application/json" } });
-        }
         const path = new URL(req.url).pathname;
+        if (isShellWebSocketPath(path)) {
+          if (!isAllowedShellWebSocketOrigin(req.headers.get("origin"), req.headers.get("host"), process.env)) {
+            return new Response(JSON.stringify({ error: "shell websocket origin denied" }), { status: 403, headers: { "Content-Type": "application/json" } });
+          }
+          const isVerifiedAdmin = isVerifiedShellAdminRequest(req.headers, process.env);
+          const status = getShellProviderStatus(process.env, { isVerifiedAdmin });
+          if (shouldRejectShellWebSocket(path, status)) {
+            return new Response(JSON.stringify({ error: status.disabledReason }), { status: 403, headers: { "Content-Type": "application/json" } });
+          }
+          return terminalBridge.handleUpgrade(req, server, path, { isVerifiedAdmin });
+        }
         const upgraded = server.upgrade(req, { data: { path } } as never);
         if (!upgraded) {
           return new Response("WebSocket upgrade failed", { status: 400 });
@@ -145,7 +152,8 @@ export function startServer(db: Database, options: ServerOptions = {}): void {
       open(ws) {
         const path = (ws.data as { path?: string } | undefined)?.path ?? "";
         if (path.startsWith("/api/console/terminal/ws")) {
-          const id = terminalBridge.connect((data) => ws.send(data));
+          const pendingId = (ws.data as { connId?: string } | undefined)?.connId;
+          const id = terminalBridge.connect((data) => ws.send(data), pendingId);
           (ws as typeof ws & { connId: string }).connId = id;
           return;
         }
