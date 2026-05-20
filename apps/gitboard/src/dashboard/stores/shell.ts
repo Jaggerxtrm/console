@@ -53,6 +53,7 @@ function defaultDrawerHeight() {
 const initialDrawerHeight = readJSON<number | null>(LS.drawerHeight, null) ?? defaultDrawerHeight();
 const initialDrawerTab = readJSON<DrawerTab>(LS.drawerTab, "logs");
 const initialTerminalSessionId: string | null = null;
+const initialTerminalReattachToken: string | null = null;
 const initialTerminalOutput: string[] = [];
 
 export interface ShellState {
@@ -64,6 +65,7 @@ export interface ShellState {
   drawerHeight: number;
   drawerTab: DrawerTab;
   terminalSessionId: string | null;
+  terminalReattachToken: string | null;
   terminalOutput: string[];
 
   setRepos: (repos: RepoNode[]) => void;
@@ -76,6 +78,7 @@ export interface ShellState {
   setDrawerHeight: (height: number) => void;
   setDrawerTab: (tab: DrawerTab) => void;
   setTerminalSessionId: (sessionId: string | null) => void;
+  setTerminalReattachToken: (token: string | null) => void;
   appendTerminalOutput: (chunk: string) => void;
   resetTerminalOutput: () => void;
 }
@@ -89,6 +92,7 @@ export const useShellStore = create<ShellState>((set) => ({
   drawerHeight: initialDrawerHeight,
   drawerTab: initialDrawerTab,
   terminalSessionId: initialTerminalSessionId,
+  terminalReattachToken: initialTerminalReattachToken,
   terminalOutput: initialTerminalOutput,
 
   setRepos: (repos) => set({ repos }),
@@ -154,6 +158,9 @@ export const useShellStore = create<ShellState>((set) => ({
 
   setTerminalSessionId: (sessionId) =>
     set(() => ({ terminalSessionId: sessionId })),
+
+  setTerminalReattachToken: (token) =>
+    set(() => ({ terminalReattachToken: token })),
 
   appendTerminalOutput: (chunk) =>
     set((state) => ({ terminalOutput: [...state.terminalOutput, chunk].slice(-2000) })),

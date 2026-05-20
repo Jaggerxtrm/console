@@ -14,27 +14,34 @@ type TerminalEnvelope =
 export function TerminalTabPanel() {
   const sessionId = useShellStore((s) => s.terminalSessionId);
   const output = useShellStore((s) => s.terminalOutput);
+  const reattachToken = useShellStore((s) => s.terminalReattachToken);
   const setTerminalSessionId = useShellStore((s) => s.setTerminalSessionId);
+  const setTerminalReattachToken = useShellStore((s) => s.setTerminalReattachToken);
   const appendTerminalOutput = useShellStore((s) => s.appendTerminalOutput);
   const resetTerminalOutput = useShellStore((s) => s.resetTerminalOutput);
   const [status, setStatus] = useState("disconnected");
   const wsRef = useRef<WebSocket | null>(null);
   const pendingSessionIdRef = useRef<string | null>(sessionId);
-  const reattachTokenRef = useRef<string | null>(null);
+  const reattachTokenRef = useRef<string | null>(reattachToken);
 
   const socketUrl = useMemo(() => buildTerminalSocketUrl(), []);
 
   useEffect(() => {
     pendingSessionIdRef.current = sessionId;
+    reattachTokenRef.current = reattachToken;
     const ws = new WebSocket(socketUrl);
     wsRef.current = ws;
 
     ws.onopen = () => {
       const activeSessionId = pendingSessionIdRef.current;
-      if (activeSessionId) {
+      if (activeSessionId && reattachTokenRef.current) {
         ws.send(JSON.stringify({ kind: "attach", streamId: activeSessionId, sessionId: activeSessionId, payload: { resume: true, token: reattachTokenRef.current } }));
         setStatus("attached");
         return;
+      }
+      if (activeSessionId && !reattachTokenRef.current) {
+        pendingSessionIdRef.current = null;
+        setTerminalSessionId(null);
       }
 
       const newSessionId = crypto.randomUUID();
@@ -49,7 +56,10 @@ export function TerminalTabPanel() {
       const msg = JSON.parse(event.data as string) as TerminalEnvelope;
       if (msg.kind === "status") {
         pendingSessionIdRef.current = msg.sessionId;
-        if (typeof msg.payload.note === "string" && msg.payload.note.length > 0) reattachTokenRef.current = msg.payload.note;
+        if (typeof msg.payload.note === "string" && msg.payload.note.length > 0) {
+          reattachTokenRef.current = msg.payload.note;
+          setTerminalReattachToken(msg.payload.note);
+        }
         setTerminalSessionId(msg.sessionId);
         setStatus(msg.payload.state);
         return;
@@ -61,6 +71,7 @@ export function TerminalTabPanel() {
       if (msg.kind === "exit") {
         setStatus(msg.payload.code === 0 ? "exit" : "error");
         setTerminalSessionId(null);
+        setTerminalReattachToken(null);
         resetTerminalOutput();
         return;
       }
@@ -77,7 +88,7 @@ export function TerminalTabPanel() {
       ws.close();
       wsRef.current = null;
     };
-  }, [appendTerminalOutput, resetTerminalOutput, setTerminalSessionId, socketUrl]);
+  }, [appendTerminalOutput, reattachToken, resetTerminalOutput, setTerminalReattachToken, setTerminalSessionId, socketUrl]);
 
   const handleInput = (data: string) => {
     const ws = wsRef.current;

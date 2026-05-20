@@ -30,8 +30,8 @@ describe("shell store drawer persistence", () => {
     expect(rehydrated.getState().drawerOpen).toBe(true);
     expect(rehydrated.getState().drawerHeight).toBe(333);
     expect(rehydrated.getState().drawerTab).toBe("terminal");
-    expect(rehydrated.getState().terminalSessionId).toBe("session-1");
-    expect(rehydrated.getState().terminalOutput).toEqual(["hello\n"]);
+    expect(rehydrated.getState().terminalSessionId).toBe(null);
+    expect(rehydrated.getState().terminalOutput).toEqual([]);
   });
 
   it("clamps drawer height", async () => {

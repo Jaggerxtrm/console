@@ -33,7 +33,8 @@ describe("terminal bridge lifecycle", () => {
     const sessionId = "session-1";
 
     await bridge.handleMessage(conn, JSON.stringify(createTerminalStreamEnvelope("open", streamId, sessionId, { providerKind: "pty", capabilities: ["interactive", "resizable"] })));
-    await bridge.handleMessage(conn, JSON.stringify(createTerminalStreamEnvelope("attach", streamId, sessionId, { resume: false })));
+    const token = (sent.find((msg) => (msg as { kind?: string }).kind === "status") as { payload?: { note?: string } })?.payload?.note;
+    await bridge.handleMessage(conn, JSON.stringify(createTerminalStreamEnvelope("attach", streamId, sessionId, { resume: false, token: token ?? "missing" })));
     await bridge.handleMessage(conn, JSON.stringify(createTerminalStreamEnvelope("input", streamId, sessionId, { data: "ls\n", encoding: "utf8" })));
     await bridge.handleMessage(conn, JSON.stringify(createTerminalStreamEnvelope("resize", streamId, sessionId, { cols: 100, rows: 30 })));
     session.emitOutput("ok\n");
@@ -74,8 +75,9 @@ describe("terminal bridge lifecycle", () => {
     const connB = bridge.connect((payload) => sentB.push(JSON.parse(payload)));
 
     await bridge.handleMessage(connA, JSON.stringify(createTerminalStreamEnvelope("open", "stream-1", "session-1", { providerKind: "pty", capabilities: ["interactive"] })));
+    const token = (sentA.find((msg) => (msg as { kind?: string }).kind === "status") as { payload?: { note?: string } })?.payload?.note;
     bridge.disconnect(connA);
-    await bridge.handleMessage(connB, JSON.stringify(createTerminalStreamEnvelope("attach", "stream-1", "session-1", { resume: false })));
+    await bridge.handleMessage(connB, JSON.stringify(createTerminalStreamEnvelope("attach", "stream-1", "session-1", { resume: false, token: token ?? "missing" })));
     await bridge.handleMessage(connB, JSON.stringify(createTerminalStreamEnvelope("input", "stream-1", "session-1", { data: "pwd\n", encoding: "utf8" })));
     await bridge.handleMessage(connB, JSON.stringify(createTerminalStreamEnvelope("resize", "stream-1", "session-1", { cols: 10, rows: 10 })));
 
@@ -117,20 +119,43 @@ describe("terminal bridge lifecycle", () => {
     expect(sent.some((msg) => (msg as { kind: string; payload: { code?: string } }).kind === "error" && (msg as { payload: { code?: string } }).payload.code === "duplicate_session")).toBe(true);
   });
 
+  it("denies foreign connection control without ownership", async () => {
+    const session = new MockSession();
+    const provider: TerminalProvider = { kind: "pty", enabled: true, async openSession() { return session; } };
+    const bridge = new TerminalBridge(makeRegistry(provider));
+    const sentA: unknown[] = [];
+    const sentB: unknown[] = [];
+    const connA = bridge.connect((payload) => sentA.push(JSON.parse(payload)));
+    const connB = bridge.connect((payload) => sentB.push(JSON.parse(payload)));
+
+    await bridge.handleMessage(connA, JSON.stringify(createTerminalStreamEnvelope("open", "stream-1", "session-1", { providerKind: "pty", capabilities: ["interactive"] })));
+    await bridge.handleMessage(connB, JSON.stringify(createTerminalStreamEnvelope("input", "stream-1", "session-1", { data: "whoami\n", encoding: "utf8" })));
+    await bridge.handleMessage(connB, JSON.stringify(createTerminalStreamEnvelope("resize", "stream-1", "session-1", { cols: 20, rows: 20 })));
+    await bridge.handleMessage(connB, JSON.stringify(createTerminalStreamEnvelope("exit", "stream-1", "session-1", { code: 0, signal: null })));
+
+    expect(session.inputs).toEqual([]);
+    expect(session.sizes).toEqual([]);
+    expect(session.disposed).toEqual([]);
+    expect(sentB.filter((msg) => (msg as { kind?: string; payload?: { code?: string } }).kind === "error" && (msg as { payload?: { code?: string } }).payload?.code === "forbidden").length).toBe(3);
+    expect((sentA.find((msg) => (msg as { kind?: string }).kind === "status") as { payload?: { note?: string } })?.payload?.note).toBeTruthy();
+  });
+
   it("disconnect cleanup disposes unowned session remains protected", async () => {
     vi.useFakeTimers();
     const session = new MockSession();
     const provider: TerminalProvider = { kind: "pty", enabled: true, async openSession() { return session; } };
     const bridge = new TerminalBridge(makeRegistry(provider));
+    const sentB: unknown[] = [];
     const connA = bridge.connect(() => {});
-    const connB = bridge.connect(() => {});
+    const connB = bridge.connect((payload) => sentB.push(JSON.parse(payload)));
 
     await bridge.handleMessage(connA, JSON.stringify(createTerminalStreamEnvelope("open", "stream-1", "session-1", { providerKind: "pty", capabilities: ["interactive"] })));
     bridge.disconnect(connA);
     await vi.advanceTimersByTimeAsync(30_000);
     expect(session.disposed).toContain("disconnect");
 
-    await bridge.handleMessage(connB, JSON.stringify(createTerminalStreamEnvelope("attach", "stream-1", "session-1", { resume: false })));
+    await bridge.handleMessage(connB, JSON.stringify(createTerminalStreamEnvelope("attach", "stream-1", "session-1", { resume: false, token: "nope" })));
+    expect(sentB.some((msg) => (msg as { kind?: string; payload?: { code?: string } }).kind === "error" && (msg as { payload?: { code?: string } }).payload?.code === "not_found")).toBe(true);
     vi.useRealTimers();
   });
 });

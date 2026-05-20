@@ -11,6 +11,10 @@ vi.mock("../../../../src/dashboard/components/terminal/TerminalStream.tsx", () =
 }));
 
 class FakeWebSocket {
+  static readonly CONNECTING = 0;
+  static readonly OPEN = 1;
+  static readonly CLOSING = 2;
+  static readonly CLOSED = 3;
   static instances: FakeWebSocket[] = [];
   readyState = WebSocket.CONNECTING;
   sent: string[] = [];
@@ -41,7 +45,7 @@ function setupStore() {
 describe("TerminalTabPanel", () => {
   beforeEach(() => {
     FakeWebSocket.instances = [];
-    vi.stubGlobal("WebSocket", FakeWebSocket as typeof WebSocket);
+    vi.stubGlobal("WebSocket", FakeWebSocket as unknown as typeof WebSocket);
     vi.stubGlobal("window", { location: { origin: "http://localhost:5177" } } as typeof window);
     vi.useFakeTimers();
     setupStore();
@@ -62,7 +66,7 @@ describe("TerminalTabPanel", () => {
     const { unmount } = render(React.createElement(TerminalTabPanel));
     const first = FakeWebSocket.instances[0];
     first.open();
-    first.message({ kind: "status", sessionId: "session-1", payload: { state: "open", attached: true } });
+    first.message({ kind: "status", sessionId: "session-1", payload: { state: "open", attached: true, note: "token-1" } });
     first.message({ kind: "output", sessionId: "session-1", payload: { data: "echo\n" } });
 
     expect(useShellStore.getState().terminalSessionId).toBe("session-1");
@@ -74,7 +78,8 @@ describe("TerminalTabPanel", () => {
     const second = FakeWebSocket.instances[1];
     second.open();
 
-    expect(second.sent.some((msg) => JSON.parse(msg).kind === "attach")).toBe(true);
+    const attach = second.sent.map((msg) => JSON.parse(msg)).find((msg) => msg.kind === "attach");
+    expect(attach?.payload?.token).toBe("token-1");
     expect(terminalStreamMock).toHaveBeenCalled();
   });
 
