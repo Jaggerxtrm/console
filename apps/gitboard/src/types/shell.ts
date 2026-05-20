@@ -4,6 +4,7 @@
 
 export type Surface = "github" | "console";
 export type ThemeMode = "dark" | "light";
+export type DrawerTab = "logs" | "specialists" | "terminal";
 
 export type GithubTab =
   | "activity"

@@ -8,6 +8,7 @@ export function BottomDrawerTabBar({ activeTab, open, isMaximized, onSelect, onC
       <div className="bottom-drawer-tabs">
         <TabButton active={activeTab === "logs"} onClick={() => onSelect("logs")} icon={<TerminalIcon size={12} />}>Logs</TabButton>
         <TabButton active={activeTab === "specialists"} onClick={() => onSelect("specialists")} icon={<GearIcon size={12} />}>Specialists</TabButton>
+        <TabButton active={activeTab === "terminal"} onClick={() => onSelect("terminal")} icon={<TerminalIcon size={12} />}>Terminal</TabButton>
       </div>
       <div className="bottom-drawer-actions">
         {activeTab === "logs" && <IconButton title="clear logs" onClick={onClearLogs}><TrashIcon size={12} /></IconButton>}

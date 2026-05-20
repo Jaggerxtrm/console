@@ -2,9 +2,11 @@ import { useEffect, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { BottomDrawerTabBar } from "./BottomDrawerTabBar.tsx";
 import { SpecialistsTabPanel } from "../beads/SpecialistsTabPanel.tsx";
 import { LogsTabPanel } from "./LogsTabPanel.tsx";
+import { TerminalTabPanel } from "./TerminalTabPanel.tsx";
 import { useShellStore } from "../../stores/shell.ts";
+import type { DrawerTab } from "../../../types/shell.ts";
 
-export type BottomDrawerTab = "logs" | "specialists";
+export type BottomDrawerTab = DrawerTab;
 
 const MAXIMIZED_OFFSET = 24;
 
@@ -47,7 +49,7 @@ export function BottomDrawer() {
         onClearLogs={() => {}}
         onToggleMaximize={() => toggleMaximize(height, restoredHeight, setRestoredHeight, setDrawerHeight)}
       />
-      <div className="bottom-drawer-body">{tab === "logs" ? <LogsTabPanel onClear={() => {}} /> : <SpecialistsTabPanel />}</div>
+      <div className="bottom-drawer-body">{tab === "logs" ? <LogsTabPanel onClear={() => {}} /> : tab === "specialists" ? <SpecialistsTabPanel /> : <TerminalTabPanel />}</div>
     </section>
   );
 }

@@ -4,6 +4,7 @@
 
 import { create } from "zustand";
 import type {
+  DrawerTab,
   RepoNode,
   SidebarSelection,
   Surface,
@@ -50,7 +51,7 @@ function defaultDrawerHeight() {
   return typeof window !== "undefined" ? Math.floor(window.innerHeight * 0.75) : 600;
 }
 const initialDrawerHeight = readJSON<number | null>(LS.drawerHeight, null) ?? defaultDrawerHeight();
-const initialDrawerTab = readJSON<"logs" | "specialists">(LS.drawerTab, "logs");
+const initialDrawerTab = readJSON<DrawerTab>(LS.drawerTab, "logs");
 
 export interface ShellState {
   repos: RepoNode[];
@@ -59,7 +60,7 @@ export interface ShellState {
   theme: ThemeMode;
   drawerOpen: boolean;
   drawerHeight: number;
-  drawerTab: "logs" | "specialists";
+  drawerTab: DrawerTab;
 
   setRepos: (repos: RepoNode[]) => void;
   setSurface: (surface: Surface) => void;       // switching surface resets tab to default
@@ -69,7 +70,7 @@ export interface ShellState {
   toggleTheme: () => void;
   setDrawerOpen: (open: boolean) => void;
   setDrawerHeight: (height: number) => void;
-  setDrawerTab: (tab: "logs" | "specialists") => void;
+  setDrawerTab: (tab: DrawerTab) => void;
 }
 
 export const useShellStore = create<ShellState>((set) => ({
