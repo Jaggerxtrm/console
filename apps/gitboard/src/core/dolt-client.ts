@@ -103,65 +103,74 @@ export class DoltClient {
       [...params, limit, offset] as any[]
     );
 
-    // Fetch dependencies and labels for each issue
-    const issues: BeadIssue[] = [];
-    for (const row of rows) {
-      const dependencies = await this.getDependencies(row.id);
-      const labels = await this.getLabels(row.id);
-
-      issues.push({
-        id: row.id,
-        title: row.title,
-        description: row.description,
-        status: row.status as BeadIssue["status"],
-        priority: row.priority as BeadIssue["priority"],
-        issue_type: row.issue_type as BeadIssue["issue_type"],
-        owner: row.owner,
-        created_at: row.created_at,
-        created_by: row.created_by,
-        updated_at: row.updated_at ?? row.created_at,
-        closed_at: row.closed_at ?? undefined,
-        close_reason: row.close_reason ?? undefined,
-        project_id: "", // Set by caller
-        dependencies,
-        labels,
-        related_ids: [],
-      });
-    }
-
-    return issues;
-  }
-
-  /**
-   * Get dependencies for an issue
-   */
-  private async getDependencies(issueId: string): Promise<BeadDependency[]> {
-    const [rows] = await this.connection!.execute<RowDataPacket[]>(
-      `SELECT d.depends_on_id as id, d.type as dependency_type, i.title, i.status
-       FROM dependencies d
-       JOIN issues i ON d.depends_on_id = i.id
-       WHERE d.issue_id = ?`,
-      [issueId]
-    );
+    // Batch-hydrate dependencies + labels with two IN-clause queries instead
+    // of 2N round-trips. The per-row loop hung the /api/console/graph route on
+    // large repos (unitAI ~hundreds of rows × 2 queries = >2k round-trips).
+    const ids = rows.map((row) => row.id as string);
+    const depsById = ids.length > 0 ? await this.getDependenciesBatch(ids) : new Map<string, BeadDependency[]>();
+    const labelsById = ids.length > 0 ? await this.getLabelsBatch(ids) : new Map<string, string[]>();
 
     return rows.map((row) => ({
       id: row.id,
       title: row.title,
-      status: row.status as BeadDependency["status"],
-      dependency_type: row.dependency_type as BeadDependency["dependency_type"],
+      description: row.description,
+      status: row.status as BeadIssue["status"],
+      priority: row.priority as BeadIssue["priority"],
+      issue_type: row.issue_type as BeadIssue["issue_type"],
+      owner: row.owner,
+      created_at: row.created_at,
+      created_by: row.created_by,
+      updated_at: row.updated_at ?? row.created_at,
+      closed_at: row.closed_at ?? undefined,
+      close_reason: row.close_reason ?? undefined,
+      project_id: "", // Set by caller
+      dependencies: depsById.get(row.id) ?? [],
+      labels: labelsById.get(row.id) ?? [],
+      related_ids: [],
     }));
   }
 
-  /**
-   * Get labels for an issue
-   */
-  private async getLabels(issueId: string): Promise<string[]> {
+  private async getDependenciesBatch(issueIds: string[]): Promise<Map<string, BeadDependency[]>> {
+    const placeholders = issueIds.map(() => "?").join(", ");
     const [rows] = await this.connection!.execute<RowDataPacket[]>(
-      "SELECT label FROM labels WHERE issue_id = ?",
-      [issueId]
+      `SELECT d.issue_id, d.depends_on_id as id, d.type as dependency_type, i.title, i.status
+       FROM dependencies d
+       JOIN issues i ON d.depends_on_id = i.id
+       WHERE d.issue_id IN (${placeholders})`,
+      issueIds,
     );
+    const byIssue = new Map<string, BeadDependency[]>();
+    for (const row of rows) {
+      const list = byIssue.get(row.issue_id) ?? [];
+      list.push({
+        id: row.id,
+        title: row.title,
+        status: row.status as BeadDependency["status"],
+        dependency_type: row.dependency_type as BeadDependency["dependency_type"],
+      });
+      byIssue.set(row.issue_id, list);
+    }
+    return byIssue;
+  }
 
-    return rows.map((row) => row.label);
+  private async getLabelsBatch(issueIds: string[]): Promise<Map<string, string[]>> {
+    const placeholders = issueIds.map(() => "?").join(", ");
+    try {
+      const [rows] = await this.connection!.execute<RowDataPacket[]>(
+        `SELECT issue_id, label FROM labels WHERE issue_id IN (${placeholders})`,
+        issueIds,
+      );
+      const byIssue = new Map<string, string[]>();
+      for (const row of rows) {
+        const list = byIssue.get(row.issue_id) ?? [];
+        list.push(row.label);
+        byIssue.set(row.issue_id, list);
+      }
+      return byIssue;
+    } catch {
+      // `labels` table is optional in some Dolt schemas — fail soft.
+      return new Map();
+    }
   }
 
   /**

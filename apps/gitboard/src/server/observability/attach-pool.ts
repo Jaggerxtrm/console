@@ -19,17 +19,23 @@ type AttachedRepo = RepoEntry & { alias: string };
 
 const DEFAULT_MAX_ATTACHED = 12;
 
+// Module-scoped dead-cache shared across all pools in this process.
+// Callers like apps/gitboard/src/api/routes/specialists.ts recreate the pool
+// on a 2s TTL — without module scope, the dead-cache would reset every 2s and
+// the file-watcher's churn on observability.db (sp writes it constantly) would
+// trigger an infinite re-probe loop, burning 60%+ CPU on a known-dead db. The
+// failure modes we cache (schema_version incompatible, missing specialist_jobs
+// table, attach permission errors) are structural — they survive process
+// lifetime, so caching at module scope is correct.
+const moduleDead = new Map<string, { reason: string }>();
+
 export function createAttachPool(entries: readonly RepoEntry[], options: PoolOptions = {}) {
   const maxAttached = options.maxAttached ?? DEFAULT_MAX_ATTACHED;
   const logger = options.logger ?? console;
   const db = new Database(":memory:", { create: true });
   const attached = new Map<string, AttachedRepo>();
   const lru = new Map<string, AttachedRepo>();
-  // Cache dbs we've already determined to be unhealthy (incompatible schema, probe failed,
-  // attach failed) so the file-watcher can't trigger an infinite re-probe loop on the
-  // same dead db. Each entry stores the mtime at the time we marked it dead — if the file
-  // is rewritten (newer mtime), we drop the cache entry and try again.
-  const dead = new Map<string, { mtimeMs: number; reason: string }>();
+  const dead = moduleDead;
   let aliasCounter = 0;
 
   function withAttached<T>(fn: (db: Database, attached: ReadonlyArray<{ alias: string; slug: string }>) => T): T {
@@ -49,10 +55,15 @@ export function createAttachPool(entries: readonly RepoEntry[], options: PoolOpt
         continue;
       }
 
-      // Skip dbs already known to be unhealthy unless they've been rewritten.
-      const deadEntry = dead.get(entry.dbPath);
-      if (deadEntry && deadEntry.mtimeMs >= entry.mtimeMs) continue;
-      if (deadEntry) dead.delete(entry.dbPath);
+      // Skip dbs already known to be unhealthy. We deliberately do NOT re-probe
+      // on mtime change: sp processes write to observability.db continuously
+      // (every turn/event), so mtime ticks up dozens of times per minute. The
+      // failure modes we cache (schema_version incompatible, missing
+      // specialist_jobs table, attach permission errors) are structural — they
+      // don't get fixed by another sp write. Re-probing on every mtime tick
+      // burned 90%+ CPU and starved the rest of the API. If the db is genuinely
+      // upgraded, restart the API.
+      if (dead.has(entry.dbPath)) continue;
 
       if (!ensureCapacity()) break;
       if (!attachRepo(entry)) continue;
@@ -101,7 +112,7 @@ export function createAttachPool(entries: readonly RepoEntry[], options: PoolOpt
     if (!prev || prev.reason !== reason) {
       logger.warn(`Skip observability db ${entry.dbPath}: ${reason}`);
     }
-    dead.set(entry.dbPath, { mtimeMs: entry.mtimeMs, reason });
+    dead.set(entry.dbPath, { reason });
   }
 
   function readSchemaVersion(path: string): number {
