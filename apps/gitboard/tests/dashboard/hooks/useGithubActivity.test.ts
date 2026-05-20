@@ -53,6 +53,23 @@ describe("useGithubActivity", () => {
     expect(apiClient.getReleases).not.toHaveBeenCalled();
   });
 
+  it("applies github websocket PR and issue upserts immediately", async () => {
+    vi.mocked(apiClient.getEvents).mockResolvedValueOnce({ data: [], limit: 50, offset: 0 });
+    renderHook(() => useGithubActivity({ includeLists: false }));
+
+    await waitFor(() => expect(useWebSocketMock).toHaveBeenCalled());
+    const handler = useWebSocketMock.mock.calls[0][1] as (msg: { event?: string; data?: unknown }) => void;
+
+    act(() => {
+      handler({ event: "github:pr.upsert", data: { repo: "owner/repo", number: 1, title: "WS PR", body: null, state: "open", author: "alice", url: null, additions: null, deletions: null, changed_files: null, comment_count: 0, label_names: null, created_at: "2026-05-20T10:00:00Z", updated_at: "2026-05-20T12:00:00Z", merged_at: null, closed_at: null } });
+      handler({ event: "github:issue.upsert", data: { repo: "owner/repo", number: 2, title: "WS Issue", body: null, state: "open", author: "bob", url: null, comment_count: 0, label_names: null, created_at: "2026-05-20T10:00:00Z", updated_at: "2026-05-20T12:01:00Z", closed_at: null } });
+    });
+
+    expect(useGithubStore.getState().prs.map((pr) => pr.title)).toEqual(["WS PR"]);
+    expect(useGithubStore.getState().issues.map((issue) => issue.title)).toEqual(["WS Issue"]);
+    expect(useGithubStore.getState().unreadRepos.has("owner/repo")).toBe(true);
+  });
+
   it("reloads on github sync hint envelope without repos field", async () => {
     vi.mocked(apiClient.getEvents).mockResolvedValueOnce({ data: [], limit: 50, offset: 0 });
     renderHook(() => useGithubActivity());

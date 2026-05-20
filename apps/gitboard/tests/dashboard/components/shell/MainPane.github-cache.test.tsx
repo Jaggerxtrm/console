@@ -16,6 +16,9 @@ const { apiClient } = vi.hoisted(() => ({
 
 vi.mock("../../../../src/dashboard/lib/client.ts", () => ({ apiClient }));
 vi.mock("../../../../src/dashboard/components/shell/BottomDrawer.tsx", () => ({ BottomDrawer: () => <div data-testid="bottom-drawer" /> }));
+vi.mock("../../../../src/dashboard/pages/console/Graph.tsx", () => ({ Graph: () => <div data-testid="graph" /> }));
+vi.mock("../../../../src/dashboard/pages/console/Observability.tsx", () => ({ Observability: () => <div data-testid="observability" /> }));
+vi.mock("../../../../src/dashboard/pages/console/Specialists.tsx", () => ({ Specialists: () => <div data-testid="specialists" /> }));
 vi.mock("../../../../src/dashboard/components/github/ActivityTimeline.tsx", () => ({
   ActivityTimeline: ({ events }: { events: GithubEvent[] }) => <div data-testid="activity">{events.map((event) => <span key={event.id}>{event.title}</span>)}</div>,
 }));
@@ -122,6 +125,27 @@ describe("MainPane GitHub tab data loading", () => {
     expect(apiClient.getPrs).toHaveBeenCalledWith({ repo: fullName, limit: 200 });
     expect(apiClient.getIssues).not.toHaveBeenCalled();
     expect(apiClient.getReleases).not.toHaveBeenCalled();
+  });
+
+  it("shows live PR upserts instantly when the PR tab has no HTTP data yet", async () => {
+    const fullName = "owner/live-visible";
+    let resolvePrs!: (value: { data: GithubPr[] }) => void;
+    apiClient.getPrs.mockReturnValueOnce(new Promise((resolve) => { resolvePrs = resolve; }));
+    useShellStore.setState({ repos: [repo(fullName)], selection: { surface: "github", tab: "prs", repo: fullName } });
+
+    render(<MainPane />);
+    expect(screen.getByText("Loading prs…")).toBeInTheDocument();
+
+    act(() => {
+      useGithubStore.getState().upsertPr(pr(fullName, "Instant WS PR", "2026-05-20T12:00:00Z"));
+    });
+
+    expect(await screen.findByText("Instant WS PR")).toBeInTheDocument();
+
+    await act(async () => {
+      resolvePrs({ data: [] });
+    });
+    expect(screen.getByText("Instant WS PR")).toBeInTheDocument();
   });
 
   it("keeps newer live PR data when a stale HTTP response resolves later", async () => {
