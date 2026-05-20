@@ -108,6 +108,18 @@ export interface IssueFilters {
   offset?: number;
 }
 
+export interface BeadsConnectionStatus {
+  source?: "dolt" | "jsonl" | "none" | string;
+  status: "dolt_connected" | "dolt_missing_config" | "dolt_process_dead" | "dolt_unreachable" | "dolt_query_failed" | "connected" | "jsonl_fallback" | "no_dolt" | "not_found" | "error" | string;
+  degraded?: boolean;
+  message?: string;
+  port?: number;
+  pid?: number;
+  database?: string;
+  note?: string;
+  error?: string;
+}
+
 export interface BeadsStats {
   total: number;
   open: number;

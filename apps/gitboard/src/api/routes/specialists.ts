@@ -12,7 +12,16 @@ export interface SpecialistsDao {
   chainById(chainId: string): SpecialistChain[];
 }
 
-let defaultDao: SpecialistsDao | null = null;
+type SpecialistRepoSummary = ReadonlyArray<{ repoSlug: string }>;
+
+type DefaultDaoBundle = {
+  dao: SpecialistsDao;
+  repos: SpecialistRepoSummary;
+  createdAt: number;
+};
+
+let defaultBundle: DefaultDaoBundle | null = null;
+const DEFAULT_DAO_TTL_MS = 2_000;
 
 export interface SpecialistsRouterOptions {
   listRepos?: () => ReadonlyArray<{ repoSlug: string }>;
@@ -20,12 +29,15 @@ export interface SpecialistsRouterOptions {
 }
 
 export function createSpecialistsRouter(
-  dao: SpecialistsDao = getDefaultDao(),
+  dao?: SpecialistsDao,
   options: SpecialistsRouterOptions = {},
 ): Hono {
   const router = new Hono();
   const repoLister = options.listRepos ?? listRepos;
   const epochGetter = options.getEpoch ?? getEpoch;
+  const resolve = () => dao
+    ? { dao, repos: repoLister() as SpecialistRepoSummary }
+    : getDefaultBundle();
 
   router.get("/jobs", (c) => {
     const beadId = c.req.query("bead_id");
@@ -33,20 +45,21 @@ export function createSpecialistsRouter(
       return c.json({ error: "Missing bead_id" }, 400);
     }
 
-    return c.json({ jobs: dao.jobsByBead(beadId) });
+    return c.json({ jobs: resolve().dao.jobsByBead(beadId) });
   });
 
   router.get("/jobs/in-flight", (c) => {
     const limit = parseLimit(c.req.query("limit"), 50);
-    const inFlight = dao.inFlightJobs().slice(0, 200);
-    const recentHistory = dao.recentJobs(limit).slice(0, limit);
-    const epoch = Object.fromEntries(repoLister().map((repo) => [repo.repoSlug, epochGetter(repo.repoSlug)]));
+    const current = resolve();
+    const inFlight = current.dao.inFlightJobs().slice(0, 200);
+    const recentHistory = current.dao.recentJobs(limit).slice(0, limit);
+    const epoch = Object.fromEntries(current.repos.map((repo) => [repo.repoSlug, epochGetter(repo.repoSlug)]));
     return c.json({ in_flight: inFlight, recent_history: recentHistory, jobs: inFlight, epoch });
   });
 
   router.get("/chains/:chain_id", (c) => {
     const chainId = c.req.param("chain_id");
-    const jobs = dao.chainById(chainId);
+    const jobs = resolve().dao.chainById(chainId);
     if (jobs.length === 0) {
       return c.json({ error: "Chain not found" }, 404);
     }
@@ -62,11 +75,12 @@ function parseLimit(value: string | undefined, fallback: number): number {
   return Number.isFinite(parsed) && parsed > 0 ? Math.min(Math.floor(parsed), 200) : fallback;
 }
 
-function getDefaultDao(): SpecialistsDao {
-  if (!defaultDao) {
-    const pool: AttachPoolLike = createAttachPool(listRepos());
-    defaultDao = createObservabilityDao(pool);
-  }
+function getDefaultBundle(): DefaultDaoBundle {
+  const now = Date.now();
+  if (defaultBundle && now - defaultBundle.createdAt < DEFAULT_DAO_TTL_MS) return defaultBundle;
 
-  return defaultDao;
+  const repos = listRepos();
+  const pool: AttachPoolLike = createAttachPool(repos);
+  defaultBundle = { dao: createObservabilityDao(pool), repos, createdAt: now };
+  return defaultBundle;
 }

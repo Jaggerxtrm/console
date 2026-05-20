@@ -10,7 +10,6 @@ import {
   GitCommitIcon,
   IssueOpenedIcon,
   TagIcon,
-  CircleIcon,
 } from "@primer/octicons-react";
 import {
   useShellStore,
@@ -109,6 +108,7 @@ function RepoRow({
   const issues = repo.githubStats.openIssues;
   const releases = repo.githubStats.releases;
   const beads = repo.openBeadsCount;
+  const beadsSource = repo.beadsSource;
 
   return (
     <button
@@ -147,10 +147,10 @@ function RepoRow({
             <span className="ide-stat-chip-num">{releases}</span>
           </span>
         )}
-        {beads > 0 && (
-          <span className="ide-stat-chip ide-stat-chip-beads" title={`${beads} open beads`}>
-            <CircleIcon size={10} />
-            <span className="ide-stat-chip-num">{beads}</span>
+        {repo.hasBeads && (
+          <span className="ide-stat-chip ide-stat-chip-beads" title={beadsSource ? `${beads} open beads · ${beadsSource.title}` : `${beads} open beads`}>
+            <span className="ide-stat-chip-num">bd:{beads}</span>
+            {beadsSource && <span className="ide-stat-chip-source">{beadsSource.label}</span>}
           </span>
         )}
       </span>

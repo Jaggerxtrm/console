@@ -8,7 +8,7 @@ const LEVELS: LogLevel[] = ["debug", "info", "warn", "error"];
 export function LogsTabPanel({ onClear }: { onClear: () => void }) {
   const [filter, setFilter] = useState<SystemLogFilter>({});
   const [autoscroll, setAutoscroll] = useState(true);
-  const { entries, clear } = useSystemLogs(filter);
+  const { entries, loading, error, clear, reload } = useSystemLogs(filter);
   const parentRef = useRef<HTMLDivElement>(null);
   const shouldVirtualize = entries.length >= 500;
 
@@ -49,9 +49,10 @@ export function LogsTabPanel({ onClear }: { onClear: () => void }) {
         </div>
         <input className="drawer-logs-search" value={filter.search ?? ""} onChange={(e) => setFilter((state) => ({ ...state, search: e.target.value }))} placeholder="search msg / event / component" />
         <label className="drawer-logs-toggle"><input type="checkbox" checked={autoscroll} onChange={(e) => setAutoscroll(e.target.checked)} /> autoscroll</label>
+        <button type="button" className="drawer-log-clear" onClick={() => void reload()}>reload</button>
         <button type="button" className="drawer-log-clear" onClick={() => { clear(); onClear(); }}>clear</button>
       </div>
-      <div className="drawer-logs-status">logs: {entries.length} ({counts.warn} W, {counts.error} E)</div>
+      <div className="drawer-logs-status">logs: {entries.length} ({counts.warn} W, {counts.error} E){loading ? " · loading" : ""}{error ? ` · ${error}` : ""}</div>
       <div className={shouldVirtualize ? "drawer-logs-body is-virtual" : "drawer-logs-body"} style={shouldVirtualize ? { height: rowVirtualizer.getTotalSize(), position: "relative" } : undefined}>
         {entries.length === 0 ? <div className="drawer-logs-empty">no system logs yet — events stream as server emits them</div> : shouldVirtualize ? rowVirtualizer.getVirtualItems().map((row) => <LogRow key={entries[row.index].ts + row.index} entry={entries[row.index]} style={{ position: "absolute", top: 0, left: 0, width: "100%", transform: `translateY(${row.start}px)` }} />) : entries.map((entry) => <LogRow key={entry.ts + entry.event} entry={entry} />)}
       </div>
@@ -60,7 +61,26 @@ export function LogsTabPanel({ onClear }: { onClear: () => void }) {
 }
 
 function LogRow({ entry, style }: { entry: LogEntry; style?: CSSProperties }) {
-  return <div className="drawer-log-row" style={style}><span>{formatTime(entry.ts)}</span><span className={`drawer-log-level ${levelClass(entry.level)}`}>[{entry.level}]</span><span>{entry.component}</span><span>{entry.event}</span><span>{entry.msg ?? ""}</span></div>;
+  const data = formatData(entry.data);
+  return (
+    <div className="drawer-log-row" style={style} title={data}>
+      <span>{formatTime(entry.ts)}</span>
+      <span className={`drawer-log-level ${levelClass(entry.level)}`}>[{entry.level}]</span>
+      <span>{entry.component}</span>
+      <span>{entry.event}</span>
+      <span>{entry.msg ?? ""}</span>
+      {data && <code>{data}</code>}
+    </div>
+  );
+}
+
+function formatData(data: LogEntry["data"]): string {
+  if (!data || Object.keys(data).length === 0) return "";
+  try {
+    return JSON.stringify(data);
+  } catch {
+    return "[unserializable data]";
+  }
 }
 
 function formatTime(ts: string): string {

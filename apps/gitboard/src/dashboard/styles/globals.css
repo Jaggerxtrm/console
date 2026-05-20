@@ -4110,8 +4110,9 @@ body:has(.shell-app) { background: #101010 !important; }
 .ide-repo-icon { color: var(--text-muted); display: inline-flex; flex-shrink: 0; }
 .ide-repo-row.is-active .ide-repo-icon { color: var(--accent); }
 .ide-repo-name {
-  flex: 1;
+  flex: 0 1 auto;
   font-weight: 400;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -4393,8 +4394,9 @@ body:has(.shell-app) { background: #101010 !important; }
 .drawer-logs-status { color: var(--text-muted); font-size: 11px; padding: 0 14px 6px; }
 .drawer-logs-body { min-height: 0; overflow: auto; }
 .drawer-logs-empty { color: var(--text-muted); padding: 12px 14px; }
-.drawer-log-row { display: grid; gap: 10px; grid-template-columns: 9ch 9ch 10ch 14ch 1fr; padding: 0 14px; white-space: nowrap; }
-.drawer-log-row span { overflow: hidden; text-overflow: ellipsis; }
+.drawer-log-row { display: grid; gap: 10px; grid-template-columns: 9ch 9ch 10ch 18ch minmax(12ch, 0.8fr) minmax(20ch, 1.2fr); padding: 0 14px; white-space: nowrap; }
+.drawer-log-row span, .drawer-log-row code { overflow: hidden; text-overflow: ellipsis; }
+.drawer-log-row code { color: var(--text-muted); font: inherit; }
 .drawer-log-level.is-debug { color: var(--text-muted); }
 .drawer-log-level.is-info { color: var(--text-secondary); }
 .drawer-log-level.is-warn { color: #e8a534; }
@@ -4428,13 +4430,15 @@ body:has(.ide-shell) { background: #101010 !important; overflow: hidden; }
 /* forge-dta: sidebar row stats — git status octicons + bd count */
 .ide-repo-stats {
   align-items: center;
+  color: var(--text-secondary);
   display: inline-flex;
-  flex-shrink: 0;
+  flex: 1 1 auto;
   gap: 6px;
+  min-width: 0;
 }
 .ide-stat-chip {
   align-items: center;
-  color: var(--text-muted);
+  color: inherit;
   display: inline-flex;
   gap: 3px;
 }
@@ -4444,12 +4448,13 @@ body:has(.ide-shell) { background: #101010 !important; overflow: hidden; }
   font-variant-numeric: tabular-nums;
   line-height: 1;
 }
-.ide-stat-chip-pr { color: #10b981; }
-.ide-stat-chip-commit { color: #6366f1; }
-.ide-stat-chip-issue { color: #22c55e; }
-.ide-stat-chip-release { color: #8f8f8f; }
-.ide-stat-chip-beads { color: var(--accent); }
-.ide-repo-row.is-active .ide-stat-chip { filter: brightness(1.18); }
+.ide-stat-chip-pr svg { color: #10b981; }
+.ide-stat-chip-commit svg { color: #6366f1; }
+.ide-stat-chip-issue svg { color: #22c55e; }
+.ide-stat-chip-release svg { color: #8f8f8f; }
+.ide-stat-chip-beads { color: inherit; }
+.ide-stat-chip-source { color: inherit; font-family: var(--font-mono); font-size: 10.5px; line-height: 1; }
+.ide-repo-row.is-active .ide-stat-chip svg { filter: brightness(1.18); }
 
 /* forge-vk47: global black/white switch. Keep the sparse shell; only tokens/surfaces change. */
 .ide-theme-toggle {

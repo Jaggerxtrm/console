@@ -7,6 +7,7 @@ import type {
   BeadIssueDetail,
   BeadsProject,
   BeadsStats,
+  BeadsConnectionStatus,
   Memory,
   Interaction,
 } from "../../types/beads.ts";
@@ -101,5 +102,11 @@ export const beadsApi = {
       `/api/beads/projects/${enc(projectId)}/stats`,
     );
     return data.stats;
+  },
+
+  async getConnection(projectId: string): Promise<BeadsConnectionStatus> {
+    return await jsonFetch<BeadsConnectionStatus>(
+      `/api/beads/projects/${enc(projectId)}/connection`,
+    );
   },
 };

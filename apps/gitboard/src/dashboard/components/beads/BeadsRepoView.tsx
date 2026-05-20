@@ -5,6 +5,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { IssueFeed } from "./IssueFeed.tsx";
 import { IssueOverlay } from "./IssueOverlay.tsx";
 import { beadsApi } from "../../lib/beads-api.ts";
+import { useWebSocket } from "../../hooks/useWebSocket.ts";
+import type { WsMessage } from "../../lib/ws.ts";
 import type {
   BeadIssue,
   BeadIssueDetail,
@@ -28,6 +30,76 @@ const INITIAL: State = {
   loading: true, error: null, project: null,
   issues: [], closedIssues: [], memories: [], interactions: [],
 };
+
+type BeadsMessageData = {
+  projectId?: string;
+  project_id?: string;
+  issue?: BeadIssue;
+  issueId?: string;
+  id?: string;
+  issues?: BeadIssue[];
+  closes?: string[];
+  deletes?: string[];
+};
+
+function getMessageData(msg: WsMessage): BeadsMessageData {
+  return msg.data && typeof msg.data === "object" ? msg.data as BeadsMessageData : {};
+}
+
+function getMessageProjectId(data: BeadsMessageData): string | undefined {
+  return data.projectId ?? data.project_id ?? data.issue?.project_id;
+}
+
+function upsertById<T extends { id: string }>(items: T[], item: T): T[] {
+  return [item, ...items.filter((current) => current.id !== item.id)];
+}
+
+function removeById<T extends { id: string }>(items: T[], id: string): T[] {
+  return items.filter((item) => item.id !== id);
+}
+
+function applyIssueUpsert(state: State, issue: BeadIssue): State {
+  const open = removeById(state.issues, issue.id);
+  const closed = removeById(state.closedIssues, issue.id);
+  if (issue.status === "closed") return { ...state, issues: open, closedIssues: upsertById(closed, issue) };
+  return { ...state, issues: upsertById(open, issue), closedIssues: closed };
+}
+
+function closeIssue(state: State, issueId: string): State {
+  const issue = state.issues.find((item) => item.id === issueId) ?? state.closedIssues.find((item) => item.id === issueId);
+  if (!issue) return state;
+  const closed = { ...issue, status: "closed" as const, closed_at: issue.closed_at ?? issue.updated_at };
+  return { ...state, issues: removeById(state.issues, issueId), closedIssues: upsertById(removeById(state.closedIssues, issueId), closed) };
+}
+
+function deleteIssue(state: State, issueId: string): State {
+  return { ...state, issues: removeById(state.issues, issueId), closedIssues: removeById(state.closedIssues, issueId) };
+}
+
+function applyBeadsMessage(state: State, msg: WsMessage): State {
+  const data = getMessageData(msg);
+  switch (msg.event) {
+    case "beads:issue.upsert":
+    case "beads:issue.deferred":
+    case "beads:issue.superseded":
+    case "beads:issue.flagged":
+    case "beads:issue.unflagged":
+      return data.issue ? applyIssueUpsert(state, data.issue) : state;
+    case "beads:issue.close":
+      return closeIssue(state, data.issueId ?? data.id ?? "");
+    case "beads:issue.delete":
+      return deleteIssue(state, data.issueId ?? data.id ?? "");
+    case "beads:batch": {
+      let next = state;
+      for (const issue of data.issues ?? []) next = applyIssueUpsert(next, issue);
+      for (const issueId of data.closes ?? []) next = closeIssue(next, issueId);
+      for (const issueId of data.deletes ?? []) next = deleteIssue(next, issueId);
+      return next;
+    }
+    default:
+      return state;
+  }
+}
 
 function tailName(fullName: string): string {
   const i = fullName.lastIndexOf("/");
@@ -79,6 +151,28 @@ export function BeadsRepoView({ repo, tab }: { repo: RepoNode; tab: BeadsTab }) 
     void load();
     return () => { cancelled = true; };
   }, [tail, reloadKey]);
+
+  const handleBeadsMessage = useCallback((msg: WsMessage) => {
+    if (!state.project) return;
+    const data = getMessageData(msg);
+    const projectId = getMessageProjectId(data);
+    if (projectId && projectId !== state.project.id) return;
+
+    if (msg.event === "beads:sync_hint") {
+      setReloadKey((k) => k + 1);
+      return;
+    }
+    if (!projectId) return;
+
+    setState((current) => applyBeadsMessage(current, msg));
+
+    const changedIssueId = data.issue?.id ?? data.issueId ?? data.id;
+    if (selectedId && changedIssueId === selectedId) {
+      void beadsApi.getIssue(state.project.id, selectedId).then(setDetail);
+    }
+  }, [selectedId, state.project]);
+
+  useWebSocket("beads:changes", handleBeadsMessage);
 
   const onIssueSelect = useCallback(async (issue: BeadIssue) => {
     if (!state.project) return;

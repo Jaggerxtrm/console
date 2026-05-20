@@ -63,6 +63,12 @@ export interface BeadsChips {
   epics: number;
 }
 
+export interface BeadsSourceChip {
+  label: "dolt" | "jsonl" | "missing" | "error" | "unknown";
+  title: string;
+  healthy: boolean;
+}
+
 export interface RepoNode {
   fullName: string;
   displayName: string;
@@ -71,6 +77,7 @@ export interface RepoNode {
   openBeadsCount: number;
   githubStats: GithubChips;
   beadsStats: BeadsChips;
+  beadsSource: BeadsSourceChip | null;
   hasGithub: boolean;
   hasBeads: boolean;
 }

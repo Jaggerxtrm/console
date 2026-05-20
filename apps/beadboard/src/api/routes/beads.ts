@@ -2,12 +2,14 @@
  * API routes for beads data
  */
 
+import { readFile } from "node:fs/promises";
 import { Hono } from "hono";
 import { Database } from "bun:sqlite";
 import { ProjectScanner } from "../../core/project-scanner.ts";
 import { BeadsReader } from "../../core/beads-reader.ts";
 import { DoltClient } from "../../core/dolt-client.ts";
-import type { BeadIssue, BeadIssueDetail, Memory, Interaction, ProjectSourceKind } from "../../types/beads.ts";
+import { emit, makeLogEntry } from "../../../../gitboard/src/core/logger.ts";
+import type { BeadIssue, BeadIssueDetail, Memory, Interaction, ProjectSourceKind, BeadsProject } from "../../types/beads.ts";
 
 let scanner: ProjectScanner | null = null;
 const doltClients: Map<number, DoltClient> = new Map();
@@ -47,6 +49,65 @@ function withProjectId<T extends { project_id: string }>(value: T, projectId: st
 function sourceOrder(projectSource: ProjectSourceKind): ProjectSourceKind[] {
   const order: ProjectSourceKind[] = ["dolt", "sqlite", "jsonl", "unknown"];
   return projectSource === "unknown" ? order : [projectSource, ...order.filter((source) => source !== projectSource)];
+}
+
+type DoltRuntimeInfo = { port?: number; pid?: number; pidAlive?: boolean };
+type DoltFailureStatus = "dolt_missing_config" | "dolt_process_dead" | "dolt_unreachable" | "dolt_query_failed";
+
+async function getDoltRuntime(project: BeadsProject): Promise<DoltRuntimeInfo> {
+  const [portFile, pidFile] = await Promise.all([
+    readOptionalNumber(`${project.beadsPath}/dolt-server.port`),
+    readOptionalNumber(`${project.beadsPath}/dolt-server.pid`),
+  ]);
+  return {
+    port: project.doltPort ?? portFile,
+    pid: pidFile,
+    pidAlive: pidFile ? isProcessAlive(pidFile) : undefined,
+  };
+}
+
+async function readOptionalNumber(path: string): Promise<number | undefined> {
+  try {
+    const value = Number.parseInt((await readFile(path, "utf-8")).trim(), 10);
+    return Number.isFinite(value) ? value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function classifyDoltError(error: unknown): DoltFailureStatus {
+  const message = error instanceof Error ? error.message : String(error);
+  if (/ECONNREFUSED|connect|timeout|circuit breaker/i.test(message)) return "dolt_unreachable";
+  return "dolt_query_failed";
+}
+
+function degradedSource(project: BeadsProject, status: DoltFailureStatus, message: string, extra: Record<string, unknown> = {}) {
+  const hasJsonl = project.sourceHealth?.some((entry) => entry.kind === "jsonl" && entry.state === "available") ?? false;
+  const payload = {
+    source: "jsonl",
+    status,
+    degraded: true,
+    message: hasJsonl ? `${message}; reading JSONL backup. Data may be stale.` : message,
+    note: hasJsonl ? "Dolt is unavailable; JSONL backup is not the source of truth." : "Dolt is unavailable and no JSONL backup was detected.",
+    ...extra,
+  };
+  emit(makeLogEntry("dolt", "source.degraded", "warn", payload.message, { projectId: project.id, projectPath: project.path, status, ...extra }));
+  return payload;
+}
+
+async function getProjectDoltClient(project: BeadsProject): Promise<{ client: DoltClient; runtime: DoltRuntimeInfo } | null> {
+  const runtime = await getDoltRuntime(project);
+  if (!runtime.port) return null;
+  return { client: getDoltClient(runtime.port), runtime };
 }
 
 export const beadsRoutes = new Hono();
@@ -149,17 +210,35 @@ beadsRoutes.get("/projects/:id/stats", async (c) => {
 });
 
 beadsRoutes.get("/projects/:id/connection", async (c) => {
-  try {
-    const projectId = c.req.param("id");
-    const project = getScanner().getProject(projectId);
-    if (!project) return c.json({ status: "not_found", error: "Project not found" });
-    if (!project.doltPort) return c.json({ status: "no_dolt", error: "No dolt server configured" });
+  const projectId = c.req.param("id");
+  const project = getScanner().getProject(projectId);
+  if (!project) return c.json({ source: "none", status: "not_found", degraded: true, message: "Project not found", error: "Project not found" });
 
-    await getDoltClient(project.doltPort).connect();
-    return c.json({ status: "connected", port: project.doltPort, database: project.doltDatabase || "dolt" });
+  const dolt = await getProjectDoltClient(project);
+  if (!dolt) {
+    return c.json(degradedSource(project, "dolt_missing_config", "Dolt server port is missing", { configuredPort: project.doltPort ?? null }));
+  }
+
+  if (dolt.runtime.pid && dolt.runtime.pidAlive === false) {
+    return c.json(degradedSource(project, "dolt_process_dead", "Dolt server pid is not running", { port: dolt.runtime.port, pid: dolt.runtime.pid }));
+  }
+
+  try {
+    await dolt.client.connect();
+    await dolt.client.getIssues({ limit: 1 });
+    return c.json({
+      source: "dolt",
+      status: "dolt_connected",
+      degraded: false,
+      message: `Dolt connected on :${dolt.runtime.port}`,
+      port: dolt.runtime.port,
+      pid: dolt.runtime.pid,
+      database: project.doltDatabase || "dolt",
+    });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    return c.json({ status: "error", error: message });
+    const status = classifyDoltError(error);
+    const message = error instanceof Error ? error.message : "Unknown Dolt error";
+    return c.json(degradedSource(project, status, "Dolt query failed", { port: dolt.runtime.port, pid: dolt.runtime.pid, error: message }));
   }
 });
 
@@ -171,10 +250,16 @@ async function getIssuesFromProject(
   if (!project) return [];
 
   for (const source of sourceOrder(project.source ?? "unknown")) {
-    if (source === "dolt" && project.doltPort) {
+    if (source === "dolt") {
+      const dolt = await getProjectDoltClient(project);
+      if (!dolt) {
+        degradedSource(project, "dolt_missing_config", "Dolt server port is missing");
+        continue;
+      }
       try {
-        return await getDoltClient(project.doltPort).getIssues(filters);
-      } catch {
+        return await dolt.client.getIssues(filters);
+      } catch (error) {
+        degradedSource(project, classifyDoltError(error), "Dolt query failed", { port: dolt.runtime.port, error: error instanceof Error ? error.message : String(error) });
         continue;
       }
     }
@@ -199,11 +284,17 @@ async function getIssueDetailFromProject(projectId: string, issueId: string): Pr
   if (!project) return null;
 
   for (const source of sourceOrder(project.source ?? "unknown")) {
-    if (source === "dolt" && project.doltPort) {
+    if (source === "dolt") {
+      const dolt = await getProjectDoltClient(project);
+      if (!dolt) {
+        degradedSource(project, "dolt_missing_config", "Dolt server port is missing");
+        continue;
+      }
       try {
-        const detail = await getDoltClient(project.doltPort).getIssue(issueId);
+        const detail = await dolt.client.getIssue(issueId);
         if (detail) return withProjectId(detail, projectId);
-      } catch {
+      } catch (error) {
+        degradedSource(project, classifyDoltError(error), "Dolt query failed", { port: dolt.runtime.port, error: error instanceof Error ? error.message : String(error) });
         continue;
       }
     }
@@ -248,10 +339,16 @@ async function getClosedIssuesFromProject(projectId: string, limit: number): Pro
   if (!project) return [];
 
   for (const source of sourceOrder(project.source ?? "unknown")) {
-    if (source === "dolt" && project.doltPort) {
+    if (source === "dolt") {
+      const dolt = await getProjectDoltClient(project);
+      if (!dolt) {
+        degradedSource(project, "dolt_missing_config", "Dolt server port is missing");
+        continue;
+      }
       try {
-        return await getDoltClient(project.doltPort).getClosedIssues(limit);
-      } catch {
+        return await dolt.client.getClosedIssues(limit);
+      } catch (error) {
+        degradedSource(project, classifyDoltError(error), "Dolt query failed", { port: dolt.runtime.port, error: error instanceof Error ? error.message : String(error) });
         continue;
       }
     }
