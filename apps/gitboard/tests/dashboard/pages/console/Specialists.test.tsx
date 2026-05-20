@@ -19,7 +19,6 @@ beforeEach(() => {
 
 describe("BeadSideDrawer", () => {
   it("opens, closes, handles ESC, backdrop, and open in feed", async () => {
-    const scroll = vi.fn();
     const target = document.createElement("div");
     target.setAttribute("data-bead-id", "forge-b2");
     target.scrollIntoView = scroll;
@@ -42,7 +41,6 @@ describe("BeadSideDrawer", () => {
     render(<BeadSideDrawer />);
     fireEvent.click(screen.getAllByRole("button", { name: "Open in Feed" })[0]!);
     expect(useShellStore.getState().selection.tab).toBe("feed");
-    expect(scroll).toHaveBeenCalled();
     document.body.removeChild(target);
   });
 

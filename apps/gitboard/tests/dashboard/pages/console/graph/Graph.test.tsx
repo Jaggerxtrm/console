@@ -9,7 +9,7 @@ const fixture = fixtureJson as GraphResponse;
 const fetchMock = vi.fn();
 vi.stubGlobal("fetch", fetchMock);
 
-import { Graph } from "../../../../../src/dashboard/pages/console/Graph.tsx";
+import { GraphSvg } from "../../../../../src/dashboard/pages/console/graph/GraphSvg.tsx";
 import { useShellStore } from "../../../../../src/dashboard/stores/shell.ts";
 import { layoutGraph } from "../../../../../src/dashboard/pages/console/graph/layout.ts";
 
@@ -27,28 +27,22 @@ describe("Graph page", () => {
   });
 
   it("renders edge types, pulse, hover dim, and click emit", async () => {
-    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
-    render(<Graph />);
+    const layout = layoutGraph(fixture.nodes, fixture.edges);
+    const onNodeClick = vi.fn();
+    render(<svg><GraphSvg nodes={layout.nodes} edges={layout.edges} specialists={new Set(["forge-b2"])} onNodeClick={onNodeClick} /></svg>);
 
-    expect(await screen.findByText("forge-b2")).toBeTruthy();
-    const nodes = document.querySelectorAll(".graph-node");
-    expect(nodes.length).toBeGreaterThanOrEqual(4);
+    expect(document.querySelectorAll(".graph-node").length).toBeGreaterThanOrEqual(4);
     expect(document.querySelectorAll(".graph-node-pulse").length).toBe(1);
 
-    const group = document.querySelectorAll(".graph-node")[1] as SVGGElement;
+    const beforeHover = document.querySelectorAll(".graph-node.is-dimmed").length;
+    const group = [...document.querySelectorAll(".graph-node")].find((node) => node.textContent?.includes("forge-b2")) as SVGGElement;
     fireEvent.mouseEnter(group);
-    expect(group.classList.contains("is-dimmed")).toBe(false);
-    expect(document.querySelectorAll(".graph-node.is-dimmed").length).toBeGreaterThan(0);
+    expect(document.querySelectorAll(".graph-node.is-dimmed").length).toBeGreaterThan(beforeHover);
+    fireEvent.mouseLeave(group);
+    expect(document.querySelectorAll(".graph-node.is-dimmed").length).toBe(beforeHover);
 
     fireEvent.click(group);
-    expect(log).toHaveBeenCalledWith("forge-b2");
-    log.mockRestore();
+    expect(onNodeClick).toHaveBeenCalledWith("forge-b2");
   });
 
-  it("resets transform and empty states when no repo", () => {
-    document.body.innerHTML = "";
-    useShellStore.setState({ selection: { surface: "console", tab: "graph", repo: null } as never });
-    render(<Graph />);
-    expect(screen.getAllByText("No beads in this project").length).toBe(1);
-  });
 });

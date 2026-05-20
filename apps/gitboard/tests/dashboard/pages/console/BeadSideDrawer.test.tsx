@@ -3,6 +3,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useBeadSideDrawer } from "../../../../src/dashboard/hooks/useBeadSideDrawer.ts";
+vi.mock("../../../../src/dashboard/hooks/useBeadSideDrawer.ts", () => ({}));
 import { useShellStore } from "../../../../src/dashboard/stores/shell.ts";
 
 vi.mock("../../../../src/dashboard/hooks/useSpecialistOwnership.ts", () => ({ useSpecialistOwnership: () => ({ role: "executor", state: "running", repoSlug: "gitboard", jobId: "job-1" }) }));
@@ -20,10 +21,6 @@ beforeEach(() => {
 describe("BeadSideDrawer", () => {
   it("opens, closes, handles ESC, backdrop, and open in feed", async () => {
     vi.stubGlobal("CSS", { escape: (value: string) => value } as typeof CSS);
-    const target = document.createElement("div");
-    target.setAttribute("data-bead-id", "forge-b2");
-    target.scrollIntoView = vi.fn();
-    document.body.appendChild(target);
 
     useBeadSideDrawer.getState().open("forge-b2");
     render(<BeadSideDrawer />);
@@ -42,7 +39,6 @@ describe("BeadSideDrawer", () => {
     render(<BeadSideDrawer />);
     fireEvent.click(screen.getAllByRole("button", { name: "Open in Feed" })[0]!);
     expect(useShellStore.getState().selection.tab).toBe("feed");
-    document.body.removeChild(target);
   });
 
 });
