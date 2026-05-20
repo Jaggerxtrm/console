@@ -14,8 +14,8 @@ import { STRUCTURAL_EDGE_TYPES, type ClusterGroup } from "./clusters.ts";
 import type { BeadNodeData } from "./nodes/BeadNode.tsx";
 import type { CustomEdgeData } from "./edges/CustomEdge.tsx";
 
-export const NODE_W = 220;
-export const NODE_H = 26;
+export const NODE_W = 260;
+export const NODE_H = 44;
 const PAD = 18;
 
 export type ClusterFlowNode = Node<BeadNodeData, "beadNode">;
