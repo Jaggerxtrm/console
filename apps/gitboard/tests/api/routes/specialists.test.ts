@@ -140,7 +140,7 @@ describe("GET /api/specialists/jobs/in-flight", () => {
       inFlightJobs: () => { inFlightCalls += 1; return [job]; },
       recentJobs: () => { recentCalls += 1; return []; },
       chainById: () => [],
-    }, { listRepos: () => [{ repoSlug: "repo-a" }], getEpoch: () => epoch }));
+    }, { listRepos: () => [{ repoSlug: "repo-a", repoPath: join(dir, "repo-a"), dbPath: join(dir, "repo-a.db"), mtimeMs: 0 }], getEpoch: () => epoch }));
 
     await app.fetch(new Request("http://localhost/api/specialists/jobs/in-flight"));
     await app.fetch(new Request("http://localhost/api/specialists/jobs/in-flight"));
@@ -217,7 +217,7 @@ function createAppWithDao(reposOverride: Array<{ repoSlug: string; rows: SeedRow
   })));
   const dao = createObservabilityDao(pool);
   const app = new Hono();
-  const listRepos = () => reposOverride.map((r) => ({ repoSlug: r.repoSlug }));
+  const listRepos = () => reposOverride.map((r) => ({ repoSlug: r.repoSlug, repoPath: join(dir, r.repoSlug), dbPath: join(dir, `${r.repoSlug}.db`), mtimeMs: 0 }));
   const getEpoch = () => 0;
   app.route("/api/specialists", createSpecialistsRouter(dao, { listRepos, getEpoch }));
   return app;
