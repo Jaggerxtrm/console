@@ -19,7 +19,11 @@
   },
   "devDependencies": {
     "@types/bun": "latest",
+    "node-gyp": "^12.3.0",
     "typescript": "^5.9.3",
     "vitest": "^3.2.4"
+  },
+  "patchedDependencies": {
+    "node-pty@1.1.0": "patches/node-pty@1.1.0.patch"
   }
 }

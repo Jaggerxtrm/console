@@ -1,0 +1,13 @@
+diff --git a/package.json b/package.json
+index 94a2c14381727674b8964c1b50e5e47a9205ffbc..490c306e4e594deb8009b39c5c816c7b40a7c721 100644
+--- a/package.json
++++ b/package.json
+@@ -38,7 +38,7 @@
+     "build": "tsc -b ./src/tsconfig.json",
+     "watch": "tsc -b -w ./src/tsconfig.json",
+     "lint": "eslint -c .eslintrc.js --ext .ts src/",
+-    "install": "node scripts/prebuild.js || node-gyp rebuild",
++    "install": "node scripts/prebuild.js || node ../../../../node-gyp/bin/node-gyp.js rebuild",
+     "postinstall": "node scripts/post-install.js",
+     "compileCommands": "node scripts/gen-compile-commands.js",
+     "test": "cross-env NODE_ENV=test mocha -R spec --exit lib/*.test.js",
