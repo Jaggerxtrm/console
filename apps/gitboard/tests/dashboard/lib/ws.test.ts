@@ -80,6 +80,28 @@ describe("WsClient.subscribe", () => {
     expect(mockWs.sent.some((s) => s.includes("github:activity"))).toBe(true);
   });
 
+  it("keeps last seen seq after unsubscribe so remount can resume", () => {
+    const client = new WsClient("ws://localhost/ws");
+    client.connect();
+    client.subscribe("github:activity");
+    mockWs.triggerOpen();
+    mockWs.triggerMessage({ type: "event", channel: "github:activity", event: "new_event", seq: 7, data: {}, version: "1", boot_id: "boot-1" });
+
+    client.unsubscribe("github:activity");
+    client.subscribe("github:activity");
+
+    vi.useFakeTimers();
+    const nextSocket = new MockWs();
+    wsFactory.mockImplementation(() => nextSocket);
+    mockWs.close();
+    vi.runAllTimers();
+    nextSocket.triggerOpen();
+
+    const resumeMsg = nextSocket.sent.map((entry) => JSON.parse(entry)).find((msg) => msg.action === "resume");
+    expect(resumeMsg).toEqual({ action: "resume", channel: "github:activity", since_seq: 7, boot_id: "boot-1", version: "1" });
+    vi.useRealTimers();
+  });
+
   it("reconnect sends resume payload with last seen since_seq + boot_id", () => {
     vi.useFakeTimers();
     const firstSocket = mockWs;

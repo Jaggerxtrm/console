@@ -26,45 +26,49 @@ export function useGithubActivity(options: { includeLists?: boolean } = {}): voi
     setReleases,
   } = useGithubStore();
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const [eventsRes, reposRes, contribRes, summaryRes, statsRes] = await Promise.all([
-        apiClient.getEvents({ ...filter, limit: 50, offset: 0 }),
-        apiClient.getRepos(),
-        apiClient.getContributions(),
-        apiClient.getSummary("today"),
-        apiClient.getRepoStats(),
-      ]);
-      setEvents(eventsRes.data);
-      setRepos(reposRes.data);
-      setContributions(contribRes.data);
-      setSummary(summaryRes);
-      setRepoStats(statsRes.data);
-
-      if (includeLists) {
-        const [prsRes, issuesRes] = await Promise.all([
-          apiClient.getPrs({ limit: 1000 }),
-          apiClient.getIssues({ limit: 100 }),
+  const load = useCallback(
+    async (options: { preserveVisibleState?: boolean } = {}) => {
+      const preserveVisibleState = options.preserveVisibleState ?? false;
+      if (!preserveVisibleState) setLoading(true);
+      setError(null);
+      try {
+        const [eventsRes, reposRes, contribRes, summaryRes, statsRes] = await Promise.all([
+          apiClient.getEvents({ ...filter, limit: 50, offset: 0 }),
+          apiClient.getRepos(),
+          apiClient.getContributions(),
+          apiClient.getSummary("today"),
+          apiClient.getRepoStats(),
         ]);
-        const releaseResponses = await Promise.all(
-          reposRes.data.map((repo) => apiClient.getReleases({ repo: repo.full_name, limit: 100 })),
-        );
-        setPrs(prsRes.data);
-        setIssues(issuesRes.data);
-        setReleases(
-          releaseResponses
-            .flatMap((response) => response.releases)
-            .sort((a, b) => (b.published_at ?? "").localeCompare(a.published_at ?? "")),
-        );
+        setEvents(eventsRes.data);
+        setRepos(reposRes.data);
+        setContributions(contribRes.data);
+        setSummary(summaryRes);
+        setRepoStats(statsRes.data);
+
+        if (includeLists) {
+          const [prsRes, issuesRes] = await Promise.all([
+            apiClient.getPrs({ limit: 1000 }),
+            apiClient.getIssues({ limit: 100 }),
+          ]);
+          const releaseResponses = await Promise.all(
+            reposRes.data.map((repo) => apiClient.getReleases({ repo: repo.full_name, limit: 100 })),
+          );
+          setPrs(prsRes.data);
+          setIssues(issuesRes.data);
+          setReleases(
+            releaseResponses
+              .flatMap((response) => response.releases)
+              .sort((a, b) => (b.published_at ?? "").localeCompare(a.published_at ?? "")),
+          );
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load data");
+      } finally {
+        if (!preserveVisibleState) setLoading(false);
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load data");
-    } finally {
-      setLoading(false);
-    }
-  }, [filter, includeLists, setEvents, setRepos, setContributions, setSummary, setRepoStats, setLoading, setError, setPrs, setIssues, setReleases]);
+    },
+    [filter, includeLists, setEvents, setRepos, setContributions, setSummary, setRepoStats, setLoading, setError, setPrs, setIssues, setReleases],
+  );
 
   useEffect(() => {
     void load();
@@ -88,7 +92,7 @@ export function useGithubActivity(options: { includeLists?: boolean } = {}): voi
         markRepoUnread(issue.repo);
       }
       if (msg.event === "github:sync_hint") {
-        void load();
+        void load({ preserveVisibleState: true });
       }
     },
     [prependEvent, markRepoUnread, upsertPr, upsertIssue, load]

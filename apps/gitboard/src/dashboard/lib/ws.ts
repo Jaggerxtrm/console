@@ -94,7 +94,6 @@ export class WsClient {
 
   unsubscribe(channel: string): void {
     this.subscriptions.delete(channel);
-    this.lastSeqByChannel.delete(channel);
     this._send({ type: "unsubscribe", channel });
   }
 
