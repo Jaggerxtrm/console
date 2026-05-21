@@ -5248,51 +5248,62 @@ body:has(.ide-shell[data-theme="light"]) { background: #fff !important; }
 .g-cluster-tag.run { color: var(--graph-state-wip); border-color: var(--graph-state-wip); }
 
 /* ---- node (HTML div, 200×26, absolute positioned inside cluster) ---- */
+/* Bead chip — register matches IssueFeed rows: identity (id / title) on top,
+   classification (Pn type state agent) on bottom. No priority left rail. */
 .g-node {
-  position: absolute;
+  position: relative;
   background: var(--surface-primary);
   border: 1px solid var(--border-subtle);
-  border-left: 3px solid var(--text-muted);
   border-radius: 3px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 6px 0 7px;
-  font-family: var(--font-mono);
-  font-size: 10px;
+  display: grid;
+  grid-template-rows: auto auto;
+  align-content: center;
+  row-gap: 1px;
+  padding: 5px 8px;
+  width: 260px;
   color: var(--text-secondary);
   z-index: 2;
-  height: 26px;
 }
-.g-node[data-p="0"] { border-left-color: var(--graph-priority-0); }
-.g-node[data-p="1"] { border-left-color: var(--graph-priority-1); }
-.g-node[data-p="2"] { border-left-color: var(--text-muted); opacity: 1; }
-.g-node[data-p="3"] { border-left-color: var(--text-muted); opacity: 0.78; }
-.g-node[data-p="4"] { border-left-color: var(--text-muted); opacity: 0.62; }
-.g-node.blkd { background: rgba(176, 94, 44, 0.05); }
-.g-node.blkd .g-tt { color: var(--text-secondary); }
+.g-node[data-p="3"] { opacity: 0.78; }
+.g-node[data-p="4"] { opacity: 0.62; }
 
-.g-glyph { font-family: var(--font-mono); font-size: 11px; flex: 0 0 12px; }
-.g-glyph.r  { color: var(--graph-state-ready); opacity: 0.85; }
-.g-glyph.w  { color: var(--graph-state-wip); }
-.g-glyph.b  { color: var(--graph-state-blocked); }
-.g-glyph.gt { color: var(--graph-state-deferred); }
-.g-glyph.e  { color: var(--graph-state-deferred); }
-.g-glyph.c  { color: var(--graph-state-closed); }
+.g-node-identity {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.g-node-class {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  font-family: var(--font-ui);
+  font-size: 10px;
+}
 
-.g-id { font-family: var(--font-mono); font-size: 10px; color: var(--text-muted); flex: 0 0 auto; }
-.g-id b { color: var(--text-primary); font-weight: 500; }
-
+.g-id { font-family: var(--font-mono); font-size: 11px; color: var(--text-primary); font-weight: 500; flex: 0 0 auto; }
+.g-sep { color: rgba(255, 255, 255, 0.12); font-family: var(--font-mono); font-size: 11px; flex: 0 0 auto; }
+[data-theme='light'] .g-sep { color: rgba(15, 23, 42, 0.45); }
 .g-tt {
   flex: 1;
   font-family: var(--font-ui);
-  font-size: 10.5px;
+  font-size: 11px;
+  font-style: italic;
+  font-weight: 500;
   color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
 }
+.g-pri { font-family: var(--font-ui); font-size: 10px; font-weight: 700; letter-spacing: 0.04em; flex: 0 0 auto; }
+.g-type { font-family: var(--font-ui); font-size: 10px; letter-spacing: 0.06em; flex: 0 0 auto; }
+.g-state { font-family: var(--font-ui); font-size: 10px; color: var(--text-secondary); text-transform: lowercase; letter-spacing: 0.02em; flex: 0 0 auto; }
 
 .g-ag {
   font-family: var(--font-mono);
@@ -5339,7 +5350,9 @@ body:has(.ide-shell[data-theme="light"]) { background: #fff !important; }
 @keyframes g-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
 
 /* inline node variants (NOW strip + orphans) — flow with parent, not absolutely positioned */
-.g-node-inline { position: relative; left: auto; top: auto; width: auto; }
+/* NOW strip / orphan inline variants — let the chip auto-size to its container
+   instead of the fixed 260 px of the React Flow node. */
+.g-node-inline { width: auto; max-width: 100%; }
 .g-node-wide { max-width: 100%; }
 
 /* ---- edges (SVG) ---- */
@@ -5377,32 +5390,21 @@ body:has(.ide-shell[data-theme="light"]) { background: #fff !important; }
 .g-orphans-ttl { color: var(--text-primary); font-weight: 500; }
 .g-orphans-hd em { font-style: italic; color: var(--text-muted); opacity: 0.7; }
 
+/* Orphan row + bucket row — same 2-line register as .g-node (Feed parity). */
 .g-orow {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  padding: 4px 12px 4px 10px;
+  display: grid;
+  grid-template-rows: auto auto;
+  align-content: center;
+  row-gap: 1px;
+  padding: 5px 10px;
   border-bottom: 1px solid var(--border-subtle);
   position: relative;
   cursor: pointer;
 }
 .g-orow:hover { background: rgba(255, 255, 255, 0.02); }
 [data-theme="light"] .g-orow:hover { background: rgba(15, 23, 42, 0.03); }
-.g-orow::before {
-  content: "";
-  position: absolute;
-  left: 0; top: 0; bottom: 0;
-  width: 2px;
-  background: var(--text-muted);
-  opacity: 0.4;
-}
-.g-orow[data-p="0"]::before { background: var(--graph-priority-0); opacity: 1; }
-.g-orow[data-p="1"]::before { background: var(--graph-priority-1); opacity: 1; }
-.g-orow[data-p="2"]::before { background: var(--text-muted); opacity: 0.5; }
-.g-orow .g-glyph { font-size: 11px; flex: 0 0 11px; }
-.g-orow .g-id { flex: 0 0 auto; }
-.g-orow .g-tt { flex: 1; font-family: var(--font-ui); font-size: 10.5px; color: var(--text-secondary); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.g-orow .g-tag { flex: 0 0 auto; }
+.g-orow[data-p="3"] { opacity: 0.78; }
+.g-orow[data-p="4"] { opacity: 0.62; }
 
 .g-orphans-more {
   padding: 8px 12px 4px;

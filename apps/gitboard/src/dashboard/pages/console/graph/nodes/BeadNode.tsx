@@ -1,10 +1,10 @@
-// Final BeadNode for the React Flow viewport. JSX mirrors the .g-node chip from
-// the legacy renderer; position:relative override is required because the legacy
-// .g-node CSS sets position:absolute (for the SVG-based renderer) which would
-// fight React Flow's wrapper.
+// BeadNode — visual register matches IssueFeed rows (forge-2a8a follow-up):
+// identity row (id / title) on top, classification row (Pn · type · state · agent)
+// on bottom. No priority left rail — Feed has none. Type-coloured Pn + type
+// label using the same palette as TYPE_CONFIG in IssueFeed.tsx.
 
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-import type { GraphNode, GraphSpecialist } from "../../../../../types/graph.ts";
+import type { GraphNode, GraphNodeType, GraphSpecialist } from "../../../../../types/graph.ts";
 import { categoryFor, shortJobId, type AgentCategory } from "../agent-roles.ts";
 
 export interface BeadNodeData extends Record<string, unknown> {
@@ -12,55 +12,83 @@ export interface BeadNodeData extends Record<string, unknown> {
   specialist: GraphSpecialist | null;
 }
 
-const HANDLE_STYLE = { opacity: 0, pointerEvents: "none" as const, width: 1, height: 1, minWidth: 1, minHeight: 1, border: 0, background: "transparent" };
+const HANDLE_STYLE = {
+  opacity: 0,
+  pointerEvents: "none" as const,
+  width: 1,
+  height: 1,
+  minWidth: 1,
+  minHeight: 1,
+  border: 0,
+  background: "transparent",
+};
+
+// Mirrors TYPE_CONFIG from IssueFeed.tsx so graph + feed share the same palette.
+const TYPE_COLOR: Record<GraphNodeType, string> = {
+  bug: "#ff4d5e",
+  feature: "#4169e1",
+  task: "var(--text-muted)",
+  epic: "rgba(163,113,247,0.95)",
+  chore: "var(--text-muted)",
+  decision: "var(--text-muted)",
+  molecule: "var(--text-muted)",
+};
+
+const TYPE_LABEL: Record<GraphNodeType, string> = {
+  bug: "bug",
+  feature: "feature",
+  task: "task",
+  epic: "epic",
+  chore: "chore",
+  decision: "decision",
+  molecule: "mol",
+};
+
+const STATUS_TEXT: Record<string, string> = {
+  open: "open",
+  in_progress: "in progress",
+  blocked: "blocked",
+  closed: "closed",
+  deferred: "deferred",
+};
 
 export function BeadNode({ data }: NodeProps) {
   const { node, specialist } = data as BeadNodeData;
   const isRunning = specialist?.status === "running";
-  const isBlocked = node.status === "blocked";
-  const isEpic = node.type === "epic";
+  const typeColor = TYPE_COLOR[node.type] ?? "var(--text-muted)";
+  const typeLabel = TYPE_LABEL[node.type] ?? node.type;
+  const statusLabel = node.superseded_by ? "superseded" : STATUS_TEXT[node.status] ?? node.status;
   const agentCat: AgentCategory = categoryFor(specialist?.role);
-  const classes = [
-    "g-node",
-    isBlocked ? "blkd" : "",
-    isRunning ? "act" : "",
-    isEpic ? "ep" : "",
-  ].filter(Boolean).join(" ");
+  const classes = ["g-node", isRunning ? "act" : ""].filter(Boolean).join(" ");
   return (
-    <div className={classes} data-p={node.priority} style={{ width: 220, position: "relative" }}>
+    <div className={classes} data-p={node.priority}>
       <Handle id="lt" type="target" position={Position.Left} style={HANDLE_STYLE} />
       <Handle id="ls" type="source" position={Position.Left} style={HANDLE_STYLE} />
       <Handle id="tt" type="target" position={Position.Top} style={HANDLE_STYLE} />
       <Handle id="ts" type="source" position={Position.Top} style={HANDLE_STYLE} />
       <Handle id="bt" type="target" position={Position.Bottom} style={HANDLE_STYLE} />
       <Handle id="bs" type="source" position={Position.Bottom} style={HANDLE_STYLE} />
-      <span className={`g-glyph ${glyphClass(node)}`}>{glyphChar(node)}</span>
-      <span className="g-id">
-        {idPrefix(node.id)}<b>{idSuffix(node.id)}</b>
-      </span>
-      <span className="g-tt">{node.title}</span>
-      {specialist ? (
-        <span className={`g-ag ${agentCat}`}>
-          <span className="g-ag-dot" />
-          <b>{specialist.role}</b>/{shortJobId(specialist.job_id)}
-        </span>
-      ) : null}
-      <span className={`g-tag p${node.priority}`}>P{node.priority}</span>
+      <div className="g-node-identity">
+        <span className="g-id">{node.id}</span>
+        <span className="g-sep">/</span>
+        <span className="g-tt">{node.title}</span>
+      </div>
+      <div className="g-node-class">
+        <span className="g-pri" style={{ color: typeColor }}>P{node.priority}</span>
+        <span className="g-type" style={{ color: typeColor }}>{typeLabel}</span>
+        <span className="g-state">{statusLabel}</span>
+        {specialist ? (
+          <>
+            <span className="g-sep">·</span>
+            <span className={`g-ag ${agentCat}`}>
+              <span className="g-ag-dot" />
+              <b>{specialist.role}</b>/{shortJobId(specialist.job_id)}
+            </span>
+          </>
+        ) : null}
+      </div>
       <Handle id="rt" type="target" position={Position.Right} style={HANDLE_STYLE} />
       <Handle id="rs" type="source" position={Position.Right} style={HANDLE_STYLE} />
     </div>
   );
 }
-
-function glyphChar(node: GraphNode): string {
-  if (node.superseded_by) return "✕";
-  if (node.type === "epic") return "◈";
-  return ({ open: "◯", in_progress: "◐", blocked: "◇", closed: "✓", deferred: "◇" } as Record<string, string>)[node.status] ?? "◯";
-}
-function glyphClass(node: GraphNode): string {
-  if (node.superseded_by) return "c";
-  if (node.type === "epic") return "e";
-  return ({ open: "r", in_progress: "w", blocked: "b", closed: "c", deferred: "gt" } as Record<string, string>)[node.status] ?? "r";
-}
-function idPrefix(id: string): string { const i = id.lastIndexOf("-"); return i > 0 ? id.slice(0, i + 1) : ""; }
-function idSuffix(id: string): string { const i = id.lastIndexOf("-"); return i > 0 ? id.slice(i + 1) : id; }

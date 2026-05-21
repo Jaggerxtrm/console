@@ -248,41 +248,71 @@ function OrphanStrip({ nodes }: { nodes: GraphNode[] }) {
   );
 }
 
+// Mirrors TYPE_CONFIG from IssueFeed.tsx (palette parity across graph + feed).
+const TYPE_COLOR: Record<string, string> = {
+  bug: "#ff4d5e",
+  feature: "#4169e1",
+  task: "var(--text-muted)",
+  epic: "rgba(163,113,247,0.95)",
+  chore: "var(--text-muted)",
+  decision: "var(--text-muted)",
+  molecule: "var(--text-muted)",
+};
+const TYPE_LABEL: Record<string, string> = {
+  bug: "bug", feature: "feature", task: "task", epic: "epic", chore: "chore", decision: "decision", molecule: "mol",
+};
+const STATUS_TEXT: Record<string, string> = {
+  open: "open", in_progress: "in progress", blocked: "blocked", closed: "closed", deferred: "deferred",
+};
+
 function NodeChip({ node, specialist, wide }: { node: GraphNode; specialist: GraphSpecialist | null; wide?: boolean }) {
   const isRunning = specialist?.status === "running";
-  const isEpic = node.type === "epic";
+  const typeColor = TYPE_COLOR[node.type] ?? "var(--text-muted)";
+  const typeLabel = TYPE_LABEL[node.type] ?? node.type;
+  const statusLabel = node.superseded_by ? "superseded" : STATUS_TEXT[node.status] ?? node.status;
   const agentCat: AgentCategory = categoryFor(specialist?.role);
-  const classes = [
-    "g-node",
-    "g-node-inline",
-    wide ? "g-node-wide" : "",
-    isRunning ? "act" : "",
-    node.status === "blocked" ? "blkd" : "",
-    isEpic ? "ep" : "",
-  ].filter(Boolean).join(" ");
+  const classes = ["g-node", "g-node-inline", wide ? "g-node-wide" : "", isRunning ? "act" : ""].filter(Boolean).join(" ");
   return (
     <div className={classes} data-p={node.priority}>
-      <span className={`g-glyph ${glyphClass(node)}`}>{glyphChar(node)}</span>
-      <span className="g-id">{idPrefix(node.id)}<b>{idSuffix(node.id)}</b></span>
-      <span className="g-tt">{node.title}</span>
-      {specialist ? (
-        <span className={`g-ag ${agentCat}`}>
-          <span className="g-ag-dot" />
-          <b>{specialist.role}</b>/{shortJobId(specialist.job_id)}
-        </span>
-      ) : null}
-      <span className={`g-tag p${node.priority}`}>P{node.priority}</span>
+      <div className="g-node-identity">
+        <span className="g-id">{node.id}</span>
+        <span className="g-sep">/</span>
+        <span className="g-tt">{node.title}</span>
+      </div>
+      <div className="g-node-class">
+        <span className="g-pri" style={{ color: typeColor }}>P{node.priority}</span>
+        <span className="g-type" style={{ color: typeColor }}>{typeLabel}</span>
+        <span className="g-state">{statusLabel}</span>
+        {specialist ? (
+          <>
+            <span className="g-sep">·</span>
+            <span className={`g-ag ${agentCat}`}>
+              <span className="g-ag-dot" />
+              <b>{specialist.role}</b>/{shortJobId(specialist.job_id)}
+            </span>
+          </>
+        ) : null}
+      </div>
     </div>
   );
 }
 
 function OrphanRow({ node }: { node: GraphNode }) {
+  const typeColor = TYPE_COLOR[node.type] ?? "var(--text-muted)";
+  const typeLabel = TYPE_LABEL[node.type] ?? node.type;
+  const statusLabel = node.superseded_by ? "superseded" : STATUS_TEXT[node.status] ?? node.status;
   return (
     <div className="g-orow" data-p={node.priority} title={node.title}>
-      <span className={`g-glyph ${glyphClass(node)}`}>{glyphChar(node)}</span>
-      <span className="g-id">{idPrefix(node.id)}<b>{idSuffix(node.id)}</b></span>
-      <span className="g-tt">{node.title}</span>
-      <span className={`g-tag p${node.priority}`}>P{node.priority}</span>
+      <div className="g-node-identity">
+        <span className="g-id">{node.id}</span>
+        <span className="g-sep">/</span>
+        <span className="g-tt">{node.title}</span>
+      </div>
+      <div className="g-node-class">
+        <span className="g-pri" style={{ color: typeColor }}>P{node.priority}</span>
+        <span className="g-type" style={{ color: typeColor }}>{typeLabel}</span>
+        <span className="g-state">{statusLabel}</span>
+      </div>
     </div>
   );
 }
@@ -349,15 +379,3 @@ function EmptyState({ icon, title }: { icon: ReactNode; title: string }) {
 function Status({ children }: { children: ReactNode }) {
   return <div className="g-status">{children}</div>;
 }
-function glyphChar(node: { status: string; type: string; superseded_by: string | null }): string {
-  if (node.superseded_by) return "✕";
-  if (node.type === "epic") return "◈";
-  return ({ open: "◯", in_progress: "◐", blocked: "◇", closed: "✓", deferred: "◇" } as Record<string, string>)[node.status] ?? "◯";
-}
-function glyphClass(node: { status: string; type: string; superseded_by: string | null }): string {
-  if (node.superseded_by) return "c";
-  if (node.type === "epic") return "e";
-  return ({ open: "r", in_progress: "w", blocked: "b", closed: "c", deferred: "gt" } as Record<string, string>)[node.status] ?? "r";
-}
-function idPrefix(id: string): string { const i = id.lastIndexOf("-"); return i > 0 ? id.slice(0, i + 1) : ""; }
-function idSuffix(id: string): string { const i = id.lastIndexOf("-"); return i > 0 ? id.slice(i + 1) : id; }
