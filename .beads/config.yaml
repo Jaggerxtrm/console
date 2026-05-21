@@ -2,3 +2,5 @@ dolt:
   port: 13839
   auto-start: true
   shared-server: true
+
+sync.remote: "http://159.195.49.110:50051/dawid/gitboard"
