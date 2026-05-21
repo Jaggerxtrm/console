@@ -5336,7 +5336,7 @@ body:has(.ide-shell[data-theme="light"]) { background: #fff !important; }
 .g-tag.p4 { color: var(--text-muted); opacity: 0.62; }
 
 /* running pulse on id + agent dot */
-.g-node.act .g-id b::before {
+.g-node.act .g-id::before {
   content: "";
   display: inline-block;
   width: 4px; height: 4px;
