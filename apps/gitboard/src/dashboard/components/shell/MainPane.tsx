@@ -158,27 +158,33 @@ function updateCache(fullName: string, updater: (current: GithubRepoData) => Git
   return next;
 }
 
+function mergeRepoData(current: GithubRepoData, next: GithubRepoData): GithubRepoData {
+  return {
+    ...current,
+    ...next,
+    events: mergeEvents(current.events, next.events),
+    prs: mergePrs(current.prs, next.prs),
+    issues: mergeIssues(current.issues, next.issues),
+    releases: mergeReleases(current.releases, next.releases),
+    loadedTabs: { ...current.loadedTabs, ...next.loadedTabs },
+    loadingTabs: { ...current.loadingTabs, ...next.loadingTabs },
+  };
+}
+
 function useGithubRepoData(fullName: string, tab: GithubTab): GithubRepoData {
-  const [state, setState] = useState<GithubRepoData>(() => cacheForRepo(fullName));
   const storeEvents = useGithubStore((s) => s.events);
   const storePrs = useGithubStore((s) => s.prs);
   const storeIssues = useGithubStore((s) => s.issues);
+  const storeReleases = useGithubStore((s) => s.releases);
   const liveEvents = useMemo(() => storeEvents.filter((event) => event.repo === fullName), [storeEvents, fullName]);
   const livePrs = useMemo(() => storePrs.filter((pr) => pr.repo === fullName), [storePrs, fullName]);
   const liveIssues = useMemo(() => storeIssues.filter((issue) => issue.repo === fullName), [storeIssues, fullName]);
+  const liveReleases = useMemo(() => storeReleases.filter((release) => release.repo_full_name === fullName), [storeReleases, fullName]);
+  const [state, setState] = useState<GithubRepoData>(() => mergeRepoData(cacheForRepo(fullName), { ...emptyGithubRepoData(), events: liveEvents, prs: livePrs, issues: liveIssues, releases: liveReleases }));
 
   useEffect(() => {
-    setState(cacheForRepo(fullName));
-  }, [fullName]);
-
-  useEffect(() => {
-    setState(updateCache(fullName, (current) => ({
-      ...current,
-      events: mergeEvents(current.events, liveEvents),
-      prs: mergePrs(current.prs, livePrs),
-      issues: mergeIssues(current.issues, liveIssues),
-    })));
-  }, [fullName, liveEvents, livePrs, liveIssues]);
+    setState(mergeRepoData(cacheForRepo(fullName), { ...emptyGithubRepoData(), events: liveEvents, prs: livePrs, issues: liveIssues, releases: liveReleases }));
+  }, [fullName, liveEvents, livePrs, liveIssues, liveReleases]);
 
   useEffect(() => {
     if (!isDataTab(tab)) return;

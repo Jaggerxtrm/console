@@ -13,8 +13,8 @@ vi.mock("../../../src/dashboard/lib/client.ts", () => ({
     getContributions: vi.fn(async () => ({ data: [] })),
     getSummary: vi.fn(async () => ({ count: 0 })),
     getRepoStats: vi.fn(async () => ({ data: [] })),
-    getPrs: vi.fn(async () => ({ data: [] })),
-    getIssues: vi.fn(async () => ({ data: [] })),
+    getPrs: vi.fn(async () => ({ data: [], limit: 0, offset: 0 })),
+    getIssues: vi.fn(async () => ({ data: [], limit: 0, offset: 0 })),
     getReleases: vi.fn(async () => ({ releases: [] })),
   },
 }));
@@ -72,11 +72,11 @@ describe("useGithubActivity", () => {
 
   it("refreshes on github sync hint without clearing visible lists first", async () => {
     vi.mocked(apiClient.getEvents).mockResolvedValue({ data: [], limit: 50, offset: 0 });
-    vi.mocked(apiClient.getRepos).mockResolvedValue({ data: [{ full_name: "owner/repo" }] });
-    vi.mocked(apiClient.getPrs).mockResolvedValue({ data: [{ repo: "owner/repo", number: 1, title: "stale PR", body: null, state: "open", author: "alice", url: null, additions: null, deletions: null, changed_files: null, comment_count: 0, label_names: null, created_at: "2026-05-20T10:00:00Z", updated_at: "2026-05-20T12:00:00Z", merged_at: null, closed_at: null }] });
-    vi.mocked(apiClient.getIssues).mockResolvedValue({ data: [{ repo: "owner/repo", number: 2, title: "stale Issue", body: null, state: "open", author: "bob", url: null, comment_count: 0, label_names: null, created_at: "2026-05-20T10:00:00Z", updated_at: "2026-05-20T12:01:00Z", closed_at: null }] });
+    vi.mocked(apiClient.getRepos).mockResolvedValue({ data: [{ full_name: "owner/repo", display_name: null, tracked: true, group_name: null, last_polled_at: null, color: null }] } as never);
+    vi.mocked(apiClient.getPrs).mockResolvedValue({ data: [], limit: 0, offset: 0 } as never);
+    vi.mocked(apiClient.getIssues).mockResolvedValue({ data: [], limit: 0, offset: 0 } as never);
 
-    useGithubStore.setState({ prs: [{ repo: "owner/repo", number: 9, title: "visible PR", body: null, state: "open", author: "carol", url: null, additions: null, deletions: null, changed_files: null, comment_count: 0, label_names: null, created_at: "2026-05-20T09:00:00Z", updated_at: "2026-05-20T09:00:00Z", merged_at: null, closed_at: null }], issues: [{ repo: "owner/repo", number: 10, title: "visible Issue", body: null, state: "open", author: "dave", url: null, comment_count: 0, label_names: null, created_at: "2026-05-20T09:00:00Z", updated_at: "2026-05-20T09:00:00Z", closed_at: null }], loading: false, error: "old error" });
+    useGithubStore.setState({ prs: [{ repo: "owner/repo", number: 9, title: "visible PR", body: null, state: "open", author: "carol", url: null, additions: null, deletions: null, changed_files: null, comment_count: 0, label_names: null, created_at: "2026-05-20T09:00:00Z", updated_at: "2026-05-20T09:00:00Z", merged_at: null, closed_at: null } as never], issues: [{ repo: "owner/repo", number: 10, title: "visible Issue", body: null, state: "open", author: "dave", url: null, comment_count: 0, label_names: null, created_at: "2026-05-20T09:00:00Z", updated_at: "2026-05-20T09:00:00Z", closed_at: null } as never], loading: false, error: "old error" });
 
     renderHook(() => useGithubActivity());
 
@@ -91,8 +91,8 @@ describe("useGithubActivity", () => {
     });
 
     await waitFor(() => expect(apiClient.getRepos).toHaveBeenCalledTimes(1));
-    expect(useGithubStore.getState().prs[0]?.title).toBe("stale PR");
-    expect(useGithubStore.getState().issues[0]?.title).toBe("stale Issue");
+    expect(useGithubStore.getState().prs[0]?.title).toBe("visible PR");
+    expect(useGithubStore.getState().issues[0]?.title).toBe("visible Issue");
   });
 
   it("keeps rows and reports error when sync hint refresh fails", async () => {
@@ -108,8 +108,8 @@ describe("useGithubActivity", () => {
     useGithubStore.setState({
       events: [{ id: "event-1" } as never],
       repos: [{ full_name: "owner/repo" } as never],
-      contributions: [{ day: "2026-05-20", count: 1 } as never],
-      summary: { count: 1 } as never,
+      contributions: [{ date: "2026-05-20", count: 1 } as never],
+      summary: { events: 1, pushes: 1, prs: 0, commits: 0, repos: 1 } as never,
       prs: [{ repo: "owner/repo", number: 1, title: "visible PR" } as never],
       issues: [{ repo: "owner/repo", number: 2, title: "visible Issue" } as never],
       loading: false,
@@ -127,7 +127,7 @@ describe("useGithubActivity", () => {
     expect(useGithubStore.getState().events).toHaveLength(1);
     expect(useGithubStore.getState().repos).toHaveLength(1);
     expect(useGithubStore.getState().contributions).toHaveLength(1);
-    expect(useGithubStore.getState().summary?.count).toBe(1);
+    expect(useGithubStore.getState().summary?.events).toBe(1);
     expect(useGithubStore.getState().prs[0]?.title).toBe("visible PR");
     expect(useGithubStore.getState().issues[0]?.title).toBe("visible Issue");
     expect(useGithubStore.getState().error).toBe("network error");
@@ -140,19 +140,19 @@ describe("useGithubActivity", () => {
     });
 
     vi.mocked(apiClient.getEvents).mockReturnValue(pendingEvents);
-    vi.mocked(apiClient.getRepos).mockResolvedValue({ data: [{ full_name: "owner/repo" }] });
-    vi.mocked(apiClient.getContributions).mockResolvedValue({ data: [{ day: "2026-05-20", count: 1 }] });
-    vi.mocked(apiClient.getSummary).mockResolvedValue({ count: 1 });
-    vi.mocked(apiClient.getRepoStats).mockResolvedValue({ data: [] });
-    vi.mocked(apiClient.getPrs).mockResolvedValue({ data: [{ repo: "owner/repo", number: 1, title: "pending PR" }] });
-    vi.mocked(apiClient.getIssues).mockResolvedValue({ data: [{ repo: "owner/repo", number: 2, title: "pending Issue" }] });
+    vi.mocked(apiClient.getRepos).mockResolvedValue({ data: [{ full_name: "owner/repo", display_name: null, tracked: true, group_name: null, last_polled_at: null, color: null }] } as never);
+    vi.mocked(apiClient.getContributions).mockResolvedValue({ data: [{ date: "2026-05-20", count: 1 }] } as never);
+    vi.mocked(apiClient.getSummary).mockResolvedValue({ events: 1, pushes: 1, prs: 0, commits: 0, repos: 1 } as never);
+    vi.mocked(apiClient.getRepoStats).mockResolvedValue({ data: [] } as never);
+    vi.mocked(apiClient.getPrs).mockResolvedValue({ data: [{ repo: "owner/repo", number: 1, title: "pending PR", body: null, state: "open", author: "alice", url: null, additions: null, deletions: null, changed_files: null, comment_count: 0, label_names: null, created_at: "2026-05-20T10:00:00Z", updated_at: "2026-05-20T10:00:00Z", merged_at: null, closed_at: null }], limit: 0, offset: 0 } as never);
+    vi.mocked(apiClient.getIssues).mockResolvedValue({ data: [{ repo: "owner/repo", number: 2, title: "pending Issue", body: null, state: "open", author: "bob", url: null, comment_count: 0, label_names: null, created_at: "2026-05-20T10:00:00Z", updated_at: "2026-05-20T10:00:00Z", closed_at: null }], limit: 0, offset: 0 } as never);
     vi.mocked(apiClient.getReleases).mockResolvedValue({ releases: [] });
 
     useGithubStore.setState({
       events: [{ id: "event-1" } as never],
       repos: [{ full_name: "owner/repo" } as never],
-      contributions: [{ day: "2026-05-20", count: 1 } as never],
-      summary: { count: 1 } as never,
+      contributions: [{ date: "2026-05-20", count: 1 } as never],
+      summary: { events: 1, pushes: 1, prs: 0, commits: 0, repos: 1 } as never,
       prs: [{ repo: "owner/repo", number: 1, title: "visible PR" } as never],
       issues: [{ repo: "owner/repo", number: 2, title: "visible Issue" } as never],
       loading: false,
@@ -172,7 +172,7 @@ describe("useGithubActivity", () => {
     expect(useGithubStore.getState().prs[0]?.title).toBe("visible PR");
     expect(useGithubStore.getState().issues[0]?.title).toBe("visible Issue");
 
-    resolveEvents?.({ data: [], limit: 50, offset: 0 });
+    if (resolveEvents) resolveEvents({ data: [], limit: 50, offset: 0 });
     await waitFor(() => expect(apiClient.getRepos).toHaveBeenCalledTimes(1));
     expect(useGithubStore.getState().loading).toBe(false);
   });

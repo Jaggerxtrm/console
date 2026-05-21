@@ -89,6 +89,32 @@ const pr = (repoName: string, title: string, updated_at: string): GithubPr => ({
   closed_at: null,
 });
 
+const issue = (repoName: string, title: string, updated_at: string): GithubIssue => ({
+  repo: repoName,
+  number: 8,
+  title,
+  body: null,
+  state: "open",
+  author: "alice",
+  url: null,
+  comment_count: 0,
+  label_names: null,
+  created_at: "2026-05-20T09:00:00Z",
+  updated_at,
+  closed_at: null,
+});
+
+const release = (repoName: string, name: string, published_at: string): GithubRelease => ({
+  id: `${repoName}#${name}`,
+  repo_full_name: repoName,
+  tag_name: name,
+  name,
+  body: null,
+  published_at,
+  html_url: null,
+  author_login: "alice",
+});
+
 beforeEach(() => {
   vi.clearAllMocks();
   useGithubStore.setState({ events: [], selectedEvent: null, selectedEventCommits: [], repos: [], contributions: [], summary: null, filter: {}, loading: false, error: null, repoStats: {}, unreadRepos: new Set(), prs: [], issues: [], releases: [] });
@@ -127,25 +153,55 @@ describe("MainPane GitHub tab data loading", () => {
     expect(apiClient.getReleases).not.toHaveBeenCalled();
   });
 
-  it("shows live PR upserts instantly when the PR tab has no HTTP data yet", async () => {
-    const fullName = "owner/live-visible";
-    let resolvePrs!: (value: { data: GithubPr[] }) => void;
-    apiClient.getPrs.mockReturnValueOnce(new Promise((resolve) => { resolvePrs = resolve; }));
+  it("shows cached rows immediately on tab switch", async () => {
+    const fullName = "owner/cached-visible";
+    useGithubStore.setState({ prs: [pr(fullName, "Cached PR", "2026-05-20T12:00:00Z")], issues: [issue(fullName, "Cached Issue", "2026-05-20T12:00:00Z")], releases: [release(fullName, "Cached Release", "2026-05-20T12:00:00Z")], loading: false, error: null });
     useShellStore.setState({ repos: [repo(fullName)], selection: { surface: "github", tab: "prs", repo: fullName } });
 
     render(<MainPane />);
-    expect(screen.getByText("Loading prs…")).toBeInTheDocument();
 
-    act(() => {
-      useGithubStore.getState().upsertPr(pr(fullName, "Instant WS PR", "2026-05-20T12:00:00Z"));
-    });
+    expect(screen.getByText("Cached PR")).toBeInTheDocument();
+    expect(screen.queryByText("Loading prs…")).not.toBeInTheDocument();
+  });
 
-    expect(await screen.findByText("Instant WS PR")).toBeInTheDocument();
+  it("keeps cached PR rows when slow fetch resolves empty", async () => {
+    const fullName = "owner/live-visible";
+    let resolvePrs!: (value: { data: GithubPr[] }) => void;
+    apiClient.getPrs.mockReturnValueOnce(new Promise((resolve) => { resolvePrs = resolve; }));
+    useGithubStore.setState({ prs: [pr(fullName, "Instant WS PR", "2026-05-20T12:00:00Z")], loading: false, error: null });
+    useShellStore.setState({ repos: [repo(fullName)], selection: { surface: "github", tab: "prs", repo: fullName } });
+
+    render(<MainPane />);
+    expect(screen.getByText("Instant WS PR")).toBeInTheDocument();
 
     await act(async () => {
       resolvePrs({ data: [] });
     });
+
     expect(screen.getByText("Instant WS PR")).toBeInTheDocument();
+  });
+
+  it("keeps cached PR rows when PR fetch rejects", async () => {
+    const fullName = "owner/reject-visible";
+    apiClient.getPrs.mockRejectedValueOnce(new Error("network error"));
+    useGithubStore.setState({ prs: [pr(fullName, "Cached PR", "2026-05-20T12:00:00Z")], loading: false, error: null });
+    useShellStore.setState({ repos: [repo(fullName)], selection: { surface: "github", tab: "prs", repo: fullName } });
+
+    render(<MainPane />);
+
+    expect(screen.getByText("Cached PR")).toBeInTheDocument();
+    expect(screen.queryByText("Loading prs…")).not.toBeInTheDocument();
+  });
+
+  it("shows cached releases immediately on first releases switch", async () => {
+    const fullName = "owner/release-visible";
+    useGithubStore.setState({ releases: [release(fullName, "v1.0.0", "2026-05-20T12:00:00Z")], loading: false, error: null });
+    useShellStore.setState({ repos: [repo(fullName)], selection: { surface: "github", tab: "releases", repo: fullName } });
+
+    render(<MainPane />);
+
+    expect(screen.getByText("v1.0.0")).toBeInTheDocument();
+    expect(screen.queryByText("Loading releases…")).not.toBeInTheDocument();
   });
 
   it("keeps newer live PR data when a stale HTTP response resolves later", async () => {

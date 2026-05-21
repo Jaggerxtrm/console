@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { useGithubStore } from "../../../src/dashboard/stores/github.ts";
-import type { GithubEvent, GithubRepo, Summary, RepoStat } from "../../../src/types/github.ts";
+import type { GithubEvent, GithubRepo, Summary, RepoStat, GithubPr, GithubIssue, GithubRelease } from "../../../src/types/github.ts";
 
 const evt1: GithubEvent = {
   id: "e1",
@@ -130,6 +130,40 @@ describe("setLoading / setError", () => {
     expect(useGithubStore.getState().error).toBe("oops");
     useGithubStore.getState().setError(null);
     expect(useGithubStore.getState().error).toBeNull();
+  });
+});
+
+describe("setPrs / setIssues / setReleases", () => {
+  it("keeps visible rows when refresh returns empty", () => {
+    const pr = { repo: "owner/repo", number: 1, title: "PR", body: null, state: "open", author: "alice", url: null, additions: null, deletions: null, changed_files: null, comment_count: 0, label_names: null, created_at: "2026-03-06T10:00:00Z", updated_at: "2026-03-06T10:01:00Z", merged_at: null, closed_at: null } satisfies GithubPr;
+    const issue = { repo: "owner/repo", number: 7, title: "Issue", body: null, state: "open", author: "alice", url: null, comment_count: 0, label_names: null, created_at: "2026-03-06T10:00:00Z", updated_at: "2026-03-06T10:01:00Z", closed_at: null } satisfies GithubIssue;
+    const release = { id: "r1", repo_full_name: "owner/repo", tag_name: "v1", name: "Release", body: null, published_at: "2026-03-06T10:01:00Z", html_url: null, author_login: "alice" } satisfies GithubRelease;
+
+    useGithubStore.getState().setPrs([pr]);
+    useGithubStore.getState().setIssues([issue]);
+    useGithubStore.getState().setReleases([release]);
+
+    useGithubStore.getState().setPrs([]);
+    useGithubStore.getState().setIssues([]);
+    useGithubStore.getState().setReleases([]);
+
+    expect(useGithubStore.getState().prs).toHaveLength(1);
+    expect(useGithubStore.getState().issues).toHaveLength(1);
+    expect(useGithubStore.getState().releases).toHaveLength(1);
+  });
+
+  it("clears rows on explicit clear", () => {
+    useGithubStore.getState().setPrs([{ repo: "owner/repo", number: 1, title: "PR", body: null, state: "open", author: "alice", url: null, additions: null, deletions: null, changed_files: null, comment_count: 0, label_names: null, created_at: "2026-03-06T10:00:00Z", updated_at: "2026-03-06T10:01:00Z", merged_at: null, closed_at: null }]);
+    useGithubStore.getState().setIssues([{ repo: "owner/repo", number: 7, title: "Issue", body: null, state: "open", author: "alice", url: null, comment_count: 0, label_names: null, created_at: "2026-03-06T10:00:00Z", updated_at: "2026-03-06T10:01:00Z", closed_at: null }]);
+    useGithubStore.getState().setReleases([{ id: "r1", repo_full_name: "owner/repo", tag_name: "v1", name: "Release", body: null, published_at: "2026-03-06T10:01:00Z", html_url: null, author_login: "alice" }]);
+
+    useGithubStore.getState().clearPrs();
+    useGithubStore.getState().clearIssues();
+    useGithubStore.getState().clearReleases();
+
+    expect(useGithubStore.getState().prs).toHaveLength(0);
+    expect(useGithubStore.getState().issues).toHaveLength(0);
+    expect(useGithubStore.getState().releases).toHaveLength(0);
   });
 });
 

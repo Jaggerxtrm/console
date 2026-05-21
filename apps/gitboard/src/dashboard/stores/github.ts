@@ -45,10 +45,13 @@ export interface GithubState {
   markRepoUnread: (fullName: string) => void;
   clearRepoUnread: (fullName: string) => void;
   setPrs: (prs: GithubPr[]) => void;
+  clearPrs: () => void;
   upsertPr: (pr: GithubPr) => void;
   setIssues: (issues: GithubIssue[]) => void;
+  clearIssues: () => void;
   upsertIssue: (issue: GithubIssue) => void;
   setReleases: (releases: GithubRelease[]) => void;
+  clearReleases: () => void;
 }
 
 const defaultFilter: EventFilter = {};
@@ -124,17 +127,23 @@ export const useGithubStore = create<GithubState>((set) => ({
     return { unreadRepos: next };
   }),
 
-  setPrs: (prs) => set({ prs }),
+  setPrs: (prs) => set((s) => (prs.length === 0 && s.prs.length > 0 ? s : { prs })),
+
+  clearPrs: () => set({ prs: [] }),
 
   upsertPr: (pr) => set((s) => ({
     prs: [pr, ...s.prs.filter((item) => !(item.repo === pr.repo && item.number === pr.number))].sort((a, b) => (b.updated_at ?? b.created_at).localeCompare(a.updated_at ?? a.created_at)),
   })),
 
-  setIssues: (issues) => set({ issues }),
+  setIssues: (issues) => set((s) => (issues.length === 0 && s.issues.length > 0 ? s : { issues })),
+
+  clearIssues: () => set({ issues: [] }),
 
   upsertIssue: (issue) => set((s) => ({
     issues: [issue, ...s.issues.filter((item) => !(item.repo === issue.repo && item.number === issue.number))].sort((a, b) => (b.updated_at ?? b.created_at).localeCompare(a.updated_at ?? a.created_at)),
   })),
 
-  setReleases: (releases) => set({ releases }),
+  setReleases: (releases) => set((s) => (releases.length === 0 && s.releases.length > 0 ? s : { releases })),
+
+  clearReleases: () => set({ releases: [] }),
 }));
