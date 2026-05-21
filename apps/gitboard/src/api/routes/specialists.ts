@@ -144,9 +144,15 @@ async function refreshInFlight(
   limit: number,
   key: string,
 ): Promise<CachedValue<{ in_flight: SpecialistJob[]; recent_history: SpecialistJob[]; jobs: SpecialistJob[]; epoch: Record<string, number> }>> {
-  const inFlight = dao.inFlightJobs().slice(0, 200);
-  const recentHistory = dao.recentJobs(limit).slice(0, limit);
-  return writeCache(key, { in_flight: inFlight, recent_history: recentHistory, jobs: inFlight, epoch: repoEpochs(repos, epochGetter) });
+  const refreshableDao = dao as SpecialistsDao & { refreshInFlight?: (limit: number) => Promise<{ in_flight: SpecialistJob[]; recent_history: SpecialistJob[]; jobs: SpecialistJob[] }> };
+  const value = refreshableDao.refreshInFlight
+    ? await refreshableDao.refreshInFlight(limit)
+    : {
+        in_flight: dao.inFlightJobs().slice(0, 200),
+        recent_history: dao.recentJobs(limit).slice(0, limit),
+        jobs: dao.inFlightJobs().slice(0, 200),
+      };
+  return writeCache(key, { ...value, epoch: repoEpochs(repos, epochGetter) });
 }
 
 async function refreshChain(dao: SpecialistsDao, chainId: string, key: string): Promise<CachedValue<{ chain: { jobs: SpecialistChain[] } }>> {

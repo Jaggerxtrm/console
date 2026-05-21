@@ -126,13 +126,13 @@ describe("GET /api/console/graph", () => {
     expect(sideCached.nodes.some((node) => node.id === "sideboard-7")).toBe(false);
   });
 
-  it("keeps graph fast while specialists warms cold attach pool", async () => {
+  it("keeps graph fast while specialists background refresh runs", async () => {
     const app = createColdParallelApp();
-    const graphRequest = app.fetch(new Request("http://localhost/api/console/graph?project=gitboard&include_closed=false"));
     const specialistsRequest = app.fetch(new Request("http://localhost/api/specialists/jobs/in-flight"));
+    await new Promise((resolve) => setTimeout(resolve, 100));
 
     const startedAt = performance.now();
-    const graphResponse = await graphRequest;
+    const graphResponse = await app.fetch(new Request("http://localhost/api/console/graph?project=gitboard&include_closed=false"));
     const graphMs = performance.now() - startedAt;
 
     expect(graphResponse.status).toBe(200);

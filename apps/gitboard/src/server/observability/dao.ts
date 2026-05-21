@@ -1,6 +1,12 @@
 import type { Database } from "bun:sqlite";
 import type { AttachPoolLike, EpicRun, SpecialistChain, SpecialistJob } from "./types.js";
 
+type JobQuery = {
+  whereSql: string;
+  orderSql: string;
+  params: readonly string[];
+};
+
 const IN_FLIGHT_STATUSES = ["starting", "running", "waiting"] as const;
 const HISTORY_STATUSES = ["done", "error", "cancelled"] as const;
 const JOB_COLUMNS_BASE = "job_id, bead_id, chain_id, epic_id, chain_kind, status, updated_at_ms, specialist";
@@ -17,11 +23,16 @@ const slugHasMetrics = new Map<string, boolean>();
 
 export function createObservabilityDao(pool: AttachPoolLike) {
   return {
-    jobsByBead: (beadId: string) => sortDesc(readJobs(pool, `WHERE bead_id = ?`, ``, [beadId])),
-    inFlightJobs: () => sortDesc(readJobs(pool, `WHERE status IN (${IN_FLIGHT_STATUSES.map(() => "?").join(",")})`, ``, [...IN_FLIGHT_STATUSES])),
-    recentJobs: (limit: number) => sortDesc(readJobs(pool, `WHERE status IN (${HISTORY_STATUSES.map(() => "?").join(",")})`, ``, [...HISTORY_STATUSES])).slice(0, limit),
-    chainById: (chainId: string) => sortChain(readJobs(pool, `WHERE chain_id = ?`, ``, [chainId])) as SpecialistChain[],
-    epicById: (epicId: string) => sortAsc(readJobs(pool, `WHERE epic_id = ?`, ``, [epicId])) as EpicRun[],
+    jobsByBead: (beadId: string) => sortDesc(readJobs(pool, { whereSql: `WHERE bead_id = ?`, orderSql: ``, params: [beadId] })),
+    inFlightJobs: () => sortDesc(readJobs(pool, { whereSql: `WHERE status IN (${IN_FLIGHT_STATUSES.map(() => "?").join(",")})`, orderSql: ``, params: [...IN_FLIGHT_STATUSES] })),
+    recentJobs: (limit: number) => sortDesc(readJobs(pool, { whereSql: `WHERE status IN (${HISTORY_STATUSES.map(() => "?").join(",")})`, orderSql: ``, params: [...HISTORY_STATUSES] })).slice(0, limit),
+    chainById: (chainId: string) => sortChain(readJobs(pool, { whereSql: `WHERE chain_id = ?`, orderSql: ``, params: [chainId] })) as SpecialistChain[],
+    epicById: (epicId: string) => sortAsc(readJobs(pool, { whereSql: `WHERE epic_id = ?`, orderSql: ``, params: [epicId] })) as EpicRun[],
+    refreshInFlight: async (limit: number) => {
+      const inFlight = await readJobsChunked(pool, { whereSql: `WHERE status IN (${IN_FLIGHT_STATUSES.map(() => "?").join(",")})`, orderSql: ``, params: [...IN_FLIGHT_STATUSES] });
+      const recentHistory = (await readJobsChunked(pool, { whereSql: `WHERE status IN (${HISTORY_STATUSES.map(() => "?").join(",")})`, orderSql: ``, params: [...HISTORY_STATUSES] })).slice(0, limit);
+      return { in_flight: sortDesc(inFlight), recent_history: sortDesc(recentHistory), jobs: sortDesc(inFlight) };
+    },
   };
 }
 
@@ -47,7 +58,7 @@ function sortChain(rows: SpecialistJob[]): SpecialistJob[] {
   });
 }
 
-function readJobs(pool: AttachPoolLike, whereSql: string, orderSql: string, params: readonly string[]): SpecialistJob[] {
+function readJobs(pool: AttachPoolLike, query: JobQuery): SpecialistJob[] {
   return pool.withAttached((db, attached) => {
     if (attached.length === 0) return [];
 
@@ -85,19 +96,61 @@ function readJobs(pool: AttachPoolLike, whereSql: string, orderSql: string, para
             : "NULL AS m_tools";
       const modelExpr = hasMetrics ? "m.model AS m_model" : "NULL AS m_model";
       const baseCols = JOB_COLUMNS_BASE.split(", ").map((col) => `j.${col}`).join(", ");
-      const query = `
+      const querySql = `
         SELECT '${escapeSql(slug)}' AS repoSlug, ${baseCols}, ${lastOutputExpr}, ${turnsExpr}, ${toolsExpr}, ${modelExpr}
         FROM ${alias}.specialist_jobs AS j
         ${metricsJoin}
         ${eventsJoin}
-        ${whereSql.replace(/\b(job_id|bead_id|chain_id|epic_id|chain_kind|status|updated_at_ms|specialist)\b/g, "j.$1")}
-        ${orderSql}
+        ${query.whereSql.replace(/\b(job_id|bead_id|chain_id|epic_id|chain_kind|status|updated_at_ms|specialist)\b/g, "j.$1")}
+        ${query.orderSql}
       `;
-      return db.prepare(query).all(...params) as Array<Record<string, unknown>>;
+      return db.prepare(querySql).all(...query.params) as Array<Record<string, unknown>>;
     });
 
     return rows.map(mapRow);
   });
+}
+
+async function readJobsChunked(pool: AttachPoolLike, query: JobQuery): Promise<SpecialistJob[]> {
+  const rows: SpecialistJob[] = [];
+  await pool.withAttached(async (db, attached) => {
+    if (attached.length === 0) return;
+
+    let processed = 0;
+    for (const { alias, slug } of attached) {
+      const lastOutputExpr = hasLastOutputColumn(db, alias, slug) ? "j.last_output" : "NULL AS last_output";
+      const hasMetrics = hasMetricsTable(db, alias, slug);
+      const hasEvents = hasEventsTable(db, alias, slug);
+      const eventsJoin = hasEvents
+        ? `LEFT JOIN (
+            SELECT job_id,
+              COUNT(CASE WHEN type = 'turn' THEN 1 END) AS turn_count,
+              COUNT(CASE WHEN type = 'tool' THEN 1 END) AS tool_count
+            FROM ${alias}.specialist_events
+            GROUP BY job_id
+          ) AS e ON e.job_id = j.job_id`
+        : "";
+      const metricsJoin = hasMetrics
+        ? `LEFT JOIN ${alias}.specialist_job_metrics AS m ON m.job_id = j.job_id`
+        : "";
+      const turnsExpr = hasMetrics && hasEvents ? "COALESCE(m.total_turns, e.turn_count) AS m_turns" : hasMetrics ? "m.total_turns AS m_turns" : hasEvents ? "e.turn_count AS m_turns" : "NULL AS m_turns";
+      const toolsExpr = hasMetrics && hasEvents ? "COALESCE(m.total_tools, e.tool_count) AS m_tools" : hasMetrics ? "m.total_tools AS m_tools" : hasEvents ? "e.tool_count AS m_tools" : "NULL AS m_tools";
+      const modelExpr = hasMetrics ? "m.model AS m_model" : "NULL AS m_model";
+      const baseCols = JOB_COLUMNS_BASE.split(", ").map((col) => `j.${col}`).join(", ");
+      const querySql = `
+        SELECT '${escapeSql(slug)}' AS repoSlug, ${baseCols}, ${lastOutputExpr}, ${turnsExpr}, ${toolsExpr}, ${modelExpr}
+        FROM ${alias}.specialist_jobs AS j
+        ${metricsJoin}
+        ${eventsJoin}
+        ${query.whereSql.replace(/\b(job_id|bead_id|chain_id|epic_id|chain_kind|status|updated_at_ms|specialist)\b/g, "j.$1")}
+        ${query.orderSql}
+      `;
+      rows.push(...(db.prepare(querySql).all(...query.params) as Array<Record<string, unknown>>).map(mapRow));
+      processed += 1;
+      if (processed % 5 === 0) await yieldToEventLoop();
+    }
+  });
+  return rows;
 }
 
 function hasLastOutputColumn(db: Database, alias: string, slug: string): boolean {
@@ -163,4 +216,8 @@ function mapRow(row: Record<string, unknown>): SpecialistJob {
 
 function escapeSql(value: string): string {
   return value.replaceAll("'", "''");
+}
+
+function yieldToEventLoop(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve));
 }
