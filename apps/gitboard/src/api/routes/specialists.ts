@@ -3,6 +3,7 @@ import { createAttachPool } from "../../server/observability/attach-pool.ts";
 import { createObservabilityDao } from "../../server/observability/dao.ts";
 import { get as getEpoch } from "../../server/observability/epoch.ts";
 import { listRepos } from "../../server/observability/registry.ts";
+import type { RepoEntry } from "../../server/observability/registry.ts";
 import type { AttachPoolLike, SpecialistChain, SpecialistJob } from "../../server/observability/types.ts";
 
 export interface SpecialistsDao {
@@ -12,7 +13,8 @@ export interface SpecialistsDao {
   chainById(chainId: string): SpecialistChain[];
 }
 
-type SpecialistRepoSummary = ReadonlyArray<{ repoSlug: string }>;
+type SpecialistRepoSummary = ReadonlyArray<Pick<RepoEntry, "repoSlug">>;
+type SpecialistRepoList = ReadonlyArray<RepoEntry>;
 
 type DefaultDaoBundle = {
   dao: SpecialistsDao;
@@ -33,7 +35,7 @@ const LIVE_JOBS_CACHE_TTL_MS = 500;
 const DETAIL_CACHE_TTL_MS = 1_000;
 
 export interface SpecialistsRouterOptions {
-  listRepos?: () => ReadonlyArray<{ repoSlug: string }>;
+  listRepos?: () => SpecialistRepoList;
   getEpoch?: (repoSlug: string) => number;
 }
 
@@ -45,7 +47,7 @@ export function createSpecialistsRouter(
   const repoLister = options.listRepos ?? listRepos;
   const epochGetter = options.getEpoch ?? getEpoch;
   const resolve = () => dao
-    ? { dao, repos: repoLister() as SpecialistRepoSummary }
+    ? { dao, repos: summarizeRepos(repoLister()) }
     : getDefaultBundle(repoLister, epochGetter);
   let jobsByBeadCache: CachedValue<{ jobs: SpecialistJob[] }> | null = null;
   let inFlightCache: CachedValue<{ in_flight: SpecialistJob[]; recent_history: SpecialistJob[]; jobs: SpecialistJob[]; epoch: Record<string, number> }> | null = null;
@@ -104,6 +106,10 @@ function parseLimit(value: string | undefined, fallback: number): number {
   return Number.isFinite(parsed) && parsed > 0 ? Math.min(Math.floor(parsed), 200) : fallback;
 }
 
+function summarizeRepos(repos: SpecialistRepoList): SpecialistRepoSummary {
+  return repos.map((repo) => ({ repoSlug: repo.repoSlug }));
+}
+
 function repoEpochs(repos: SpecialistRepoSummary, epochGetter: (repoSlug: string) => number): Record<string, number> {
   return Object.fromEntries(repos.map((repo) => [repo.repoSlug, epochGetter(repo.repoSlug)]));
 }
@@ -122,13 +128,13 @@ function writeCache<T>(key: string, value: T, ttlMs: number): CachedValue<T> {
   return { key, value, expiresAt: Date.now() + ttlMs };
 }
 
-function getDefaultBundle(repoLister: () => ReadonlyArray<{ repoSlug: string }>, epochGetter: (repoSlug: string) => number): DefaultDaoBundle {
+function getDefaultBundle(repoLister: () => SpecialistRepoList, epochGetter: (repoSlug: string) => number): DefaultDaoBundle {
   const now = Date.now();
   const repos = repoLister();
   const key = cacheKey("bundle", repos, epochGetter);
   if (defaultBundle && defaultBundle.key === key && now - defaultBundle.createdAt < DEFAULT_DAO_TTL_MS) return defaultBundle;
 
-  const pool: AttachPoolLike = createAttachPool(repos as Parameters<typeof createAttachPool>[0]);
-  defaultBundle = { dao: createObservabilityDao(pool), repos, createdAt: now, key };
+  const pool: AttachPoolLike = createAttachPool(repos);
+  defaultBundle = { dao: createObservabilityDao(pool), repos: summarizeRepos(repos), createdAt: now, key };
   return defaultBundle;
 }

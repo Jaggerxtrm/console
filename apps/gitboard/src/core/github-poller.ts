@@ -47,6 +47,7 @@ interface ApiGetResult<T> {
 interface RepoEndpointPollResult {
   watermark: string | null;
   etag: string | null;
+  successful: boolean;
 }
 
 export function getGithubToken(): string {
@@ -234,7 +235,7 @@ export class GithubPoller {
     const retryAfter = Number(response.headers.get("Retry-After") ?? NaN);
     const resetSeconds = Number(response.headers.get("X-RateLimit-Reset") ?? NaN);
     if ((response.status === 403 || response.status === 429) && Number.isFinite(retryAfter)) {
-      this.pausedUntil = Date.now() + retryAfter * 1000;
+      this.pausedUntil = Math.max(this.pausedUntil, Date.now() + retryAfter * 1000);
       emit(makeLogEntry("poller", "rate_limit.changed", "warn", undefined, { status: response.status, retryAfter, pausedUntil: this.pausedUntil }));
       return true;
     }
@@ -247,11 +248,11 @@ export class GithubPoller {
     const rate = this.parseRateLimit(response);
     if (!rate) return false;
     if (rate.remaining < 500) {
-      this.pausedUntil = Date.now() + 60_000;
+      this.pausedUntil = Math.max(this.pausedUntil, Date.now() + 60_000);
       emit(makeLogEntry("poller", "rate_limit.changed", "warn", undefined, { remaining: rate.remaining, limit: rate.limit, pausedUntil: this.pausedUntil }));
       return true;
     }
-    if (this.pausedUntil > 0 && rate.remaining > rate.limit * 0.8) {
+    if (this.pausedUntil > 0 && this.pausedUntil <= Date.now() && rate.remaining > rate.limit * 0.8) {
       this.pausedUntil = 0;
     }
     return false;
@@ -423,9 +424,9 @@ export class GithubPoller {
       const endpoint = page === 1 ? "issues" : `issues:page:${page}`;
       const result = await this.apiGetWithMeta<IssueResponse[]>(`/repos/${repo}/issues?state=all&since=${encodeURIComponent(watermark ?? "1970-01-01T00:00:00Z")}&per_page=100&page=${page}`, repo, endpoint, page === 1 ? persistedEtag : undefined);
       if (page === 1) latestEtag = result.etag;
-      if (result.status === "not_modified") return { watermark: latest, etag: latestEtag };
+      if (result.status === "not_modified") return { watermark: latest, etag: latestEtag, successful: true };
       const items = result.data;
-      if (!items) return { watermark: latest, etag: latestEtag };
+      if (!items) return { watermark: latest, etag: latestEtag, successful: false };
       let watermarkHit = false;
       for (const item of items) {
         if (item.pull_request) continue;
@@ -450,9 +451,9 @@ export class GithubPoller {
         if (changed || !existing) this.publishGithubEvent("github:issue.upsert", issue, issue.updated_at ?? issue.created_at);
         latest = latest === null || item.updated_at > latest ? item.updated_at : latest;
       }
-      if (watermarkHit || items.length < 100 || this.pausedUntil > Date.now()) return { watermark: latest, etag: latestEtag };
+      if (watermarkHit || items.length < 100 || this.pausedUntil > Date.now()) return { watermark: latest, etag: latestEtag, successful: true };
     }
-    return { watermark: latest, etag: latestEtag };
+    return { watermark: latest, etag: latestEtag, successful: true };
   }
 
   private async pollPullRequests(repo: string, watermark: string | null, persistedEtag?: string | null): Promise<RepoEndpointPollResult> {
@@ -478,9 +479,9 @@ export class GithubPoller {
       const endpoint = page === 1 ? "pulls" : `pulls:page:${page}`;
       const result = await this.apiGetWithMeta<PullsResponse[]>(`/repos/${repo}/pulls?state=all&sort=updated&direction=desc&per_page=100&page=${page}`, repo, endpoint, page === 1 ? persistedEtag : undefined);
       if (page === 1) latestEtag = result.etag;
-      if (result.status === "not_modified") return { watermark: latest, etag: latestEtag };
+      if (result.status === "not_modified") return { watermark: latest, etag: latestEtag, successful: true };
       const prs = result.data;
-      if (!prs) return { watermark: latest, etag: latestEtag };
+      if (!prs) return { watermark: latest, etag: latestEtag, successful: false };
       let watermarkHit = false;
       for (const pr of prs) {
         if (this.shouldStopOnWatermark(pr.updated_at, watermark)) { watermarkHit = true; break; }
@@ -508,9 +509,9 @@ export class GithubPoller {
         if (changed || !existing) this.publishGithubEvent("github:pr.upsert", record, record.updated_at ?? record.created_at);
         latest = latest === null || pr.updated_at > latest ? pr.updated_at : latest;
       }
-      if (watermarkHit || prs.length < 100 || this.pausedUntil > Date.now()) return { watermark: latest, etag: latestEtag };
+      if (watermarkHit || prs.length < 100 || this.pausedUntil > Date.now()) return { watermark: latest, etag: latestEtag, successful: true };
     }
-    return { watermark: latest, etag: latestEtag };
+    return { watermark: latest, etag: latestEtag, successful: true };
   }
 
   private isRepoDue(repo: GithubRepo, state: ReturnType<typeof getRepoPollState>, now = Date.now()): boolean {
@@ -547,7 +548,9 @@ export class GithubPoller {
       pr_etag: prResult.etag ?? state.pr_etag,
       paused_until: this.pausedUntil > Date.now() ? new Date(this.pausedUntil).toISOString() : null,
     });
-    this.markRepoPolled(repo.full_name, polledAt);
+    if (issueResult.successful && prResult.successful) {
+      this.markRepoPolled(repo.full_name, polledAt);
+    }
   }
 
   async pollRepos(): Promise<void> {

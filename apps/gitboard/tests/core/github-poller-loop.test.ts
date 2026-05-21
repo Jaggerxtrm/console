@@ -103,6 +103,24 @@ describe("GithubPoller loop", () => {
     expect(new Date(state.paused_until ?? "").getTime()).toBeGreaterThanOrEqual(startedAt + 3_000);
   });
 
+  it("keeps the longest rate-limit pause under concurrent responses", async () => {
+    const poller = new GithubPoller(db, "token");
+    const pollerInternals = poller as unknown as { maybePauseForRateLimit(response: Response): boolean; pausedUntil: number };
+
+    pollerInternals.maybePauseForRateLimit(new Response("{}", {
+      status: 429,
+      headers: { "Retry-After": "10", "X-RateLimit-Remaining": "0", "X-RateLimit-Limit": "5000" },
+    }));
+    const longestPause = pollerInternals.pausedUntil;
+
+    pollerInternals.maybePauseForRateLimit(new Response("{}", {
+      status: 429,
+      headers: { "Retry-After": "1", "X-RateLimit-Remaining": "0", "X-RateLimit-Limit": "5000" },
+    }));
+
+    expect(pollerInternals.pausedUntil).toBe(longestPause);
+  });
+
   it("processes due repos with bounded concurrency instead of sleeping between repos", async () => {
     let active = 0;
     let maxActive = 0;
@@ -143,6 +161,20 @@ describe("GithubPoller loop", () => {
     const state = getRepoPollState(db, repo);
     expect(state.last_activity_at).toBeNull();
     expect(db.query<{ last_polled_at: string | null }, []>("SELECT last_polled_at FROM github_repos WHERE full_name = 'owner/repo'").get()?.last_polled_at).not.toBeNull();
+  });
+
+  it("does not record poll time when GitHub requests fail", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : (input as Request).url;
+      if (url.includes("/issues")) return mockResponse({ message: "temporary failure" }, { status: 500 });
+      return mockResponse([]);
+    });
+
+    db.prepare("INSERT INTO github_repos (full_name, display_name, tracked) VALUES ('owner/repo', 'repo', 1)").run();
+    const poller = new GithubPoller(db, "token");
+    await poller.pollRepos();
+
+    expect(db.query<{ last_polled_at: string | null }, []>("SELECT last_polled_at FROM github_repos WHERE full_name = 'owner/repo'").get()?.last_polled_at).toBeNull();
   });
 
   it("persists ETags and reuses them on the next due poll", async () => {
