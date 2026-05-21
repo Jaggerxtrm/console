@@ -37,7 +37,7 @@ const EDGE_TYPES = { custom: CustomEdge };
 export function Graph() {
   const selection = useShellStore(selectSelection);
   const projectId = selection.repo ? selection.repo.split("/").pop() ?? null : null;
-  const { loading, error, data } = useGraphData(projectId);
+  const { loading, error, data, reload } = useGraphData(projectId);
   const [showParent, setShowParent] = useState(true);
   const [showRelated, setShowRelated] = useState(true);
   const [revealDeferred, setRevealDeferred] = useState(false);
@@ -64,8 +64,13 @@ export function Graph() {
   if (!projectId) return <EmptyState icon={<ProjectIcon size={12} />} title="No beads in this project" />;
   if (loading && !partition) return <Status>Loading graph…</Status>;
   if (error) return <Status>{error}</Status>;
-  if (!partition || (partition.clusters.length === 0 && partition.orphans.length === 0 && partition.wip.length === 0)) {
-    return <EmptyState icon={<ProjectIcon size={12} />} title="No beads in this project" />;
+
+  const freshness = data?.freshness ?? "stale";
+  const isEmpty = !partition || (partition.clusters.length === 0 && partition.orphans.length === 0 && partition.wip.length === 0);
+  if (isEmpty) {
+    if (freshness === "fresh") return <EmptyState icon={<ProjectIcon size={12} />} title="No beads in this project" />;
+    if (freshness === "degraded") return <EmptyState icon={<ProjectIcon size={12} />} title="Graph data unavailable — last refresh failed" action={<button type="button" className="g-empty-btn" onClick={() => void reload({ refresh: true, force: true })}>Retry</button>} />;
+    return <Status>Loading project graph… Background refresh in progress.</Status>;
   }
 
   const runningCount = [...specialistByBead.values()].filter((s) => s.status === "running").length;
@@ -373,8 +378,8 @@ function Foot() {
 // Helpers
 // ============================================================================
 
-function EmptyState({ icon, title }: { icon: ReactNode; title: string }) {
-  return <div className="g-empty"><span>{icon}</span><div>{title}</div></div>;
+function EmptyState({ icon, title, action }: { icon: ReactNode; title: string; action?: ReactNode }) {
+  return <div className="g-empty"><span>{icon}</span><div>{title}</div>{action ? <div>{action}</div> : null}</div>;
 }
 function Status({ children }: { children: ReactNode }) {
   return <div className="g-status">{children}</div>;

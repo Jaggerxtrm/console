@@ -27,6 +27,7 @@ const graph = (id: string): GraphResponse => ({
 beforeEach(() => {
   wsHandler = null;
   vi.restoreAllMocks();
+  vi.useRealTimers();
 });
 
 describe("useGraphData", () => {
@@ -41,6 +42,22 @@ describe("useGraphData", () => {
 
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("schedules one refetch for stale empty graph data", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ ...graph("gitboard"), freshness: "stale" }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ ...graph("gitboard"), freshness: "stale" }) });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderHook(() => useGraphData("gitboard"));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    await act(async () => { await vi.advanceTimersByTimeAsync(800); });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    await act(async () => { await vi.advanceTimersByTimeAsync(800); });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("invalidates and refreshes on beads sync hints for the selected project", async () => {

@@ -28,10 +28,13 @@ export interface GraphSpecialist {
   updated_at: string;
 }
 
+export type GraphFreshness = "fresh" | "stale" | "degraded";
+
 export interface GraphResponse {
   project_id: string;
   repo_slug: string;
   generated_at: string;
+  freshness?: GraphFreshness;
   nodes: GraphNode[];
   edges: GraphEdge[];
   specialists: GraphSpecialist[];

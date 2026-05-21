@@ -2,6 +2,7 @@
   "project_id": "gitboard",
   "repo_slug": "gitboard",
   "generated_at": "2026-05-20T00:00:00.000Z",
+  "freshness": "fresh",
   "nodes": [
     {
       "id": "forge-a1",
