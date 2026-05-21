@@ -80,16 +80,19 @@ export function createAttachPool(entries: readonly RepoEntry[], options: PoolOpt
 
   function attachRepo(entry: RepoEntry): boolean {
     const alias = `repo_${entry.repoSlug.replaceAll(/[^a-zA-Z0-9]/g, "_")}_${aliasCounter++}`;
+    const probe = new Database(entry.dbPath, { readonly: true });
     let pragma: number;
     try {
-      pragma = readSchemaVersion(entry.dbPath);
+      pragma = readSchemaVersion(probe);
+      if (!isCompatible(probe)) {
+        markDead(entry, `schema_version ${pragma} incompatible or missing required tables`);
+        return false;
+      }
     } catch (err) {
       markDead(entry, `probe failed (${errorMessage(err)})`);
       return false;
-    }
-    if (!isCompatible(pragma)) {
-      markDead(entry, `schema_version ${pragma} incompatible`);
-      return false;
+    } finally {
+      probe.close();
     }
 
     try {
@@ -115,19 +118,9 @@ export function createAttachPool(entries: readonly RepoEntry[], options: PoolOpt
     dead.set(entry.dbPath, { reason });
   }
 
-  function readSchemaVersion(path: string): number {
-    // We read sp's observability dbs which evolve schema versions over time.
-    // The actual contract that matters is column shape on specialist_jobs, not the version number.
-    // Return 1 if the table exists (compatible), 0 otherwise (skip).
-    const probe = new Database(path, { readonly: true });
-    try {
-      const hasJobsTable = probe.prepare(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='specialist_jobs'",
-      ).get();
-      return hasJobsTable ? 1 : 0;
-    } finally {
-      probe.close();
-    }
+  function readSchemaVersion(db: Database): number {
+    const row = db.prepare("PRAGMA schema_version").get() as { schema_version?: number } | undefined;
+    return typeof row?.schema_version === "number" ? row.schema_version : 0;
   }
 
   function errorMessage(err: unknown): string {

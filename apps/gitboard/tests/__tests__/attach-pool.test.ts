@@ -1,59 +1,89 @@
-import { describe, expect, it, vi } from "vitest";
-import { createAttachPool } from "../../src/server/observability/attach-pool.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { Database } from "bun:sqlite";
+import { createAttachPool } from "../../src/server/observability/attach-pool.ts";
 
-const FIXTURES = [
-  {
-    repoSlug: "repo-a",
-    repoPath: "fixtures/repo-a",
-    dbPath: new URL("./fixtures/observability/repo-a.db", import.meta.url).pathname,
-    mtimeMs: 1,
-  },
-  {
-    repoSlug: "repo-b",
-    repoPath: "fixtures/repo-b",
-    dbPath: new URL("./fixtures/observability/repo-b.db", import.meta.url).pathname,
-    mtimeMs: 1,
-  },
-  {
-    repoSlug: "repo-c",
-    repoPath: "fixtures/repo-c",
-    dbPath: new URL("./fixtures/observability/repo-c.db", import.meta.url).pathname,
-    mtimeMs: 1,
-  },
-] as const;
+function seedObservabilityDb(path: string, rows: Array<{ beadId: string; status: string; updatedAtMs: number }>): void {
+  const db = new Database(path, { create: true });
+  try {
+    createRequiredSchema(db);
+    insertRows(db, rows);
+  } finally {
+    db.close();
+  }
+}
+
+function seedObservabilityDbWithoutJobsTable(path: string): void {
+  const db = new Database(path, { create: true });
+  try {
+    db.exec("CREATE TABLE unrelated_table (id INTEGER PRIMARY KEY);");
+  } finally {
+    db.close();
+  }
+}
+
+function createRequiredSchema(db: Database): void {
+  db.exec(`
+    CREATE TABLE specialist_jobs (
+      job_id TEXT PRIMARY KEY,
+      bead_id TEXT NOT NULL,
+      chain_id TEXT,
+      epic_id TEXT,
+      chain_kind TEXT,
+      status TEXT NOT NULL,
+      updated_at_ms INTEGER NOT NULL,
+      specialist TEXT
+    );
+  `);
+}
+
+function insertRows(db: Database, rows: Array<{ beadId: string; status: string; updatedAtMs: number }>): void {
+  const insert = db.prepare("INSERT INTO specialist_jobs (job_id, bead_id, chain_id, epic_id, chain_kind, status, updated_at_ms, specialist) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+  let index = 0;
+  for (const row of rows) {
+    index += 1;
+    insert.run(`job-${index}`, row.beadId, null, null, null, row.status, row.updatedAtMs, "executor");
+  }
+}
 
 describe("createAttachPool", () => {
-  it("attaches only compatible dbs", () => {
-    const warn = vi.fn();
-    const pool = createAttachPool(FIXTURES, { logger: { warn } });
+  const roots: string[] = [];
 
-    const attached = pool.withAttached((db) => {
-      return (db
-        .prepare("PRAGMA database_list")
-        .all() as Array<{ name?: string }>)
-        .filter((row) => row.name?.startsWith("repo_"));
-    });
-
-    expect(attached).toHaveLength(2);
-    expect(attached.map((row: { name?: string }) => row.name)).toEqual([
-      "repo_repo-a_0",
-      "repo_repo-b_1",
-    ]);
-    expect(warn).toHaveBeenCalledTimes(1);
-    expect(String(warn.mock.calls[0]?.[0])).toContain("repo-c");
+  afterEach(() => {
+    for (const root of roots) rmSync(root, { recursive: true, force: true });
+    roots.length = 0;
   });
 
-  it("evicts least-recently used attachment when pool size exceeded", () => {
-    const pool = createAttachPool(FIXTURES.slice(0, 2), { maxAttached: 1, logger: { warn: vi.fn() } });
+  it("rejects v0 db missing specialist_jobs table", () => {
+    const root = mkdtempSync(join(tmpdir(), "gitboard-attach-pool-"));
+    roots.push(root);
+    const dbPath = join(root, "observability.db");
+    seedObservabilityDbWithoutJobsTable(dbPath);
+    const warn = vi.fn();
+    const pool = createAttachPool([
+      { repoSlug: "repo-a", repoPath: root, dbPath, mtimeMs: 0 },
+    ], { logger: { warn } });
 
-    const attached = pool.withAttached((db) => {
-      return (db
-        .prepare("PRAGMA database_list")
-        .all() as Array<{ name?: string }>)
-        .filter((row) => row.name?.startsWith("repo_"))
-        .map((row) => row.name);
-    });
+    const attached = pool.withAttached((db, repos) => ({ count: repos.length, rows: db.prepare("PRAGMA database_list").all() }));
 
-    expect(attached).toEqual(["repo_repo-b_1"]);
+    expect(attached.count).toBe(0);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0]?.[0])).toContain("schema_version");
+  });
+
+  it("accepts v0 db with required observability tables", () => {
+    const root = mkdtempSync(join(tmpdir(), "gitboard-attach-pool-"));
+    roots.push(root);
+    const dbPath = join(root, "observability.db");
+    seedObservabilityDb(dbPath, [{ beadId: "bead-2", status: "closed", updatedAtMs: 2 }]);
+    const pool = createAttachPool([
+      { repoSlug: "repo-b", repoPath: root, dbPath, mtimeMs: 0 },
+    ]);
+
+    const jobs = pool.withAttached((db) => db.prepare("SELECT count(*) AS count FROM repo_repo_b_0.specialist_jobs").get() as { count: number });
+
+    expect(jobs.count).toBe(1);
   });
 });
