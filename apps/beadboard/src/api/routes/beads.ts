@@ -20,7 +20,7 @@ function getScanner(): ProjectScanner {
     const searchPath = process.env.XDG_PROJECTS_DIR || (process.env.HOME ? `${process.env.HOME}/projects` : "/home");
     scanner = new ProjectScanner({
       searchPath,
-      maxDepth: 1,
+      maxDepth: 3,
       excludePatterns: ["node_modules", ".git", ".worktrees", "worktrees", "Library", "Applications", ".cargo", ".npm", ".rustup"],
     });
   }
@@ -107,7 +107,7 @@ function degradedSource(project: BeadsProject, status: DoltFailureStatus, messag
 async function getProjectDoltClient(project: BeadsProject): Promise<{ client: DoltClient; runtime: DoltRuntimeInfo } | null> {
   const runtime = await getDoltRuntime(project);
   if (!runtime.port) return null;
-  const host = process.env.XDG_PROJECTS_DIR ? "host.docker.internal" : "127.0.0.1";
+  const host = process.env.DOLT_HOST ?? (process.env.XDG_PROJECTS_DIR ? "host.docker.internal" : "127.0.0.1");
   return { client: getDoltClient({ host, port: runtime.port, database: project.doltDatabase ?? "dolt" }), runtime };
 }
 

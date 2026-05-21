@@ -69,7 +69,8 @@ export class ProjectScanner {
           .filter((entry) => entry.name !== ".worktrees" && entry.name !== "worktrees")
           .map((entry) => this.withTimeout(this.loadProject(join(dirPath, entry.name)), 250, null));
         const loaded = await Promise.all(candidates);
-        return loaded.filter((project): project is BeadsProject => Boolean(project));
+        projects.push(...loaded.filter((project): project is BeadsProject => Boolean(project)));
+        // Fall through to recursive walk so nested layouts (e.g. /projects/<category>/<repo>) work too.
       }
 
       const beadsDir = entries.find((entry) => entry.name === ".beads" && entry.isDirectory());
@@ -138,6 +139,19 @@ export class ProjectScanner {
 
         const dbMatch = configContent.match(/dolt_database:\s*(\S+)/);
         if (dbMatch) doltDatabase = dbMatch[1];
+
+        // Shared-server fallback: when project opts into the host-wide Dolt server
+        // via `dolt.shared-server: true` (or nested `dolt:\n  shared-server: true`),
+        // read the port from ~/.beads/shared-server/dolt-server.port.
+        if (doltPort === undefined && /dolt\.shared-server:\s*true|shared-server:\s*true/.test(configContent)) {
+          if (process.env.HOME) {
+            try {
+              const sharedPortContent = await readFile(join(process.env.HOME, ".beads/shared-server/dolt-server.port"), "utf-8");
+              const sharedPort = Number.parseInt(sharedPortContent.trim(), 10);
+              if (Number.isFinite(sharedPort)) doltPort = sharedPort;
+            } catch { /* missing shared-server file — fall through */ }
+          }
+        }
       } catch {
         // no config
       }

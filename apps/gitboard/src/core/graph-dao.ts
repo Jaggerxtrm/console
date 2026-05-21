@@ -192,7 +192,7 @@ export function resolveProject(projects: BeadsProject[], projectId: string | nul
 async function readIssues(project: BeadsProject): Promise<BeadIssue[]> {
   const startedAt = performance.now();
   if (project.doltPort) {
-    const client = new DoltClient({ host: process.env.XDG_PROJECTS_DIR ? "host.docker.internal" : "127.0.0.1", port: project.doltPort, database: project.doltDatabase ?? "dolt" });
+    const client = new DoltClient({ host: process.env.DOLT_HOST ?? (process.env.XDG_PROJECTS_DIR ? "host.docker.internal" : "127.0.0.1"), port: project.doltPort, database: project.doltDatabase ?? "dolt" });
     try {
       const issues = await client.getIssues({ limit: 1000 });
       emit(makeLogEntry("dolt", "graph.source.timing", "info", undefined, { projectId: project.id, source: "dolt", ms: Math.round(performance.now() - startedAt), rows: issues.length }));
