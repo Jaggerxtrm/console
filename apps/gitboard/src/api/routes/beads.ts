@@ -7,32 +7,27 @@ import { ProjectScanner } from "../../core/project-scanner.ts";
 import { BeadsReader } from "../../core/beads-reader.ts";
 import { DoltClient } from "../../core/dolt-client.ts";
 import { readIssuesFromJsonl } from "../../core/jsonl-reader.ts";
-import type { BeadIssue } from "../../types/beads.ts";
+import type { BeadIssue, BeadsProject } from "../../types/beads.ts";
 
 // Singleton scanner with lazy initialization
 let scannerInstance: ProjectScanner | null = null;
-let scannerInitialized = false;
+let scannerWarm: Promise<void> | null = null;
+
+const projectCache = new Map<string, { value: unknown }>();
 
 // Cache for dolt clients by port
 const doltClients: Map<number, DoltClient> = new Map();
 
-async function getScanner(): Promise<ProjectScanner> {
+function getScanner(): ProjectScanner {
   if (!scannerInstance) {
-    const searchPath = process.env.XDG_PROJECTS_DIR || 
-                       (process.env.HOME ? `${process.env.HOME}/projects` : "/home");
+    const searchPath = process.env.XDG_PROJECTS_DIR || (process.env.HOME ? `${process.env.HOME}/projects` : "/home");
     scannerInstance = new ProjectScanner({
       searchPath,
       maxDepth: 5,
       excludePatterns: ["node_modules", ".git", "Library", "Applications", ".cargo", ".npm", ".rustup"],
     });
   }
-  
-  // Ensure cache is populated
-  if (!scannerInitialized) {
-    await scannerInstance.scanDirectory();
-    scannerInitialized = true;
-  }
-  
+  if (!scannerWarm) scannerWarm = scannerInstance.scanDirectory().then(() => undefined).catch(() => undefined);
   return scannerInstance;
 }
 
@@ -44,18 +39,31 @@ function getDoltClient(port: number): DoltClient {
   return doltClients.get(port)!;
 }
 
+function readCache<T>(key: string): T | null {
+  const cached = projectCache.get(key);
+  if (!cached) return null;
+  return cached.value as T;
+}
+
+function writeCache<T>(key: string, value: T): void {
+  projectCache.set(key, { value });
+}
+
+async function refreshProjects(scanner: ProjectScanner): Promise<void> {
+  const projects = await scanner.scanDirectory().catch(() => [] as BeadsProject[]);
+  writeCache("projects", { projects });
+}
+
 export const beadsRoutes = new Hono();
 
 // Get all discovered projects
 beadsRoutes.get("/projects", async (c) => {
-  try {
-    const scanner = await getScanner();
-    const projects = await scanner.scanDirectory();
-    return c.json({ projects });
-  } catch (error) {
-    console.error("[api] Error scanning projects:", error);
-    return c.json({ error: "Failed to scan projects" }, 500);
-  }
+  const scanner = getScanner();
+  const cached = readCache<{ projects: BeadsProject[] }>("projects");
+  if (cached) return c.json({ ...cached, freshness: "fresh" });
+
+  void refreshProjects(scanner);
+  return c.json({ projects: [], freshness: "stale" });
 });
 
 // Get issues for a project
@@ -67,7 +75,7 @@ beadsRoutes.get("/projects/:id/issues", async (c) => {
     const search = c.req.query("search");
     const limit = parseInt(c.req.query("limit") || "100");
 
-    const scanner = await getScanner();
+    const scanner = getScanner();
     let issues = await getIssues(scanner, projectId);
 
     // Apply filters
@@ -98,7 +106,7 @@ beadsRoutes.get("/projects/:id/issues/closed", async (c) => {
     const projectId = c.req.param("id");
     const limit = parseInt(c.req.query("limit") || "50");
 
-    const scanner = await getScanner();
+    const scanner = getScanner();
     const issues = (await getIssues(scanner, projectId))
       .filter(i => i.status === "closed")
       .sort((a, b) => 
@@ -119,7 +127,7 @@ beadsRoutes.get("/projects/:id/issues/closed", async (c) => {
 beadsRoutes.get("/projects/:id/memories", async (c) => {
   try {
     const projectId = c.req.param("id");
-    const scanner = await getScanner();
+    const scanner = getScanner();
     const project = scanner.getProject(projectId);
 
     if (!project) {
@@ -140,7 +148,7 @@ beadsRoutes.get("/projects/:id/interactions", async (c) => {
   try {
     const projectId = c.req.param("id");
     const issueId = c.req.query("issue_id");
-    const scanner = await getScanner();
+    const scanner = getScanner();
     const project = scanner.getProject(projectId);
 
     if (!project) {
@@ -165,7 +173,7 @@ beadsRoutes.get("/projects/:id/interactions", async (c) => {
 beadsRoutes.get("/projects/:id/stats", async (c) => {
   try {
     const projectId = c.req.param("id");
-    const scanner = await getScanner();
+    const scanner = getScanner();
     const issues = await getIssues(scanner, projectId);
 
     const lastActivityAt = issues.reduce<string | null>((latest, issue) => {
@@ -208,7 +216,7 @@ beadsRoutes.get("/projects/:id/stats", async (c) => {
 beadsRoutes.get("/projects/:id/connection", async (c) => {
   try {
     const projectId = c.req.param("id");
-    const scanner = await getScanner();
+    const scanner = getScanner();
     const project = scanner.getProject(projectId);
 
     if (!project) {
@@ -244,16 +252,31 @@ async function getIssues(scanner: ProjectScanner, projectId: string): Promise<Be
     return [];
   }
 
-  // Try dolt first
+  const cacheKey = `issues:${projectId}`;
+  const cached = readCache<BeadIssue[]>(cacheKey);
+  if (cached) {
+    void refreshIssues(project, cacheKey);
+    return cached;
+  }
+
+  return await refreshIssues(project, cacheKey);
+}
+
+async function refreshIssues(project: BeadsProject, cacheKey: string): Promise<BeadIssue[]> {
+  const issues = await readProjectIssues(project).catch(() => [] as BeadIssue[]);
+  writeCache(cacheKey, issues);
+  return issues;
+}
+
+async function readProjectIssues(project: BeadsProject): Promise<BeadIssue[]> {
   if (project.doltPort) {
     try {
       const client = getDoltClient(project.doltPort);
       return await client.getIssues({ limit: 1000 });
     } catch (error) {
-      console.log(`[api] Dolt failed for ${projectId}, falling back to JSONL:`, error);
+      console.log(`[api] Dolt failed for ${project.id}, falling back to JSONL:`, error);
     }
   }
 
-  // Fallback to JSONL
   return readIssuesFromJsonl(project.beadsPath);
 }

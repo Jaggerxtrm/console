@@ -26,13 +26,12 @@ type DefaultDaoBundle = {
 type CachedValue<T> = {
   key: string;
   value: T;
-  expiresAt: number;
+  refreshedAt: number;
 };
 
 let defaultBundle: DefaultDaoBundle | null = null;
-const DEFAULT_DAO_TTL_MS = 30_000;
-const LIVE_JOBS_CACHE_TTL_MS = 500;
-const DETAIL_CACHE_TTL_MS = 1_000;
+let defaultBundleWarm: Promise<void> | null = null;
+const DEFAULT_DAO_REFRESH_MS = 30_000;
 
 export interface SpecialistsRouterOptions {
   listRepos?: () => SpecialistRepoList;
@@ -62,11 +61,10 @@ export function createSpecialistsRouter(
     const current = resolve();
     const key = cacheKey("jobs", current.repos, epochGetter, beadId);
     const cached = readCache(jobsByBeadCache, key);
-    if (cached) return c.json(cached);
+    if (cached) return c.json({ ...cached, freshness: "fresh" });
 
-    const value = { jobs: current.dao.jobsByBead(beadId) };
-    jobsByBeadCache = writeCache(key, value, DETAIL_CACHE_TTL_MS);
-    return c.json(value);
+    void refreshJobsByBead(current.dao, beadId, key).then((value) => { jobsByBeadCache = value; });
+    return c.json({ jobs: [], freshness: "stale" });
   });
 
   router.get("/jobs/in-flight", (c) => {
@@ -74,14 +72,10 @@ export function createSpecialistsRouter(
     const current = resolve();
     const key = cacheKey("in-flight", current.repos, epochGetter, String(limit));
     const cached = readCache(inFlightCache, key);
-    if (cached) return c.json(cached);
+    if (cached) return c.json({ ...cached, freshness: "fresh" });
 
-    const inFlight = current.dao.inFlightJobs().slice(0, 200);
-    const recentHistory = current.dao.recentJobs(limit).slice(0, limit);
-    const epoch = repoEpochs(current.repos, epochGetter);
-    const value = { in_flight: inFlight, recent_history: recentHistory, jobs: inFlight, epoch };
-    inFlightCache = writeCache(key, value, LIVE_JOBS_CACHE_TTL_MS);
-    return c.json(value);
+    void refreshInFlight(current.dao, current.repos, epochGetter, limit, key).then((value) => { inFlightCache = value; });
+    return c.json({ in_flight: [], recent_history: [], jobs: [], epoch: repoEpochs(current.repos, epochGetter), freshness: "stale" });
   });
 
   router.get("/chains/:chain_id", (c) => {
@@ -89,13 +83,10 @@ export function createSpecialistsRouter(
     const current = resolve();
     const key = cacheKey("chain", current.repos, epochGetter, chainId);
     const cached = readCache(chainCache, key);
-    const value = cached ?? { chain: { jobs: current.dao.chainById(chainId) } };
-    if (!cached) chainCache = writeCache(key, value, DETAIL_CACHE_TTL_MS);
-    if (value.chain.jobs.length === 0) {
-      return c.json({ error: "Chain not found" }, 404);
-    }
+    if (cached) return c.json({ ...cached, freshness: "fresh" });
 
-    return c.json(value);
+    void refreshChain(current.dao, chainId, key).then((value) => { chainCache = value; });
+    return c.json({ chain: { jobs: [] }, freshness: "stale" });
   });
 
   return router;
@@ -120,21 +111,55 @@ function cacheKey(prefix: string, repos: SpecialistRepoSummary, epochGetter: (re
 }
 
 function readCache<T>(entry: CachedValue<T> | null, key: string): T | null {
-  if (!entry || entry.key !== key || entry.expiresAt <= Date.now()) return null;
+  if (!entry || entry.key !== key) return null;
   return entry.value;
 }
 
-function writeCache<T>(key: string, value: T, ttlMs: number): CachedValue<T> {
-  return { key, value, expiresAt: Date.now() + ttlMs };
+function writeCache<T>(key: string, value: T): CachedValue<T> {
+  return { key, value, refreshedAt: Date.now() };
+}
+
+async function refreshJobsByBead(dao: SpecialistsDao, beadId: string, key: string): Promise<CachedValue<{ jobs: SpecialistJob[] }>> {
+  const value = { jobs: dao.jobsByBead(beadId) };
+  return writeCache(key, value);
+}
+
+async function refreshInFlight(
+  dao: SpecialistsDao,
+  repos: SpecialistRepoSummary,
+  epochGetter: (repoSlug: string) => number,
+  limit: number,
+  key: string,
+): Promise<CachedValue<{ in_flight: SpecialistJob[]; recent_history: SpecialistJob[]; jobs: SpecialistJob[]; epoch: Record<string, number> }>> {
+  const inFlight = dao.inFlightJobs().slice(0, 200);
+  const recentHistory = dao.recentJobs(limit).slice(0, limit);
+  return writeCache(key, { in_flight: inFlight, recent_history: recentHistory, jobs: inFlight, epoch: repoEpochs(repos, epochGetter) });
+}
+
+async function refreshChain(dao: SpecialistsDao, chainId: string, key: string): Promise<CachedValue<{ chain: { jobs: SpecialistChain[] } }>> {
+  return writeCache(key, { chain: { jobs: dao.chainById(chainId) } });
 }
 
 function getDefaultBundle(repoLister: () => SpecialistRepoList, epochGetter: (repoSlug: string) => number): DefaultDaoBundle {
   const now = Date.now();
   const repos = repoLister();
   const key = cacheKey("bundle", repos, epochGetter);
-  if (defaultBundle && defaultBundle.key === key && now - defaultBundle.createdAt < DEFAULT_DAO_TTL_MS) return defaultBundle;
+  if (defaultBundle && defaultBundle.key === key) return defaultBundle;
 
-  const pool: AttachPoolLike = createAttachPool(repos);
-  defaultBundle = { dao: createObservabilityDao(pool), repos: summarizeRepos(repos), createdAt: now, key };
-  return defaultBundle;
+  void warmDefaultBundle(repos, key);
+  if (defaultBundle) return defaultBundle;
+  return { dao: emptySpecialistsDao(), repos: summarizeRepos(repos), createdAt: now, key };
+}
+
+async function warmDefaultBundle(repos: SpecialistRepoList, key: string): Promise<void> {
+  if (defaultBundleWarm) return;
+  defaultBundleWarm = Promise.resolve().then(() => {
+    const pool: AttachPoolLike = createAttachPool(repos);
+    defaultBundle = { dao: createObservabilityDao(pool), repos: summarizeRepos(repos), createdAt: Date.now(), key };
+  }).catch(() => undefined).finally(() => { defaultBundleWarm = null; });
+  await defaultBundleWarm;
+}
+
+function emptySpecialistsDao(): SpecialistsDao {
+  return { jobsByBead: () => [], inFlightJobs: () => [], recentJobs: () => [], chainById: () => [] };
 }

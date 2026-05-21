@@ -6,11 +6,12 @@ let defaultDao: ReturnType<typeof createGraphDao> | null = null;
 export function createGraphRouter(dao = getDefaultDao()): Hono {
   const app = new Hono();
 
-  app.get("/", async (c) => {
+  app.get("/", (c) => {
     const projectId = c.req.query("project_id");
     const includeClosed = c.req.query("include_closed") === "true";
     if (c.req.query("refresh") === "true") dao.invalidate(projectId);
-    return c.json(await dao.getGraph(projectId, includeClosed));
+    const { graph, freshness } = dao.getGraphSnapshot(projectId, includeClosed);
+    return c.json({ ...graph, freshness });
   });
 
   app.post("/invalidate", async (c) => {

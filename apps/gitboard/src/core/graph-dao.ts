@@ -13,20 +13,20 @@ const LIVE_STATUSES = new Set(["starting", "running", "waiting"]);
 
 let scannerInstance: ProjectScanner | null = null;
 let observabilityDao: ReturnType<typeof createObservabilityDao> | null = null;
-let observabilityInitialized = false;
+let observabilityWarm: Promise<void> | null = null;
 
-const PROJECT_SCAN_TTL_MS = 30_000;
-const ISSUE_CACHE_TTL_MS = 10_000;
+const PROJECT_REFRESH_MS = 30_000;
+const ISSUE_REFRESH_MS = 10_000;
 
 interface CacheEntry<T> {
   value: T;
-  expires: number;
+  refreshAt: number;
 }
 
-const projectScanCache = new WeakMap<ProjectScanner, CacheEntry<BeadsProject[]>>();
+const projectScanCache = new WeakMap<ProjectScanner, CacheEntry<{ key: string; projects: BeadsProject[] }>>();
 const projectScanInflight = new WeakMap<ProjectScanner, Promise<BeadsProject[]>>();
-const issueCache = new Map<string, CacheEntry<BeadIssue[]>>();
-const issueInflight = new Map<string, Promise<BeadIssue[]>>();
+const issueCache = new Map<string, CacheEntry<{ key: string; issues: BeadIssue[] }>>();
+const issueInflight = new Map<string, Promise<void>>();
 const projectIssueEpochs = new Map<string, number>();
 let globalIssueEpoch = 0;
 
@@ -37,17 +37,22 @@ export interface GraphDaoOptions {
 
 export function createGraphDao(options: GraphDaoOptions = {}) {
   const scanner = options.scanner ?? getScanner();
-  const dao = options.observability ?? getObservabilityDao();
+  const getDao = () => options.observability ?? getObservabilityDao();
 
   return {
-    async getGraph(projectId: string | null | undefined, includeClosed = false): Promise<GraphResponse> {
-      const projects = await scanProjects(scanner);
-      const project = resolveProject(projects, projectId);
-      if (!project) return emptyGraph(projectId ?? "", projectFallbackNote(projectId, projects));
+    getGraphSnapshot(projectId: string | null | undefined, includeClosed = false): { graph: GraphResponse; freshness: "fresh" | "stale" | "degraded" } {
+      void warmGraphState(scanner);
+      const scan = readCachedProjects(scanner);
+      if (!scan) return { graph: emptyGraph(projectId ?? "", projectFallbackNote(projectId, [])), freshness: "stale" };
 
-      const issues = await readIssuesCached(project);
+      const project = resolveProject(scan.projects, projectId);
+      if (!project) return { graph: emptyGraph(projectId ?? "", projectFallbackNote(projectId, scan.projects)), freshness: "fresh" };
+
+      const issueState = readCachedIssues(project);
+      const dao = getDao();
       const specialists = dao ? dao.inFlightJobs().filter((job) => job.repoSlug === project.id || job.repoSlug === project.name) : [];
-      return buildGraph(project, issues, specialists, includeClosed);
+      const graph = buildGraph(project, issueState.issues, specialists, includeClosed);
+      return { graph, freshness: issueState.freshness };
     },
     invalidate(projectId?: string | null): void {
       projectScanCache.delete(scanner);
@@ -76,17 +81,18 @@ export function invalidateGraphCache(projectId?: string | null): void {
   }
 }
 
-async function scanProjects(scanner: ProjectScanner): Promise<BeadsProject[]> {
-  const now = Date.now();
-  const cached = projectScanCache.get(scanner);
-  if (cached && cached.expires > now) return cached.value;
+async function warmGraphState(scanner: ProjectScanner): Promise<void> {
+  void scanProjects(scanner);
+  void getObservabilityDao();
+}
 
+async function scanProjects(scanner: ProjectScanner): Promise<BeadsProject[]> {
   const inflight = projectScanInflight.get(scanner);
   if (inflight) return inflight;
 
   const promise = scanner.scanDirectory()
     .then((projects) => {
-      projectScanCache.set(scanner, { value: projects, expires: Date.now() + PROJECT_SCAN_TTL_MS });
+      projectScanCache.set(scanner, { value: { key: projectScanKey(projects), projects }, refreshAt: Date.now() + PROJECT_REFRESH_MS });
       return projects;
     })
     .finally(() => projectScanInflight.delete(scanner));
@@ -94,38 +100,53 @@ async function scanProjects(scanner: ProjectScanner): Promise<BeadsProject[]> {
   return promise;
 }
 
-function issueCacheKey(project: BeadsProject): string {
-  const source = project.source ?? "unknown";
-  const port = project.doltPort ?? "jsonl";
-  const projectEpoch = projectIssueEpochs.get(project.id) ?? 0;
-  return `${project.id}:${project.beadsPath}:${source}:${port}:${project.doltDatabase ?? "dolt"}:${globalIssueEpoch}:${projectEpoch}`;
+function readCachedProjects(scanner: ProjectScanner): { key: string; projects: BeadsProject[] } | null {
+  const cached = projectScanCache.get(scanner);
+  if (!cached) return null;
+  if (cached.refreshAt <= Date.now()) void scanProjects(scanner);
+  return cached.value;
 }
 
-async function readIssuesCached(project: BeadsProject): Promise<BeadIssue[]> {
-  const key = issueCacheKey(project);
-  const now = Date.now();
-  const cached = issueCache.get(key);
-  if (cached && cached.expires > now) return cached.value;
+function projectScanKey(projects: BeadsProject[]): string {
+  return projects.map((project) => `${project.id}:${project.name}:${project.beadsPath}`).sort().join("|");
+}
 
+function issueCacheKey(project: BeadsProject): string {
+  const projectEpoch = projectIssueEpochs.get(project.id) ?? 0;
+  return `${project.id}:${globalIssueEpoch}:${projectEpoch}`;
+}
+
+function readCachedIssues(project: BeadsProject): { issues: BeadIssue[]; freshness: "fresh" | "stale" | "degraded" } {
+  const key = issueCacheKey(project);
+  const cached = issueCache.get(key);
+  if (cached) {
+    if (cached.refreshAt <= Date.now()) void refreshIssues(project);
+    return { issues: cached.value.issues, freshness: cached.value.freshness };
+  }
+  void refreshIssues(project);
+  return { issues: [], freshness: "stale" };
+}
+
+async function refreshIssues(project: BeadsProject): Promise<void> {
+  const key = issueCacheKey(project);
   const inflight = issueInflight.get(key);
-  if (inflight) return inflight;
+  if (inflight) return;
 
   const promise = readIssues(project)
     .then((issues) => {
-      issueCache.set(key, { value: issues, expires: Date.now() + ISSUE_CACHE_TTL_MS });
+      issueCache.set(key, { value: { key, issues, freshness: "fresh" }, refreshAt: Date.now() + ISSUE_REFRESH_MS });
       pruneIssueCache();
-      return issues;
+    })
+    .catch(() => {
+      const cached = issueCache.get(key);
+      if (cached) cached.value = { ...cached.value, freshness: "degraded" };
     })
     .finally(() => issueInflight.delete(key));
   issueInflight.set(key, promise);
-  return promise;
+  await promise;
 }
 
 function pruneIssueCache(maxEntries = 100): void {
-  const now = Date.now();
-  for (const [key, entry] of issueCache) {
-    if (entry.expires <= now) issueCache.delete(key);
-  }
   while (issueCache.size > maxEntries) {
     const oldest = issueCache.keys().next().value;
     if (oldest === undefined) return;
@@ -142,10 +163,12 @@ function getScanner(): ProjectScanner {
 }
 
 function getObservabilityDao() {
-  if (observabilityInitialized) return observabilityDao;
-  const repos = listRepos();
-  observabilityDao = repos.length > 0 ? createObservabilityDao(createAttachPool(repos)) : null;
-  observabilityInitialized = true;
+  if (!observabilityWarm) {
+    observabilityWarm = (async () => {
+      const repos = listRepos();
+      observabilityDao = repos.length > 0 ? createObservabilityDao(createAttachPool(repos)) : null;
+    })().catch(() => undefined);
+  }
   return observabilityDao;
 }
 
