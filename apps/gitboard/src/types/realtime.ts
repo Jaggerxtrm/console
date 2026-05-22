@@ -32,6 +32,9 @@ export type GithubRealtimeEvent =
 export type SystemRealtimeEvent = "system:log";
 export type SystemLogPayload = import("./log.ts").LogEntry;
 
+export type SpecialistsRealtimeEvent = "specialists:sync_hint";
+export type SpecialistsSyncHint = { reason: string; repo_slug?: string; since_seq?: number };
+
 export type BeadsRealtimeEvent =
   | "beads:issue.upsert"
   | "beads:issue.close"

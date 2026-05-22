@@ -66,7 +66,7 @@ export class WsClient {
           wsDebugLog("resume", { channel, since_seq, boot_id: this.bootId });
           this._send({ action: "resume", channel, since_seq, boot_id: this.bootId, version: String(REALTIME_PROTOCOL_VERSION) });
         }
-        this._send({ type: "subscribe", channel, version: String(REALTIME_PROTOCOL_VERSION) });
+        this._send({ action: "subscribe", channel, version: String(REALTIME_PROTOCOL_VERSION) });
       }
     };
 
@@ -112,12 +112,17 @@ export class WsClient {
 
   subscribe(channel: string): void {
     this.subscriptions.add(channel);
-    this._send({ type: "subscribe", channel, version: String(REALTIME_PROTOCOL_VERSION) });
+    // Server contract is `action`, not `type` (see api/ws/handler.ts handleMessage).
+    // Long-standing mismatch — every realtime channel (beads:changes, github:*,
+    // specialists:activity) had its subscribe silently dropped, forcing the UI to
+    // fall back to polling/refetch cycles. Fixed as part of forge-7cyq because
+    // specialist push updates cannot work without it.
+    this._send({ action: "subscribe", channel, version: String(REALTIME_PROTOCOL_VERSION) });
   }
 
   unsubscribe(channel: string): void {
     this.subscriptions.delete(channel);
-    this._send({ type: "unsubscribe", channel });
+    this._send({ action: "unsubscribe", channel });
   }
 
   onMessage(handler: WsHandler): () => void {

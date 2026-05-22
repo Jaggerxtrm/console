@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 import type { SpecialistJob } from "../../server/observability/types.ts";
+import { useWebSocket } from "./useWebSocket.ts";
 
 interface ChainsResponse {
   in_flight?: Array<SpecialistJob & { lastOutput?: string | null; last_output?: string | null }>;
@@ -42,6 +43,7 @@ export function useChains(): UseChainsState {
   const timerRef = useRef<number | null>(null);
   const aliveRef = useRef(true);
   const visibleRef = useRef(typeof document === "undefined" ? true : document.visibilityState === "visible");
+  const loadRef = useRef<(() => Promise<void>) | null>(null);
 
   useEffect(() => {
     const onVisibilityChange = () => {
@@ -74,12 +76,22 @@ export function useChains(): UseChainsState {
 
   useEffect(() => {
     aliveRef.current = true;
+    loadRef.current = load;
     void load();
     return () => {
       aliveRef.current = false;
       if (timerRef.current !== null) window.clearTimeout(timerRef.current);
     };
   }, []);
+
+  // Push-driven refresh on observability bumps (forge-7cyq). The POLL_MS timer
+  // above stays as a safety net for missed fs.watch events; with WS hints the
+  // timer almost never fires before a hint arrives.
+  useWebSocket("specialists:activity", () => {
+    if (!aliveRef.current || !visibleRef.current) return;
+    if (timerRef.current !== null) window.clearTimeout(timerRef.current);
+    void loadRef.current?.();
+  });
 
   const chains = useMemo(() => groupChains(jobs), [jobs]);
   return { chains, loading, error };

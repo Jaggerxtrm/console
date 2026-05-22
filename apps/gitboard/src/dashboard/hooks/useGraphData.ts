@@ -110,5 +110,21 @@ export function useGraphData(projectId: string | null) {
     void loadRef.current?.({ refresh: true, force: true });
   });
 
+  // Specialist overlay changes (job state, in-flight set) are now push-driven via
+  // the observability epoch.bump → registry.publish("specialists:activity") wiring
+  // in api/server.ts (forge-7cyq). Phase 1 broadcasts a single hint per repo bump;
+  // we refetch regardless of which repo bumped — Phase 2 will introduce per-repo
+  // channels and a repoSlug↔projectId mapping for finer filtering.
+  useWebSocket("specialists:activity", () => {
+    if (!key) return;
+    // Phase 1: refetch on any specialist hint regardless of repo_slug. Phase 2
+    // introduces per-repo channels (specialists:repo:<slug>) + repoSlug↔projectId
+    // mapping so a typed SpecialistsSyncHint payload becomes useful for filtering.
+    CACHE.delete(key);
+    staleRetryUsed.current = false;
+    clearStaleRetry();
+    void loadRef.current?.({ refresh: true, force: true });
+  });
+
   return { ...state, reload: load };
 }

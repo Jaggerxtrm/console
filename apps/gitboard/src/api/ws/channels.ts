@@ -5,6 +5,8 @@ export type ChannelName =
   | `github:repo:${string}`
   | "beads:changes"
   | `beads:project:${string}`
+  | "specialists:activity"
+  | `specialists:repo:${string}`
   | `session:${string}`
   | `output:${string}`
   | "messages"
