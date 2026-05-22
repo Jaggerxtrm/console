@@ -10,7 +10,7 @@ import { createGraphDao } from "../../../src/core/graph-dao.ts";
 import { createGraphRouter } from "../../../src/api/routes/graph.ts";
 import { createSpecialistsRouter } from "../../../src/api/routes/specialists.ts";
 import { ProjectScanner } from "../../../src/core/project-scanner.ts";
-import type { BeadsProject } from "../../../../beadboard/src/types/beads.ts";
+import type { BeadsProject } from "../../../src/types/beads.ts";
 
 let dir: string;
 let obsDb: Database;
@@ -47,9 +47,11 @@ describe("GET /api/console/graph", () => {
     const app = createApp();
     const res = await app.fetch(new Request("http://localhost/api/console/graph?project=gitboard&include_closed=false"));
     expect(res.status).toBe(200);
-    const json = await res.json() as { project_id: string; repo_slug: string; nodes: Array<{ id: string }>; edges: Array<{ type: string }>; specialists: Array<{ bead_id: string; status: string }> };
+    const json = await res.json() as { project_id: string; repo_slug: string; freshness: string; source_health: { source: string; status: string }; nodes: Array<{ id: string }>; edges: Array<{ type: string }>; specialists: Array<{ bead_id: string; status: string }> };
     expect(json.project_id).toBe("gitboard");
     expect(json.repo_slug).toBe("gitboard");
+    expect(json.freshness).toBe("fresh");
+    expect(json.source_health).toEqual(expect.objectContaining({ source: "graph", status: "fresh" }));
     expect(json.nodes.map((node) => node.id).sort()).toEqual(["gitboard-1", "gitboard-2", "gitboard-4", "gitboard-5"].sort());
     expect(json.edges).toHaveLength(3);
     expect(new Set(json.edges.map((edge) => edge.type))).toEqual(new Set(["blocks", "related", "tracks"]));

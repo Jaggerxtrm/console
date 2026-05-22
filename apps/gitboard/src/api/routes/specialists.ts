@@ -6,6 +6,7 @@ import { get as getEpoch } from "../../server/observability/epoch.ts";
 import { listRepos } from "../../server/observability/registry.ts";
 import type { RepoEntry } from "../../server/observability/registry.ts";
 import type { AttachPoolLike, SpecialistChain, SpecialistJob } from "../../server/observability/types.ts";
+import { makeSourceHealth } from "../../types/source-health.ts";
 
 export interface SpecialistsDao {
   jobsByBead(beadId: string): SpecialistJob[];
@@ -65,16 +66,16 @@ export function createSpecialistsRouter(
     const cached = readCache(jobsByBeadCache, key);
     if (cached) {
       emit(makeLogEntry("api", "specialists.cache", "info", undefined, { route: "jobs", hit: true }));
-      return c.json({ ...cached, freshness: "fresh" });
+      return c.json({ ...cached, freshness: "fresh", source_health: makeSourceHealth("specialists", "fresh") });
     }
 
     emit(makeLogEntry("api", "specialists.cache", "info", undefined, { route: "jobs", hit: false }));
     const refreshed = await withTimeout(refreshJobsByBead(current.dao, beadId, key), ROUTE_WARM_TIMEOUT_MS);
     if (refreshed) {
       jobsByBeadCache = refreshed;
-      return c.json({ ...refreshed.value, freshness: "fresh" });
+      return c.json({ ...refreshed.value, freshness: "fresh", source_health: makeSourceHealth("specialists", "fresh") });
     }
-    return c.json({ jobs: [], freshness: "stale" });
+    return c.json({ jobs: [], freshness: "stale", source_health: makeSourceHealth("specialists", "stale") });
   });
 
   router.get("/jobs/in-flight", async (c) => {
@@ -84,16 +85,16 @@ export function createSpecialistsRouter(
     const cached = readCache(inFlightCache, key);
     if (cached) {
       emit(makeLogEntry("api", "specialists.cache", "info", undefined, { route: "in-flight", hit: true }));
-      return c.json({ ...cached, freshness: "fresh" });
+      return c.json({ ...cached, freshness: "fresh", source_health: makeSourceHealth("specialists", "fresh") });
     }
 
     emit(makeLogEntry("api", "specialists.cache", "info", undefined, { route: "in-flight", hit: false }));
     const refreshed = await withTimeout(refreshInFlight(current.dao, current.repos, epochGetter, limit, key), ROUTE_WARM_TIMEOUT_MS);
     if (refreshed) {
       inFlightCache = refreshed;
-      return c.json({ ...refreshed.value, freshness: "fresh" });
+      return c.json({ ...refreshed.value, freshness: "fresh", source_health: makeSourceHealth("specialists", "fresh") });
     }
-    return c.json({ in_flight: [], recent_history: [], jobs: [], epoch: repoEpochs(current.repos, epochGetter), freshness: "stale" });
+    return c.json({ in_flight: [], recent_history: [], jobs: [], epoch: repoEpochs(current.repos, epochGetter), freshness: "stale", source_health: makeSourceHealth("specialists", "stale") });
   });
 
   router.get("/chains/:chain_id", async (c) => {
@@ -104,7 +105,7 @@ export function createSpecialistsRouter(
     if (cached) {
       emit(makeLogEntry("api", "specialists.cache", "info", undefined, { route: "chains", hit: true }));
       if (cached.chain.jobs.length === 0) return c.json({ error: "Chain not found" }, 404);
-      return c.json({ ...cached, freshness: "fresh" });
+      return c.json({ ...cached, freshness: "fresh", source_health: makeSourceHealth("specialists", "fresh") });
     }
 
     emit(makeLogEntry("api", "specialists.cache", "info", undefined, { route: "chains", hit: false }));
@@ -112,9 +113,9 @@ export function createSpecialistsRouter(
     if (refreshed) {
       chainCache = refreshed;
       if (refreshed.value.chain.jobs.length === 0) return c.json({ error: "Chain not found" }, 404);
-      return c.json({ ...refreshed.value, freshness: "fresh" });
+      return c.json({ ...refreshed.value, freshness: "fresh", source_health: makeSourceHealth("specialists", "fresh") });
     }
-    return c.json({ chain: { jobs: [] }, freshness: "stale" });
+    return c.json({ chain: { jobs: [] }, freshness: "stale", source_health: makeSourceHealth("specialists", "stale") });
   });
 
   return router;

@@ -7,6 +7,7 @@ import type {
   ProjectSourceHealth,
 } from "./beads.ts";
 import type { GithubEvent, GithubIssue, GithubPr, GithubRelease } from "./github.ts";
+import type { SourceHealth } from "./source-health.ts";
 
 export const REALTIME_PROTOCOL_VERSION = 1;
 
@@ -27,7 +28,7 @@ export type GithubRealtimeEvent =
   | "github:event.append"
   | "github:release.upsert"
   | "github:sync_hint"
-  | "github:rate_limit";
+  | "github:source_health";
 
 export type SystemRealtimeEvent = "system:log";
 export type SystemLogPayload = import("./log.ts").LogEntry;
@@ -59,7 +60,7 @@ export type GithubIssueUpsert = GithubIssue;
 export type GithubEventAppend = GithubEvent;
 export type GithubReleaseUpsert = GithubRelease;
 export type GithubSyncHint = { reason: string; channel?: string; since_seq?: number };
-export type GithubRateLimit = { limit: number; remaining: number; reset_at: string };
+export type GithubSourceHealth = SourceHealth & { source: "github"; rate_limit?: { limit: number; remaining: number; reset_at: string } };
 
 export type BeadsIssueUpsert = BeadIssue;
 export type BeadsIssueClose = Pick<BeadIssue, "id" | "project_id" | "closed_at" | "close_reason">;

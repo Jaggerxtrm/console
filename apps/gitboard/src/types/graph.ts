@@ -1,3 +1,4 @@
+import type { SourceHealth, SourceHealthFreshness } from "./source-health.ts";
 export type GraphNodeType = "task" | "bug" | "feature" | "epic" | "chore" | "decision" | "molecule";
 export type GraphNodeStatus = "open" | "in_progress" | "blocked" | "closed" | "deferred";
 export type GraphEdgeType = "blocks" | "tracks" | "related" | "parent-child" | "discovered-from" | "validates" | "caused-by" | "until" | "supersedes";
@@ -28,13 +29,14 @@ export interface GraphSpecialist {
   updated_at: string;
 }
 
-export type GraphFreshness = "fresh" | "stale" | "degraded";
+export type GraphFreshness = SourceHealthFreshness;
 
 export interface GraphResponse {
   project_id: string;
   repo_slug: string;
   generated_at: string;
   freshness?: GraphFreshness;
+  source_health?: SourceHealth;
   nodes: GraphNode[];
   edges: GraphEdge[];
   specialists: GraphSpecialist[];

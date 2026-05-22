@@ -1,3 +1,5 @@
+import type { SourceHealthStatus } from "./source-health.ts";
+
 // Beadboard domain types. Ported from apps/beadboard/src/types/beads.ts
 // (forge-5w9.2) — kept as superset to support BeadIssueDetail and project source health.
 
@@ -5,7 +7,7 @@ export type Status = "open" | "in_progress" | "blocked" | "in_review" | "closed"
 export type Priority = 0 | 1 | 2 | 3 | 4 | (number & {});
 export type IssueType = "bug" | "feature" | "task" | "epic" | "chore" | (string & {});
 export type ProjectSourceKind = "dolt" | "sqlite" | "jsonl" | "unknown";
-export type ProjectSourceState = "available" | "missing" | "unhealthy";
+export type ProjectSourceState = SourceHealthStatus;
 
 export interface ProjectSourceHealth {
   kind: ProjectSourceKind;
@@ -112,6 +114,7 @@ export interface BeadsConnectionStatus {
   source?: "dolt" | "jsonl" | "none" | string;
   status: "dolt_connected" | "dolt_missing_config" | "dolt_process_dead" | "dolt_unreachable" | "dolt_query_failed" | "connected" | "jsonl_fallback" | "no_dolt" | "not_found" | "error" | string;
   degraded?: boolean;
+  health?: SourceHealthStatus;
   message?: string;
   port?: number;
   pid?: number;

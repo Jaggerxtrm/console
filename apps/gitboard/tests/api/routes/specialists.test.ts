@@ -62,8 +62,9 @@ describe("GET /api/specialists/jobs", () => {
     const res = await app.fetch(new Request("http://localhost/api/specialists/jobs?bead_id=bead-1"));
 
     expect(res.status).toBe(200);
-    const json = await res.json() as { jobs: Array<Record<string, unknown>> };
+    const json = await res.json() as { jobs: Array<Record<string, unknown>>; source_health: { source: string; status: string } };
     expect(json.jobs).toHaveLength(2);
+    expect(json.source_health).toEqual(expect.objectContaining({ source: "specialists", status: "fresh" }));
     expect(json.jobs[0]).toEqual(expect.objectContaining({ repoSlug: "repo-b", beadId: "bead-1", chainId: "chain-4", epicId: "epic-4", chainKind: "executor", status: "done", updatedAt: "2023-11-14T22:13:25.000Z" }));
     expect(json.jobs[1]).toEqual(expect.objectContaining({ repoSlug: "repo-a", beadId: "bead-1", chainId: "chain-1", epicId: "epic-1", chainKind: "executor", status: "running", updatedAt: "2023-11-14T22:13:20.000Z" }));
     for (const job of json.jobs) {

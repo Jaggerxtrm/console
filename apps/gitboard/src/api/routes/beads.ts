@@ -8,6 +8,7 @@ import { BeadsReader } from "../../core/beads-reader.ts";
 import { DoltClient } from "../../core/dolt-client.ts";
 import { readIssuesFromJsonl } from "../../core/jsonl-reader.ts";
 import type { BeadIssue, BeadsProject } from "../../types/beads.ts";
+import { makeSourceHealth } from "../../types/source-health.ts";
 
 // Singleton scanner with lazy initialization
 let scannerInstance: ProjectScanner | null = null;
@@ -220,11 +221,11 @@ beadsRoutes.get("/projects/:id/connection", async (c) => {
     const project = scanner.getProject(projectId);
 
     if (!project) {
-      return c.json({ status: "not_found", error: "Project not found" });
+      return c.json({ status: "not_found", health: "missing", source_health: makeSourceHealth("beads", "missing", { message: "Project not found" }), error: "Project not found" });
     }
 
     if (!project.doltPort) {
-      return c.json({ status: "jsonl_fallback", note: "Reading from JSONL files" });
+      return c.json({ status: "jsonl_fallback", health: "stale", source_health: makeSourceHealth("beads", "stale", { message: "Reading from JSONL files" }), note: "Reading from JSONL files" });
     }
 
     const client = getDoltClient(project.doltPort);
@@ -232,12 +233,14 @@ beadsRoutes.get("/projects/:id/connection", async (c) => {
 
     return c.json({
       status: "connected",
+      health: "fresh",
+      source_health: makeSourceHealth("beads", "fresh", { metadata: { port: project.doltPort, database: project.doltDatabase || "dolt" } }),
       port: project.doltPort,
       database: project.doltDatabase || "dolt",
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
-    return c.json({ status: "jsonl_fallback", note: "Dolt unavailable, reading from JSONL", error: message });
+    return c.json({ status: "jsonl_fallback", health: "degraded", source_health: makeSourceHealth("beads", "degraded", { message }), note: "Dolt unavailable, reading from JSONL", error: message });
   }
 });
 

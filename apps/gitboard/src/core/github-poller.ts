@@ -14,6 +14,7 @@ import {
 import type { GithubEvent, GithubCommit, GithubPr, GithubIssue, GithubRepo, GithubRelease } from "./github-store.ts";
 import type { ChannelRegistry } from "../api/ws/channels.ts";
 import type { GithubRealtimeEvent } from "../types/realtime.ts";
+import type { SourceHealth } from "../types/source-health.ts";
 import { emit, makeLogEntry } from "./logger.ts";
 
 export interface RawGithubCommit {
@@ -394,7 +395,7 @@ export class GithubPoller {
     return 10 * 60_000;
   }
 
-  private publishGithubEvent(event: GithubRealtimeEvent, data: GithubPr | GithubIssue | GithubRelease | Record<string, unknown>, version: string): void {
+  private publishGithubEvent(event: GithubRealtimeEvent, data: GithubPr | GithubIssue | GithubRelease | GithubEvent | SourceHealth | Record<string, unknown>, version: string): void {
     this.registry?.publish("github:activity", event, data, version);
   }
 
