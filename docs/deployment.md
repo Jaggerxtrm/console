@@ -1,56 +1,129 @@
-# gitboard VPS deploy
+# gitboard deployment
 
-## Prereqs
-- VPS with Docker + Docker Compose plugin
-- Tailscale installed on VPS, laptop, desktop
-- Host Dolt server already running on VPS at `127.0.0.1:13839`
-- `~/projects` on VPS contains repos to scan
-- `.env` file beside `docker-compose.yml` with `GITHUB_TOKEN=...`
+Primary deploy path: native Bun process under systemd user service, exposed only through Tailscale on host.
 
-## Build + run
-```bash
-docker compose build
-docker compose up -d
-docker compose logs -f gitboard
+## What won
+
+- no container layer
+- no `tailscale serve`
+- no public bind / no ufw rule needed for app port
+- bind app directly to tailnet IP on host
+- Dolt stays local on host
+
+Why not `tailscale serve` here:
+- no HTTPS cert opt-in dance
+- one less moving part
+- simpler restart / log path
+- tailnet access still private
+
+## Native systemd user service
+
+Create `~/.config/systemd/user/gitboard.service`:
+
+```ini
+[Unit]
+Description=gitboard
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/dev/gitboard
+Environment=HOST=100.113.49.52
+Environment=PORT=3030
+Environment=XDG_PROJECTS_DIR=%h/projects
+Environment=DOLT_HOST=127.0.0.1
+Environment=LOG_DIR=%h/.agent-forge/logs
+ExecStart=bun run src/index.ts
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=default.target
 ```
 
-Dashboard: `http://<vps-host>:3000/gitboard`
+Adjust paths / tailnet IP for your host.
 
-## Tailscale enrolment
-1. Install Tailscale on VPS, laptop, desktop.
-2. Sign all 3 into same tailnet.
-3. Enable MagicDNS in admin console.
-4. Use VPS tailnet name: `http://<vps-tailscale-name>:3000/gitboard`
+### First start
 
-## Firewall lockdown
-Keep port 3000 off public internet. Allow only Tailscale.
+1. Enable linger so user service runs without active login session:
+   ```bash
+   loginctl enable-linger <user>
+   ```
+2. Prebuild dashboard on host:
+   ```bash
+   bun install
+   cd apps/gitboard
+   bun run build:dashboard
+   ```
+3. Reload and start service:
+   ```bash
+   systemctl --user daemon-reload
+   systemctl --user enable --now gitboard
+   ```
 
-### ufw
+### Runbook
+
 ```bash
-sudo ufw deny 3000/tcp
-sudo ufw allow in on tailscale0 to any port 3000 proto tcp
-sudo ufw status verbose
+systemctl --user restart gitboard
+journalctl --user -u gitboard -f
+tail -F ~/.agent-forge/logs/$(date +%F).jsonl
 ```
 
-If ufw runs default deny, keep `3000/tcp` closed on public iface and let `tailscale0` pass.
+## Tailscale-only access
 
-## Troubleshooting
-### Container cannot reach Dolt
-- Confirm host Dolt is up: `curl http://127.0.0.1:13839`
-- Confirm compose uses host networking
-- Confirm no other service stole `13839`
+- install Tailscale on host
+- run `tailscale up` for auth
+- bind `HOST` to host tailnet IP
+- reach app at `http://<tailnet-ip>:3030/gitboard`
 
-### GitHub rate-limit / auth fail
-- Verify `.env` has valid `GITHUB_TOKEN`
-- Refresh token if `GithubPoller` logs 403/429
+No NAT, no public exposure, no extra firewall work for app port even if ufw stays open on other ports.
 
-### Port already bound
-- Find process: `sudo ss -ltnp | grep ':3000'`
-- Stop old gitboard or move current service
-- Re-run `docker compose up -d`
+## Environment variables
+
+| Var | Default | What it does | When override |
+|---|---:|---|---|
+| `HOST` | `0.0.0.0` in production, `127.0.0.1` in dev | Server bind address | Set to tailnet IP for native deploy |
+| `PORT` | `3000` | HTTP listen port | Change if port already in use |
+| `AGENT_FORGE_DB` | `~/.agent-forge/state.db` | SQLite state DB path | Move DB or isolate per host |
+| `XDG_PROJECTS_DIR` | `~/projects` fallback | Scanner root for repo discovery | Point at alternate repo tree, e.g. nested `~/dev` + `~/projects` layouts |
+| `DOLT_HOST` | `127.0.0.1` on native, `host.docker.internal` when `XDG_PROJECTS_DIR` is set | Dolt SQL host | Override when container / host routing differs |
+| `LOG_DIR` | `/data/logs` | JSONL log directory | Override for native host logs |
+| `GITHUB_TOKEN` | `gh auth token` fallback where available | GitHub API auth | Set explicit token for headless service |
+| `SKIP_GITHUB_POLLER` | unset | Disables GitHub poller | Use for manual-only / debugging runs |
+| `LOG_LEVEL` | `info` | Logger verbosity | Raise to `debug` during incident work |
+
+## Scanner behavior
+
+- `XDG_PROJECTS_DIR` is scanner root, not single repo path.
+- If unset, scanner falls back to `~/projects` when `HOME` exists, then `/home`.
+- Nested layouts work: both `~/dev` and `~/projects` can be scanned if `XDG_PROJECTS_DIR` points at a parent that contains them.
+- Shared-server repos are supported when `.beads/config.yaml` contains `dolt.shared-server: true` (or nested `dolt:\n  shared-server: true`).
+- In that mode scanner reads `~/.beads/shared-server/dolt-server.port` and uses `metadata.json` `dolt_database` as DB name.
+
+## Docker path status
+
+Kept for local reproduction only.
+
+Known issues:
+- Vite v7 `outDir` resolves under repo root in this setup
+- `host.docker.internal` needs `DOLT_HOST` override in some runtimes
+- custom bridge subnets can lose NAT on shared hosts
+- PTY shells were containerized, which broke the winning deploy path
+
+Use Docker only if you need to reproduce container behavior.
 
 ## Checks
+
 ```bash
-curl http://127.0.0.1:3000/gitboard
-curl http://127.0.0.1:3000/api/internal/dolt-health
+curl http://<tailnet-ip>:3030/gitboard
+curl http://<tailnet-ip>:3030/api/internal/dolt-health
 ```
+
+## Docs sweep evidence
+
+Checked `docs/beadboard-inline-feed-spec.md`, `docs/xtrm-console-visual-contract.md`, and `docs/graph/detail.md` for deploy / run-mode drift.
+
+- `docs/beadboard-inline-feed-spec.md` — no deploy/run-mode content to refresh.
+- `docs/xtrm-console-visual-contract.md` — no deploy/run-mode content to refresh.
+- `docs/graph/detail.md` — graph visual spec only; no deploy/run-mode drift.

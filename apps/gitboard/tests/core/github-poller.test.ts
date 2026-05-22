@@ -10,6 +10,7 @@ import {
   GithubPoller,
   type RawGithubEvent,
 } from "../../src/core/github-poller.ts";
+import { ChannelRegistry } from "../../src/api/ws/channels.ts";
 import { getEvents, getCommits } from "../../src/core/github-store.ts";
 
 const rawPushEvent: RawGithubEvent = {
@@ -45,6 +46,21 @@ const rawPREvent: RawGithubEvent = {
       additions: 30,
       deletions: 5,
       changed_files: 2,
+    },
+  },
+};
+
+const rawIssueCommentEvent: RawGithubEvent = {
+  id: "raw-issue-comment-1",
+  type: "IssueCommentEvent",
+  repo: { name: "owner/repo-a" },
+  actor: { login: "carol" },
+  created_at: "2026-03-06T12:00:00Z",
+  payload: {
+    action: "created",
+    issue: {
+      title: "Bug report",
+      html_url: "https://github.com/owner/repo-a/issues/7",
     },
   },
 };
@@ -198,8 +214,11 @@ describe("GithubPoller", () => {
     expect(poller).toBeDefined();
   });
 
-  it("ingestEvents stores events and commits from Compare API", async () => {
-    const poller = new GithubPoller(db, "test-token", { intervalMs: 300_000 });
+  it("ingestEvents stores events, commits, and publishes event append", async () => {
+    const registry = new ChannelRegistry();
+    const messages: unknown[] = [];
+    registry.subscribe("github:activity", { id: "sub-1", send: (msg) => messages.push(msg) });
+    const poller = new GithubPoller(db, "test-token", { intervalMs: 300_000, registry });
     await poller.ingestEvents([rawPushEvent]);
     const events = getEvents(db, {});
     const commits = getCommits(db, {});
@@ -211,10 +230,15 @@ describe("GithubPoller", () => {
     expect(events[0].deletions).toBe(3);
     expect(events[0].changed_files).toBe(2);
     expect(commits[0].message_full).toBeDefined();
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toMatchObject({ event: "github:event.append", data: expect.objectContaining({ id: "raw-push-1", additions: 20, title: "Second commit" }) });
   });
 
-  it("ingestEvents enriches PR events from PR API", async () => {
-    const poller = new GithubPoller(db, "test-token", { intervalMs: 300_000 });
+  it("ingestEvents enriches PR events from PR API and publishes event append", async () => {
+    const registry = new ChannelRegistry();
+    const messages: unknown[] = [];
+    registry.subscribe("github:activity", { id: "sub-1", send: (msg) => messages.push(msg) });
+    const poller = new GithubPoller(db, "test-token", { intervalMs: 300_000, registry });
     await poller.ingestEvents([rawPREventWithNumber]);
     const events = getEvents(db, {});
     expect(events).toHaveLength(1);
@@ -223,6 +247,8 @@ describe("GithubPoller", () => {
     expect(events[0].deletions).toBe(5);
     expect(events[0].changed_files).toBe(2);
     expect(events[0].url).toBe("https://github.com/owner/repo-a/pull/42");
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toMatchObject({ event: "github:event.append", data: expect.objectContaining({ id: "raw-pr-2", title: "Fix bug", url: "https://github.com/owner/repo-a/pull/42" }) });
   });
 
   it("falls back to payload commits when Compare API fails", async () => {
@@ -236,12 +262,28 @@ describe("GithubPoller", () => {
     expect(commits).toHaveLength(2);
   });
 
-  it("deduplicates events on repeated ingest", async () => {
-    const poller = new GithubPoller(db, "test-token", { intervalMs: 300_000 });
+  it("deduplicates events on repeated ingest and publishes append once", async () => {
+    const registry = new ChannelRegistry();
+    const messages: unknown[] = [];
+    registry.subscribe("github:activity", { id: "sub-1", send: (msg) => messages.push(msg) });
+    const poller = new GithubPoller(db, "test-token", { intervalMs: 300_000, registry });
     await poller.ingestEvents([rawPushEvent]);
     await poller.ingestEvents([rawPushEvent]);
     expect(getEvents(db, {})).toHaveLength(1);
     expect(getCommits(db, {})).toHaveLength(2);
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toMatchObject({ event: "github:event.append", data: expect.objectContaining({ id: "raw-push-1" }) });
+  });
+
+  it("publishes append for non-PR non-push user events", async () => {
+    const registry = new ChannelRegistry();
+    const messages: unknown[] = [];
+    registry.subscribe("github:activity", { id: "sub-1", send: (msg) => messages.push(msg) });
+    const poller = new GithubPoller(db, "test-token", { intervalMs: 300_000, registry });
+    await poller.ingestEvents([rawIssueCommentEvent]);
+    expect(getEvents(db, {})).toHaveLength(1);
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toMatchObject({ event: "github:event.append", data: expect.objectContaining({ id: "raw-issue-comment-1", type: "IssueCommentEvent", title: "Bug report", url: "https://github.com/owner/repo-a/issues/7" }) });
   });
 
   it("start/stop lifecycle works without errors", () => {

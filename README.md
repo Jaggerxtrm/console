@@ -1,72 +1,60 @@
 # Omniforge
 
-A unified dashboard for AI agent orchestration and issue tracking.
+Agent orchestration + issue tracking monorepo. Primary app: `apps/gitboard`.
 
-## Monorepo Structure
+## Current run modes
+
+### 1) Native systemd user service  
+Primary deploy path.
+- Service: `~/.config/systemd/user/gitboard.service`
+- Starts app with Bun, no container layer
+- Binds to Tailscale IP on host
+- Needs `loginctl enable-linger <user>` so it survives logout
+
+Quick start:
+```bash
+bun install
+cd apps/gitboard
+bun run build:dashboard
+systemctl --user daemon-reload
+systemctl --user enable --now gitboard
+```
+
+### 2) Docker / Compose  
+Kept in tree, but experimental / not primary deploy.
+- Useful for local reproduction
+- Known gaps documented in `docs/deployment.md`
+
+### 3) Dev mode  
+For local hacking:
+```bash
+bun run dev
+```
+
+## Docs
+
+- `docs/deployment.md` — native systemd + Tailscale runbook
+- `apps/gitboard/CLAUDE.md` — app-specific notes
+- `apps/gitboard/testing.md` — test guidance
+
+## Monorepo layout
 
 ```
 omniforge/
 ├── apps/
 │   └── gitboard/          # GitHub Activity Dashboard
 ├── packages/
-│   ├── core/              # @omniforge/core - Shared utilities and types
-│   ├── ui/                # @omniforge/ui - Design system components
+│   ├── core/              # @omniforge/core - shared utilities and types
+│   ├── ui/                # @omniforge/ui - design system components
 │   └── api-client/        # @omniforge/api-client - REST + WebSocket client
 └── pnpm-workspace.yaml
 ```
 
-## Getting Started
+## Package entry points
 
-```bash
-# Install dependencies
-bun install
-
-# Run gitboard dashboard
-bun run dev
-
-# Run tests
-bun run test
-
-# Build all packages
-bun run build
-```
-
-## Apps
-
-### Gitboard
-
-GitHub Activity Dashboard showing events, commits, and contribution data.
-
-```bash
-bun run --filter @omniforge/gitboard dev
-```
-
-## Packages
-
-### @omniforge/core
-
-Shared utilities, types, and constants.
-
-```typescript
-import { relativeTime, formatNumber, cn } from "@omniforge/core";
-import type { BeadIssue, Status, Priority } from "@omniforge/core";
-```
-
-### @omniforge/ui
-
-Design system components following the Omniforge visual language.
-
-```typescript
-import { Card, Badge, Button, Sidebar } from "@omniforge/ui";
-```
-
-### @omniforge/api-client
-
-REST and WebSocket client for Omniforge services.
-
-```typescript
-import { ApiClient, WsClient } from "@omniforge/api-client";
-```
+- `@omniforge/core` — formatting, dates, shared types
+- `@omniforge/ui` — design system components
+- `@omniforge/api-client` — REST + WebSocket client
 
 ## License
 

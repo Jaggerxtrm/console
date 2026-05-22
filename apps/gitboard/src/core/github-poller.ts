@@ -647,6 +647,7 @@ export class GithubPoller {
       const event = transformEvent(raw);
       ensureRepo(this.db, event.repo);
       const isNew = insertEvent(this.db, event);
+      let eventToPublish = event;
       if (isNew) newEvents++;
 
       if (raw.type === "PushEvent") {
@@ -666,14 +667,22 @@ export class GithubPoller {
           // Enrich via Compare API: full commit list + aggregate diff stats
           const compareData = await this.fetchCompare(raw.repo.name, before, head);
           if (compareData) {
+            const title = compareData.commits.at(-1)?.message ?? null;
             updateEventEnrichment(this.db, raw.id, {
               commit_count: compareData.commits.length,
               additions: compareData.additions,
               deletions: compareData.deletions,
               changed_files: compareData.changed_files,
-              // Use the last commit message as the push title (most recent)
-              title: compareData.commits.at(-1)?.message ?? null,
+              title,
             });
+            eventToPublish = {
+              ...eventToPublish,
+              commit_count: compareData.commits.length,
+              additions: compareData.additions,
+              deletions: compareData.deletions,
+              changed_files: compareData.changed_files,
+              title,
+            };
             for (const commit of compareData.commits) {
               commit.branch = branch;
               commit.event_id = raw.id;
@@ -708,6 +717,15 @@ export class GithubPoller {
               deletions: prData.deletions,
               changed_files: prData.changed_files,
             });
+            eventToPublish = {
+              ...eventToPublish,
+              title: prData.title,
+              body: prData.body,
+              url: prData.html_url,
+              additions: prData.additions,
+              deletions: prData.deletions,
+              changed_files: prData.changed_files,
+            };
             const labels = prData.labels ?? [];
             const labelNames = labels.length > 0
               ? JSON.stringify(labels.map((l) => l.name))
@@ -733,6 +751,10 @@ export class GithubPoller {
             });
           }
         }
+      }
+
+      if (isNew) {
+        this.publishGithubEvent("github:event.append", eventToPublish, eventToPublish.created_at);
       }
     }
 
