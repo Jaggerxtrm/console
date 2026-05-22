@@ -3,7 +3,7 @@ import { useGithubStore } from "../stores/github.ts";
 import { apiClient } from "../lib/client.ts";
 import { useWebSocket } from "./useWebSocket.ts";
 import type { WsMessage } from "../lib/ws.ts";
-import type { GithubEvent, GithubPr, GithubIssue } from "../../types/github.ts";
+import type { GithubEvent, GithubPr, GithubIssue, GithubRelease } from "../../types/github.ts";
 
 export function useGithubActivity(options: { includeLists?: boolean } = {}): void {
   const includeLists = options.includeLists ?? true;
@@ -24,6 +24,7 @@ export function useGithubActivity(options: { includeLists?: boolean } = {}): voi
     setIssues,
     upsertIssue,
     setReleases,
+    upsertRelease,
   } = useGithubStore();
 
   const load = useCallback(
@@ -91,11 +92,16 @@ export function useGithubActivity(options: { includeLists?: boolean } = {}): voi
         upsertIssue(issue);
         markRepoUnread(issue.repo);
       }
+      if (msg.event === "github:release.upsert" && msg.data) {
+        const release = msg.data as GithubRelease;
+        upsertRelease(release);
+        markRepoUnread(release.repo_full_name);
+      }
       if (msg.event === "github:sync_hint") {
         void load({ preserveVisibleState: true });
       }
     },
-    [prependEvent, markRepoUnread, upsertPr, upsertIssue, load]
+    [prependEvent, markRepoUnread, upsertPr, upsertIssue, upsertRelease, load]
   );
 
   useWebSocket("github:activity", wsHandler);

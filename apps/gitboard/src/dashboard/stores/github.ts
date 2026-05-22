@@ -52,6 +52,7 @@ export interface GithubState {
   upsertIssue: (issue: GithubIssue) => void;
   setReleases: (releases: GithubRelease[]) => void;
   clearReleases: () => void;
+  upsertRelease: (release: GithubRelease) => void;
 }
 
 const defaultFilter: EventFilter = {};
@@ -146,4 +147,8 @@ export const useGithubStore = create<GithubState>((set) => ({
   setReleases: (releases) => set((s) => (releases.length === 0 && s.releases.length > 0 ? s : { releases })),
 
   clearReleases: () => set({ releases: [] }),
+
+  upsertRelease: (release) => set((s) => ({
+    releases: [release, ...s.releases.filter((item) => !(item.repo_full_name === release.repo_full_name && item.tag_name === release.tag_name))].sort((a, b) => (b.published_at ?? "").localeCompare(a.published_at ?? "")),
+  })),
 }));

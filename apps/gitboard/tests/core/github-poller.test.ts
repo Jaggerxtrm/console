@@ -11,7 +11,7 @@ import {
   type RawGithubEvent,
 } from "../../src/core/github-poller.ts";
 import { ChannelRegistry } from "../../src/api/ws/channels.ts";
-import { getEvents, getCommits } from "../../src/core/github-store.ts";
+import { ensureRepo, getEvents, getCommits } from "../../src/core/github-store.ts";
 
 const rawPushEvent: RawGithubEvent = {
   id: "raw-push-1",
@@ -284,6 +284,26 @@ describe("GithubPoller", () => {
     expect(getEvents(db, {})).toHaveLength(1);
     expect(messages).toHaveLength(1);
     expect(messages[0]).toMatchObject({ event: "github:event.append", data: expect.objectContaining({ id: "raw-issue-comment-1", type: "IssueCommentEvent", title: "Bug report", url: "https://github.com/owner/repo-a/issues/7" }) });
+  });
+
+  it("publishes github source health when rate limit pauses polling", async () => {
+    vi.restoreAllMocks();
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}", {
+      status: 403,
+      headers: { "X-RateLimit-Remaining": "0", "X-RateLimit-Limit": "5000", "X-RateLimit-Reset": String(Math.floor(Date.now() / 1000) + 60) },
+    }));
+    ensureRepo(db, "owner/repo-a");
+    const registry = new ChannelRegistry();
+    const messages: unknown[] = [];
+    registry.subscribe("github:activity", { id: "sub-1", send: (msg) => messages.push(msg) });
+    const poller = new GithubPoller(db, "test-token", { intervalMs: 300_000, registry });
+
+    await poller.pollRepos();
+
+    expect(messages).toContainEqual(expect.objectContaining({
+      event: "github:source_health",
+      data: expect.objectContaining({ source: "github", status: "degraded" }),
+    }));
   });
 
   it("start/stop lifecycle works without errors", () => {
