@@ -69,7 +69,47 @@ describe("WsClient.subscribe", () => {
     mockWs.triggerOpen();
     client.subscribe("github:activity");
     const msg = JSON.parse(mockWs.sent[mockWs.sent.length - 1]);
-    expect(msg).toEqual({ type: "subscribe", channel: "github:activity", version: "1" });
+    expect(msg).toEqual({ action: "subscribe", channel: "github:activity", version: "1" });
+  });
+
+  it("keeps one server subscription alive until last local handler unmounts", () => {
+    const client = new WsClient("ws://localhost/ws");
+    client.connect();
+    mockWs.triggerOpen();
+
+    client.subscribe("github:activity");
+    client.subscribe("github:activity");
+
+    const firstReceived: unknown[] = [];
+    const secondReceived: unknown[] = [];
+    const unsubFirst = client.onMessage((msg) => {
+      if (msg.channel === "github:activity") firstReceived.push(msg);
+    });
+    const unsubSecond = client.onMessage((msg) => {
+      if (msg.channel === "github:activity") secondReceived.push(msg);
+    });
+
+    expect(mockWs.sent.map((entry) => JSON.parse(entry)).filter((msg) => msg.action === "subscribe")).toHaveLength(1);
+
+    mockWs.triggerMessage({ type: "event", channel: "github:activity", event: "new_event", data: { id: "e1" } });
+    expect(firstReceived).toHaveLength(1);
+    expect(secondReceived).toHaveLength(1);
+
+    unsubFirst();
+    client.unsubscribe("github:activity");
+
+    expect(mockWs.sent.map((entry) => JSON.parse(entry)).some((msg) => msg.action === "unsubscribe")).toBe(false);
+
+    mockWs.triggerMessage({ type: "event", channel: "github:activity", event: "new_event", data: { id: "e2" } });
+    expect(firstReceived).toHaveLength(1);
+    expect(secondReceived).toHaveLength(2);
+
+    unsubSecond();
+    client.unsubscribe("github:activity");
+
+    expect(mockWs.sent.map((entry) => JSON.parse(entry)).filter((msg) => msg.action === "unsubscribe")).toEqual([
+      { action: "unsubscribe", channel: "github:activity" },
+    ]);
   });
 
   it("re-subscribes on reconnect", () => {

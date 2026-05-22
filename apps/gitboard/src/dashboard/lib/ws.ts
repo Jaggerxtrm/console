@@ -30,7 +30,7 @@ function wsDebugLog(event: string, data: Record<string, unknown>): void {
 
 export class WsClient {
   private ws: WebSocket | null = null;
-  private subscriptions = new Set<string>();
+  private subscriptions = new Map<string, number>();
   private handlers: WsHandler[] = [];
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectDelay = 1000;
@@ -60,7 +60,7 @@ export class WsClient {
       const connectMs = Math.round(performance.now() - this.connectStartedAt);
       this.reconnectDelay = 1000;
       wsDebugLog("connected", { connectMs, subscriptions: this.subscriptions.size });
-      for (const channel of this.subscriptions) {
+      for (const channel of this.subscriptions.keys()) {
         const since_seq = this.lastSeqByChannel.get(channel) ?? 0;
         if (since_seq > 0 && this.bootId) {
           wsDebugLog("resume", { channel, since_seq, boot_id: this.bootId });
@@ -111,16 +111,22 @@ export class WsClient {
   }
 
   subscribe(channel: string): void {
-    this.subscriptions.add(channel);
-    // Server contract is `action`, not `type` (see api/ws/handler.ts handleMessage).
-    // Long-standing mismatch — every realtime channel (beads:changes, github:*,
-    // specialists:activity) had its subscribe silently dropped, forcing the UI to
-    // fall back to polling/refetch cycles. Fixed as part of forge-7cyq because
-    // specialist push updates cannot work without it.
+    const nextCount = (this.subscriptions.get(channel) ?? 0) + 1;
+    this.subscriptions.set(channel, nextCount);
+    if (nextCount !== 1) return;
+
     this._send({ action: "subscribe", channel, version: String(REALTIME_PROTOCOL_VERSION) });
   }
 
   unsubscribe(channel: string): void {
+    const currentCount = this.subscriptions.get(channel);
+    if (!currentCount) return;
+
+    if (currentCount > 1) {
+      this.subscriptions.set(channel, currentCount - 1);
+      return;
+    }
+
     this.subscriptions.delete(channel);
     this._send({ action: "unsubscribe", channel });
   }
