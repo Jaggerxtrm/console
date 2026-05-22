@@ -1,7 +1,6 @@
 import { useMemo } from "react";
 import type { SpecialistJob } from "../../server/observability/types.ts";
-import { invalidateDashboardResource, useDashboardResource } from "../lib/resource.ts";
-import { useWebSocket } from "./useWebSocket.ts";
+import { useDashboardResource, useDashboardResourceInvalidation } from "../lib/resource.ts";
 
 interface ChainsResponse {
   in_flight?: Array<SpecialistJob & { lastOutput?: string | null; last_output?: string | null }>;
@@ -39,7 +38,7 @@ export interface UseChainsState {
 
 export function useChains(): UseChainsState {
   const resource = useDashboardResource<ChainsResponse>({
-    key: "chains",
+    key: "specialists:chains",
     cacheTtlMs: POLL_MS,
     pollMs: POLL_MS,
     fetcher: async (_key, _options) => {
@@ -49,9 +48,7 @@ export function useChains(): UseChainsState {
     },
   });
 
-  useWebSocket("specialists:activity", () => {
-    invalidateDashboardResource("chains");
-  });
+  useDashboardResourceInvalidation("specialists:activity", "specialists:chains");
 
   const jobs = useMemo(() => normalizeJobs([...(resource.data?.in_flight ?? []), ...(resource.data?.recent_history ?? [])]), [resource.data]);
   const chains = useMemo(() => groupChains(jobs), [jobs]);

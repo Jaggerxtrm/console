@@ -1,14 +1,12 @@
 const { Window } = await import("happy-dom");
 const windowStub = new Window({ url: "http://localhost/" });
-globalThis.Event = windowStub.Event;
-globalThis.window = windowStub as unknown as Window & typeof globalThis;
-globalThis.document = windowStub.document;
-globalThis.navigator = windowStub.navigator;
-globalThis.HTMLElement = windowStub.HTMLElement;
-globalThis.CustomEvent = windowStub.CustomEvent;
-globalThis.performance = windowStub.performance;
-globalThis.setTimeout = windowStub.setTimeout.bind(windowStub);
-globalThis.clearTimeout = windowStub.clearTimeout.bind(windowStub);
+(globalThis as any).Event = windowStub.Event;
+(globalThis as any).window = windowStub as any;
+(globalThis as any).document = windowStub.document as any;
+(globalThis as any).navigator = windowStub.navigator as any;
+(globalThis as any).HTMLElement = windowStub.HTMLElement as any;
+(globalThis as any).CustomEvent = windowStub.CustomEvent as any;
+(globalThis as any).performance = windowStub.performance as any;
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const { act, renderHook, waitFor } = await import("@testing-library/react");
@@ -20,12 +18,12 @@ beforeEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
   document.body.innerHTML = "";
-  globalThis.fetch = originalFetch;
+  (globalThis as any).fetch = originalFetch as any;
 });
 
 afterEach(() => {
   vi.useRealTimers();
-  globalThis.fetch = originalFetch;
+  (globalThis as any).fetch = originalFetch as any;
 });
 
 const makePayload = (value: string) => ({ value });
@@ -55,7 +53,7 @@ describe("useDashboardResource", () => {
     const fetcher = vi.fn().mockResolvedValue(makePayload("alpha"));
     renderHook(() => useDashboardResource({ key: "resource-focus", cacheTtlMs: 10_000, fetcher: async () => fetcher() }));
     await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1));
-    act(() => window.dispatchEvent(new Event("focus")));
+    act(() => window.dispatchEvent(new windowStub.Event("focus") as unknown as Event));
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
