@@ -50,7 +50,7 @@ export function createGraphDao(options: GraphDaoOptions = {}) {
       const project = resolveProject(scan.projects, projectId);
       if (!project) return { graph: emptyGraph(projectId ?? "", projectFallbackNote(projectId, scan.projects)), freshness: "fresh" };
 
-      const issueState = readCachedIssues(project);
+      const issueState = readCachedIssues(project, includeClosed);
       const dao = getDao();
       const specialists = dao ? dao.inFlightJobs().filter((job) => job.repoSlug === project.id || job.repoSlug === project.name) : [];
       const graph = buildGraph(project, issueState.issues, specialists, includeClosed);
@@ -118,30 +118,34 @@ function projectScanKey(projects: BeadsProject[]): string {
   return projects.map((project) => `${project.id}:${project.name}:${project.beadsPath}`).sort().join("|");
 }
 
-function issueCacheKey(project: BeadsProject): string {
+function issueCacheKey(project: BeadsProject, includeClosed: boolean): string {
   const projectEpoch = projectIssueEpochs.get(project.id) ?? 0;
-  return `${project.id}:${globalIssueEpoch}:${projectEpoch}`;
+  // includeClosed is part of the key because the Dolt query shape differs
+  // (open-set vs full-set), so the two views must cache independently
+  // (Codex forge-w8ya — previously include_closed=true returned the
+  // non-closed cache and silently regressed the endpoint contract).
+  return `${project.id}:${globalIssueEpoch}:${projectEpoch}:${includeClosed ? "all" : "open"}`;
 }
 
-function readCachedIssues(project: BeadsProject): { issues: BeadIssue[]; freshness: "fresh" | "stale" | "degraded" } {
-  const key = issueCacheKey(project);
+function readCachedIssues(project: BeadsProject, includeClosed: boolean): { issues: BeadIssue[]; freshness: "fresh" | "stale" | "degraded" } {
+  const key = issueCacheKey(project, includeClosed);
   const cached = issueCache.get(key);
   if (cached) {
-    if (cached.refreshAt <= Date.now()) void refreshIssues(project);
-    emit(makeLogEntry("api", "graph.issue_cache", "info", undefined, { projectId: project.id, hit: true }));
+    if (cached.refreshAt <= Date.now()) void refreshIssues(project, includeClosed);
+    emit(makeLogEntry("api", "graph.issue_cache", "info", undefined, { projectId: project.id, includeClosed, hit: true }));
     return { issues: cached.value.issues, freshness: cached.value.freshness };
   }
-  emit(makeLogEntry("api", "graph.issue_cache", "info", undefined, { projectId: project.id, hit: false }));
-  void refreshIssues(project);
+  emit(makeLogEntry("api", "graph.issue_cache", "info", undefined, { projectId: project.id, includeClosed, hit: false }));
+  void refreshIssues(project, includeClosed);
   return { issues: [], freshness: "stale" };
 }
 
-async function refreshIssues(project: BeadsProject): Promise<void> {
-  const key = issueCacheKey(project);
+async function refreshIssues(project: BeadsProject, includeClosed: boolean): Promise<void> {
+  const key = issueCacheKey(project, includeClosed);
   const inflight = issueInflight.get(key);
   if (inflight) return;
 
-  const promise = readIssues(project)
+  const promise = readIssues(project, includeClosed)
     .then((issues) => {
       issueCache.set(key, { value: { key, issues, freshness: "fresh" }, refreshAt: Date.now() + ISSUE_REFRESH_MS });
       pruneIssueCache();
@@ -189,17 +193,25 @@ export function resolveProject(projects: BeadsProject[], projectId: string | nul
   return match ?? null;
 }
 
-async function readIssues(project: BeadsProject): Promise<BeadIssue[]> {
+// Status values considered "active" for the default graph view (Codex forge-w8ya:
+// `in_review` was previously omitted and silently dropped from graph nodes/edges).
+// Keep in sync with normalizeStatus() below — drop only "closed" from the live set.
+const ACTIVE_GRAPH_STATUSES = ["open", "in_progress", "in_review", "blocked", "deferred"] as const;
+
+async function readIssues(project: BeadsProject, includeClosed: boolean): Promise<BeadIssue[]> {
   const startedAt = performance.now();
   if (project.doltPort) {
     const client = new DoltClient({ host: process.env.DOLT_HOST ?? (process.env.XDG_PROJECTS_DIR ? "host.docker.internal" : "127.0.0.1"), port: project.doltPort, database: project.doltDatabase ?? "dolt" });
     try {
-      // Only fetch non-closed issues for the graph. With closed included, projects
-      // that have thousands of closed issues blow past the row cap before all open
-      // ones are returned (specialists: 65 open + 2071 closed; the original
-      // limit:1000 unfiltered query returned only ~7 open). The graph endpoint
-      // defaults to include_closed=false anyway.
-      const issues = await client.getIssues({ status: ["open", "in_progress", "blocked", "deferred"], limit: 2000 });
+      // For the default graph view (include_closed=false) push the status filter
+      // to SQL — projects with thousands of closed issues otherwise blow past the
+      // row cap before all active ones are returned (specialists: 65 open + 2071
+      // closed; the original limit:1000 unfiltered query returned only ~7 open).
+      // When include_closed=true we MUST return closed rows too, so omit the filter
+      // (Codex forge-w8ya — restoring endpoint contract).
+      const issues = includeClosed
+        ? await client.getIssues({ limit: 2000 })
+        : await client.getIssues({ status: [...ACTIVE_GRAPH_STATUSES], limit: 2000 });
       emit(makeLogEntry("dolt", "graph.source.timing", "info", undefined, { projectId: project.id, source: "dolt", ms: Math.round(performance.now() - startedAt), rows: issues.length }));
       return issues;
     } catch {
