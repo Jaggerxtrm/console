@@ -126,7 +126,7 @@ export class ProjectScanner {
 
       const metadataPath = join(beadsPath, "metadata.json");
       const metadataContent = await readFile(metadataPath, "utf-8");
-      const metadata = JSON.parse(metadataContent) as { project_id?: string; issue_count?: number };
+      const metadata = JSON.parse(metadataContent) as { project_id?: string; issue_count?: number; dolt_database?: string };
 
       const configPath = join(beadsPath, "config.yaml");
       let doltPort: number | undefined;
@@ -155,6 +155,10 @@ export class ProjectScanner {
       } catch {
         // no config
       }
+
+      // metadata.json carries the canonical dolt_database for shared-server projects
+      // whose config.yaml omits it (the config only opts into shared-server).
+      if (!doltDatabase && metadata.dolt_database) doltDatabase = metadata.dolt_database;
 
       const sourceHealth = await this.detectSourceHealth(beadsPath, doltPort);
       const source = sourceHealth.find((entry) => entry.state === "available")?.kind ?? "unknown";

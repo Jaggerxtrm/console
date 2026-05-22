@@ -194,7 +194,12 @@ async function readIssues(project: BeadsProject): Promise<BeadIssue[]> {
   if (project.doltPort) {
     const client = new DoltClient({ host: process.env.DOLT_HOST ?? (process.env.XDG_PROJECTS_DIR ? "host.docker.internal" : "127.0.0.1"), port: project.doltPort, database: project.doltDatabase ?? "dolt" });
     try {
-      const issues = await client.getIssues({ limit: 1000 });
+      // Only fetch non-closed issues for the graph. With closed included, projects
+      // that have thousands of closed issues blow past the row cap before all open
+      // ones are returned (specialists: 65 open + 2071 closed; the original
+      // limit:1000 unfiltered query returned only ~7 open). The graph endpoint
+      // defaults to include_closed=false anyway.
+      const issues = await client.getIssues({ status: ["open", "in_progress", "blocked", "deferred"], limit: 2000 });
       emit(makeLogEntry("dolt", "graph.source.timing", "info", undefined, { projectId: project.id, source: "dolt", ms: Math.round(performance.now() - startedAt), rows: issues.length }));
       return issues;
     } catch {
