@@ -25,7 +25,9 @@ type Subscriber = () => void;
 
 const cache = new Map<string, CacheEntry<unknown>>();
 const subscribers = new Map<string, Set<Subscriber>>();
-const invalidateTimers = new Map<string, ReturnType<typeof globalThis.setTimeout>>();
+type BrowserTimer = ReturnType<typeof window.setTimeout>;
+
+const invalidateTimers = new Map<string, BrowserTimer>();
 
 export function readDashboardResource<TData>(key: string | null): TData | null {
   if (!key) return null;
@@ -53,20 +55,26 @@ export function applyDashboardResourceDelta<TData>(key: string, updater: (curren
   return next;
 }
 
-export function useDashboardResource<TData>(options: DashboardResourceOptions<TData>): DashboardResourceState<TData> & { refresh: (options?: { force?: boolean; refresh?: boolean }) => Promise<void> } {
-  const { key, cacheTtlMs, pollMs, staleEmptyRetryMs, isEmpty, fetcher } = options;
+type RefreshOptions = { force?: boolean; refresh?: boolean };
+
+export function useDashboardResource<TData>(options: DashboardResourceOptions<TData>): DashboardResourceState<TData> & { refresh: (options?: RefreshOptions) => Promise<void> } {
+  const { key, cacheTtlMs, pollMs, staleEmptyRetryMs, isEmpty } = options;
+  const fetcherRef = useRef(options.fetcher);
+  const isEmptyRef = useRef(isEmpty);
+  fetcherRef.current = options.fetcher;
+  isEmptyRef.current = isEmpty;
   const [state, setState] = useState<DashboardResourceState<TData>>(() => ({ data: readDashboardResource<TData>(key), loading: key !== null && !readDashboardResource<TData>(key), error: null }));
   const requestSeq = useRef(0);
-  const pollTimer = useRef<ReturnType<typeof globalThis.setTimeout> | null>(null);
-  const staleTimer = useRef<ReturnType<typeof globalThis.setTimeout> | null>(null);
+  const pollTimer = useRef<BrowserTimer | null>(null);
+  const staleTimer = useRef<BrowserTimer | null>(null);
   const staleRetryUsed = useRef(false);
   const visibleRef = useRef(typeof document === "undefined" ? true : document.visibilityState === "visible");
 
-  const clearTimer = useCallback((timer: ReturnType<typeof window.setTimeout> | null) => {
+  const clearTimer = useCallback((timer: BrowserTimer | null) => {
     if (timer !== null) window.clearTimeout(timer);
   }, []);
 
-  const schedulePoll = useCallback((refresh: () => Promise<void>) => {
+  const schedulePoll = useCallback((refresh: (options?: RefreshOptions) => Promise<void>) => {
     clearTimer(pollTimer.current);
     pollTimer.current = null;
     if (!pollMs || !key || !visibleRef.current) return;
@@ -75,7 +83,7 @@ export function useDashboardResource<TData>(options: DashboardResourceOptions<TD
     }, pollMs);
   }, [clearTimer, key, pollMs]);
 
-  const scheduleStaleRetry = useCallback((refresh: () => Promise<void>) => {
+  const scheduleStaleRetry = useCallback((refresh: (options?: RefreshOptions) => Promise<void>) => {
     if (!staleEmptyRetryMs || staleRetryUsed.current || staleTimer.current !== null) return;
     staleRetryUsed.current = true;
     staleTimer.current = window.setTimeout(() => {
@@ -84,7 +92,9 @@ export function useDashboardResource<TData>(options: DashboardResourceOptions<TD
     }, staleEmptyRetryMs);
   }, [staleEmptyRetryMs]);
 
-  const refresh = useCallback(async (options: { force?: boolean; refresh?: boolean } = {}) => {
+  const refreshRef = useRef<(options?: RefreshOptions) => Promise<void>>(async () => {});
+
+  const refresh = useCallback(async (options: RefreshOptions = {}) => {
     if (!key || typeof window === "undefined") {
       setState({ data: null, loading: false, error: null });
       return;
@@ -98,13 +108,13 @@ export function useDashboardResource<TData>(options: DashboardResourceOptions<TD
     const seq = ++requestSeq.current;
     const controller = new AbortController();
     try {
-      const data = await fetcher(key, { refresh: options.refresh ?? false, signal: controller.signal });
+      const data = await fetcherRef.current(key, { refresh: options.refresh ?? false, signal: controller.signal });
       if (seq !== requestSeq.current) return;
       const now = Date.now();
       cache.set(key, { data, fetchedAt: now, expiresAt: now + cacheTtlMs });
       setState({ data, loading: false, error: null });
       schedulePoll(refresh);
-      if (isEmpty?.(data)) scheduleStaleRetry(refresh);
+      if (isEmptyRef.current?.(data)) scheduleStaleRetry(refresh);
       else {
         staleRetryUsed.current = false;
         clearTimer(staleTimer.current);
@@ -115,7 +125,11 @@ export function useDashboardResource<TData>(options: DashboardResourceOptions<TD
       setState((current) => ({ ...current, loading: false, error: error instanceof Error ? error.message : String(error), data: cached ?? current.data }));
       schedulePoll(refresh);
     }
-  }, [cacheTtlMs, clearTimer, fetcher, isEmpty, key, schedulePoll, scheduleStaleRetry]);
+  }, [cacheTtlMs, clearTimer, key, schedulePoll, scheduleStaleRetry]);
+
+  useEffect(() => {
+    refreshRef.current = refresh;
+  }, [refresh]);
 
   useEffect(() => {
     if (!key) {
@@ -124,13 +138,13 @@ export function useDashboardResource<TData>(options: DashboardResourceOptions<TD
     }
     const cached = readDashboardResource<TData>(key);
     setState({ data: cached, loading: !cached, error: null });
-    const subscriber = () => { void refresh({ force: true, refresh: true }); };
+    const subscriber = () => { void refreshRef.current(); };
     registerSubscriber(key, subscriber);
-    void refresh();
-    const onFocus = () => { if (document.visibilityState === "visible") void refresh({ force: true, refresh: true }); };
+    void refreshRef.current();
+    const onFocus = () => { if (document.visibilityState === "visible") void refreshRef.current(); };
     const onVisibility = () => {
       visibleRef.current = document.visibilityState === "visible";
-      if (visibleRef.current) void refresh({ force: true, refresh: true });
+      if (visibleRef.current) void refreshRef.current();
       else clearTimer(pollTimer.current);
     };
     window.addEventListener("focus", onFocus);
@@ -142,7 +156,7 @@ export function useDashboardResource<TData>(options: DashboardResourceOptions<TD
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [clearTimer, key, refresh]);
+  }, [clearTimer, key]);
 
   return { ...state, refresh };
 }
