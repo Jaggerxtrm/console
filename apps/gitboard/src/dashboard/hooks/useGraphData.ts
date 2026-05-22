@@ -5,6 +5,7 @@ import { useWebSocket } from "./useWebSocket.ts";
 
 const CACHE_TTL_MS = 10_000;
 const STALE_RETRY_DELAY_MS = 750;
+const REFETCH_COALESCE_MS = 1_500; // forge-h830: collapse WS-driven refetch bursts
 const CACHE = new Map<string, { data: GraphResponse; expires: number }>();
 
 export function useGraphData(projectId: string | null) {
@@ -100,30 +101,39 @@ export function useGraphData(projectId: string | null) {
     };
   }, [load]);
 
+  // forge-h830: coalesce refetch on burst events. Without this, a watcher
+  // storm (50+ events/sec) caused the UI to thrash — invalidate, refetch,
+  // loading, repeat. The trailing setTimeout collapses any burst arriving
+  // within REFETCH_COALESCE_MS into a single refetch.
+  const refetchTimer = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const scheduleRefetch = useCallback(() => {
+    if (!key) return;
+    if (refetchTimer.current !== null) return; // already scheduled
+    refetchTimer.current = window.setTimeout(() => {
+      refetchTimer.current = null;
+      CACHE.delete(key);
+      staleRetryUsed.current = false;
+      clearStaleRetry();
+      void loadRef.current?.({ refresh: true, force: true });
+    }, REFETCH_COALESCE_MS);
+  }, [key, clearStaleRetry]);
+
+  useEffect(() => () => {
+    if (refetchTimer.current !== null) window.clearTimeout(refetchTimer.current);
+  }, []);
+
   useWebSocket("beads:changes", (msg: WsMessage) => {
     const data = msg.data as { projectId?: string; project_id?: string } | undefined;
     const eventProject = data?.projectId ?? data?.project_id;
     if (eventProject && eventProject !== key) return;
-    CACHE.delete(key);
-    staleRetryUsed.current = false;
-    clearStaleRetry();
-    void loadRef.current?.({ refresh: true, force: true });
+    scheduleRefetch();
   });
 
-  // Specialist overlay changes (job state, in-flight set) are now push-driven via
-  // the observability epoch.bump → registry.publish("specialists:activity") wiring
-  // in api/server.ts (forge-7cyq). Phase 1 broadcasts a single hint per repo bump;
-  // we refetch regardless of which repo bumped — Phase 2 will introduce per-repo
-  // channels and a repoSlug↔projectId mapping for finer filtering.
+  // Specialist overlay changes via observability epoch.bump → registry.publish
+  // ("specialists:activity") wiring in api/server.ts (forge-7cyq). Phase 2 will
+  // introduce per-repo channels for finer filtering; for now any hint refetches.
   useWebSocket("specialists:activity", () => {
-    if (!key) return;
-    // Phase 1: refetch on any specialist hint regardless of repo_slug. Phase 2
-    // introduces per-repo channels (specialists:repo:<slug>) + repoSlug↔projectId
-    // mapping so a typed SpecialistsSyncHint payload becomes useful for filtering.
-    CACHE.delete(key);
-    staleRetryUsed.current = false;
-    clearStaleRetry();
-    void loadRef.current?.({ refresh: true, force: true });
+    scheduleRefetch();
   });
 
   return { ...state, reload: load };
