@@ -6,11 +6,12 @@ import {
   updateEventEnrichment,
   upsertPr,
   upsertIssue,
+  upsertRelease,
   getRepos,
   getRepoPollState,
   upsertRepoPollState,
 } from "./github-store.ts";
-import type { GithubEvent, GithubCommit, GithubPr, GithubIssue, GithubRepo } from "./github-store.ts";
+import type { GithubEvent, GithubCommit, GithubPr, GithubIssue, GithubRepo, GithubRelease } from "./github-store.ts";
 import type { ChannelRegistry } from "../api/ws/channels.ts";
 import type { GithubRealtimeEvent } from "../types/realtime.ts";
 import { emit, makeLogEntry } from "./logger.ts";
@@ -393,7 +394,7 @@ export class GithubPoller {
     return 10 * 60_000;
   }
 
-  private publishGithubEvent(event: GithubRealtimeEvent, data: GithubPr | GithubIssue | Record<string, unknown>, version: string): void {
+  private publishGithubEvent(event: GithubRealtimeEvent, data: GithubPr | GithubIssue | GithubRelease | Record<string, unknown>, version: string): void {
     this.registry?.publish("github:activity", event, data, version);
   }
 
@@ -514,6 +515,63 @@ export class GithubPoller {
     return { watermark: latest, etag: latestEtag, successful: true };
   }
 
+  private async pollReleases(repo: string, watermark: string | null, persistedEtag?: string | null): Promise<RepoEndpointPollResult> {
+    interface ReleasesResponse {
+      id: number;
+      tag_name: string;
+      name: string | null;
+      body: string | null;
+      html_url: string;
+      author: { login: string } | null;
+      published_at: string | null;
+      created_at: string;
+      draft: boolean;
+      prerelease: boolean;
+    }
+
+    // forge-nwdr: poll /repos/<x>/releases per cycle. Mirrors pollPullRequests
+    // structure: ETag-gated, sort=created desc (the API's default), paginate
+    // until watermark hit or short page. Watermark is on published_at because
+    // that's the user-meaningful "when did the release happen" timestamp;
+    // unpublished drafts have null published_at and are skipped.
+    let latest = watermark;
+    let latestEtag = persistedEtag ?? null;
+    const MAX_PAGES = 5; // releases are far rarer than PRs; 5 pages * 100 = 500
+    for (let page = 1; page <= MAX_PAGES; page++) {
+      const endpoint = page === 1 ? "releases" : `releases:page:${page}`;
+      const result = await this.apiGetWithMeta<ReleasesResponse[]>(`/repos/${repo}/releases?per_page=100&page=${page}`, repo, endpoint, page === 1 ? persistedEtag : undefined);
+      if (page === 1) latestEtag = result.etag;
+      if (result.status === "not_modified") return { watermark: latest, etag: latestEtag, successful: true };
+      const releases = result.data;
+      if (!releases) return { watermark: latest, etag: latestEtag, successful: false };
+      let watermarkHit = false;
+      for (const release of releases) {
+        const publishedAt = release.published_at;
+        if (publishedAt === null) continue; // skip drafts
+        if (this.shouldStopOnWatermark(publishedAt, watermark)) { watermarkHit = true; break; }
+        const record: GithubRelease = {
+          id: String(release.id),
+          tag_name: release.tag_name,
+          name: release.name,
+          body: release.body,
+          html_url: release.html_url,
+          author_login: release.author?.login ?? "",
+          published_at: publishedAt,
+          repo_full_name: repo,
+        };
+        const existing = this.db.query<{ release_id: string; published_at: string }, { $repo: string; $tag: string }>(
+          "SELECT release_id, published_at FROM github_releases WHERE repo = $repo AND tag_name = $tag",
+        ).get({ $repo: repo, $tag: release.tag_name });
+        const changed = !existing || existing.published_at !== publishedAt || existing.release_id !== record.id;
+        upsertRelease(this.db, record);
+        if (changed || !existing) this.publishGithubEvent("github:release.upsert", record, publishedAt);
+        latest = latest === null || publishedAt > latest ? publishedAt : latest;
+      }
+      if (watermarkHit || releases.length < 100 || this.pausedUntil > Date.now()) return { watermark: latest, etag: latestEtag, successful: true };
+    }
+    return { watermark: latest, etag: latestEtag, successful: true };
+  }
+
   private isRepoDue(repo: GithubRepo, state: ReturnType<typeof getRepoPollState>, now = Date.now()): boolean {
     if (state.paused_until && new Date(state.paused_until).getTime() > now) return false;
     if (!repo.last_polled_at) return true;
@@ -536,19 +594,23 @@ export class GithubPoller {
 
     const issueResult = await this.pollIssues(repo.full_name, state.last_issue_updated_at, state.issue_etag);
     const prResult = await this.pollPullRequests(repo.full_name, state.last_pr_updated_at, state.pr_etag);
+    const releaseResult = await this.pollReleases(repo.full_name, state.last_release_published_at, state.release_etag);
     const lastIssueUpdatedAt = issueResult.watermark ?? state.last_issue_updated_at;
     const lastPrUpdatedAt = prResult.watermark ?? state.last_pr_updated_at;
+    const lastReleasePublishedAt = releaseResult.watermark ?? state.last_release_published_at;
     const polledAt = new Date().toISOString();
     upsertRepoPollState(this.db, {
       repo: repo.full_name,
       last_issue_updated_at: lastIssueUpdatedAt,
       last_pr_updated_at: lastPrUpdatedAt,
-      last_activity_at: this.latestActivityAt(lastIssueUpdatedAt, lastPrUpdatedAt, state.last_activity_at),
+      last_activity_at: this.latestActivityAt(lastIssueUpdatedAt, lastPrUpdatedAt, lastReleasePublishedAt, state.last_activity_at),
       issue_etag: issueResult.etag ?? state.issue_etag,
       pr_etag: prResult.etag ?? state.pr_etag,
       paused_until: this.pausedUntil > Date.now() ? new Date(this.pausedUntil).toISOString() : null,
+      last_release_published_at: lastReleasePublishedAt,
+      release_etag: releaseResult.etag ?? state.release_etag,
     });
-    if (issueResult.successful && prResult.successful) {
+    if (issueResult.successful && prResult.successful && releaseResult.successful) {
       this.markRepoPolled(repo.full_name, polledAt);
     }
   }

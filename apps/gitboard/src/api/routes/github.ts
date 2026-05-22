@@ -289,11 +289,10 @@ export function createGithubRouter(db: Database, registry: ChannelRegistry): Hon
     return response;
   });
 
-  // GET /api/github/releases
+  // GET /api/github/releases — optional ?repo filter, mirrors /prs and /issues
   app.get("/releases", (c) => {
     const t0 = performance.now();
     const q = c.req.query();
-    if (!q.repo) return c.json({ error: "repo is required" }, 400);
     const limit = q.limit ? parseInt(q.limit, 10) : 50;
     const offset = q.offset ? parseInt(q.offset, 10) : 0;
     const releases = getReleases(db, { repo: q.repo, limit, offset });

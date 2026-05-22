@@ -183,6 +183,23 @@ CREATE TABLE IF NOT EXISTS github_repo_poll_state (
   pr_etag               TEXT,
   paused_until          DATETIME
 );
+
+-- Releases ingested via /repos/<x>/releases polling (forge-nwdr).
+-- Replaces the prior approach of surfacing releases only via ReleaseEvent rows
+-- in github_events, which was bound to the user-events 300-event/90-day window.
+CREATE TABLE IF NOT EXISTS github_releases (
+  repo            TEXT NOT NULL,
+  tag_name        TEXT NOT NULL,
+  release_id      TEXT NOT NULL,
+  name            TEXT,
+  body            TEXT,
+  html_url        TEXT,
+  author_login    TEXT NOT NULL,
+  published_at    DATETIME NOT NULL,
+  created_at      DATETIME NOT NULL,
+  PRIMARY KEY (repo, tag_name)
+);
+CREATE INDEX IF NOT EXISTS idx_gh_releases_repo ON github_releases(repo, published_at DESC);
 `;
 
 export function createDatabase(path: string): Database {
@@ -194,6 +211,9 @@ export function createDatabase(path: string): Database {
     "ALTER TABLE github_prs ADD COLUMN additions INTEGER",
     "ALTER TABLE github_prs ADD COLUMN deletions INTEGER",
     "ALTER TABLE github_prs ADD COLUMN changed_files INTEGER",
+    // forge-nwdr: release polling watermark + ETag per repo
+    "ALTER TABLE github_repo_poll_state ADD COLUMN last_release_published_at DATETIME",
+    "ALTER TABLE github_repo_poll_state ADD COLUMN release_etag TEXT",
   ];
   for (const sql of migrations) {
     try { db.exec(sql); } catch { /* column already exists */ }

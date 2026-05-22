@@ -307,11 +307,14 @@ export interface RepoPollState {
   issue_etag: string | null;
   pr_etag: string | null;
   paused_until: string | null;
+  last_release_published_at: string | null;
+  release_etag: string | null;
 }
 
 export function getRepoPollState(db: Database, repo: string): RepoPollState {
   return db.query<RepoPollState, AnyParams>(
-    `SELECT repo, last_issue_updated_at, last_pr_updated_at, last_activity_at, issue_etag, pr_etag, paused_until
+    `SELECT repo, last_issue_updated_at, last_pr_updated_at, last_activity_at, issue_etag, pr_etag, paused_until,
+            last_release_published_at, release_etag
      FROM github_repo_poll_state WHERE repo = $repo`
   ).get({ $repo: repo }) ?? {
     repo,
@@ -321,21 +324,27 @@ export function getRepoPollState(db: Database, repo: string): RepoPollState {
     issue_etag: null,
     pr_etag: null,
     paused_until: null,
+    last_release_published_at: null,
+    release_etag: null,
   };
 }
 
 export function upsertRepoPollState(db: Database, state: RepoPollState): void {
   db.prepare(
     `INSERT INTO github_repo_poll_state
-      (repo, last_issue_updated_at, last_pr_updated_at, last_activity_at, issue_etag, pr_etag, paused_until)
-     VALUES ($repo, $last_issue_updated_at, $last_pr_updated_at, $last_activity_at, $issue_etag, $pr_etag, $paused_until)
+      (repo, last_issue_updated_at, last_pr_updated_at, last_activity_at, issue_etag, pr_etag, paused_until,
+       last_release_published_at, release_etag)
+     VALUES ($repo, $last_issue_updated_at, $last_pr_updated_at, $last_activity_at, $issue_etag, $pr_etag, $paused_until,
+             $last_release_published_at, $release_etag)
      ON CONFLICT(repo) DO UPDATE SET
        last_issue_updated_at = excluded.last_issue_updated_at,
        last_pr_updated_at = excluded.last_pr_updated_at,
        last_activity_at = excluded.last_activity_at,
        issue_etag = excluded.issue_etag,
        pr_etag = excluded.pr_etag,
-       paused_until = excluded.paused_until`
+       paused_until = excluded.paused_until,
+       last_release_published_at = excluded.last_release_published_at,
+       release_etag = excluded.release_etag`
   ).run({
     $repo: state.repo,
     $last_issue_updated_at: state.last_issue_updated_at,
@@ -344,6 +353,8 @@ export function upsertRepoPollState(db: Database, state: RepoPollState): void {
     $issue_etag: state.issue_etag,
     $pr_etag: state.pr_etag,
     $paused_until: state.paused_until,
+    $last_release_published_at: state.last_release_published_at,
+    $release_etag: state.release_etag,
   } as AnyParams);
 }
 
@@ -662,8 +673,37 @@ export function getIssue(db: Database, repo: string, number: number): GithubIssu
   );
 }
 
+export function upsertRelease(db: Database, release: GithubRelease & { repo_full_name: string }): void {
+  db.prepare(
+    `INSERT INTO github_releases
+      (repo, tag_name, release_id, name, body, html_url, author_login, published_at, created_at)
+     VALUES ($repo, $tag_name, $release_id, $name, $body, $html_url, $author_login, $published_at, $created_at)
+     ON CONFLICT(repo, tag_name) DO UPDATE SET
+       release_id = excluded.release_id,
+       name = excluded.name,
+       body = excluded.body,
+       html_url = excluded.html_url,
+       author_login = excluded.author_login,
+       published_at = excluded.published_at`
+  ).run({
+    $repo: release.repo_full_name,
+    $tag_name: release.tag_name,
+    $release_id: release.id,
+    $name: release.name,
+    $body: release.body,
+    $html_url: release.html_url,
+    $author_login: release.author_login,
+    $published_at: release.published_at,
+    $created_at: release.published_at, // first-seen mirrors published_at; future migration could split
+  } as AnyParams);
+}
+
 export function getReleases(db: Database, filters: ReleaseFilters = {}): GithubRelease[] {
-  const conditions: string[] = ["type = 'ReleaseEvent'"];
+  // forge-nwdr: now reads from the dedicated github_releases table populated by
+  // pollReleases(). Previously aggregated ReleaseEvent rows from github_events,
+  // which only contained releases that appeared in the user-events stream
+  // (~300 events / ~90 days). The new path covers all releases on tracked repos.
+  const conditions: string[] = [];
   const params: Record<string, string | number | null | undefined> = {};
 
   if (filters.repo) {
@@ -676,20 +716,21 @@ export function getReleases(db: Database, filters: ReleaseFilters = {}): GithubR
   params.$offset = filters.offset ?? 0;
 
   const rows = db.query<
-    { id: string; repo: string; created_at: string; body: string | null; title: string | null; url: string | null; actor: string },
+    { repo: string; tag_name: string; release_id: string; name: string | null; body: string | null; html_url: string | null; author_login: string; published_at: string },
     AnyParams
   >(
-    `SELECT id, repo, created_at, body, title, url, actor FROM github_events ${where} ORDER BY created_at DESC LIMIT $limit OFFSET $offset`
+    `SELECT repo, tag_name, release_id, name, body, html_url, author_login, published_at
+     FROM github_releases ${where} ORDER BY published_at DESC LIMIT $limit OFFSET $offset`
   ).all(params);
 
   return rows.map((row) => ({
-    id: row.id,
-    tag_name: row.title ?? "",
-    name: row.title,
+    id: row.release_id,
+    tag_name: row.tag_name,
+    name: row.name,
     body: row.body,
-    html_url: row.url,
-    author_login: row.actor,
-    published_at: row.created_at,
+    html_url: row.html_url,
+    author_login: row.author_login,
+    published_at: row.published_at,
     repo_full_name: row.repo,
   }));
 }
