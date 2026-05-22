@@ -62,15 +62,25 @@ export class ProjectScanner {
       if (this.isWorktreePath(dirPath)) return [];
 
       const entries = await readdir(dirPath, { withFileTypes: true });
+
+      // depth-0 fast path: try each immediate child as a flat-layout project
+      // (`<root>/<repo>/.beads`). Track names that loaded so the recursive walk
+      // below doesn't re-discover them in the nested path (Codex forge-w8ya —
+      // flat layouts were producing duplicate rows in /api/beads/projects).
+      const flatLoadedChildren = new Set<string>();
       if (depth === 0) {
-        const candidates = entries
+        const dirEntries = entries
           .filter((entry) => entry.isDirectory())
           .filter((entry) => !this.config.excludePatterns.includes(entry.name))
-          .filter((entry) => entry.name !== ".worktrees" && entry.name !== "worktrees")
-          .map((entry) => this.withTimeout(this.loadProject(join(dirPath, entry.name)), 250, null));
-        const loaded = await Promise.all(candidates);
-        projects.push(...loaded.filter((project): project is BeadsProject => Boolean(project)));
-        // Fall through to recursive walk so nested layouts (e.g. /projects/<category>/<repo>) work too.
+          .filter((entry) => entry.name !== ".worktrees" && entry.name !== "worktrees");
+        const loaded = await Promise.all(
+          dirEntries.map((entry) => this.withTimeout(this.loadProject(join(dirPath, entry.name)), 250, null)),
+        );
+        loaded.forEach((project, idx) => {
+          if (!project) return;
+          projects.push(project);
+          flatLoadedChildren.add(dirEntries[idx].name);
+        });
       }
 
       const beadsDir = entries.find((entry) => entry.name === ".beads" && entry.isDirectory());
@@ -83,6 +93,7 @@ export class ProjectScanner {
         if (!entry.isDirectory()) continue;
         if (this.config.excludePatterns.includes(entry.name)) continue;
         if (entry.name === ".worktrees" || entry.name === "worktrees") continue;
+        if (flatLoadedChildren.has(entry.name)) continue;
 
         const subPath = join(dirPath, entry.name);
         const subProjects = await this.withTimeout(this.scanPath(subPath, depth + 1), 500, []);
