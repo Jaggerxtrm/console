@@ -8,6 +8,7 @@ interface ChainsResponse {
 }
 
 const POLL_MS = 5000;
+const REFETCH_COALESCE_MS = 1_500; // forge-h830: collapse WS-driven refetch bursts
 
 export type ChainStatus = "running" | "waiting" | "done" | "error" | "cancelled";
 
@@ -84,13 +85,23 @@ export function useChains(): UseChainsState {
     };
   }, []);
 
-  // Push-driven refresh on observability bumps (forge-7cyq). The POLL_MS timer
-  // above stays as a safety net for missed fs.watch events; with WS hints the
-  // timer almost never fires before a hint arrives.
+  // forge-h830: coalesce burst hints into a single trailing refetch. Without
+  // this, a watcher storm (50+ events/sec) would call loadRef on every hint
+  // and thrash the drawer. The POLL_MS timer above stays as a safety net.
+  const refetchTimer = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (refetchTimer.current !== null) window.clearTimeout(refetchTimer.current);
+  }, []);
+
   useWebSocket("specialists:activity", () => {
     if (!aliveRef.current || !visibleRef.current) return;
-    if (timerRef.current !== null) window.clearTimeout(timerRef.current);
-    void loadRef.current?.();
+    if (refetchTimer.current !== null) return; // already scheduled
+    refetchTimer.current = window.setTimeout(() => {
+      refetchTimer.current = null;
+      if (!aliveRef.current || !visibleRef.current) return;
+      if (timerRef.current !== null) window.clearTimeout(timerRef.current);
+      void loadRef.current?.();
+    }, REFETCH_COALESCE_MS);
   });
 
   const chains = useMemo(() => groupChains(jobs), [jobs]);

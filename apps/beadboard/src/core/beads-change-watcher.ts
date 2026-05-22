@@ -7,8 +7,15 @@ import { DoltClient } from "./dolt-client.ts";
 import { BeadsReader } from "./beads-reader.ts";
 import { emit, makeLogEntry } from "../../../gitboard/src/core/logger.ts";
 
-const ACTIVE_POLL_MS = 2_000;
-const IDLE_POLL_MS = 10_000;
+// forge-h830: the 2s interval was hammering Dolt with getCommitHash + readSnapshot
+// for every tracked project (25 × every 2s = 12 qps just for this watcher),
+// causing slow-query / circuit-breaker cascades on the shared 3308 server and
+// generating ~50 WS batches/sec of mostly redundant events. fs.watch on each
+// project's issues.jsonl (see ensureWatcher) already provides ~1s-latency real-
+// time signal for actual changes; the interval is just a backup heartbeat and
+// can run much less often without hurting user-visible freshness.
+const ACTIVE_POLL_MS = 30_000;
+const IDLE_POLL_MS = 60_000;
 const WATCH_DEBOUNCE_MS = 1_000;
 const COALESCE_MS = 1_500;
 const MAX_BATCH = 50;
@@ -93,7 +100,13 @@ export class BeadsChangeWatcher {
       this.lastHealth.set(project.id, healthy);
       emit(makeLogEntry("watcher", "source_health.changed", "info", undefined, { projectId: project.id, healthy, source: commitHash ? "dolt" : "jsonl" }));
     }
-    else this.lastCommitHash.delete(project.id);
+    // forge-h830: the cached commit hash MUST persist across stable-state polls
+    // for the fast-path check at L72 to work. The prior `else this.lastCommitHash.delete()`
+    // here actively defeated that optimization — every poll for a healthy project
+    // would then refetch the full snapshot (1000 rows + 3 hydration queries),
+    // diff it (producing ~50 upsert events that overflow the batch), and flush
+    // ~60 publishes/sec to WS subscribers. Removing the delete restores the
+    // intended "skip readSnapshot when commit hash unchanged" semantics.
     if (drift) emit(makeLogEntry("watcher", "drift.detected", "warn", undefined, { projectId: project.id }));
     this.enqueue({ projectId: project.id, source: commitHash ? "dolt" : "jsonl", version: commitHash ?? String(Date.now()), event: "beads:source_health", data: { projectId: project.id, source: commitHash ? "dolt" : "jsonl", drift, healthy } });
     this.diffAndQueue(project.id, previous, snapshot, commitHash ?? String(Date.now()));
@@ -169,7 +182,20 @@ export class BeadsChangeWatcher {
 
   private async getCommitHash(project: BeadsProject): Promise<string | null> {
     if (!project.doltPort) return null;
-    try { const client = new DoltClient({ host: "127.0.0.1", port: project.doltPort, database: project.doltDatabase }); await client.connect(); return await client.getCommitHash(); } catch { return null; }
+    // forge-h830: previous version created a fresh DoltClient per poll and never
+    // disconnected → connection leak + bypassed breaker. Now (1) checks breaker
+    // before connecting so we don't pile pressure on an already-failing Dolt,
+    // and (2) disconnects in a finally so each poll closes its own connection.
+    const client = new DoltClient({ host: "127.0.0.1", port: project.doltPort, database: project.doltDatabase });
+    if (client.isBreakerOpen()) return null;
+    try {
+      await client.connect();
+      return await client.getCommitHash();
+    } catch {
+      return null;
+    } finally {
+      try { await client.disconnect(); } catch { /* best-effort close */ }
+    }
   }
 
 }

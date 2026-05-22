@@ -1,7 +1,7 @@
 // BeadsRepoView (forge-7xu). Loads ALL data for the selected project once,
 // then dispatches to one of the Beads tab views: feed, triage, memories.
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { IssueFeed } from "./IssueFeed.tsx";
 import { IssueOverlay } from "./IssueOverlay.tsx";
 import { beadsApi } from "../../lib/beads-api.ts";
@@ -15,6 +15,8 @@ import type {
   Memory,
 } from "../../../types/beads.ts";
 import type { RepoNode, BeadsTab } from "../../../types/shell.ts";
+
+const REFETCH_COALESCE_MS = 1_500;
 
 interface State {
   loading: boolean;
@@ -112,6 +114,7 @@ export function BeadsRepoView({ repo, tab }: { repo: RepoNode; tab: BeadsTab }) 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<BeadIssueDetail | null>(null);
   const [loadingDetailId, setLoadingDetailId] = useState<string | null>(null);
+  const refetchTimer = useRef<number | null>(null);
 
   const tail = useMemo(() => tailName(repo.fullName), [repo.fullName]);
 
@@ -154,6 +157,21 @@ export function BeadsRepoView({ repo, tab }: { repo: RepoNode; tab: BeadsTab }) 
     return () => { cancelled = true; };
   }, [tail, reloadKey]);
 
+  const scheduleCoalescedRefetch = useCallback(() => {
+    if (refetchTimer.current !== null) return;
+    refetchTimer.current = window.setTimeout(() => {
+      refetchTimer.current = null;
+      setReloadKey((k) => k + 1);
+    }, REFETCH_COALESCE_MS);
+  }, []);
+
+  useEffect(() => () => {
+    if (refetchTimer.current !== null) {
+      window.clearTimeout(refetchTimer.current);
+      refetchTimer.current = null;
+    }
+  }, []);
+
   const handleBeadsMessage = useCallback((msg: WsMessage) => {
     if (!state.project) return;
     const data = getMessageData(msg);
@@ -161,7 +179,7 @@ export function BeadsRepoView({ repo, tab }: { repo: RepoNode; tab: BeadsTab }) 
     if (projectId && projectId !== state.project.id) return;
 
     if (msg.event === "beads:sync_hint") {
-      setReloadKey((k) => k + 1);
+      scheduleCoalescedRefetch();
       return;
     }
     if (!projectId) return;
