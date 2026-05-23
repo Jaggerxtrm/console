@@ -1,9 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 import type { SpecialistJob } from "../../server/observability/types.ts";
+import { logClientEvent } from "../lib/client-log.ts";
 
 interface InFlightJobsResponse {
   jobs?: LiveJob[];
+  in_flight?: LiveJob[];
   epoch?: Record<string, number>;
+  freshness?: string;
+  source_health?: { status?: string; message?: string };
 }
 
 const POLL_FAST_MS = 0;
@@ -30,8 +34,11 @@ export function useInFlightJobs(): UseInFlightJobsState {
   const timerRef = useRef<number | null>(null);
   const aliveRef = useRef(true);
   const epochRef = useRef<Record<string, number>>({});
+  const jobsRef = useRef<LiveJob[]>([]);
+  const signatureRef = useRef<string>("");
 
   const load = useCallback(async () => {
+    const startedAt = performance.now();
     try {
       const res = await fetch("/api/specialists/jobs/in-flight");
       if (!res.ok) throw new Error(`API error ${res.status}: ${res.statusText}`);
@@ -40,14 +47,41 @@ export function useInFlightJobs(): UseInFlightJobsState {
 
       const nextEpoch = data.epoch ?? {};
       const changed = hasEpochChanged(epochRef.current, nextEpoch);
+      const receivedJobs = data.jobs ?? data.in_flight ?? [];
+      const isStaleEmpty = data.freshness === "stale" && receivedJobs.length === 0 && jobsRef.current.length > 0;
+      const nextJobs = isStaleEmpty ? jobsRef.current : receivedJobs;
+      const signature = jobsSignature(nextJobs, nextEpoch);
+      if (changed || signatureRef.current !== signature || isStaleEmpty) {
+        signatureRef.current = signature;
+        logClientEvent("specialists.in_flight.received", {
+          ms: Math.round(performance.now() - startedAt),
+          jobs: nextJobs.length,
+          receivedJobs: receivedJobs.length,
+          preserved: isStaleEmpty,
+          freshness: data.freshness ?? "unknown",
+          sourceStatus: data.source_health?.status ?? null,
+          changed,
+          beadIds: [...new Set(nextJobs.map((job) => job.beadId))].slice(0, 50),
+          repoSlugs: [...new Set(nextJobs.map((job) => job.repoSlug))].slice(0, 50),
+          jobIds: nextJobs.slice(0, 50).map((job) => job.jobId),
+          statuses: countJobStatuses(nextJobs),
+          epoch: nextEpoch,
+        });
+      }
       epochRef.current = nextEpoch;
-      setJobs(data.jobs ?? []);
+      jobsRef.current = nextJobs;
+      setJobs(nextJobs);
       setError(null);
       setLoading(false);
       schedule(load, timerRef, changed ? POLL_FAST_MS : POLL_SLOW_MS);
     } catch (err) {
       if (!aliveRef.current) return;
-      setError(err instanceof Error ? err.message : "Failed to load in-flight jobs");
+      const message = err instanceof Error ? err.message : "Failed to load in-flight jobs";
+      logClientEvent("specialists.in_flight.error", {
+        ms: Math.round(performance.now() - startedAt),
+        message,
+      });
+      setError(message);
       setLoading(false);
       schedule(load, timerRef, POLL_SLOW_MS);
     }
@@ -93,4 +127,17 @@ function groupJobsByRepo(jobs: LiveJob[]): InFlightGroup[] {
     else groups.set(job.repoSlug, [job]);
   }
   return [...groups.entries()].map(([repoSlug, groupedJobs]) => ({ repoSlug, jobs: groupedJobs }));
+}
+
+function jobsSignature(jobs: LiveJob[], epoch: Record<string, number>): string {
+  return JSON.stringify({
+    jobs: jobs.map((job) => [job.jobId, job.beadId, job.repoSlug, job.status, job.updatedAt, job.lastEventAt]),
+    epoch,
+  });
+}
+
+function countJobStatuses(jobs: LiveJob[]): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const job of jobs) counts[job.status] = (counts[job.status] ?? 0) + 1;
+  return counts;
 }

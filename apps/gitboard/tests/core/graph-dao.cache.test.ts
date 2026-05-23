@@ -63,7 +63,7 @@ describe("graph cache identity", () => {
     const second = dao.getGraphSnapshot("repo-a");
 
     expect(second.graph.nodes.map((node) => node.id)).toEqual(["repo-a-1"]);
-    expect(second.freshness).toBe("degraded");
+    expect(second.freshness).toBe("stale");
     vi.useRealTimers();
   });
 
@@ -95,8 +95,7 @@ describe("graph cache identity", () => {
     expect(scanStarted).toBe(true);
 
     releaseScan();
-    await vi.runAllTimersAsync();
-    vi.useRealTimers();
+    await Promise.resolve();
   });
 });
 

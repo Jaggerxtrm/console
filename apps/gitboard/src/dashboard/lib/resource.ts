@@ -32,7 +32,7 @@ type Subscriber = () => void;
 
 const cache = new Map<string, CacheEntry<unknown>>();
 const subscribers = new Map<string, Set<Subscriber>>();
-type BrowserTimer = number;
+type BrowserTimer = ReturnType<typeof setTimeout>;
 
 const invalidateTimers = new Map<string, BrowserTimer>();
 
@@ -44,9 +44,10 @@ export function readDashboardResource<TData>(key: string | null): TData | null {
 export function invalidateDashboardResource(key: string, coalesceMs = 1500): void {
   if (typeof window === "undefined") return;
   if (invalidateTimers.has(key)) return;
-  invalidateTimers.set(key, window.setTimeout(() => {
+  invalidateTimers.set(key, setTimeout(() => {
     invalidateTimers.delete(key);
-    cache.delete(key);
+    const entry = cache.get(key);
+    if (entry) cache.set(key, { ...entry, expiresAt: 0, freshness: "stale" });
     notifySubscribers(key);
   }, coalesceMs));
 }
@@ -78,14 +79,14 @@ export function useDashboardResource<TData>(options: DashboardResourceOptions<TD
   const visibleRef = useRef(typeof document === "undefined" ? true : document.visibilityState === "visible");
 
   const clearTimer = useCallback((timer: BrowserTimer | null) => {
-    if (timer !== null) window.clearTimeout(timer);
+    if (timer !== null) clearTimeout(timer);
   }, []);
 
   const schedulePoll = useCallback((refresh: (options?: RefreshOptions) => Promise<void>) => {
     clearTimer(pollTimer.current);
     pollTimer.current = null;
     if (!pollMs || !key || !visibleRef.current) return;
-    pollTimer.current = window.setTimeout(() => {
+    pollTimer.current = setTimeout(() => {
       void refresh({ force: true, refresh: true });
     }, pollMs);
   }, [clearTimer, key, pollMs]);
@@ -93,9 +94,9 @@ export function useDashboardResource<TData>(options: DashboardResourceOptions<TD
   const scheduleStaleRetry = useCallback((refresh: (options?: RefreshOptions) => Promise<void>) => {
     if (!staleEmptyRetryMs || staleRetryUsed.current || staleTimer.current !== null) return;
     staleRetryUsed.current = true;
-    staleTimer.current = window.setTimeout(() => {
+    staleTimer.current = setTimeout(() => {
       staleTimer.current = null;
-      void refresh({ force: true, refresh: true });
+      void refresh({ force: true });
     }, staleEmptyRetryMs);
   }, [staleEmptyRetryMs]);
 

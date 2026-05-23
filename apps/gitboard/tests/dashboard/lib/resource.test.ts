@@ -42,11 +42,12 @@ describe("useDashboardResource", () => {
     vi.useFakeTimers();
     const fetcher = vi.fn().mockResolvedValue(makePayload("alpha"));
     renderHook(() => useDashboardResource({ key: "resource-invalidate", cacheTtlMs: 10_000, fetcher: async () => fetcher() }));
-    await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1));
+    await act(async () => { await Promise.resolve(); });
+    expect(fetcher).toHaveBeenCalledTimes(1);
     invalidateDashboardResource("resource-invalidate");
     invalidateDashboardResource("resource-invalidate");
-    act(() => { vi.advanceTimersByTime(1500); });
-    await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
+    await act(async () => { vi.advanceTimersByTime(1500); await Promise.resolve(); });
+    expect(fetcher).toHaveBeenCalledTimes(2);
   });
 
   it("checks cache on focus without forcing a fresh cached resource", async () => {
@@ -70,9 +71,10 @@ describe("useDashboardResource", () => {
     vi.useFakeTimers();
     const fetcher = vi.fn().mockResolvedValue(makePayload("alpha"));
     renderHook(() => useDashboardResource({ key: "resource-poll", cacheTtlMs: 10_000, pollMs: 100, fetcher: async () => fetcher() }));
-    await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1));
-    act(() => { vi.advanceTimersByTime(100); });
-    await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
+    await act(async () => { await Promise.resolve(); });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    await act(async () => { vi.advanceTimersByTime(100); await Promise.resolve(); });
+    expect(fetcher).toHaveBeenCalledTimes(2);
   });
 
   it("applies ws delta without refetch", async () => {
@@ -84,12 +86,26 @@ describe("useDashboardResource", () => {
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
 
+  it("keeps cached data available while invalidated", async () => {
+    vi.useFakeTimers();
+    const fetcher = vi.fn().mockResolvedValueOnce(makePayload("alpha")).mockResolvedValueOnce(makePayload("beta"));
+    const { result } = renderHook(() => useDashboardResource({ key: "resource-stale-preserve", cacheTtlMs: 10_000, fetcher: async () => fetcher() }));
+    await act(async () => { await Promise.resolve(); });
+    expect(result.current.data).toEqual(makePayload("alpha"));
+
+    invalidateDashboardResource("resource-stale-preserve");
+    await act(async () => { vi.advanceTimersByTime(1500); await Promise.resolve(); });
+
+    expect(result.current.data).toEqual(makePayload("beta"));
+  });
+
   it("retries once for stale empty data", async () => {
     vi.useFakeTimers();
     const fetcher = vi.fn().mockResolvedValueOnce({ value: "" }).mockResolvedValueOnce({ value: "filled" });
     renderHook(() => useDashboardResource({ key: "resource-stale", cacheTtlMs: 10_000, staleEmptyRetryMs: 100, isEmpty: (data) => data.value === "", fetcher: async () => fetcher() }));
-    await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1));
-    act(() => { vi.advanceTimersByTime(100); });
-    await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
+    await act(async () => { await Promise.resolve(); });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    await act(async () => { vi.advanceTimersByTime(100); await Promise.resolve(); });
+    expect(fetcher).toHaveBeenCalledTimes(2);
   });
 });

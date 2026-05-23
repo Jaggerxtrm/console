@@ -5,7 +5,7 @@ import { apiClient } from "../lib/client.ts";
 import { beadsApi } from "../lib/beads-api.ts";
 import { useShellStore } from "../stores/shell.ts";
 import type { GithubChips, BeadsChips, BeadsSourceChip, RepoNode } from "../../types/shell.ts";
-import type { BeadsConnectionStatus, BeadsStats } from "../../types/beads.ts";
+import type { BeadsConnectionStatus, BeadsProject, BeadsStats } from "../../types/beads.ts";
 
 const ZERO_GITHUB: GithubChips = { openPRs: 0, commitsToday: 0, openIssues: 0, releases: 0 };
 const ZERO_BEADS: BeadsChips = { open: 0, inProgress: 0, blocked: 0, epics: 0 };
@@ -24,6 +24,22 @@ function beadsChipsFromStats(stats: BeadsStats | null): BeadsChips {
     blocked: stats.blocked ?? 0,
     epics: stats.by_type?.epic ?? 0,
   };
+}
+
+export function normalizeProjectKey(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
+
+export function findBeadsSide(tail: string, beadsByName: Map<string, { project: BeadsProject; stats: BeadsStats | null; source: BeadsSourceChip }>) {
+  const exact = beadsByName.get(tail);
+  if (exact) return exact;
+
+  const normalizedTail = normalizeProjectKey(tail);
+  const matches = [...beadsByName.values()]
+    .map((entry) => ({ entry, key: normalizeProjectKey(entry.project.name) }))
+    .filter(({ key }) => normalizedTail === key || normalizedTail.endsWith(`-${key}`) || key.endsWith(`-${normalizedTail}`))
+    .sort((a, b) => b.key.length - a.key.length);
+  return matches[0]?.entry ?? null;
 }
 
 function beadsSourceFromConnection(connection: BeadsConnectionStatus | null): BeadsSourceChip {
@@ -54,9 +70,9 @@ export function useRepoTree(): void {
     async function load() {
       try {
         const [reposRes, statsRes, projects] = await Promise.all([
-          apiClient.getRepos().catch(() => ({ data: [] })),
+          apiClient.getRepos(),
           apiClient.getRepoStats().catch(() => ({ data: [] })),
-          beadsApi.listProjects().catch(() => []),
+          beadsApi.listProjects(),
         ]);
         if (cancelled) return;
 
@@ -72,7 +88,7 @@ export function useRepoTree(): void {
         );
         if (cancelled) return;
 
-        const beadsByTail = new Map<string, { project: typeof projects[number]; stats: BeadsStats | null; source: BeadsSourceChip }>();
+        const beadsByTail = new Map<string, { project: BeadsProject; stats: BeadsStats | null; source: BeadsSourceChip }>();
         for (const [project, stats, connection] of projectStats) {
           beadsByTail.set(project.name, { project, stats, source: beadsSourceFromConnection(connection) });
         }
@@ -82,8 +98,8 @@ export function useRepoTree(): void {
 
         for (const repo of reposRes.data) {
           const tail = tailName(repo.full_name);
-          const beadsSide = beadsByTail.get(tail);
-          if (beadsSide) matched.add(tail);
+          const beadsSide = findBeadsSide(tail, beadsByTail);
+          if (beadsSide) matched.add(beadsSide.project.name);
           const stats = repoStatsByName.get(repo.full_name);
           const githubStats: GithubChips = {
             openPRs: stats?.prs_open ?? 0,
@@ -101,6 +117,8 @@ export function useRepoTree(): void {
             githubStats,
             beadsStats,
             beadsSource: beadsSide?.source ?? null,
+            beadsProjectId: beadsSide?.project.id ?? null,
+            beadsProjectName: beadsSide?.project.name ?? null,
             hasGithub: true,
             hasBeads: Boolean(beadsSide),
           });
@@ -119,6 +137,8 @@ export function useRepoTree(): void {
             githubStats: ZERO_GITHUB,
             beadsStats,
             beadsSource: source,
+            beadsProjectId: project.id,
+            beadsProjectName: project.name,
             hasGithub: false,
             hasBeads: true,
           });
@@ -126,7 +146,7 @@ export function useRepoTree(): void {
 
         setRepos(nodes);
       } catch (err) {
-        console.warn("[useRepoTree] aggregation failed", err);
+        console.warn("[useRepoTree] aggregation failed; preserving previous repo tree", err);
       }
     }
 

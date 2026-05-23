@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { BeadsRepoView } from "../../../../src/dashboard/components/beads/BeadsRepoView.tsx";
 import { beadsApi } from "../../../../src/dashboard/lib/beads-api.ts";
@@ -6,6 +6,7 @@ import type { BeadIssue, BeadsProject } from "../../../../src/types/beads.ts";
 import type { WsMessage } from "../../../../src/dashboard/lib/ws.ts";
 
 let wsHandler: ((msg: WsMessage) => void) | null = null;
+let inFlightJobs: Array<{ beadId: string; status: string; specialist?: string | null; chainKind?: string | null; repoSlug: string; jobId?: string | null }> = [];
 
 vi.mock("../../../../src/dashboard/hooks/useWebSocket.ts", () => ({
   useWebSocket: (_channel: string, handler: (msg: WsMessage) => void) => {
@@ -13,11 +14,15 @@ vi.mock("../../../../src/dashboard/hooks/useWebSocket.ts", () => ({
   },
 }));
 
+vi.mock("../../../../src/dashboard/hooks/useInFlightJobs.ts", () => ({
+  useInFlightJobs: () => ({ jobs: inFlightJobs, groups: [], loading: false, error: null }),
+}));
+
 vi.mock("../../../../src/dashboard/components/beads/IssueFeed.tsx", () => ({
-  IssueFeed: ({ issues, closedIssues }: { issues: BeadIssue[]; closedIssues: BeadIssue[] }) => (
+  IssueFeed: ({ issues, closedIssues, specialistByIssueId }: { issues: BeadIssue[]; closedIssues: BeadIssue[]; specialistByIssueId?: Map<string, { role: string; state: string; jobId: string | null }> }) => (
     <div>
       <section aria-label="open issues">
-        {issues.map((issue) => <div key={issue.id}>{issue.title}</div>)}
+        {issues.map((issue) => <div key={issue.id}>{issue.title}{specialistByIssueId?.get(issue.id) ? ` ${specialistByIssueId.get(issue.id)!.role}:${specialistByIssueId.get(issue.id)!.jobId}` : ""}</div>)}
       </section>
       <section aria-label="closed issues">
         {closedIssues.map((issue) => <div key={issue.id}>{issue.title}</div>)}
@@ -60,6 +65,8 @@ const issue: BeadIssue = {
 beforeEach(() => {
   wsHandler = null;
   vi.restoreAllMocks();
+  vi.useRealTimers();
+  inFlightJobs = [];
   vi.spyOn(beadsApi, "listProjects").mockResolvedValue([project]);
   vi.spyOn(beadsApi, "listIssues").mockResolvedValue([issue]);
   vi.spyOn(beadsApi, "listClosedIssues").mockResolvedValue([]);
@@ -120,6 +127,41 @@ describe("BeadsRepoView realtime updates", () => {
     expect(screen.getByLabelText("closed issues")).toHaveTextContent("Initial issue");
   });
 
+
+  it("keeps visible rows mounted while a sync-hint refresh is pending", async () => {
+    let resolveReload!: (issues: BeadIssue[]) => void;
+    const listIssues = vi.spyOn(beadsApi, "listIssues")
+      .mockResolvedValueOnce([issue])
+      .mockReturnValueOnce(new Promise((resolve) => { resolveReload = resolve; }));
+
+    render(<BeadsRepoView repo={{ fullName: "owner/repo-a", displayName: "repo-a", lastActivityAt: null, openBeadsCount: 1, githubStats: { openPRs: 0, commitsToday: 0, openIssues: 0, releases: 0 }, beadsStats: { open: 1, inProgress: 0, blocked: 0, epics: 0 }, beadsSource: { label: "dolt", title: "Beads reading from Dolt", healthy: true }, hasGithub: true, hasBeads: true }} tab="feed" />);
+
+    expect(await screen.findByText("Initial issue")).toBeInTheDocument();
+    vi.useFakeTimers();
+    await act(async () => {
+      wsHandler?.({ type: "event", channel: "beads:changes", event: "beads:sync_hint", data: { project_id: project.id, reason: "buffer_miss" } });
+      vi.advanceTimersByTime(1500);
+    });
+    await act(async () => { await Promise.resolve(); });
+
+    expect(listIssues).toHaveBeenCalledTimes(2);
+    expect(screen.getByText("Initial issue")).toBeInTheDocument();
+
+    await act(async () => {
+      resolveReload([{ ...issue, id: "GB-3", title: "Reloaded issue" }]);
+    });
+    expect(screen.getByText("Reloaded issue")).toBeInTheDocument();
+  });
+
+  it("passes active specialist jobs to open bead rows", async () => {
+    inFlightJobs = [{ beadId: issue.id, status: "running", specialist: "explorer", repoSlug: project.name, jobId: "6f3580" }];
+
+    render(<BeadsRepoView repo={{ fullName: "owner/repo-a", displayName: "repo-a", lastActivityAt: null, openBeadsCount: 1, githubStats: { openPRs: 0, commitsToday: 0, openIssues: 0, releases: 0 }, beadsStats: { open: 1, inProgress: 0, blocked: 0, epics: 0 }, beadsSource: { label: "dolt", title: "Beads reading from Dolt", healthy: true }, hasGithub: true, hasBeads: true }} tab="feed" />);
+
+    expect(await screen.findByText("Initial issue explorer:6f3580")).toBeInTheDocument();
+  });
+
+
   it("reloads mounted data on sync hints", async () => {
     const listIssues = vi.spyOn(beadsApi, "listIssues")
       .mockResolvedValueOnce([issue])
@@ -128,11 +170,15 @@ describe("BeadsRepoView realtime updates", () => {
     render(<BeadsRepoView repo={{ fullName: "owner/repo-a", displayName: "repo-a", lastActivityAt: null, openBeadsCount: 1, githubStats: { openPRs: 0, commitsToday: 0, openIssues: 0, releases: 0 }, beadsStats: { open: 1, inProgress: 0, blocked: 0, epics: 0 }, beadsSource: { label: "dolt", title: "Beads reading from Dolt", healthy: true }, hasGithub: true, hasBeads: true }} tab="feed" />);
 
     expect(await screen.findByText("Initial issue")).toBeInTheDocument();
-    act(() => {
+    vi.useFakeTimers();
+    await act(async () => {
       wsHandler?.({ type: "event", channel: "beads:changes", event: "beads:sync_hint", data: { project_id: project.id, reason: "buffer_miss" } });
+      vi.advanceTimersByTime(1500);
     });
+    await act(async () => { await Promise.resolve(); });
 
-    await waitFor(() => expect(listIssues).toHaveBeenCalledTimes(2));
-    expect(await screen.findByText("Reloaded issue")).toBeInTheDocument();
+    expect(listIssues).toHaveBeenCalledTimes(2);
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.getByText("Reloaded issue")).toBeInTheDocument();
   });
 });

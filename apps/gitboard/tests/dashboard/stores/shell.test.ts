@@ -46,4 +46,20 @@ describe("shell store drawer persistence", () => {
     const { useShellStore } = await import("../../../src/dashboard/stores/shell.ts");
     expect(useShellStore.getState().drawerHeight).toBe(600);
   });
+
+  it("switches to a repo that supports the target surface", async () => {
+    const { useShellStore } = await import("../../../src/dashboard/stores/shell.ts");
+    useShellStore.setState({
+      repos: [
+        { fullName: "owner/no-beads", displayName: "no-beads", lastActivityAt: null, openBeadsCount: 0, githubStats: { openPRs: 0, commitsToday: 0, openIssues: 0, releases: 0 }, beadsStats: { open: 0, inProgress: 0, blocked: 0, epics: 0 }, beadsSource: null, hasGithub: true, hasBeads: false },
+        { fullName: "owner/with-beads", displayName: "with-beads", lastActivityAt: null, openBeadsCount: 1, githubStats: { openPRs: 0, commitsToday: 0, openIssues: 0, releases: 0 }, beadsStats: { open: 1, inProgress: 0, blocked: 0, epics: 0 }, beadsSource: null, hasGithub: true, hasBeads: true },
+      ],
+      selection: { surface: "github", tab: "activity", repo: "owner/no-beads" },
+    });
+
+    useShellStore.getState().setSurface("console");
+
+    expect(useShellStore.getState().selection).toEqual({ surface: "console", tab: "feed", repo: "owner/with-beads" });
+  });
+
 });

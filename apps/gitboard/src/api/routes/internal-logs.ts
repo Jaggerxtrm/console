@@ -1,7 +1,7 @@
 import { readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { Hono } from "hono";
-import { getRing } from "../../core/logger.ts";
+import { emit, getRing, makeLogEntry } from "../../core/logger.ts";
 
 export function createInternalLogsRouter(): Hono {
   const app = new Hono();
@@ -25,7 +25,6 @@ export function createInternalLogsRouter(): Hono {
     try {
       for (const name of readdirSync(dir)) {
         if (!name.endsWith(".jsonl")) continue;
-        const file = Bun.file(join(dir, name));
         const size = statSync(join(dir, name)).size;
         files.push({ name, size, date: name.slice(0, 10) });
       }
@@ -33,7 +32,42 @@ export function createInternalLogsRouter(): Hono {
     return c.json(files);
   });
 
+  app.post("/logs/client", async (c) => {
+    if (!isSameOrigin(c.req.header("origin"), c.req.header("host"))) {
+      return c.json({ ok: false, error: "forbidden" }, 403);
+    }
+
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ ok: false, error: "Invalid JSON" }, 400);
+    }
+
+    const payload = body && typeof body === "object" ? body as { event?: unknown; data?: unknown } : {};
+    const event = typeof payload.event === "string" ? payload.event.slice(0, 120) : "ui.unknown";
+    const data = payload.data && typeof payload.data === "object" && !Array.isArray(payload.data)
+      ? payload.data as Record<string, unknown>
+      : {};
+
+    emit(makeLogEntry("ui", event, "info", undefined, {
+      ...data,
+      source: "dashboard-client",
+    }));
+
+    return c.json({ ok: true });
+  });
+
   return app;
 }
 
 function isLocalhost(host: string): boolean { return host.startsWith("localhost") || host.startsWith("127.0.0.1") || host.startsWith("[::1]"); }
+
+function isSameOrigin(origin: string | undefined, host: string | undefined): boolean {
+  if (!origin || !host) return true;
+  try {
+    return new URL(origin).host === host;
+  } catch {
+    return false;
+  }
+}

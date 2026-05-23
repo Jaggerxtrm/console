@@ -443,6 +443,29 @@ async function getStatsFromProject(projectId: string): Promise<{
   return stats;
 }
 
+function summarizeIssueForLog(issue: BeadIssue): Record<string, unknown> {
+  return {
+    id: issue.id,
+    title: truncateForLog(issue.title, 120),
+    status: issue.status,
+    priority: issue.priority,
+    issue_type: issue.issue_type,
+    owner: issue.owner ?? null,
+    assignee: issue.assignee ?? null,
+    created_at: issue.created_at,
+    updated_at: issue.updated_at,
+  };
+}
+
+function newestIssueSummary(issues: BeadIssue[]): Record<string, unknown> | null {
+  const newest = [...issues].sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))[0];
+  return newest ? summarizeIssueForLog(newest) : null;
+}
+
+function truncateForLog(value: string, max: number): string {
+  return value.length > max ? `${value.slice(0, max - 1)}…` : value;
+}
+
 function applyIssueFilters(
   issues: BeadIssue[],
   filters: { status?: BeadIssue["status"][]; priority?: BeadIssue["priority"][]; search?: string; limit?: number },

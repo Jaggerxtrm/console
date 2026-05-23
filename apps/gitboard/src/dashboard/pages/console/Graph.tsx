@@ -21,7 +21,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
-import { useShellStore, selectSelection } from "../../stores/shell.ts";
+import { useShellStore, selectRepos, selectSelection } from "../../stores/shell.ts";
 import { useGraphData } from "../../hooks/useGraphData.ts";
 import { partitionGraph, type BucketGroup, type ClusterGroup } from "./graph/clusters.ts";
 import { categoryFor, shortJobId, type AgentCategory } from "./graph/agent-roles.ts";
@@ -36,7 +36,9 @@ const EDGE_TYPES = { custom: CustomEdge };
 
 export function Graph() {
   const selection = useShellStore(selectSelection);
-  const projectId = selection.repo ? selection.repo.split("/").pop() ?? null : null;
+  const repos = useShellStore(selectRepos);
+  const selectedRepo = selection.repo ? repos.find((repo) => repo.fullName === selection.repo) : null;
+  const projectId = selectedRepo?.beadsProjectName ?? (selection.repo ? selection.repo.split("/").pop() ?? null : null);
   const { loading, error, data, reload } = useGraphData(projectId);
   const [showParent, setShowParent] = useState(true);
   const [showRelated, setShowRelated] = useState(true);
@@ -69,7 +71,7 @@ export function Graph() {
   const isEmpty = !partition || (partition.clusters.length === 0 && partition.orphans.length === 0 && partition.wip.length === 0);
   if (isEmpty) {
     if (freshness === "fresh") return <EmptyState icon={<ProjectIcon size={12} />} title="No beads in this project" />;
-    if (freshness === "degraded") return <EmptyState icon={<ProjectIcon size={12} />} title="Graph data unavailable — last refresh failed" action={<button type="button" className="g-empty-btn" onClick={() => void reload({ refresh: true, force: true })}>Retry</button>} />;
+    if (freshness === "degraded") return <EmptyState icon={<ProjectIcon size={12} />} title={data?.source_health?.message ?? "Graph data unavailable — last refresh failed"} action={<button type="button" className="g-empty-btn" onClick={() => void reload({ refresh: true, force: true })}>Retry</button>} />;
     return <Status>Loading project graph… Background refresh in progress.</Status>;
   }
 

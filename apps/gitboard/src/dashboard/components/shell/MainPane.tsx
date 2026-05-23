@@ -1,6 +1,6 @@
 // MainPane (forge-gud9). Renders selected repo surface plus bottom drawer.
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useShellStore, selectRepos, selectSelection } from "../../stores/shell.ts";
 import { useGithubStore } from "../../stores/github.ts";
 import { apiClient } from "../../lib/client.ts";
@@ -22,6 +22,7 @@ export function MainPane() {
   const repos = useShellStore(selectRepos);
   const setRepo = useShellStore((s) => s.setRepo);
   const setDrawerOpen = useShellStore((s) => s.setDrawerOpen);
+  const lastSelectedRepoRef = useRef<RepoNode | null>(null);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -34,7 +35,13 @@ export function MainPane() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [setDrawerOpen]);
 
-  const repo = useMemo(() => (selection.repo ? repos.find((r) => r.fullName === selection.repo) ?? null : null), [selection.repo, repos]);
+  const matchedRepo = useMemo(() => (selection.repo ? repos.find((r) => r.fullName === selection.repo) ?? null : null), [selection.repo, repos]);
+  const cachedRepo = selection.repo && lastSelectedRepoRef.current?.fullName === selection.repo ? lastSelectedRepoRef.current : null;
+  const repo = matchedRepo ?? cachedRepo;
+
+  useEffect(() => {
+    if (matchedRepo) lastSelectedRepoRef.current = matchedRepo;
+  }, [matchedRepo]);
 
   useEffect(() => {
     if (selection.surface !== "github") return;

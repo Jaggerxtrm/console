@@ -19,6 +19,7 @@ let observabilityWarm: Promise<void> | null = null;
 const PROJECT_REFRESH_MS = 30_000;
 const ISSUE_REFRESH_MS = 10_000;
 const GRAPH_WARM_TIMEOUT_MS = 750;
+const GRAPH_SNAPSHOT_CACHE_MS = 10_000;
 
 interface CacheEntry<T> {
   value: T;
@@ -29,6 +30,7 @@ const projectScanCache = new WeakMap<ProjectScanner, CacheEntry<{ key: string; p
 const projectScanInflight = new WeakMap<ProjectScanner, Promise<BeadsProject[]>>();
 const issueCache = new Map<string, CacheEntry<{ key: string; issues: BeadIssue[]; freshness: "fresh" | "stale" | "degraded" }>>();
 const issueInflight = new Map<string, Promise<void>>();
+const graphSnapshotCache = new Map<string, CacheEntry<{ graph: GraphResponse; freshness: "fresh" | "stale" | "degraded" }>>();
 const projectIssueEpochs = new Map<string, number>();
 let globalIssueEpoch = 0;
 
@@ -50,20 +52,23 @@ export function createGraphDao(options: GraphDaoOptions = {}) {
 
       const startedAt = performance.now();
       void getObservabilityDao();
-      const projects = await withTimeout(scanProjects(scanner), GRAPH_WARM_TIMEOUT_MS);
+      const cachedScan = readCachedProjects(scanner);
+      const projects = cachedScan?.projects ?? await withTimeout(scanProjects(scanner), GRAPH_WARM_TIMEOUT_MS);
       if (!projects) return readGraphSnapshot(scanner, getDao, projectId, includeClosed, startedAt);
 
       const project = resolveProject(projects, projectId);
-      if (!project) return { graph: emptyGraph(projectId ?? "", projectFallbackNote(projectId, projects)), freshness: "fresh" };
+      if (!project) return { graph: emptyGraph(projectId ?? "", projectFallbackNote(projectId, projects)), freshness: "degraded" };
 
       const remainingMs = Math.max(0, GRAPH_WARM_TIMEOUT_MS - (performance.now() - startedAt));
       await withTimeout(refreshIssues(project, includeClosed), remainingMs);
       return readGraphSnapshot(scanner, getDao, projectId, includeClosed, startedAt);
     },
     invalidate(projectId?: string | null): void {
-      projectScanCache.delete(scanner);
-      projectScanInflight.delete(scanner);
-      invalidateGraphCache(projectId);
+      if (!projectId) {
+        projectScanCache.delete(scanner);
+        projectScanInflight.delete(scanner);
+      }
+      invalidateGraphCache(resolveProject(readCachedProjects(scanner)?.projects ?? [], projectId)?.id ?? projectId);
     },
   };
 }
@@ -74,7 +79,13 @@ function hasCachedGraphSnapshot(scanner: ProjectScanner, projectId: string | nul
 
   const project = resolveProject(cached.value.projects, projectId);
   if (!project) return true;
-  return issueCache.has(issueCacheKey(project, includeClosed));
+  const issues = issueCache.get(issueCacheKey(project, includeClosed));
+  if (!issues) return false;
+
+  // If the only cached graph source is expired empty data, don't short-circuit
+  // warm loading. That stale-empty path is exactly what produces the misleading
+  // "No beads" state during tab switches after a failed Dolt/JSONL read.
+  return !(issues.refreshAt <= Date.now() && issues.value.issues.length === 0);
 }
 
 function readGraphSnapshot(
@@ -89,14 +100,23 @@ function readGraphSnapshot(
   if (!scan) return { graph: emptyGraph(projectId ?? "", projectFallbackNote(projectId, [])), freshness: "stale" };
 
   const project = resolveProject(scan.projects, projectId);
-  if (!project) return { graph: emptyGraph(projectId ?? "", projectFallbackNote(projectId, scan.projects)), freshness: "fresh" };
+  if (!project) return { graph: emptyGraph(projectId ?? "", projectFallbackNote(projectId, scan.projects)), freshness: "degraded" };
 
   const issueState = readCachedIssues(project, includeClosed);
+  const snapshotKey = graphSnapshotCacheKey(project, includeClosed, issueState.key);
+  const cachedSnapshot = readCachedGraphSnapshot(snapshotKey);
+  if (cachedSnapshot) {
+    emit(makeLogEntry("api", "graph.snapshot_cache", "info", undefined, { projectId: project.id, includeClosed, hit: true }));
+    return cachedSnapshot;
+  }
+
   const dao = getDao();
   const specialists = dao ? dao.inFlightJobs().filter((job) => job.repoSlug === project.id || job.repoSlug === project.name) : [];
   const graph = buildGraph(project, issueState.issues, specialists, includeClosed);
+  const snapshot = { graph, freshness: issueState.freshness };
+  if (issueState.freshness === "fresh") writeGraphSnapshot(snapshotKey, snapshot);
   emit(makeLogEntry("api", "graph.snapshot.timing", "info", undefined, { projectId: project.id, freshness: issueState.freshness, ms: Math.round(performance.now() - startedAt) }));
-  return { graph, freshness: issueState.freshness };
+  return snapshot;
 }
 
 export function invalidateGraphCache(projectId?: string | null): void {
@@ -104,6 +124,7 @@ export function invalidateGraphCache(projectId?: string | null): void {
     globalIssueEpoch += 1;
     issueCache.clear();
     issueInflight.clear();
+    graphSnapshotCache.clear();
     projectScanCache.delete(getScanner());
     projectScanInflight.delete(getScanner());
     return;
@@ -115,6 +136,32 @@ export function invalidateGraphCache(projectId?: string | null): void {
   }
   for (const key of issueInflight.keys()) {
     if (key.startsWith(`${projectId}:`)) issueInflight.delete(key);
+  }
+  for (const key of graphSnapshotCache.keys()) {
+    if (key.startsWith(`${projectId}:`)) graphSnapshotCache.delete(key);
+  }
+}
+
+function graphSnapshotCacheKey(project: BeadsProject, includeClosed: boolean, issueKey: string): string {
+  return `${project.id}:${includeClosed ? "all" : "open"}:${issueKey}`;
+}
+
+function readCachedGraphSnapshot(key: string): { graph: GraphResponse; freshness: "fresh" | "stale" | "degraded" } | null {
+  const cached = graphSnapshotCache.get(key);
+  if (!cached) return null;
+  if (cached.refreshAt <= Date.now()) {
+    graphSnapshotCache.delete(key);
+    return null;
+  }
+  return cached.value;
+}
+
+function writeGraphSnapshot(key: string, value: { graph: GraphResponse; freshness: "fresh" | "stale" | "degraded" }): void {
+  graphSnapshotCache.set(key, { value, refreshAt: Date.now() + GRAPH_SNAPSHOT_CACHE_MS });
+  while (graphSnapshotCache.size > 100) {
+    const oldest = graphSnapshotCache.keys().next().value;
+    if (oldest === undefined) return;
+    graphSnapshotCache.delete(oldest);
   }
 }
 
@@ -162,17 +209,18 @@ function issueCacheKey(project: BeadsProject, includeClosed: boolean): string {
   return `${project.id}:${globalIssueEpoch}:${projectEpoch}:${includeClosed ? "all" : "open"}`;
 }
 
-function readCachedIssues(project: BeadsProject, includeClosed: boolean): { issues: BeadIssue[]; freshness: "fresh" | "stale" | "degraded" } {
+function readCachedIssues(project: BeadsProject, includeClosed: boolean): { key: string; issues: BeadIssue[]; freshness: "fresh" | "stale" | "degraded" } {
   const key = issueCacheKey(project, includeClosed);
   const cached = issueCache.get(key);
   if (cached) {
-    if (cached.refreshAt <= Date.now()) void refreshIssues(project, includeClosed);
-    emit(makeLogEntry("api", "graph.issue_cache", "info", undefined, { projectId: project.id, includeClosed, hit: true }));
-    return { issues: cached.value.issues, freshness: cached.value.freshness };
+    const expired = cached.refreshAt <= Date.now();
+    if (expired) void refreshIssues(project, includeClosed);
+    emit(makeLogEntry("api", "graph.issue_cache", "info", undefined, { projectId: project.id, includeClosed, hit: true, expired }));
+    return { key, issues: cached.value.issues, freshness: expired && cached.value.freshness === "fresh" ? "stale" : cached.value.freshness };
   }
   emit(makeLogEntry("api", "graph.issue_cache", "info", undefined, { projectId: project.id, includeClosed, hit: false }));
   void refreshIssues(project, includeClosed);
-  return { issues: [], freshness: "stale" };
+  return { key, issues: [], freshness: "stale" };
 }
 
 async function refreshIssues(project: BeadsProject, includeClosed: boolean): Promise<void> {
@@ -350,7 +398,10 @@ function emptyGraph(projectId: string, project?: string): GraphResponse & { proj
 }
 
 function projectFallbackNote(projectId: string | null | undefined, projects: BeadsProject[]): string | undefined {
-  if (projectId) return undefined;
+  if (projectId) {
+    const available = projects.map((project) => project.name || project.id).filter(Boolean).slice(0, 5).join(",");
+    return available ? `missing-project:${projectId}:available:${available}` : `missing-project:${projectId}`;
+  }
   const selected = projects[0]?.name ?? projects[0]?.id;
   return selected ? `fallback:selected-repo:${selected}` : "fallback:no-selected-repo";
 }

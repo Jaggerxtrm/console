@@ -40,4 +40,10 @@ describe("Graph empty state", () => {
     const { getByText } = render(<Graph />);
     expect(getByText("Graph data unavailable — last refresh failed")).toBeTruthy();
   });
+
+  it("surfaces graph source-health messages for selection failures", () => {
+    useGraphDataMock.mockReturnValue({ loading: false, error: null, data: { freshness: "degraded", source_health: { source: "graph", status: "degraded", checked_at: "2026-01-01T00:00:00.000Z", message: "Graph project_id is missing; select a beads project." }, nodes: [], edges: [], specialists: [] }, reload: vi.fn() });
+    const { getByText } = render(<Graph />);
+    expect(getByText("Graph project_id is missing; select a beads project.")).toBeTruthy();
+  });
 });

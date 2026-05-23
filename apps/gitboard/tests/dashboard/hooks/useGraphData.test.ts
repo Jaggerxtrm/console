@@ -9,7 +9,7 @@ const windowStub = new Window({ url: "http://localhost/" });
 (globalThis as any).performance = windowStub.performance as any;
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-const { act, renderHook, waitFor } = await import("@testing-library/react");
+const { act, cleanup, renderHook, waitFor } = await import("@testing-library/react");
 import type { WsMessage } from "../../../src/dashboard/lib/ws.ts";
 import type { GraphResponse } from "../../../src/types/graph.ts";
 
@@ -42,14 +42,29 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  cleanup();
+  vi.clearAllTimers();
+  vi.useRealTimers();
   (globalThis as any).fetch = originalFetch as any;
 });
 
 describe("useGraphData", () => {
-  it("does not refetch fresh cached graph data on focus", async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => graph("gitboard") });
+
+  it("ignores beads sync hints without a matching project id", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => graph("gitboard-ignore-2") });
     (globalThis as any).fetch = fetchMock as any;
-    renderHook(() => useGraphData("gitboard"));
+    renderHook(() => useGraphData("gitboard-ignore-2"));
+    await act(async () => { await Promise.resolve(); });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    wsHandlerByChannel.get("beads:changes")?.({ type: "event", channel: "beads:changes", event: "beads:sync_hint", data: { reason: "global" } });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not refetch fresh cached graph data on focus", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => graph("gitboard-focus") });
+    (globalThis as any).fetch = fetchMock as any;
+    renderHook(() => useGraphData("gitboard-focus"));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     act(() => window.dispatchEvent(new windowStub.Event("focus") as unknown as Event));
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -58,13 +73,14 @@ describe("useGraphData", () => {
 
   it("schedules one refetch for stale empty graph data", async () => {
     vi.useFakeTimers();
-    const fetchMock = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ ...graph("gitboard"), freshness: "stale" }) }).mockResolvedValueOnce({ ok: true, json: async () => ({ ...graph("gitboard"), freshness: "stale" }) });
+    const fetchMock = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ ...graph("gitboard-stale"), freshness: "stale" }) }).mockResolvedValueOnce({ ok: true, json: async () => ({ ...graph("gitboard-stale"), freshness: "stale" }) });
     (globalThis as any).fetch = fetchMock as any;
-    renderHook(() => useGraphData("gitboard"));
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
-    act(() => { vi.advanceTimersByTime(1600); });
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
-    act(() => { vi.advanceTimersByTime(1600); });
+    renderHook(() => useGraphData("gitboard-stale"));
+    await act(async () => { await Promise.resolve(); });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await act(async () => { vi.advanceTimersByTime(750); await Promise.resolve(); });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await act(async () => { vi.advanceTimersByTime(1600); await Promise.resolve(); });
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
@@ -76,6 +92,5 @@ describe("useGraphData", () => {
     expect(wsHandlerByChannel.get("beads:changes")).toBeTypeOf("function");
     wsHandlerByChannel.get("beads:changes")?.({ type: "event", channel: "beads:changes", event: "beads:sync_hint", data: { project_id: "gitboard-sync" } });
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
-    expect(fetchMock.mock.calls[1][0]).toContain("refresh=true");
-  });
-});
+    expect(fetchMock.mock.calls[1][0]).not.toContain("refresh=true");
+  });});

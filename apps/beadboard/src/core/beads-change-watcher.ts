@@ -89,9 +89,21 @@ export class BeadsChangeWatcher {
     }
 
     emit(makeLogEntry("watcher", "poll.snapshot_read", "info", undefined, { projectId: project.id }));
+    const snapshotStartedAt = performance.now();
     const snapshot = await this.readSnapshot(project);
     const previous = this.previous.get(project.id);
     const drift = Boolean(previous && previous.issues.length !== snapshot.issues.length);
+    emit(makeLogEntry("watcher", "poll.snapshot_result", "info", undefined, {
+      projectId: project.id,
+      source: commitHash ? "dolt" : "jsonl",
+      version: commitHash ?? null,
+      ms: Math.round(performance.now() - snapshotStartedAt),
+      issues: snapshot.issues.length,
+      deps: snapshot.deps.length,
+      memories: snapshot.memories.length,
+      drift,
+      initial: !previous,
+    }));
     this.previous.set(project.id, snapshot);
     if (commitHash) this.lastCommitHash.set(project.id, commitHash);
     const healthy = Boolean(commitHash);
@@ -115,8 +127,40 @@ export class BeadsChangeWatcher {
   private diffAndQueue(projectId: string, previous: Snapshot | undefined, next: Snapshot, version: string): void {
     const prevIssues = new Map(previous?.issues.map((issue) => [issue.id, issue]) ?? []);
     const nextIssues = new Map(next.issues.map((issue) => [issue.id, issue]));
+    if (!previous) {
+      emit(makeLogEntry("watcher", "beads.snapshot.initialized", "info", undefined, {
+        projectId,
+        version,
+        issues: next.issues.length,
+        newestIssue: newestIssueSummary(next.issues),
+      }));
+    }
     for (const issue of next.issues) {
       const before = prevIssues.get(issue.id);
+      if (previous && !before) {
+        emit(makeLogEntry("watcher", "beads.issue.detected", "info", undefined, {
+          projectId,
+          version,
+          change: "created",
+          issue: summarizeIssue(issue),
+        }));
+      } else if (before && before.status !== issue.status) {
+        emit(makeLogEntry("watcher", "beads.issue.detected", "info", undefined, {
+          projectId,
+          version,
+          change: "status",
+          issue: summarizeIssue(issue),
+          previousStatus: before.status,
+        }));
+      } else if (before && before.updated_at !== issue.updated_at) {
+        emit(makeLogEntry("watcher", "beads.issue.detected", "info", undefined, {
+          projectId,
+          version,
+          change: "updated",
+          issue: summarizeIssue(issue),
+          previousUpdatedAt: before.updated_at,
+        }));
+      }
       this.enqueue({ projectId, source: "dolt", version, event: "beads:issue.upsert", data: { issue } });
       if (before?.status !== "closed" && issue.status === "closed") this.enqueue({ projectId, source: "dolt", version, event: "beads:issue.close", data: { issueId: issue.id } });
       if (!before && issue.status === "closed") this.enqueue({ projectId, source: "dolt", version, event: "beads:issue.close", data: { issueId: issue.id } });
@@ -148,14 +192,35 @@ export class BeadsChangeWatcher {
     this.flushTimer = null;
     const batch = this.queue.splice(0, this.queue.length);
     if (batch.length === 0) return;
-    emit(makeLogEntry("watcher", "batch.published", "info", undefined, { count: batch.length }));
+    emit(makeLogEntry("watcher", "batch.published", "info", undefined, {
+      count: batch.length,
+      overflow: overflow || batch.length > MAX_BATCH,
+      projectIds: uniqueProjectIds(batch),
+      eventCounts: countEvents(batch),
+      issueEvents: summarizeIssueEvents(batch),
+    }));
     if (overflow || batch.length > MAX_BATCH) {
+      emit(makeLogEntry("watcher", "batch.overflow_sync_hint", "warn", undefined, {
+        count: batch.length,
+        projectIds: uniqueProjectIds(batch),
+        eventCounts: countEvents(batch),
+        version: batch.at(-1)?.version ?? null,
+      }));
       this.registry.publish("beads:changes", "beads:sync_hint", { reason: "overflow" }, batch.at(-1)?.version);
       return;
     }
     const grouped = new Map<string, PendingEvent[]>();
     for (const item of batch) grouped.set(item.projectId, [...(grouped.get(item.projectId) ?? []), item]);
-    for (const [projectId, events] of grouped) this.registry.publish("beads:changes", "beads:batch", { project_id: projectId, issues: events.filter((e) => e.event === "beads:issue.upsert").map((e) => e.data.issue), dependencies: events.filter((e) => e.event === "beads:dep.upsert").map((e) => e.data as unknown as BeadDependency), memories: events.filter((e) => e.event === "beads:memory.upsert").map((e) => e.data as unknown as Memory), kv: events.filter((e) => e.event === "beads:kv.upsert").map((e) => e.data as { key: string; value: unknown; project_id: string }) }, events.at(-1)?.version);
+    for (const [projectId, events] of grouped) {
+      emit(makeLogEntry("watcher", "beads.batch.project_published", "info", undefined, {
+        projectId,
+        count: events.length,
+        eventCounts: countEvents(events),
+        issueEvents: summarizeIssueEvents(events),
+        version: events.at(-1)?.version ?? null,
+      }));
+      this.registry.publish("beads:changes", "beads:batch", { project_id: projectId, issues: events.filter((e) => e.event === "beads:issue.upsert").map((e) => e.data.issue), dependencies: events.filter((e) => e.event === "beads:dep.upsert").map((e) => e.data as unknown as BeadDependency), memories: events.filter((e) => e.event === "beads:memory.upsert").map((e) => e.data as unknown as Memory), kv: events.filter((e) => e.event === "beads:kv.upsert").map((e) => e.data as { key: string; value: unknown; project_id: string }) }, events.at(-1)?.version);
+    }
     for (const item of batch) this.registry.publish("beads:changes", item.event, { projectId: item.projectId, source: item.source, ...item.data }, item.version);
   }
 
@@ -198,4 +263,59 @@ export class BeadsChangeWatcher {
     }
   }
 
+}
+
+
+function uniqueProjectIds(events: PendingEvent[]): string[] {
+  return [...new Set(events.map((event) => event.projectId))];
+}
+
+function countEvents(events: PendingEvent[]): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const event of events) counts[event.event] = (counts[event.event] ?? 0) + 1;
+  return counts;
+}
+
+function summarizeIssueEvents(events: PendingEvent[]): Array<Record<string, unknown>> {
+  const issueEvents = events
+    .map((event) => {
+      const issue = event.data.issue as BeadIssue | undefined;
+      const issueId = issue?.id ?? event.data.issueId ?? event.data.id;
+      if (!issueId) return null;
+      return {
+        event: event.event,
+        projectId: event.projectId,
+        issueId: String(issueId),
+        status: issue?.status,
+        title: issue?.title ? truncate(issue.title, 120) : undefined,
+        created_at: issue?.created_at,
+        updated_at: issue?.updated_at,
+        version: event.version,
+      };
+    })
+    .filter((event): event is Record<string, unknown> => Boolean(event));
+  return issueEvents.slice(0, 50);
+}
+
+function summarizeIssue(issue: BeadIssue): Record<string, unknown> {
+  return {
+    id: issue.id,
+    title: truncate(issue.title, 120),
+    status: issue.status,
+    priority: issue.priority,
+    issue_type: issue.issue_type,
+    owner: issue.owner ?? null,
+    assignee: issue.assignee ?? null,
+    created_at: issue.created_at,
+    updated_at: issue.updated_at,
+  };
+}
+
+function newestIssueSummary(issues: BeadIssue[]): Record<string, unknown> | null {
+  const newest = [...issues].sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))[0];
+  return newest ? summarizeIssue(newest) : null;
+}
+
+function truncate(value: string, max: number): string {
+  return value.length > max ? `${value.slice(0, max - 1)}…` : value;
 }

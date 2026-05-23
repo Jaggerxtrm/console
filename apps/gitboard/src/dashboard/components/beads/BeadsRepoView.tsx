@@ -5,7 +5,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { IssueFeed } from "./IssueFeed.tsx";
 import { IssueOverlay } from "./IssueOverlay.tsx";
 import { beadsApi } from "../../lib/beads-api.ts";
+import { logClientEvent } from "../../lib/client-log.ts";
 import { useWebSocket } from "../../hooks/useWebSocket.ts";
+import { useInFlightJobs } from "../../hooks/useInFlightJobs.ts";
+import type { SpecialistOwnershipJob } from "../../hooks/useSpecialistOwnership.ts";
 import type { WsMessage } from "../../lib/ws.ts";
 import type {
   BeadIssue,
@@ -17,6 +20,7 @@ import type {
 import type { RepoNode, BeadsTab } from "../../../types/shell.ts";
 
 const REFETCH_COALESCE_MS = 1_500;
+const LIVE_SPECIALIST_STATES = new Set(["starting", "running", "waiting", "error", "cancelled"]);
 
 interface State {
   loading: boolean;
@@ -108,6 +112,10 @@ function tailName(fullName: string): string {
   return i >= 0 ? fullName.slice(i + 1) : fullName;
 }
 
+function findProject(projects: BeadsProject[], candidates: string[]): BeadsProject | null {
+  return projects.find((project) => candidates.includes(project.id) || candidates.includes(project.name)) ?? null;
+}
+
 export function BeadsRepoView({ repo, tab }: { repo: RepoNode; tab: BeadsTab }) {
   const [state, setState] = useState<State>(INITIAL);
   const [reloadKey, setReloadKey] = useState(0);
@@ -115,22 +123,46 @@ export function BeadsRepoView({ repo, tab }: { repo: RepoNode; tab: BeadsTab }) 
   const [detail, setDetail] = useState<BeadIssueDetail | null>(null);
   const [loadingDetailId, setLoadingDetailId] = useState<string | null>(null);
   const refetchTimer = useRef<number | null>(null);
+  const loadedTailRef = useRef<string | null>(null);
+  const visibleProjectRef = useRef<string | null>(null);
+  const visibleIssueIdsRef = useRef<Set<string>>(new Set());
+  const visibleChipKeysRef = useRef<Set<string>>(new Set());
+  const visibleChipsInitializedRef = useRef(false);
+  const renderSignatureRef = useRef<string>("");
+  const inFlight = useInFlightJobs();
 
-  const tail = useMemo(() => tailName(repo.fullName), [repo.fullName]);
+  const projectCandidates = useMemo(() => [repo.beadsProjectId, repo.beadsProjectName, tailName(repo.fullName), repo.displayName].filter((value): value is string => Boolean(value)), [repo.beadsProjectId, repo.beadsProjectName, repo.displayName, repo.fullName]);
+  const projectKey = projectCandidates[0] ?? tailName(repo.fullName);
 
   useEffect(() => {
     let cancelled = false;
-    setState((s) => ({ ...s, loading: true, error: null }));
-    setSelectedId(null);
-    setDetail(null);
+    const isProjectSwitch = loadedTailRef.current !== projectKey;
+    loadedTailRef.current = projectKey;
+    setState((s) => ({ ...s, loading: isProjectSwitch || !s.project, error: null }));
+    if (isProjectSwitch) {
+      visibleProjectRef.current = null;
+      visibleIssueIdsRef.current = new Set();
+      visibleChipKeysRef.current = new Set();
+      visibleChipsInitializedRef.current = false;
+      setSelectedId(null);
+      setDetail(null);
+    }
 
     async function load() {
+      const startedAt = performance.now();
+      logClientEvent("beads.feed.load_start", { projectKey, candidates: projectCandidates, isProjectSwitch });
       try {
         const projects = await beadsApi.listProjects();
-        const project = projects.find((p) => p.name === tail);
+        const project = findProject(projects, projectCandidates);
         if (!project) {
           if (!cancelled) {
-            setState({ ...INITIAL, loading: false, error: `No beads project for "${tail}".` });
+            logClientEvent("beads.feed.project_missing", {
+              projectKey,
+              candidates: projectCandidates,
+              availableProjects: projects.map((item) => ({ id: item.id, name: item.name })).slice(0, 100),
+              ms: Math.round(performance.now() - startedAt),
+            });
+            setState({ ...INITIAL, loading: false, error: `No beads project for "${projectKey}".` });
           }
           return;
         }
@@ -140,7 +172,26 @@ export function BeadsRepoView({ repo, tab }: { repo: RepoNode; tab: BeadsTab }) 
           beadsApi.listInteractions(project.id).catch(() => [] as Interaction[]),
         ]);
         if (cancelled) return;
-        setState({ loading: false, error: null, project, issues, closedIssues: [], memories, interactions });
+        logClientEvent("beads.feed.load_result", {
+          projectId: project.id,
+          projectName: project.name,
+          projectKey,
+          ms: Math.round(performance.now() - startedAt),
+          issues: issues.length,
+          memories: memories.length,
+          interactions: interactions.length,
+          newestIssue: newestIssueSummary(issues),
+          issueIds: issues.slice(0, 50).map((issue) => issue.id),
+        });
+        setState((current) => ({
+          loading: false,
+          error: null,
+          project,
+          issues,
+          closedIssues: current.project?.id === project.id ? current.closedIssues : [],
+          memories,
+          interactions,
+        }));
 
         void beadsApi.listClosedIssues(project.id, 50)
           .then((closedIssues) => {
@@ -149,13 +200,22 @@ export function BeadsRepoView({ repo, tab }: { repo: RepoNode; tab: BeadsTab }) 
           .catch(() => undefined);
       } catch (err) {
         if (!cancelled) {
-          setState({ ...INITIAL, loading: false, error: err instanceof Error ? err.message : String(err) });
+          const message = err instanceof Error ? err.message : String(err);
+          logClientEvent("beads.feed.load_error", {
+            projectKey,
+            candidates: projectCandidates,
+            ms: Math.round(performance.now() - startedAt),
+            message,
+          });
+          setState((current) => current.project && !isProjectSwitch
+            ? { ...current, loading: false, error: null }
+            : { ...INITIAL, loading: false, error: message });
         }
       }
     }
     void load();
     return () => { cancelled = true; };
-  }, [tail, reloadKey]);
+  }, [projectCandidates, projectKey, reloadKey]);
 
   const scheduleCoalescedRefetch = useCallback(() => {
     if (refetchTimer.current !== null) return;
@@ -178,6 +238,14 @@ export function BeadsRepoView({ repo, tab }: { repo: RepoNode; tab: BeadsTab }) 
     const projectId = getMessageProjectId(data);
     if (projectId && projectId !== state.project.id) return;
 
+    logClientEvent("beads.feed.ws_message", {
+      event: msg.event,
+      projectId: projectId ?? state.project.id,
+      issueId: data.issue?.id ?? data.issueId ?? data.id ?? null,
+      batchIssues: data.issues?.length ?? 0,
+      currentIssues: state.issues.length,
+    });
+
     if (msg.event === "beads:sync_hint") {
       scheduleCoalescedRefetch();
       return;
@@ -190,9 +258,90 @@ export function BeadsRepoView({ repo, tab }: { repo: RepoNode; tab: BeadsTab }) 
     if (selectedId && changedIssueId === selectedId) {
       void beadsApi.getIssue(state.project.id, selectedId).then(setDetail);
     }
-  }, [selectedId, state.project]);
+  }, [scheduleCoalescedRefetch, selectedId, state.issues.length, state.project]);
 
   useWebSocket("beads:changes", handleBeadsMessage);
+
+  const specialistByIssueId = useMemo(() => buildSpecialistByIssueId(inFlight.jobs, state.project), [inFlight.jobs, state.project]);
+
+  useEffect(() => {
+    if (!state.project || state.loading) return;
+
+    if (visibleProjectRef.current !== state.project.id) {
+      visibleProjectRef.current = state.project.id;
+      visibleIssueIdsRef.current = new Set(state.issues.map((issue) => issue.id));
+      logClientEvent("beads.feed.visible_snapshot", {
+        projectId: state.project.id,
+        projectName: state.project.name,
+        issues: state.issues.length,
+        newestIssue: newestIssueSummary(state.issues),
+        issueIds: state.issues.slice(0, 50).map((issue) => issue.id),
+      });
+      return;
+    }
+
+    for (const issue of state.issues) {
+      if (visibleIssueIdsRef.current.has(issue.id)) continue;
+      visibleIssueIdsRef.current.add(issue.id);
+      logClientEvent("beads.feed.issue_visible", {
+        projectId: state.project.id,
+        projectName: state.project.name,
+        issue: summarizeIssueForLog(issue),
+      });
+    }
+  }, [state.issues, state.loading, state.project]);
+
+  useEffect(() => {
+    if (!state.project || state.loading) return;
+
+    const entries = [...specialistByIssueId.entries()];
+    if (!visibleChipsInitializedRef.current) {
+      visibleChipsInitializedRef.current = true;
+      visibleChipKeysRef.current = new Set(entries.map(([issueId, job]) => chipKey(issueId, job)));
+      logClientEvent("beads.feed.specialist_chips_snapshot", {
+        projectId: state.project.id,
+        projectName: state.project.name,
+        chips: entries.length,
+        chipsSummary: entries.slice(0, 50).map(([issueId, job]) => summarizeChipForLog(issueId, job)),
+      });
+      return;
+    }
+
+    for (const [issueId, job] of entries) {
+      const key = chipKey(issueId, job);
+      if (visibleChipKeysRef.current.has(key)) continue;
+      visibleChipKeysRef.current.add(key);
+      logClientEvent("beads.feed.specialist_chip_visible", {
+        projectId: state.project.id,
+        projectName: state.project.name,
+        chip: summarizeChipForLog(issueId, job),
+      });
+    }
+  }, [specialistByIssueId, state.loading, state.project]);
+
+  useEffect(() => {
+    const signature = JSON.stringify({
+      loading: state.loading,
+      error: Boolean(state.error),
+      projectId: state.project?.id ?? null,
+      issues: state.issues.length,
+      closedIssues: state.closedIssues.length,
+      tab,
+    });
+    if (renderSignatureRef.current === signature) return;
+    renderSignatureRef.current = signature;
+    logClientEvent("beads.feed.render_state", {
+      loading: state.loading,
+      error: state.error,
+      projectId: state.project?.id ?? null,
+      projectName: state.project?.name ?? null,
+      issues: state.issues.length,
+      closedIssues: state.closedIssues.length,
+      tab,
+      wouldShowSkeleton: state.loading && !state.project,
+      wouldShowEmpty: !state.loading && !state.error && Boolean(state.project) && state.issues.length === 0,
+    });
+  }, [state.closedIssues.length, state.error, state.issues.length, state.loading, state.project, tab]);
 
   const onIssueSelect = useCallback(async (issue: BeadIssue) => {
     if (!state.project) return;
@@ -213,8 +362,8 @@ export function BeadsRepoView({ repo, tab }: { repo: RepoNode; tab: BeadsTab }) 
     }
   }, [selectedId, state.project]);
 
-  if (state.loading) return <BeadsSkeleton />;
-  if (state.error) {
+  if (state.loading && !state.project) return <BeadsSkeleton />;
+  if (state.error && !state.project) {
     return (
       <div className="ide-error">
         <p className="ide-error-msg">{state.error}</p>
@@ -239,6 +388,7 @@ export function BeadsRepoView({ repo, tab }: { repo: RepoNode; tab: BeadsTab }) 
           onIssueSelect={onIssueSelect}
           getAgent={() => null}
           projectId={state.project.id}
+          specialistByIssueId={specialistByIssueId}
         />
       )}
       {tab === "triage" && (
@@ -260,6 +410,65 @@ export function BeadsRepoView({ repo, tab }: { repo: RepoNode; tab: BeadsTab }) 
       )}
     </div>
   );
+}
+
+function summarizeIssueForLog(issue: BeadIssue): Record<string, unknown> {
+  return {
+    id: issue.id,
+    title: truncateForLog(issue.title, 120),
+    status: issue.status,
+    priority: issue.priority,
+    issue_type: issue.issue_type,
+    owner: issue.owner ?? null,
+    assignee: issue.assignee ?? null,
+    created_at: issue.created_at,
+    updated_at: issue.updated_at,
+  };
+}
+
+function newestIssueSummary(issues: BeadIssue[]): Record<string, unknown> | null {
+  const newest = [...issues].sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))[0];
+  return newest ? summarizeIssueForLog(newest) : null;
+}
+
+function summarizeChipForLog(issueId: string, job: SpecialistOwnershipJob): Record<string, unknown> {
+  return {
+    issueId,
+    role: job.role,
+    state: job.state,
+    repoSlug: job.repoSlug,
+    jobId: job.jobId,
+  };
+}
+
+function chipKey(issueId: string, job: SpecialistOwnershipJob): string {
+  return `${issueId}:${job.jobId ?? "no-job"}:${job.state}:${job.role}`;
+}
+
+function truncateForLog(value: string, max: number): string {
+  return value.length > max ? `${value.slice(0, max - 1)}…` : value;
+}
+
+function buildSpecialistByIssueId(jobs: Array<{ beadId: string; status: string; specialist?: string | null; chainKind?: string | null; repoSlug: string; jobId?: string | null }>, project: BeadsProject | null): Map<string, SpecialistOwnershipJob> {
+  const byIssue = new Map<string, SpecialistOwnershipJob>();
+  if (!project) return byIssue;
+
+  for (const job of jobs) {
+    if (job.repoSlug !== project.id && job.repoSlug !== project.name) continue;
+    if (!LIVE_SPECIALIST_STATES.has(job.status)) continue;
+
+    const current = byIssue.get(job.beadId);
+    if (current && current.state === "running") continue;
+
+    byIssue.set(job.beadId, {
+      role: job.specialist || job.chainKind || "executor",
+      state: job.status,
+      repoSlug: job.repoSlug,
+      jobId: job.jobId ?? null,
+    });
+  }
+
+  return byIssue;
 }
 
 // ── Closed ────────────────────────────────────────────────────────────────────

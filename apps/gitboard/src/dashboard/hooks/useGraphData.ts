@@ -3,7 +3,7 @@ import type { GraphResponse } from "../../types/graph.ts";
 import type { WsMessage } from "../lib/ws.ts";
 import { useDashboardResource, useDashboardResourceInvalidation } from "../lib/resource.ts";
 
-const CACHE_TTL_MS = 10_000;
+const CACHE_TTL_MS = 60_000;
 const STALE_RETRY_DELAY_MS = 750;
 
 export function useGraphData(projectId: string | null) {
@@ -25,10 +25,8 @@ export function useGraphData(projectId: string | null) {
   useDashboardResourceInvalidation("beads:changes", key, (msg: WsMessage) => {
     const data = msg.data as { projectId?: string; project_id?: string } | undefined;
     const eventProject = data?.projectId ?? data?.project_id;
-    return !eventProject || eventProject === projectId;
+    return eventProject === projectId;
   });
-
-  useDashboardResourceInvalidation("specialists:activity", key);
 
   return { ...resource, reload: resource.refresh };
 }

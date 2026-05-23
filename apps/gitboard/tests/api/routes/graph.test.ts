@@ -60,6 +60,37 @@ describe("GET /api/console/graph", () => {
     expect(json.specialists[1]).toEqual(expect.objectContaining({ bead_id: "gitboard-1", status: "running" }));
   });
 
+
+  it("marks missing project selection as degraded instead of fresh-empty", async () => {
+    const app = createApp();
+    const res = await app.fetch(new Request("http://localhost/api/console/graph"));
+    expect(res.status).toBe(200);
+    const json = await res.json() as { freshness: string; nodes: unknown[]; edges: unknown[]; source_health: { status: string; message?: string; metadata?: Record<string, unknown> } };
+
+    expect(json.nodes).toEqual([]);
+    expect(json.edges).toEqual([]);
+    expect(json.freshness).toBe("degraded");
+    expect(json.source_health).toEqual(expect.objectContaining({
+      status: "degraded",
+      message: "Graph project_id is missing; select a beads project.",
+    }));
+    expect(json.source_health.metadata?.project).toBe("fallback:selected-repo:gitboard");
+  });
+
+  it("marks unknown project selection as degraded instead of fresh-empty", async () => {
+    const app = createApp();
+    const res = await app.fetch(new Request("http://localhost/api/console/graph?project=missing"));
+    const json = await res.json() as { project_id: string; freshness: string; source_health: { status: string; message?: string } };
+
+    expect(json.project_id).toBe("missing");
+    expect(json.freshness).toBe("degraded");
+    expect(json.source_health).toEqual(expect.objectContaining({
+      status: "degraded",
+      message: 'Graph project "missing" was not found.',
+    }));
+  });
+
+
   it("includes closed nodes when include_closed=true", async () => {
     const app = createApp();
     const openRes = await app.fetch(new Request("http://localhost/api/console/graph?project=gitboard&include_closed=false"));
@@ -90,10 +121,10 @@ describe("GET /api/console/graph", () => {
     const refreshedRes = await app.fetch(new Request("http://localhost/api/console/graph?project=gitboard&refresh=true"));
     const refreshed = await refreshedRes.json() as { nodes: Array<{ id: string }> };
     expect(refreshed.nodes.some((node) => node.id === "gitboard-7")).toBe(true);
-    expect(scanner.scanCount).toBe(2);
+    expect(scanner.scanCount).toBe(1);
   });
 
-  it("does not reuse an in-flight scan for explicit refresh", async () => {
+  it("reuses an in-flight project scan for explicit refresh", async () => {
     const scanner = new DelayedScanner({ searchPath: dir, maxDepth: 2, excludePatterns: ["node_modules", ".git"] });
     const app = createApp(scanner);
 
@@ -102,12 +133,10 @@ describe("GET /api/console/graph", () => {
     const refreshed = app.fetch(new Request("http://localhost/api/console/graph?project=gitboard&refresh=true"));
 
     scanner.releaseNextScan();
-    await scanner.waitForScanStart(2);
-    scanner.releaseNextScan();
 
     await first;
     await refreshed;
-    expect(scanner.scanCount).toBe(2);
+    expect(scanner.scanCount).toBe(1);
   });
 
   it("keeps unrelated project issue caches warm on project-scoped refresh", async () => {

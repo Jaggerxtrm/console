@@ -99,10 +99,13 @@ export const useShellStore = create<ShellState>((set) => ({
 
   setSurface: (surface) =>
     set((state) => {
+      const current = state.selection.repo ? state.repos.find((repo) => repo.fullName === state.selection.repo) : null;
+      const currentSupportsSurface = surface === "github" ? current?.hasGithub : current?.hasBeads;
+      const fallback = state.repos.find((repo) => (surface === "github" ? repo.hasGithub : repo.hasBeads));
       const next: SidebarSelection = {
         surface,
         tab: DEFAULT_TAB[surface],
-        repo: state.selection.repo,
+        repo: currentSupportsSurface ? state.selection.repo : fallback?.fullName ?? null,
       };
       writeJSON(LS.selection, next);
       return { selection: next };

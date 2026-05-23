@@ -79,6 +79,8 @@ export interface RepoNode {
   githubStats: GithubChips;
   beadsStats: BeadsChips;
   beadsSource: BeadsSourceChip | null;
+  beadsProjectId?: string | null;
+  beadsProjectName?: string | null;
   hasGithub: boolean;
   hasBeads: boolean;
 }

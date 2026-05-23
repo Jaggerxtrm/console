@@ -56,6 +56,7 @@ export function createSpecialistsRouter(
   let chainCache: CachedValue<{ chain: { jobs: SpecialistChain[] } }> | null = null;
 
   router.get("/jobs", async (c) => {
+    const startedAt = performance.now();
     const beadId = c.req.query("bead_id");
     if (!beadId) {
       return c.json({ error: "Missing bead_id" }, 400);
@@ -66,6 +67,7 @@ export function createSpecialistsRouter(
     const cached = readCache(jobsByBeadCache, key);
     if (cached) {
       emit(makeLogEntry("api", "specialists.cache", "info", undefined, { route: "jobs", hit: true }));
+      logJobsByBeadResponse(beadId, cached.jobs, "cache", startedAt);
       return c.json({ ...cached, freshness: "fresh", source_health: makeSourceHealth("specialists", "fresh") });
     }
 
@@ -73,18 +75,22 @@ export function createSpecialistsRouter(
     const refreshed = await withTimeout(refreshJobsByBead(current.dao, beadId, key), ROUTE_WARM_TIMEOUT_MS);
     if (refreshed) {
       jobsByBeadCache = refreshed;
+      logJobsByBeadResponse(beadId, refreshed.value.jobs, "fresh", startedAt);
       return c.json({ ...refreshed.value, freshness: "fresh", source_health: makeSourceHealth("specialists", "fresh") });
     }
+    logJobsByBeadResponse(beadId, [], "stale_timeout", startedAt);
     return c.json({ jobs: [], freshness: "stale", source_health: makeSourceHealth("specialists", "stale") });
   });
 
   router.get("/jobs/in-flight", async (c) => {
+    const startedAt = performance.now();
     const limit = parseLimit(c.req.query("limit"), 50);
     const current = resolve();
     const key = cacheKey("in-flight", current.repos, epochGetter, String(limit));
     const cached = readCache(inFlightCache, key);
     if (cached) {
       emit(makeLogEntry("api", "specialists.cache", "info", undefined, { route: "in-flight", hit: true }));
+      logInFlightResponse(cached.jobs, cached.recent_history, cached.epoch, "cache", startedAt);
       return c.json({ ...cached, freshness: "fresh", source_health: makeSourceHealth("specialists", "fresh") });
     }
 
@@ -92,9 +98,12 @@ export function createSpecialistsRouter(
     const refreshed = await withTimeout(refreshInFlight(current.dao, current.repos, epochGetter, limit, key), ROUTE_WARM_TIMEOUT_MS);
     if (refreshed) {
       inFlightCache = refreshed;
+      logInFlightResponse(refreshed.value.jobs, refreshed.value.recent_history, refreshed.value.epoch, "fresh", startedAt);
       return c.json({ ...refreshed.value, freshness: "fresh", source_health: makeSourceHealth("specialists", "fresh") });
     }
-    return c.json({ in_flight: [], recent_history: [], jobs: [], epoch: repoEpochs(current.repos, epochGetter), freshness: "stale", source_health: makeSourceHealth("specialists", "stale") });
+    const epoch = repoEpochs(current.repos, epochGetter);
+    logInFlightResponse([], [], epoch, "stale_timeout", startedAt);
+    return c.json({ in_flight: [], recent_history: [], jobs: [], epoch, freshness: "stale", source_health: makeSourceHealth("specialists", "stale") });
   });
 
   router.get("/chains/:chain_id", async (c) => {
@@ -119,6 +128,62 @@ export function createSpecialistsRouter(
   });
 
   return router;
+}
+
+function logJobsByBeadResponse(beadId: string, jobs: SpecialistJob[], freshness: string, startedAt: number): void {
+  emit(makeLogEntry("api", "specialists.jobs_by_bead.response", "info", undefined, {
+    beadId,
+    freshness,
+    ms: Math.round(performance.now() - startedAt),
+    jobs: jobs.length,
+    jobIds: jobs.slice(0, 50).map((job) => job.jobId),
+    statuses: countStatuses(jobs),
+    summaries: summarizeJobs(jobs),
+  }));
+}
+
+function logInFlightResponse(
+  jobs: SpecialistJob[],
+  recentHistory: SpecialistJob[],
+  epoch: Record<string, number>,
+  freshness: string,
+  startedAt: number,
+): void {
+  emit(makeLogEntry("api", "specialists.in_flight.response", "info", undefined, {
+    freshness,
+    ms: Math.round(performance.now() - startedAt),
+    jobs: jobs.length,
+    recentHistory: recentHistory.length,
+    beadIds: [...new Set(jobs.map((job) => job.beadId))].slice(0, 50),
+    repoSlugs: [...new Set(jobs.map((job) => job.repoSlug))].slice(0, 50),
+    jobIds: jobs.slice(0, 50).map((job) => job.jobId),
+    statuses: countStatuses(jobs),
+    epoch,
+    summaries: summarizeJobs(jobs),
+  }));
+}
+
+function summarizeJobs(jobs: SpecialistJob[]): Array<Record<string, unknown>> {
+  return jobs.slice(0, 50).map((job) => ({
+    jobId: job.jobId,
+    chainId: job.chainId,
+    beadId: job.beadId,
+    repoSlug: job.repoSlug,
+    status: job.status,
+    specialist: job.specialist,
+    chainKind: job.chainKind,
+    phase: job.phase,
+    startedAt: job.startedAt,
+    updatedAt: job.updatedAt,
+    lastEventAt: job.lastEventAt,
+    eventCount: job.eventCount,
+  }));
+}
+
+function countStatuses(jobs: SpecialistJob[]): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const job of jobs) counts[job.status] = (counts[job.status] ?? 0) + 1;
+  return counts;
 }
 
 function parseLimit(value: string | undefined, fallback: number): number {

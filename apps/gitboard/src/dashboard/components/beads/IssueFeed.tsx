@@ -7,8 +7,9 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { ChevronRightIcon, ChevronDownIcon, IssueOpenedIcon, MilestoneIcon, NorthStarIcon, ProjectIcon, ToolsIcon, DependabotIcon, GitPullRequestIcon } from "@primer/octicons-react";
 import type { BeadDependency, BeadIssue, BeadIssueDetail, Interaction } from "../../../types/beads.ts";
 import { beadsApi as api } from "../../lib/beads-api.ts";
-import { SpecialistOwnerBadgeForBead } from "./SpecialistOwnerBadge.tsx";
+import { SpecialistOwnerBadge } from "./SpecialistOwnerBadge.tsx";
 import { useSpecialistHistory } from "../../hooks/useSpecialistHistory.ts";
+import type { SpecialistOwnershipJob } from "../../hooks/useSpecialistOwnership.ts";
 
 export interface IssuePrLink {
   number: number;
@@ -28,6 +29,7 @@ interface IssueFeedProps {
   getAgent?: (issueId: string) => string | null;
   projectId: string | null;
   prByIssueId?: Map<string, IssuePrLink>;
+  specialistByIssueId?: Map<string, SpecialistOwnershipJob>;
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -47,7 +49,7 @@ const TYPE_CONFIG: Record<string, { label: string; icon: typeof IssueOpenedIcon;
   chore: { label: "Chore", icon: ToolsIcon, color: "var(--text-muted)" },
 };
 
-type FeedItem =
+export type FeedItem =
   | { kind: "empty" }
   | { kind: "in-progress-header"; count: number }
   | { kind: "in-progress-empty" }
@@ -55,7 +57,7 @@ type FeedItem =
   | { kind: "closed-header"; count: number }
   | { kind: "issue"; issue: BeadIssue; depth: number; childCount: number; relation: "parent" | "epic" | "blocked" };
 
-export function IssueFeed({ issues, closedIssues = [], selectedIssueId, selectedIssueDetail, loadingDetailId, onIssueSelect, onIssueOpen, getAgent, projectId, prByIssueId }: IssueFeedProps) {
+export function IssueFeed({ issues, closedIssues = [], selectedIssueId, selectedIssueDetail, loadingDetailId, onIssueSelect, onIssueOpen, getAgent, projectId, prByIssueId, specialistByIssueId }: IssueFeedProps) {
   const parentRef = useRef<HTMLDivElement>(null);
   const [showOpen, setShowOpen] = useState(true);
   const [showClosed, setShowClosed] = useState(false);
@@ -96,6 +98,7 @@ export function IssueFeed({ issues, closedIssues = [], selectedIssueId, selected
   const rowVirtualizer = useVirtualizer({
     count: items.length,
     getScrollElement: () => parentRef.current,
+    getItemKey: (index) => getFeedItemKey(items[index]),
     estimateSize: (index) => {
       const item = items[index];
       if (item.kind === "in-progress-header" || item.kind === "open-header" || item.kind === "closed-header") return 28;
@@ -148,6 +151,7 @@ export function IssueFeed({ issues, closedIssues = [], selectedIssueId, selected
                   projectId={projectId}
                   issueById={issueById}
                   prLink={prByIssueId?.get(item.issue.id) ?? null}
+                  specialistJob={specialistByIssueId?.get(item.issue.id) ?? null}
                 />
               )}
             </div>
@@ -158,7 +162,13 @@ export function IssueFeed({ issues, closedIssues = [], selectedIssueId, selected
   );
 }
 
-export function IssueRow({ issue, detail, isExpanded, isLoadingDetail, agent, dependencyCount, childCount, onClick, onOpen, depth = 0, relation = "parent", projectId, issueById, prLink = null }: { issue: BeadIssue; detail: BeadIssueDetail | null; isExpanded: boolean; isLoadingDetail: boolean; agent: string | null; dependencyCount: number; childCount: number; onClick: () => void; onOpen: () => void; depth?: number; relation?: "parent" | "epic" | "blocked"; projectId: string | null; issueById: Map<string, BeadIssue>; prLink?: IssuePrLink | null; }) {
+
+export function getFeedItemKey(item: FeedItem): string {
+  if (item.kind === "issue") return `issue:${item.issue.id}`;
+  return item.kind;
+}
+
+export function IssueRow({ issue, detail, isExpanded, isLoadingDetail, agent, dependencyCount, childCount, onClick, onOpen, depth = 0, relation = "parent", projectId, issueById, prLink = null, specialistJob = null }: { issue: BeadIssue; detail: BeadIssueDetail | null; isExpanded: boolean; isLoadingDetail: boolean; agent: string | null; dependencyCount: number; childCount: number; onClick: () => void; onOpen: () => void; depth?: number; relation?: "parent" | "epic" | "blocked"; projectId: string | null; issueById: Map<string, BeadIssue>; prLink?: IssuePrLink | null; specialistJob?: SpecialistOwnershipJob | null; }) {
   const isEpic = issue.issue_type === "epic";
   const displayStatus = getDisplayStatus(issue);
   const type = TYPE_CONFIG[String(issue.issue_type)] ?? { label: String(issue.issue_type), icon: IssueOpenedIcon, color: "var(--text-muted)" };
@@ -192,7 +202,7 @@ export function IssueRow({ issue, detail, isExpanded, isLoadingDetail, agent, de
           )}
           {agent && <><span className="identity-separator">/</span><span className="agent-badge"><DependabotIcon size={10} /> {agent}</span></>}
           <SpecialistHistoryChip beadId={issue.id} />
-          {displayStatus === "in_progress" && <SpecialistOwnerBadgeForBead beadId={issue.id} />}
+          {specialistJob && <SpecialistOwnerBadge job={specialistJob} />}
         </span>
       </button>
       <button type="button" className="chev" onClick={onOpen} aria-label={`open ${issue.id} side drawer`}>{isExpanded ? <ChevronDownIcon size={12} /> : <ChevronRightIcon size={12} />}</button>
