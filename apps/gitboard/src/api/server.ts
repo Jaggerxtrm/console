@@ -15,6 +15,7 @@ import { createShellRouter } from "./routes/shell.ts";
 import { createTerminalRouter } from "./routes/terminal.ts";
 import { ChannelRegistry } from "./ws/channels.ts";
 import { WsHandler } from "./ws/handler.ts";
+import { Materializer } from "../core/materializer/index.ts";
 import { BeadsChangeWatcher } from "../../../beadboard/src/core/beads-change-watcher.ts";
 import { createObservabilityWatcher } from "../server/observability/watcher.ts";
 import { onBump as onObservabilityBump } from "../server/observability/epoch.ts";
@@ -32,9 +33,14 @@ let currentRegistry: ChannelRegistry | null = null;
 let currentWatcher: BeadsChangeWatcher | null = null;
 let currentObservabilityWatcher: ReturnType<typeof createObservabilityWatcher> | null = null;
 let currentSpecialistsBumpUnsubscribe: (() => void) | null = null;
+let currentMaterializer: Materializer | null = null;
 
 export function getCurrentRegistry(): ChannelRegistry | null {
   return currentRegistry;
+}
+
+export function getCurrentMaterializer(): Materializer | null {
+  return currentMaterializer;
 }
 
 const repoRoot = process.cwd().endsWith("/apps/gitboard") ? join(process.cwd(), "../..") : process.cwd();
@@ -49,6 +55,7 @@ export function createApp(db: Database, xtrmDb?: Database): {
   const app = new Hono();
   const registry = new ChannelRegistry();
   currentRegistry = registry;
+  currentMaterializer = xtrmDb ? new Materializer(xtrmDb, registry) : null;
   const wsHandler = new WsHandler(registry);
   setRealtimePublisher(registry);
   currentWatcher = new BeadsChangeWatcher({ registry });
