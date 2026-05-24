@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS specialist_jobs (
   last_output    TEXT,
   created_at     DATETIME,
   updated_at     DATETIME,
+  updated_at_ms  INTEGER,
   PRIMARY KEY (repo_slug, job_id)
 );
 
@@ -103,8 +104,15 @@ const MIGRATIONS = [
 export function createXtrmDatabase(path: string): Database {
   const db = new Database(path, { create: true });
   db.exec(SCHEMA);
+  ensureSpecialistJobsUpdatedAtMsColumn(db);
   for (const sql of MIGRATIONS) {
     db.exec(sql);
   }
   return db;
+}
+
+function ensureSpecialistJobsUpdatedAtMsColumn(db: Database): void {
+  const row = db.query("PRAGMA table_info(specialist_jobs)").all() as Array<{ name: string }>;
+  if (row.some((column) => column.name === "updated_at_ms")) return;
+  db.exec("ALTER TABLE specialist_jobs ADD COLUMN updated_at_ms INTEGER");
 }
