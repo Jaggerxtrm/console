@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { Database } from "bun:sqlite";
 import { ChannelRegistry } from "../../src/api/ws/channels.ts";
 import { createXtrmDatabase } from "../../src/core/xtrm-store.ts";
-import { setDiskEnabled } from "../../src/core/logger.ts";
+import { setDiskEnabled, subscribe } from "../../src/core/logger.ts";
 import { COALESCE_MS } from "../../src/core/materializer/queue.ts";
 import { Materializer } from "../../src/core/materializer/index.ts";
 import { createObservabilityAdapter } from "../../src/core/materializer/observability-adapter.ts";
@@ -74,6 +74,10 @@ function createAdapter(batches: Array<Array<{ issue_id: string; title: string }>
       const rows = batches.flat().map((row) => ({ repo_slug: "repo/a", issue_id: row.issue_id, title: row.title, state: "open" }));
       return { rows };
     },
+    write(db, snapshot) {
+      const stmt = db.query("INSERT INTO substrate_issues (repo_slug, issue_id, title, state) VALUES (?, ?, ?, ?) ON CONFLICT(repo_slug, issue_id) DO UPDATE SET title=excluded.title, state=excluded.state");
+      for (const row of snapshot.rows) stmt.run(row.repo_slug, row.issue_id, row.title ?? null, row.state);
+    },
   };
 }
 
@@ -98,6 +102,7 @@ describe("materializer", () => {
       async snapshot() {
         return { rows: [] };
       },
+      write() {},
     };
 
     materializer.register("a", adapterA);
@@ -162,6 +167,25 @@ describe("materializer", () => {
     db.close();
   });
 
+  it("returns null cursor and warns on corrupt materialization cursor row", async () => {
+    const db = await createDb();
+    setDiskEnabled(false);
+    db.exec("PRAGMA ignore_check_constraints = ON");
+    db.query("INSERT INTO materialization_state (source_key, cursor, last_status) VALUES (?, ?, 'success')").run("a", "{not-json");
+    const warnings: unknown[] = [];
+    const unsubscribe = subscribe({ component: "system", event: "materializer.cursor.invalid", level: "warn" }, (entry) => warnings.push(entry));
+
+    const materializer = new Materializer(db);
+    materializer.register("a", createAdapter([[{ issue_id: "1", title: "one" }]]));
+    await materializer.runOnce("a");
+
+    expect(warnings).toHaveLength(1);
+    expect((warnings[0] as { data?: { source_key?: string; cursor?: string } }).data).toEqual({ source_key: "a", cursor: "{not-json" });
+    expect(db.query("SELECT cursor FROM materialization_state WHERE source_key = 'a'").get() as { cursor: string }).toEqual({ cursor: '{"cursor":1}' });
+    unsubscribe();
+    db.close();
+  });
+
   it("tracks observability cursor pair and re-reads touched jobs from events", async () => {
     const xtrmDb = await createDb();
     const obsDb = createObservabilityDb();
@@ -172,12 +196,12 @@ describe("materializer", () => {
     const adapter = createObservabilityAdapter(join(process.cwd(), ".tmp-materializer", "observability.sqlite"), "repo/a");
     const first = await adapter.changesSince({ updated_at_ms: 0, event_rowid: 0 });
     expect(first.cursor).toEqual({ updated_at_ms: 2000, event_rowid: 1 });
-    expect(first.rows.map((row) => row.issue_id)).toEqual(["job-1", "job-2"]);
+    expect(first.rows.map((row) => row.job_id)).toEqual(["job-1", "job-2"]);
 
     obsDb.query("INSERT INTO specialist_job_events (repo_slug, job_id, event_type, payload) VALUES (?, ?, ?, ?)").run("repo/a", "job-1", "turn", "{\"x\":1}");
     const second = await adapter.changesSince(first.cursor);
     expect(second.cursor).toEqual({ updated_at_ms: 2000, event_rowid: 2 });
-    expect(second.rows.map((row) => row.issue_id).sort()).toEqual(["job-1", "job-2"]);
+    expect(second.rows.map((row) => row.job_id).sort()).toEqual(["job-1", "job-2"]);
     obsDb.close();
     xtrmDb.close();
   });

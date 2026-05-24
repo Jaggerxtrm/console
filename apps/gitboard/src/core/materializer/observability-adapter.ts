@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import type { MaterializedIssue, MaterializerAdapter, MaterializerCursor, MaterializerDelta, MaterializerSnapshot } from "./types.ts";
+import type { MaterializerAdapter, MaterializerCursor, MaterializerDelta, MaterializerSnapshot } from "./types.ts";
 
 type ObservabilityCursor = {
   updated_at_ms: number;
@@ -30,8 +30,8 @@ type EventRow = {
   created_at: string | null;
 };
 
-export function createObservabilityAdapter(dbPath: string, repoSlug: string): MaterializerAdapter {
-  const db = new Database(dbPath, { readonly: true });
+export function createObservabilityAdapter(dbPath: string, repoSlug: string): MaterializerAdapter<JobRow> {
+  const db = new Database(dbPath);
   return {
     async cursor() {
       return readCursor(db, repoSlug);
@@ -45,11 +45,17 @@ export function createObservabilityAdapter(dbPath: string, repoSlug: string): Ma
       const jobs = mergeJobs(recentJobs, touchedJobs);
       return {
         cursor: nextCursor(jobs, eventRows, baseline),
-        rows: jobs.map(toMaterializedIssue),
-      } satisfies MaterializerDelta;
+        rows: jobs,
+      } satisfies MaterializerDelta<JobRow>;
     },
     async snapshot() {
-      return { rows: readAllJobs(db, repoSlug).map(toMaterializedIssue) } satisfies MaterializerSnapshot;
+      return { rows: readAllJobs(db, repoSlug) } satisfies MaterializerSnapshot<JobRow>;
+    },
+    write(database, snapshot) {
+      const stmt = database.query("INSERT INTO specialist_jobs (repo_slug, job_id, specialist, status, chain_id, epic_id, chain_kind, worktree, last_output, created_at, updated_at, updated_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(repo_slug, job_id) DO UPDATE SET specialist=excluded.specialist, status=excluded.status, chain_id=excluded.chain_id, epic_id=excluded.epic_id, chain_kind=excluded.chain_kind, worktree=excluded.worktree, last_output=excluded.last_output, created_at=excluded.created_at, updated_at=excluded.updated_at, updated_at_ms=excluded.updated_at_ms");
+      for (const row of snapshot.rows) {
+        stmt.run(row.repo_slug, row.job_id, row.specialist ?? null, row.status, row.chain_id ?? null, row.epic_id ?? null, row.chain_kind ?? null, row.worktree ?? null, row.last_output ?? null, row.created_at ?? null, row.updated_at ?? null, row.updated_at_ms ?? null);
+      }
     },
   };
 }
@@ -99,30 +105,11 @@ function mergeJobs(primary: JobRow[], touched: JobRow[]): JobRow[] {
   const rows = new Map<string, JobRow>();
   for (const row of primary) rows.set(row.job_id, row);
   for (const row of touched) rows.set(row.job_id, row);
-  return [...rows.values()].sort((left, right) => left.updated_at_ms - right.updated_at_ms || left.job_id.localeCompare(right.job_id));
+  return [...rows.values()].sort((left, right) => (left.updated_at_ms ?? 0) - (right.updated_at_ms ?? 0) || left.job_id.localeCompare(right.job_id));
 }
 
 function nextCursor(jobs: JobRow[], events: EventRow[], baseline: ObservabilityCursor): ObservabilityCursor {
   const maxJob = jobs.reduce((max, row) => Math.max(max, row.updated_at_ms ?? 0), baseline.updated_at_ms);
   const maxEvent = events.reduce((max, row) => Math.max(max, row.rowid ?? 0), baseline.event_rowid);
   return { updated_at_ms: maxJob, event_rowid: maxEvent };
-}
-
-function toMaterializedIssue(row: JobRow): MaterializedIssue {
-  return {
-    repo_slug: row.repo_slug,
-    issue_id: row.job_id,
-    title: row.specialist ?? row.job_id,
-    body: row.last_output,
-    state: mapState(row.status),
-    deleted_at: row.status === "deleted" ? row.updated_at : null,
-    created_at: row.created_at,
-    updated_at: row.updated_at,
-  };
-}
-
-function mapState(status: string): string {
-  if (status === "done" || status === "cancelled") return "closed";
-  if (status === "deleted") return "deleted";
-  return "open";
 }

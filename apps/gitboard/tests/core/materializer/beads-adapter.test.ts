@@ -1,7 +1,7 @@
 import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it } from "vitest";
 import { createXtrmDatabase } from "../../../src/core/xtrm-store.ts";
 import { Materializer } from "../../../src/core/materializer/index.ts";
 import { BeadsAdapter } from "../../../src/core/materializer/beads-adapter.ts";

@@ -1,3 +1,5 @@
+import type { Database } from "bun:sqlite";
+
 export type MaterializerCursor = unknown;
 
 export interface MaterializedIssue {
@@ -19,17 +21,19 @@ export interface MaterializedDependency {
   created_at?: string | null;
 }
 
-export interface MaterializerSnapshot {
-  rows: readonly MaterializedIssue[];
-  dependencies?: readonly MaterializedDependency[];
+export interface MaterializerSnapshot<TRow = MaterializedIssue, TDependency = MaterializedDependency> {
+  rows: readonly TRow[];
+  dependencies?: readonly TDependency[];
 }
 
-export interface MaterializerDelta extends MaterializerSnapshot {
+export interface MaterializerDelta<TRow = MaterializedIssue, TDependency = MaterializedDependency>
+  extends MaterializerSnapshot<TRow, TDependency> {
   cursor: MaterializerCursor;
 }
 
-export interface MaterializerAdapter {
+export interface MaterializerAdapter<TRow = MaterializedIssue, TDependency = MaterializedDependency> {
   cursor(): Promise<MaterializerCursor>;
-  changesSince(cursor: MaterializerCursor): Promise<MaterializerDelta>;
-  snapshot(): Promise<MaterializerSnapshot>;
+  changesSince(cursor: MaterializerCursor): Promise<MaterializerDelta<TRow, TDependency>>;
+  snapshot(): Promise<MaterializerSnapshot<TRow, TDependency>>;
+  write(db: Database, snapshot: MaterializerSnapshot<TRow, TDependency>): void;
 }

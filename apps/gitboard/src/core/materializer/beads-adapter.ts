@@ -2,7 +2,7 @@ import type { Database } from "bun:sqlite";
 import type { BeadIssue } from "../../../../beadboard/src/types/beads.ts";
 import { BeadsSnapshotSource } from "./beads-snapshot-source.ts";
 import { snapshotDiff, snapshotHash } from "./snapshot-diff.ts";
-import type { MaterializerAdapter, MaterializerCursor, MaterializerDelta, MaterializerSnapshot, MaterializedDependency, MaterializedIssue } from "./types.ts";
+import type { MaterializedDependency, MaterializedIssue, MaterializerAdapter, MaterializerCursor, MaterializerDelta, MaterializerSnapshot } from "./types.ts";
 
 export interface BeadsAdapterOptions {
   sourceKey: string;
@@ -15,7 +15,7 @@ export interface BeadsAdapterOptions {
 
 type BeadsCursor = { snapshot_hash: string | null };
 
-export class BeadsAdapter implements MaterializerAdapter {
+export class BeadsAdapter implements MaterializerAdapter<MaterializedIssue, MaterializedDependency> {
   private readonly source: BeadsSnapshotSource;
 
   constructor(private readonly options: BeadsAdapterOptions) {
@@ -32,7 +32,7 @@ export class BeadsAdapter implements MaterializerAdapter {
     return { snapshot_hash: await this.getStoredSnapshotHash() } satisfies BeadsCursor;
   }
 
-  async changesSince(): Promise<MaterializerDelta> {
+  async changesSince(): Promise<MaterializerDelta<MaterializedIssue, MaterializedDependency>> {
     const next = await this.readSnapshotIssues();
     const prev = await this.readCurrentIssues();
     const diff = snapshotDiff(prev.rows, next.rows, issueKey);
@@ -47,8 +47,39 @@ export class BeadsAdapter implements MaterializerAdapter {
     };
   }
 
-  async snapshot(): Promise<MaterializerSnapshot> {
+  async snapshot(): Promise<MaterializerSnapshot<MaterializedIssue, MaterializedDependency>> {
     return this.readSnapshotIssues();
+  }
+
+  write(db: Database, snapshot: MaterializerSnapshot<MaterializedIssue, MaterializedDependency>): void {
+    this.deleteDependencies(db, snapshot.rows);
+    this.writeIssues(db, snapshot.rows);
+    this.writeDependencies(db, snapshot.dependencies ?? []);
+    this.tombstoneMissing(db, snapshot.rows);
+  }
+
+  private writeIssues(db: Database, rows: readonly MaterializedIssue[]): void {
+    const stmt = db.query("INSERT INTO substrate_issues (repo_slug, issue_id, title, body, state, deleted_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(repo_slug, issue_id) DO UPDATE SET title=excluded.title, body=excluded.body, state=excluded.state, deleted_at=excluded.deleted_at, created_at=excluded.created_at, updated_at=excluded.updated_at");
+    for (const row of rows) stmt.run(row.repo_slug, row.issue_id, row.title ?? null, row.body ?? null, row.state, row.deleted_at ?? null, row.created_at ?? null, row.updated_at ?? null);
+  }
+
+  private writeDependencies(db: Database, rows: readonly MaterializedDependency[]): void {
+    const stmt = db.query("INSERT INTO substrate_dependencies (repo_slug, issue_id, dep_issue_id, relation, created_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(repo_slug, issue_id, dep_issue_id) DO UPDATE SET relation=excluded.relation, created_at=excluded.created_at");
+    for (const row of rows) stmt.run(row.repo_slug, row.issue_id, row.dep_issue_id, row.relation, row.created_at ?? null);
+  }
+
+  private deleteDependencies(db: Database, issues: readonly MaterializedIssue[]): void {
+    const stmt = db.query("DELETE FROM substrate_dependencies WHERE repo_slug = ? AND issue_id = ?");
+    for (const row of issues) stmt.run(row.repo_slug, row.issue_id);
+  }
+
+  private tombstoneMissing(db: Database, rows: readonly MaterializedIssue[]): void {
+    const keys = new Set(rows.map((row) => `${row.repo_slug}::${row.issue_id}`));
+    const active = db.query("SELECT repo_slug, issue_id FROM substrate_issues WHERE deleted_at IS NULL").all() as Array<{ repo_slug: string; issue_id: string }>;
+    const stmt = db.query("UPDATE substrate_issues SET deleted_at = CURRENT_TIMESTAMP, state = 'deleted' WHERE repo_slug = ? AND issue_id = ?");
+    for (const row of active) {
+      if (!keys.has(`${row.repo_slug}::${row.issue_id}`)) stmt.run(row.repo_slug, row.issue_id);
+    }
   }
 
   private async readSnapshotIssues(): Promise<{ rows: MaterializedIssue[]; dependencies: MaterializedDependency[] }> {
@@ -77,7 +108,6 @@ export class BeadsAdapter implements MaterializerAdapter {
       return null;
     }
   }
-
 }
 
 function normalizeIssue(projectId: string, issue: BeadIssue): MaterializedIssue {

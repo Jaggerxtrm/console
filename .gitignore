@@ -33,3 +33,5 @@ e4494c9598b9
 
 # Smoke test scratch dirs
 .tmp-*/
+
+logs/

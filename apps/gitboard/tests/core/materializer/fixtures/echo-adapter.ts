@@ -33,4 +33,6 @@ export class EchoAdapter implements MaterializerAdapter {
   snapshot(): Promise<{ rows: readonly MaterializedIssue[] }> {
     return Promise.resolve({ rows: [...this.rows.values()].map(({ key, ...row }) => row) });
   }
+
+  write(): void {}
 }
