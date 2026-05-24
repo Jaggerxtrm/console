@@ -65,15 +65,6 @@ async function main(): Promise<void> {
 
 function seedSpecialists(db: Database): void {
   db.exec(`
-    CREATE TABLE substrate_job_link (
-      repo_slug TEXT NOT NULL,
-      job_id TEXT NOT NULL,
-      issue_id TEXT NOT NULL,
-      substrate_type TEXT NOT NULL,
-      substrate_id TEXT NOT NULL,
-      created_at DATETIME,
-      PRIMARY KEY (repo_slug, job_id, issue_id)
-    );
     CREATE TABLE specialist_jobs (
       repo_slug TEXT NOT NULL,
       job_id TEXT NOT NULL,
