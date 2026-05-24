@@ -3,7 +3,7 @@
 Downstream code MUST emit through typed bus.
 
 ## Required events
-- `materializer.run` — info on start/finish span, error on throw.
+- `materializer.run` — single emit on completion with duration_ms; never emits on start, error on throw.
 - `materializer.snapshot` — info for snapshot read/write/diff compute, error on failure.
 - `adapter.cursor.*` — info for cursor advance/reconcile, warn on retry, error on failure.
 - `parity.diff` — info for diff compute, warn for threshold breach, error on failure.
