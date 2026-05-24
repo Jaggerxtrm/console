@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import { emit, makeLogEntry } from "../logger.ts";
 import type { EventType } from "./event-types.ts";
+import type { LogComponent } from "../types/log.ts";
 
 type CorrelationContext = { correlation_id: string };
 
@@ -46,8 +47,8 @@ export async function withSpan<T>(component: string, event: EventType, attrs: Sp
   }
 }
 
-function emitSpan(component: string, event: string, data: Record<string, unknown>, level: "info" | "error" = "info"): void {
-  emit(makeLogEntry(component as never, event, level, undefined, data));
+function emitSpan(component: LogComponent, event: string, data: Record<string, unknown>, level: "info" | "error" = "info"): void {
+  emit(makeLogEntry(component, event, level, undefined, data));
 }
 
 function roundMs(ms: number): number {

@@ -77,7 +77,7 @@ export function createApp(db: Database, xtrmDb?: Database): {
     try {
       await next();
     } catch (error) {
-      emit(makeLogEntry("api", "request.error", "error", "request failed", { path: c.req.path, error: (error as Error).message }));
+      emit(makeLogEntry("api", "request.error", "error", "request failed", { path: c.req.path, error: error instanceof Error ? error.message : String(error) }));
       throw error;
     } finally {
       const ms = Math.round(performance.now() - start);
