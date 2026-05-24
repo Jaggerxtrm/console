@@ -33,14 +33,9 @@ let currentRegistry: ChannelRegistry | null = null;
 let currentWatcher: BeadsChangeWatcher | null = null;
 let currentObservabilityWatcher: ReturnType<typeof createObservabilityWatcher> | null = null;
 let currentSpecialistsBumpUnsubscribe: (() => void) | null = null;
-let currentMaterializer: Materializer | null = null;
 
 export function getCurrentRegistry(): ChannelRegistry | null {
   return currentRegistry;
-}
-
-export function getCurrentMaterializer(): Materializer | null {
-  return currentMaterializer;
 }
 
 const repoRoot = process.cwd().endsWith("/apps/gitboard") ? join(process.cwd(), "../..") : process.cwd();
@@ -51,11 +46,12 @@ export function createApp(db: Database, xtrmDb?: Database): {
   app: Hono;
   registry: ChannelRegistry;
   wsHandler: WsHandler;
+  materializer: Materializer | null;
 } {
   const app = new Hono();
   const registry = new ChannelRegistry();
   currentRegistry = registry;
-  currentMaterializer = xtrmDb ? new Materializer(xtrmDb, registry) : null;
+  const materializer = xtrmDb ? new Materializer(xtrmDb, registry) : null;
   const wsHandler = new WsHandler(registry);
   setRealtimePublisher(registry);
   currentWatcher = new BeadsChangeWatcher({ registry });
@@ -141,7 +137,7 @@ export function createApp(db: Database, xtrmDb?: Database): {
     app.get("/", (c) => c.redirect("/gitboard"));
   }
 
-  return { app, registry, wsHandler };
+  return { app, registry, wsHandler, materializer };
 }
 
 export function startServer(db: Database, xtrmDb?: Database, options: ServerOptions = {}): void {
