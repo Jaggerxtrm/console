@@ -15,6 +15,7 @@ import { createShellRouter } from "./routes/shell.ts";
 import { createTerminalRouter } from "./routes/terminal.ts";
 import { ChannelRegistry } from "./ws/channels.ts";
 import { WsHandler } from "./ws/handler.ts";
+import { Materializer } from "../core/materializer/index.ts";
 import { BeadsChangeWatcher } from "../../../beadboard/src/core/beads-change-watcher.ts";
 import { createObservabilityWatcher } from "../server/observability/watcher.ts";
 import { onBump as onObservabilityBump } from "../server/observability/epoch.ts";
@@ -45,10 +46,12 @@ export function createApp(db: Database, xtrmDb?: Database): {
   app: Hono;
   registry: ChannelRegistry;
   wsHandler: WsHandler;
+  materializer: Materializer | null;
 } {
   const app = new Hono();
   const registry = new ChannelRegistry();
   currentRegistry = registry;
+  const materializer = xtrmDb ? new Materializer(xtrmDb, registry) : null;
   const wsHandler = new WsHandler(registry);
   setRealtimePublisher(registry);
   currentWatcher = new BeadsChangeWatcher({ registry });
@@ -134,7 +137,7 @@ export function createApp(db: Database, xtrmDb?: Database): {
     app.get("/", (c) => c.redirect("/gitboard"));
   }
 
-  return { app, registry, wsHandler };
+  return { app, registry, wsHandler, materializer };
 }
 
 export function startServer(db: Database, xtrmDb?: Database, options: ServerOptions = {}): void {
