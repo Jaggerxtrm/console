@@ -1,11 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
+import { Database } from "bun:sqlite";
 import { ChannelRegistry } from "../../src/api/ws/channels.ts";
 import { createXtrmDatabase } from "../../src/core/xtrm-store.ts";
 import { setDiskEnabled } from "../../src/core/logger.ts";
 import { COALESCE_MS } from "../../src/core/materializer/queue.ts";
 import { Materializer } from "../../src/core/materializer/index.ts";
+import { createObservabilityAdapter } from "../../src/core/materializer/observability-adapter.ts";
 import type { MaterializerAdapter } from "../../src/core/materializer/types.ts";
 
 afterEach(() => {
@@ -20,6 +22,37 @@ async function createDb() {
   const dir = join(process.cwd(), ".tmp-materializer");
   await mkdir(dir, { recursive: true });
   return createXtrmDatabase(join(dir, "xtrm.sqlite"));
+}
+
+function createObservabilityDb(): Database {
+  const dir = join(process.cwd(), ".tmp-materializer");
+  const db = new Database(join(dir, "observability.sqlite"), { create: true });
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS specialist_jobs (
+      repo_slug TEXT NOT NULL,
+      job_id TEXT NOT NULL,
+      specialist TEXT,
+      status TEXT NOT NULL,
+      chain_id TEXT,
+      epic_id TEXT,
+      chain_kind TEXT,
+      worktree TEXT,
+      last_output TEXT,
+      created_at TEXT,
+      updated_at TEXT,
+      updated_at_ms INTEGER,
+      PRIMARY KEY (repo_slug, job_id)
+    );
+    CREATE TABLE IF NOT EXISTS specialist_job_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      repo_slug TEXT NOT NULL,
+      job_id TEXT NOT NULL,
+      event_type TEXT NOT NULL,
+      payload TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+  return db;
 }
 
 function createAdapter(batches: Array<Array<{ issue_id: string; title: string }>>): MaterializerAdapter {
@@ -127,5 +160,25 @@ describe("materializer", () => {
     expect(hints).toHaveLength(1);
     expect(db.query("SELECT json_extract(cursor, '$.cursor') AS cursor FROM materialization_state WHERE source_key = 'a'").get() as { cursor: number }).toEqual({ cursor: 1 });
     db.close();
+  });
+
+  it("tracks observability cursor pair and re-reads touched jobs from events", async () => {
+    const xtrmDb = await createDb();
+    const obsDb = createObservabilityDb();
+    obsDb.query("INSERT INTO specialist_jobs (repo_slug, job_id, specialist, status, created_at, updated_at, updated_at_ms) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?)").run("repo/a", "job-1", "sp1", "running", 500);
+    obsDb.query("INSERT INTO specialist_jobs (repo_slug, job_id, specialist, status, created_at, updated_at, updated_at_ms) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?)").run("repo/a", "job-2", "sp2", "done", 2000);
+    obsDb.query("INSERT INTO specialist_job_events (repo_slug, job_id, event_type, payload) VALUES (?, ?, ?, ?)").run("repo/a", "job-1", "turn", "{}");
+
+    const adapter = createObservabilityAdapter(join(process.cwd(), ".tmp-materializer", "observability.sqlite"), "repo/a");
+    const first = await adapter.changesSince({ updated_at_ms: 0, event_rowid: 0 });
+    expect(first.cursor).toEqual({ updated_at_ms: 2000, event_rowid: 1 });
+    expect(first.rows.map((row) => row.issue_id)).toEqual(["job-1", "job-2"]);
+
+    obsDb.query("INSERT INTO specialist_job_events (repo_slug, job_id, event_type, payload) VALUES (?, ?, ?, ?)").run("repo/a", "job-1", "turn", "{\"x\":1}");
+    const second = await adapter.changesSince(first.cursor);
+    expect(second.cursor).toEqual({ updated_at_ms: 2000, event_rowid: 2 });
+    expect(second.rows.map((row) => row.issue_id).sort()).toEqual(["job-1", "job-2"]);
+    obsDb.close();
+    xtrmDb.close();
   });
 });

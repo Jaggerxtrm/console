@@ -16,9 +16,9 @@ import { createTerminalRouter } from "./routes/terminal.ts";
 import { ChannelRegistry } from "./ws/channels.ts";
 import { WsHandler } from "./ws/handler.ts";
 import { Materializer } from "../core/materializer/index.ts";
+import { createObservabilityAdapter } from "../core/materializer/observability-adapter.ts";
 import { BeadsChangeWatcher } from "../../../beadboard/src/core/beads-change-watcher.ts";
 import { createObservabilityWatcher } from "../server/observability/watcher.ts";
-import { onBump as onObservabilityBump } from "../server/observability/epoch.ts";
 import { listRepos } from "../server/observability/registry.ts";
 import { getShellProviderStatus, isAllowedShellWebSocketOrigin, isShellWebSocketPath, isVerifiedShellAdminRequest, shouldRejectShellWebSocket } from "../core/shell-provider-policy.ts";
 import { createTerminalProviderRegistry } from "./terminal/provider-registry.ts";
@@ -32,10 +32,14 @@ export interface ServerOptions {
 let currentRegistry: ChannelRegistry | null = null;
 let currentWatcher: BeadsChangeWatcher | null = null;
 let currentObservabilityWatcher: ReturnType<typeof createObservabilityWatcher> | null = null;
-let currentSpecialistsBumpUnsubscribe: (() => void) | null = null;
+let currentMaterializer: Materializer | null = null;
 
 export function getCurrentRegistry(): ChannelRegistry | null {
   return currentRegistry;
+}
+
+export function getCurrentMaterializer(): Materializer | null {
+  return currentMaterializer;
 }
 
 const repoRoot = process.cwd().endsWith("/apps/gitboard") ? join(process.cwd(), "../..") : process.cwd();
@@ -52,6 +56,14 @@ export function createApp(db: Database, xtrmDb?: Database): {
   const registry = new ChannelRegistry();
   currentRegistry = registry;
   const materializer = xtrmDb ? new Materializer(xtrmDb, registry) : null;
+  currentMaterializer = materializer;
+  if (materializer && xtrmDb) {
+    for (const repo of listRepos()) {
+      const sourceKey = `obs:${repo.repoSlug}`;
+      xtrmDb.query("INSERT INTO sources (source_key, kind, path, origin, status, discovered_at, last_seen_at) VALUES (?, 'observability', ?, 'discovered', 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) ON CONFLICT(source_key) DO UPDATE SET path=excluded.path, status=excluded.status, last_seen_at=excluded.last_seen_at").run(sourceKey, repo.dbPath);
+      materializer.register(sourceKey, createObservabilityAdapter(repo.dbPath, repo.repoSlug));
+    }
+  }
   const wsHandler = new WsHandler(registry);
   setRealtimePublisher(registry);
   currentWatcher = new BeadsChangeWatcher({ registry });
@@ -60,19 +72,6 @@ export function createApp(db: Database, xtrmDb?: Database): {
   currentObservabilityWatcher = createObservabilityWatcher(listRepos());
   currentObservabilityWatcher.start();
 
-  // Bridge observability epoch bumps (raised by the watcher when an observability
-  // db file changes) onto the WS bus so the dashboard's graph specialist overlay
-  // and the specialists drawer can refetch immediately instead of polling
-  // (forge-7cyq). Mirrors the BeadsChangeWatcher / github-poller publish pattern.
-  currentSpecialistsBumpUnsubscribe?.();
-  currentSpecialistsBumpUnsubscribe = onObservabilityBump((repoSlug, epoch) => {
-    registry.publish(
-      "specialists:activity",
-      "specialists:sync_hint",
-      { reason: "epoch_bump", repo_slug: repoSlug },
-      String(epoch),
-    );
-  });
 
   app.use("*", cors());
   app.use("*", async (c, next) => {
@@ -210,10 +209,8 @@ export function startServer(db: Database, xtrmDb?: Database, options: ServerOpti
   });
 
   const stopObservability = currentObservabilityWatcher;
-  const stopSpecialistsBump = currentSpecialistsBumpUnsubscribe;
   process.once("exit", () => {
     stopObservability?.stop();
-    stopSpecialistsBump?.();
   });
 
   console.log(`[xtrm] Server running at http://${hostname}:${port}`);
