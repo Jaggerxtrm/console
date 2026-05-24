@@ -11,8 +11,17 @@ export interface MaterializedIssue {
   updated_at?: string | null;
 }
 
+export interface MaterializedDependency {
+  repo_slug: string;
+  issue_id: string;
+  dep_issue_id: string;
+  relation: string;
+  created_at?: string | null;
+}
+
 export interface MaterializerSnapshot {
   rows: readonly MaterializedIssue[];
+  dependencies?: readonly MaterializedDependency[];
 }
 
 export interface MaterializerDelta extends MaterializerSnapshot {

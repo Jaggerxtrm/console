@@ -26,6 +26,44 @@ describe("BeadsSnapshotSource", () => {
     db.close();
   });
 
+  it("jsonl fallback matches live dolt shadow result", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "beads-shadow-"));
+    const issue = { _type: "issue", id: "A", title: "Alpha", status: "open", priority: 2, issue_type: "task", created_at: "2026-05-24T00:00:00.000Z", updated_at: "2026-05-24T00:00:00.000Z", dependencies: [{ id: "B", dependency_type: "blocks" }] };
+    await writeFile(join(dir, "issues.jsonl"), `${JSON.stringify(issue)}\n`);
+    const db = createStateDb();
+    const expected = [{
+      id: "A",
+      title: "Alpha",
+      description: null,
+      notes: null,
+      status: "open",
+      priority: 2,
+      issue_type: "task",
+      owner: null,
+      created_at: "2026-05-24T00:00:00.000Z",
+      created_by: null,
+      updated_at: "2026-05-24T00:00:00.000Z",
+      closed_at: undefined,
+      close_reason: undefined,
+      project_id: "",
+      dependencies: [{ id: "B", title: "", status: "open", dependency_type: "blocks" }],
+      parent_id: undefined,
+      related_ids: [],
+      labels: [],
+    }];
+    const live = new BeadsSnapshotSource({ sourceKey: "beads:1", beadsPath: dir, doltClient: { getIssues: async () => expected as never }, xtrmDb: db });
+    const fallback = new BeadsSnapshotSource({ sourceKey: "beads:1", beadsPath: dir, doltClient: { getIssues: async () => { throw new Error("stale dolt"); } }, xtrmDb: db });
+    const fallbackRows = await fallback.readSnapshot();
+    const liveRows = await live.readSnapshot();
+    expect(fallbackRows).toHaveLength(1);
+    expect(liveRows).toHaveLength(1);
+    expect(fallbackRows[0]?.id).toBe(liveRows[0]?.id);
+    expect(fallbackRows[0]?.title).toBe(liveRows[0]?.title);
+    expect(fallbackRows[0]?.dependencies).toHaveLength(liveRows[0]?.dependencies.length ?? 0);
+    await rm(dir, { recursive: true, force: true });
+    db.close();
+  });
+
   it("returns true only when both signals match", async () => {
     const dir = await mkdtemp(join(tmpdir(), "beads-snapshot-"));
     await writeFile(join(dir, "issues.jsonl"), [

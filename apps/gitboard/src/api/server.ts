@@ -19,7 +19,7 @@ import { WsHandler } from "./ws/handler.ts";
 import { Materializer } from "../core/materializer/index.ts";
 import { createObservabilityAdapter } from "../core/materializer/observability-adapter.ts";
 import { createObservabilityParityHarness } from "../server/observability/parity.ts";
-import { BeadsChangeWatcher } from "../../../beadboard/src/core/beads-change-watcher.ts";
+import { TriggerWatcher } from "../server/beads/trigger-watcher.ts";
 import { createObservabilityWatcher } from "../server/observability/watcher.ts";
 import { listRepos } from "../server/observability/registry.ts";
 import { getShellProviderStatus, isAllowedShellWebSocketOrigin, isShellWebSocketPath, isVerifiedShellAdminRequest, shouldRejectShellWebSocket } from "../core/shell-provider-policy.ts";
@@ -32,7 +32,7 @@ export interface ServerOptions {
 }
 
 let currentRegistry: ChannelRegistry | null = null;
-let currentWatcher: BeadsChangeWatcher | null = null;
+let currentWatcher: TriggerWatcher | null = null;
 let currentObservabilityWatcher: ReturnType<typeof createObservabilityWatcher> | null = null;
 let currentMaterializer: Materializer | null = null;
 
@@ -69,8 +69,8 @@ export function createApp(db: Database, xtrmDb?: Database): {
   }
   const wsHandler = new WsHandler(registry);
   setRealtimePublisher(registry);
-  currentWatcher = new BeadsChangeWatcher({ registry });
-  currentWatcher.start();
+  if (materializer && xtrmDb) currentWatcher = new TriggerWatcher(materializer, xtrmDb, registry);
+  currentWatcher?.start();
   currentObservabilityWatcher?.stop();
   currentObservabilityWatcher = createObservabilityWatcher(listRepos());
   currentObservabilityWatcher.start();
