@@ -3,7 +3,7 @@ import type { ChannelRegistry } from "../../api/ws/channels.ts";
 import { emit, makeLogEntry } from "../logger.ts";
 import { createAdapterRegistry, type AdapterRegistry } from "./adapter.ts";
 import { COALESCE_MS, SourceQueue } from "./queue.ts";
-import type { MaterializedIssue, MaterializerAdapter } from "./types.ts";
+import type { MaterializedDependency, MaterializedIssue, MaterializerAdapter } from "./types.ts";
 
 type MaterializerHooks = {
   afterWritesBeforeCursorAdvance?: (sourceKey: string) => void;
@@ -41,6 +41,7 @@ export class Materializer {
     this.db.exec("BEGIN IMMEDIATE TRANSACTION");
     try {
       this.writeIssues(next.rows);
+      this.replaceDependencies(next.dependencies ?? [], next.rows);
       this.upsertMaterializationState(sourceKey, JSON.stringify(next.cursor));
       this.hooks.afterWritesBeforeCursorAdvance?.(sourceKey);
       this.db.exec("COMMIT");
@@ -61,6 +62,7 @@ export class Materializer {
     this.db.exec("BEGIN IMMEDIATE TRANSACTION");
     try {
       this.writeIssues(snapshot.rows);
+      this.replaceDependencies(snapshot.dependencies ?? [], snapshot.rows);
       this.tombstoneMissing(snapshot.rows);
       this.db.exec("COMMIT");
     } catch (error) {
@@ -75,6 +77,17 @@ export class Materializer {
     for (const row of rows) {
       stmt.run(row.repo_slug, row.issue_id, row.title ?? null, row.body ?? null, row.state, row.deleted_at ?? null, row.created_at ?? null, row.updated_at ?? null);
     }
+  }
+
+  private replaceDependencies(rows: readonly MaterializedDependency[], issues: readonly MaterializedIssue[]): void {
+    this.deleteDependencies(issues);
+    const stmt = this.db.query("INSERT INTO substrate_dependencies (repo_slug, issue_id, dep_issue_id, relation, created_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(repo_slug, issue_id, dep_issue_id) DO UPDATE SET relation=excluded.relation, created_at=excluded.created_at");
+    for (const row of rows) stmt.run(row.repo_slug, row.issue_id, row.dep_issue_id, row.relation, row.created_at ?? null);
+  }
+
+  private deleteDependencies(issues: readonly MaterializedIssue[]): void {
+    const stmt = this.db.query("DELETE FROM substrate_dependencies WHERE repo_slug = ? AND issue_id = ?");
+    for (const row of issues) stmt.run(row.repo_slug, row.issue_id);
   }
 
   private tombstoneMissing(rows: readonly MaterializedIssue[]): void {

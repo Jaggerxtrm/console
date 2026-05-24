@@ -33,7 +33,7 @@ export class BeadsChangeWatcher {
   private queue: PendingEvent[] = [];
   private lastHealth = new Map<string, boolean>();
 
-  constructor(private readonly options: { scanner?: ProjectScanner; registry: ChannelRegistry }) {}
+  constructor(private readonly options: { scanner?: ProjectScanner; registry: ChannelRegistry; triggerMaterializer?: (project: BeadsProject) => void }) {}
 
   private get scanner(): ProjectScanner {
     return this.options.scanner ?? new ProjectScanner({ searchPath: process.env.XDG_PROJECTS_DIR || "/home" });
@@ -68,6 +68,10 @@ export class BeadsChangeWatcher {
   }
 
   private async poll(project: BeadsProject): Promise<void> {
+    if (this.options.triggerMaterializer) {
+      this.options.triggerMaterializer(project);
+      return;
+    }
     const commitHash = await this.getCommitHash(project);
     const prevHash = this.lastCommitHash.get(project.id);
     const haveSnapshot = this.previous.has(project.id);
