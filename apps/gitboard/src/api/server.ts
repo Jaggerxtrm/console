@@ -19,7 +19,6 @@ import { Materializer } from "../core/materializer/index.ts";
 import { createObservabilityAdapter } from "../core/materializer/observability-adapter.ts";
 import { BeadsChangeWatcher } from "../../../beadboard/src/core/beads-change-watcher.ts";
 import { createObservabilityWatcher } from "../server/observability/watcher.ts";
-import { onBump as onObservabilityBump } from "../server/observability/epoch.ts";
 import { listRepos } from "../server/observability/registry.ts";
 import { getShellProviderStatus, isAllowedShellWebSocketOrigin, isShellWebSocketPath, isVerifiedShellAdminRequest, shouldRejectShellWebSocket } from "../core/shell-provider-policy.ts";
 import { createTerminalProviderRegistry } from "./terminal/provider-registry.ts";
@@ -33,7 +32,6 @@ export interface ServerOptions {
 let currentRegistry: ChannelRegistry | null = null;
 let currentWatcher: BeadsChangeWatcher | null = null;
 let currentObservabilityWatcher: ReturnType<typeof createObservabilityWatcher> | null = null;
-let currentSpecialistsBumpUnsubscribe: (() => void) | null = null;
 let currentMaterializer: Materializer | null = null;
 
 export function getCurrentRegistry(): ChannelRegistry | null {
@@ -74,21 +72,6 @@ export function createApp(db: Database, xtrmDb?: Database): {
   currentObservabilityWatcher = createObservabilityWatcher(listRepos());
   currentObservabilityWatcher.start();
 
-  // Bridge observability epoch bumps (raised by the watcher when an observability
-  // db file changes) onto the WS bus so the dashboard's graph specialist overlay
-  // and the specialists drawer can refetch immediately instead of polling
-  // (forge-7cyq). Mirrors the BeadsChangeWatcher / github-poller publish pattern.
-  currentSpecialistsBumpUnsubscribe?.();
-  currentSpecialistsBumpUnsubscribe = onObservabilityBump((repoSlug, epoch) => {
-    registry.publish(
-      "specialists:activity",
-      "specialists:sync_hint",
-      { reason: "epoch_bump", repo_slug: repoSlug },
-      String(epoch),
-    );
-    const sourceKey = `obs:${repoSlug}`;
-    materializer?.trigger(sourceKey);
-  });
 
   app.use("*", cors());
   app.use("*", async (c, next) => {
@@ -226,10 +209,8 @@ export function startServer(db: Database, xtrmDb?: Database, options: ServerOpti
   });
 
   const stopObservability = currentObservabilityWatcher;
-  const stopSpecialistsBump = currentSpecialistsBumpUnsubscribe;
   process.once("exit", () => {
     stopObservability?.stop();
-    stopSpecialistsBump?.();
   });
 
   console.log(`[xtrm] Server running at http://${hostname}:${port}`);

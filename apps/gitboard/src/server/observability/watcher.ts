@@ -1,7 +1,6 @@
 import { watch, statSync, type FSWatcher } from "node:fs";
 import { dirname, basename } from "node:path";
 import type { RepoEntry } from "./registry.ts";
-import { bump } from "./epoch.ts";
 import { getCurrentMaterializer } from "../../api/server.ts";
 
 type Logger = Pick<Console, "warn" | "debug">;
@@ -82,7 +81,6 @@ export function createObservabilityWatcher(entries: readonly RepoEntry[], option
       repo.lastMtimeMs = stat.mtimeMs;
       const materializer = getCurrentMaterializer();
       materializer?.trigger(`obs:${repoSlug}`);
-      bump(repoSlug);
     } catch (error) {
       logger.debug?.(`[observability] db missing for ${repo.entry.dbPath}: ${stringifyError(error)}`);
     }
