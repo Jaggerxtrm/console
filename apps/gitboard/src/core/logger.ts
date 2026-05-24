@@ -3,6 +3,7 @@ import { appendFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { LogComponent, LogEntry, LogLevel } from "../types/log.ts";
 import type { ChannelRegistry } from "../api/ws/channels.ts";
+export type { EventType } from "./observability/event-types.ts";
 
 const LOG_RING_SIZE = 5000;
 const LOG_DEFAULT_LEVEL: LogLevel = "info";

@@ -5,6 +5,7 @@ import type { Database } from "bun:sqlite";
 import { createGithubRouter } from "./routes/github.ts";
 import { createInternalDoltHealthRouter } from "./routes/internal-dolt-health.ts";
 import { createInternalLogsRouter } from "./routes/internal-logs.ts";
+import { createInternalVerifyRouter } from "./routes/internal-verify.ts";
 import { setRealtimePublisher, emit, makeLogEntry } from "../core/logger.ts";
 import { beadsRoutes } from "../../../beadboard/src/api/routes/beads.ts";
 import { createSpecialistsRouter } from "./routes/specialists.ts";
@@ -101,6 +102,7 @@ export function createApp(db: Database, xtrmDb?: Database): {
   app.route("/api/console/terminal", createTerminalRouter());
   app.route("/api/internal", createInternalDoltHealthRouter());
   app.route("/api/internal", createInternalLogsRouter());
+  app.route("/api/internal", createInternalVerifyRouter());
 
   // Serve built dashboards in production
   if (process.env.NODE_ENV === "production") {
