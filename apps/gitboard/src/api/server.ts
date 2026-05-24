@@ -6,6 +6,7 @@ import { createGithubRouter } from "./routes/github.ts";
 import { createInternalDoltHealthRouter } from "./routes/internal-dolt-health.ts";
 import { createInternalLogsRouter } from "./routes/internal-logs.ts";
 import { createInternalVerifyRouter } from "./routes/internal-verify.ts";
+import { createInternalParityRouter } from "./routes/internal-parity.ts";
 import { setRealtimePublisher, emit, makeLogEntry } from "../core/logger.ts";
 import { beadsRoutes } from "../../../beadboard/src/api/routes/beads.ts";
 import { createSpecialistsRouter } from "./routes/specialists.ts";
@@ -17,6 +18,7 @@ import { ChannelRegistry } from "./ws/channels.ts";
 import { WsHandler } from "./ws/handler.ts";
 import { Materializer } from "../core/materializer/index.ts";
 import { createObservabilityAdapter } from "../core/materializer/observability-adapter.ts";
+import { createObservabilityParityHarness } from "../server/observability/parity.ts";
 import { BeadsChangeWatcher } from "../../../beadboard/src/core/beads-change-watcher.ts";
 import { createObservabilityWatcher } from "../server/observability/watcher.ts";
 import { listRepos } from "../server/observability/registry.ts";
@@ -41,6 +43,7 @@ export function getCurrentRegistry(): ChannelRegistry | null {
 export function getCurrentMaterializer(): Materializer | null {
   return currentMaterializer;
 }
+
 
 const repoRoot = process.cwd().endsWith("/apps/gitboard") ? join(process.cwd(), "../..") : process.cwd();
 const gitboardDist = join(repoRoot, "apps/gitboard/dist/dashboard");
@@ -71,7 +74,8 @@ export function createApp(db: Database, xtrmDb?: Database): {
   currentObservabilityWatcher?.stop();
   currentObservabilityWatcher = createObservabilityWatcher(listRepos());
   currentObservabilityWatcher.start();
-
+  const parityHarness = createObservabilityParityHarness(xtrmDb ?? null);
+  parityHarness.start();
 
   app.use("*", cors());
   app.use("*", async (c, next) => {
@@ -91,6 +95,11 @@ export function createApp(db: Database, xtrmDb?: Database): {
     }
   });
 
+  app.use("*", async (c, next) => {
+    c.set("parityHarness", parityHarness);
+    await next();
+  });
+
   // Health check
   app.get("/health", (c) => c.json({ status: "ok" }));
 
@@ -105,6 +114,7 @@ export function createApp(db: Database, xtrmDb?: Database): {
   app.route("/api/internal", createInternalDoltHealthRouter());
   app.route("/api/internal", createInternalLogsRouter());
   app.route("/api/internal", createInternalVerifyRouter());
+  app.route("/api/internal", createInternalParityRouter());
 
   // Serve built dashboards in production
   if (process.env.NODE_ENV === "production") {
@@ -211,6 +221,7 @@ export function startServer(db: Database, xtrmDb?: Database, options: ServerOpti
   const stopObservability = currentObservabilityWatcher;
   process.once("exit", () => {
     stopObservability?.stop();
+    parityHarness.stop();
   });
 
   console.log(`[xtrm] Server running at http://${hostname}:${port}`);
