@@ -106,8 +106,8 @@ export function createApp(db: Database, xtrmDb?: Database): {
   // API routes
   app.route("/api/github", createGithubRouter(db, registry));
   app.route("/api/beads", beadsRoutes);
-  app.route("/api/specialists", createSpecialistsRouter());
-  app.route("/api/console/observability", createObservabilityRouter());
+  app.route("/api/specialists", createSpecialistsRouter(undefined, xtrmDb));
+  app.route("/api/console/observability", createObservabilityRouter(undefined, xtrmDb));
   app.route("/api/console/graph", createGraphRouter());
   app.route("/api/console/shell", createShellRouter());
   app.route("/api/console/terminal", createTerminalRouter());

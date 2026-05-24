@@ -1,19 +1,25 @@
 import { Hono } from "hono";
+import type { Database } from "bun:sqlite";
 import { createAttachPool } from "../../server/observability/attach-pool.ts";
 import { createMetricsDao, type TimeRange } from "../../server/observability/metrics-dao.ts";
 import { listRepos } from "../../server/observability/registry.ts";
 
 let defaultDao: ReturnType<typeof createMetricsDao> | null = null;
 
-export function createObservabilityRouter(dao = getDefaultDao()): Hono {
+export function createObservabilityRouter(dao?: ReturnType<typeof createMetricsDao>, xtrmDb?: Database): Hono {
   const router = new Hono();
-  router.get("/summary", (c) => c.json(dao.summary(parseRange(c.req.query("range")))));
+  const resolvedDao = xtrmDb ? createMetricsDao(singleDbPool(xtrmDb)) : (dao ?? getDefaultDao());
+  router.get("/summary", (c) => c.json(resolvedDao.summary(parseRange(c.req.query("range")))));
   return router;
 }
 
 function getDefaultDao() {
   if (!defaultDao) defaultDao = createMetricsDao(createAttachPool(listRepos()));
   return defaultDao;
+}
+
+function singleDbPool(db: Database) {
+  return { withAttached<T>(fn: (db: Database, attached: ReadonlyArray<{ alias: string; slug: string }>) => T): T { return fn(db, [{ alias: "xtrm", slug: "xtrm" }]); } };
 }
 
 function parseRange(value: string | undefined): TimeRange {

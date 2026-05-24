@@ -51,7 +51,7 @@ export class Materializer {
       throw error;
     }
 
-    this.wsRegistry?.publish("system", "materializer:hint", { source_key: sourceKey }, String(Date.now()));
+    this.publishHint(sourceKey);
     emit(makeLogEntry("system", "materializer.run", "info", undefined, { source_key: sourceKey, coalesce_ms: COALESCE_MS }));
   }
 
@@ -69,7 +69,23 @@ export class Materializer {
       this.db.exec("ROLLBACK");
       throw error;
     }
-    this.wsRegistry?.publish("system", "materializer:hint", { source_key: sourceKey, kind: "resync" }, String(Date.now()));
+    this.publishHint(sourceKey, "resync");
+  }
+
+  private publishHint(sourceKey: string, kind?: string): void {
+    const hint = this.realtimeHintFor(sourceKey);
+    if (!hint) return;
+    for (const channel of hint.channels) {
+      this.wsRegistry?.publish(channel as Parameters<ChannelRegistry["publish"]>[0], hint.event, { source_key: sourceKey, ...(kind ? { kind } : {}) }, String(Date.now()));
+    }
+  }
+
+  private realtimeHintFor(sourceKey: string): { channels: string[]; event: string } | null {
+    if (sourceKey.startsWith("obs:")) {
+      const repoSlug = sourceKey.slice(4);
+      return { channels: ["specialists:activity", `specialists:repo:${repoSlug}`], event: "specialists:sync_hint" };
+    }
+    return { channels: ["system"], event: "materializer:hint" };
   }
 
   private writeIssues(rows: readonly MaterializedIssue[]): void {
@@ -107,7 +123,6 @@ export class Materializer {
   private upsertMaterializationState(sourceKey: string, cursor: string): void {
     this.db.query("INSERT INTO materialization_state (source_key, cursor, last_run_at, last_status) VALUES (?, ?, CURRENT_TIMESTAMP, 'running') ON CONFLICT(source_key) DO UPDATE SET cursor=excluded.cursor, last_run_at=excluded.last_run_at, last_status=excluded.last_status, last_error=NULL").run(sourceKey, cursor);
   }
-
 
   private async markFailure(sourceKey: string, error: unknown): Promise<void> {
     this.db.query("INSERT INTO materialization_state (source_key, last_run_at, last_status, last_error) VALUES (?, CURRENT_TIMESTAMP, 'error', ?) ON CONFLICT(source_key) DO UPDATE SET last_run_at=excluded.last_run_at, last_status=excluded.last_status, last_error=excluded.last_error").run(sourceKey, error instanceof Error ? error.message : String(error));
