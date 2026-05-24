@@ -1,26 +1,32 @@
 import { mkdirSync } from "node:fs";
-import { dirname } from "node:path";
+import { join } from "node:path";
 import { createDatabase } from "./core/store.ts";
+import { createXtrmDatabase } from "./core/xtrm-store.ts";
 import { GithubPoller, getGithubToken, getAuthenticatedUsername } from "./core/github-poller.ts";
 import { discoverAndInsert } from "./core/github-discover.ts";
 import { startServer, getCurrentRegistry } from "./api/server.ts";
 import { setLogLevel } from "./core/logger.ts";
 
-const DB_PATH = process.env.AGENT_FORGE_DB ?? `${process.env.HOME}/.agent-forge/state.db`;
-mkdirSync(dirname(DB_PATH), { recursive: true });
+const DATA_DIR = process.env.GITBOARD_DATA_DIR ?? `${process.env.HOME}/.agent-forge`;
+const DB_PATH = join(DATA_DIR, "gitboard.sqlite");
+const XTRM_DB_PATH = join(DATA_DIR, "xtrm.sqlite");
+mkdirSync(DATA_DIR, { recursive: true });
 const PORT = Number(process.env.PORT ?? 3000);
 setLogLevel((process.env.LOG_LEVEL as "debug" | "info" | "warn" | "error" | undefined) ?? "info");
 
 const db = createDatabase(DB_PATH);
+const xtrmDb = createXtrmDatabase(XTRM_DB_PATH);
 console.log(`[gitboard] Database initialized at ${DB_PATH}`);
+console.log(`[xtrm] Database initialized at ${XTRM_DB_PATH}`);
 
-startServer(db, { port: PORT });
+startServer(db, xtrmDb, { port: PORT });
 
 try {
   if (process.env.SKIP_GITHUB_POLLER === "1") {
     console.log("[gitboard] GitHub poller disabled: SKIP_GITHUB_POLLER=1");
     process.on("SIGINT", () => {
       db.close();
+      xtrmDb.close();
       process.exit(0);
     });
   } else {
@@ -41,6 +47,7 @@ try {
     console.log("\n[gitboard] Shutting down...");
     poller.stop();
     db.close();
+    xtrmDb.close();
     process.exit(0);
   });
   }
@@ -48,6 +55,7 @@ try {
   console.warn("[gitboard] GitHub poller disabled:", (err as Error).message);
   process.on("SIGINT", () => {
     db.close();
+    xtrmDb.close();
     process.exit(0);
   });
 }

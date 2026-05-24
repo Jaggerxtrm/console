@@ -40,7 +40,7 @@ const repoRoot = process.cwd().endsWith("/apps/gitboard") ? join(process.cwd(), 
 const gitboardDist = join(repoRoot, "apps/gitboard/dist/dashboard");
 // beadboardDist removed (forge-5w9.9) — frontend deprecated; /beadboard redirects to /gitboard.
 
-export function createApp(db: Database): {
+export function createApp(db: Database, xtrmDb?: Database): {
   app: Hono;
   registry: ChannelRegistry;
   wsHandler: WsHandler;
@@ -135,11 +135,11 @@ export function createApp(db: Database): {
   return { app, registry, wsHandler };
 }
 
-export function startServer(db: Database, options: ServerOptions = {}): void {
+export function startServer(db: Database, xtrmDb?: Database, options: ServerOptions = {}): void {
   const port = options.port ?? 3000;
   const hostname = options.hostname ?? process.env.HOST ?? (process.env.NODE_ENV === "production" ? "0.0.0.0" : "127.0.0.1");
 
-  const { app, wsHandler } = createApp(db);
+  const { app, wsHandler } = createApp(db, xtrmDb);
   const terminalBridge = new TerminalBridge(createTerminalProviderRegistry(process.env));
 
   const server = Bun.serve({
