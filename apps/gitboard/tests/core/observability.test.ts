@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -8,10 +8,6 @@ import { correlate, withSpan } from "../../src/core/observability/spans.ts";
 import { Verifier, summarize } from "../../src/core/observability/verifier.ts";
 import { createInternalVerifyRouter } from "../../src/api/routes/internal-verify.ts";
 import { Hono } from "hono";
-
-afterEach(() => {
-  vi.unstubAllEnvs();
-});
 
 describe("observability spans", () => {
   it("emits exactly one event on success and throw", async () => {
