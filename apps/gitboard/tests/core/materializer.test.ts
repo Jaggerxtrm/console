@@ -29,27 +29,31 @@ function createObservabilityDb(): Database {
   const db = new Database(join(dir, "observability.sqlite"), { create: true });
   db.exec(`
     CREATE TABLE IF NOT EXISTS specialist_jobs (
-      repo_slug TEXT NOT NULL,
-      job_id TEXT NOT NULL,
-      specialist TEXT,
+      job_id TEXT PRIMARY KEY,
+      specialist TEXT NOT NULL,
+      worktree_column TEXT,
+      bead_id TEXT,
+      node_id TEXT,
       status TEXT NOT NULL,
+      status_json TEXT NOT NULL DEFAULT '{}',
+      updated_at_ms INTEGER NOT NULL,
+      last_output TEXT,
+      startup_payload_json TEXT,
       chain_id TEXT,
       epic_id TEXT,
-      chain_kind TEXT,
-      worktree TEXT,
-      last_output TEXT,
-      created_at TEXT,
-      updated_at TEXT,
-      updated_at_ms INTEGER,
-      PRIMARY KEY (repo_slug, job_id)
+      chain_kind TEXT NOT NULL DEFAULT 'prep',
+      chain_root_job_id TEXT,
+      chain_root_bead_id TEXT
     );
-    CREATE TABLE IF NOT EXISTS specialist_job_events (
+    CREATE TABLE IF NOT EXISTS specialist_events (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      repo_slug TEXT NOT NULL,
-      job_id TEXT NOT NULL,
-      event_type TEXT NOT NULL,
-      payload TEXT,
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      job_id TEXT,
+      seq INTEGER,
+      specialist TEXT,
+      bead_id TEXT,
+      t INTEGER,
+      type TEXT,
+      event_json TEXT
     );
   `);
   return db;
@@ -189,16 +193,16 @@ describe("materializer", () => {
   it("tracks observability cursor pair and re-reads touched jobs from events", async () => {
     const xtrmDb = await createDb();
     const obsDb = createObservabilityDb();
-    obsDb.query("INSERT INTO specialist_jobs (repo_slug, job_id, specialist, status, created_at, updated_at, updated_at_ms) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?)").run("repo/a", "job-1", "sp1", "running", 500);
-    obsDb.query("INSERT INTO specialist_jobs (repo_slug, job_id, specialist, status, created_at, updated_at, updated_at_ms) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?)").run("repo/a", "job-2", "sp2", "done", 2000);
-    obsDb.query("INSERT INTO specialist_job_events (repo_slug, job_id, event_type, payload) VALUES (?, ?, ?, ?)").run("repo/a", "job-1", "turn", "{}");
+    obsDb.query("INSERT INTO specialist_jobs (job_id, specialist, status, updated_at_ms, last_output) VALUES (?, ?, ?, ?, ?)").run("job-1", "sp1", "running", 500, null);
+    obsDb.query("INSERT INTO specialist_jobs (job_id, specialist, status, updated_at_ms, last_output) VALUES (?, ?, ?, ?, ?)").run("job-2", "sp2", "done", 2000, null);
+    obsDb.query("INSERT INTO specialist_events (job_id, seq, specialist, bead_id, t, type, event_json) VALUES (?, ?, ?, ?, ?, ?, ?)").run("job-1", 1, "sp1", null, 1, "turn", "{}");
 
     const adapter = createObservabilityAdapter(join(process.cwd(), ".tmp-materializer", "observability.sqlite"), "repo/a");
     const first = await adapter.changesSince({ updated_at_ms: 0, event_rowid: 0 });
     expect(first.cursor).toEqual({ updated_at_ms: 2000, event_rowid: 1 });
     expect(first.rows.map((row) => row.job_id)).toEqual(["job-1", "job-2"]);
 
-    obsDb.query("INSERT INTO specialist_job_events (repo_slug, job_id, event_type, payload) VALUES (?, ?, ?, ?)").run("repo/a", "job-1", "turn", "{\"x\":1}");
+    obsDb.query("INSERT INTO specialist_events (job_id, seq, specialist, bead_id, t, type, event_json) VALUES (?, ?, ?, ?, ?, ?, ?)").run("job-1", 2, "sp1", null, 2, "turn", "{\"x\":1}");
     const second = await adapter.changesSince(first.cursor);
     expect(second.cursor).toEqual({ updated_at_ms: 2000, event_rowid: 2 });
     expect(second.rows.map((row) => row.job_id).sort()).toEqual(["job-1", "job-2"]);

@@ -206,29 +206,33 @@ describe("createApp cold-start materializer", () => {
     const obsDb = new Database(join(repoDir, "observability.db"), { create: true });
     obsDb.exec(`
       CREATE TABLE specialist_jobs (
-        repo_slug TEXT NOT NULL,
-        job_id TEXT NOT NULL,
-        specialist TEXT,
+        job_id TEXT PRIMARY KEY,
+        specialist TEXT NOT NULL,
+        worktree_column TEXT,
+        bead_id TEXT,
+        node_id TEXT,
         status TEXT NOT NULL,
+        status_json TEXT NOT NULL DEFAULT '{}',
+        updated_at_ms INTEGER NOT NULL,
+        last_output TEXT,
+        startup_payload_json TEXT,
         chain_id TEXT,
         epic_id TEXT,
-        chain_kind TEXT,
-        worktree TEXT,
-        last_output TEXT,
-        created_at TEXT,
-        updated_at TEXT,
-        updated_at_ms INTEGER,
-        PRIMARY KEY (repo_slug, job_id)
+        chain_kind TEXT NOT NULL DEFAULT 'prep',
+        chain_root_job_id TEXT,
+        chain_root_bead_id TEXT
       );
-      CREATE TABLE specialist_job_events (
+      CREATE TABLE specialist_events (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        repo_slug TEXT NOT NULL,
-        job_id TEXT NOT NULL,
-        event_type TEXT NOT NULL,
-        payload TEXT,
-        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        job_id TEXT,
+        seq INTEGER,
+        specialist TEXT,
+        bead_id TEXT,
+        t INTEGER,
+        type TEXT,
+        event_json TEXT
       );
-      INSERT INTO specialist_jobs (repo_slug, job_id, specialist, status, updated_at_ms) VALUES ('repo-one', 'job-1', 'explorer', 'running', 1);
+      INSERT INTO specialist_jobs (job_id, specialist, status, updated_at_ms) VALUES ('job-1', 'explorer', 'running', 1);
       CREATE TABLE materialization_state (
         source_key TEXT PRIMARY KEY,
         cursor TEXT,

@@ -7,7 +7,6 @@ type ObservabilityCursor = {
 };
 
 type JobRow = {
-  repo_slug: string;
   job_id: string;
   specialist: string | null;
   status: string;
@@ -16,25 +15,21 @@ type JobRow = {
   chain_kind: string | null;
   worktree: string | null;
   last_output: string | null;
-  created_at: string | null;
-  updated_at: string | null;
   updated_at_ms: number | null;
 };
 
 type EventRow = {
   rowid: number;
-  repo_slug: string;
   job_id: string;
   event_type: string;
   payload: string | null;
-  created_at: string | null;
 };
 
 export function createObservabilityAdapter(dbPath: string, repoSlug: string): MaterializerAdapter<JobRow> {
   const db = new Database(dbPath);
   return {
     async cursor() {
-      return readCursor(db, repoSlug);
+      return { updated_at_ms: 0, event_rowid: 0 };
     },
     async changesSince(cursor) {
       const baseline = normalizeCursor(cursor);
@@ -54,17 +49,13 @@ export function createObservabilityAdapter(dbPath: string, repoSlug: string): Ma
     write(database, snapshot) {
       const stmt = database.query("INSERT INTO specialist_jobs (repo_slug, job_id, specialist, status, chain_id, epic_id, chain_kind, worktree, last_output, created_at, updated_at, updated_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(repo_slug, job_id) DO UPDATE SET specialist=excluded.specialist, status=excluded.status, chain_id=excluded.chain_id, epic_id=excluded.epic_id, chain_kind=excluded.chain_kind, worktree=excluded.worktree, last_output=excluded.last_output, created_at=excluded.created_at, updated_at=excluded.updated_at, updated_at_ms=excluded.updated_at_ms");
       for (const row of snapshot.rows) {
-        stmt.run(row.repo_slug, row.job_id, row.specialist ?? null, row.status, row.chain_id ?? null, row.epic_id ?? null, row.chain_kind ?? null, row.worktree ?? null, row.last_output ?? null, row.created_at ?? null, row.updated_at ?? null, row.updated_at_ms ?? null);
+        const timestamp = row.updated_at_ms ?? 0;
+        const createdAt = new Date(timestamp).toISOString();
+        const updatedAt = new Date(timestamp).toISOString();
+        stmt.run(repoSlug, row.job_id, row.specialist ?? null, row.status, row.chain_id ?? null, row.epic_id ?? null, row.chain_kind ?? null, row.worktree ?? null, row.last_output ?? null, createdAt, updatedAt, row.updated_at_ms ?? null);
       }
     },
   };
-}
-
-function readCursor(db: Database, repoSlug: string): ObservabilityCursor {
-  const row = db.query("SELECT cursor FROM materialization_state WHERE source_key = ?").get(`obs:${repoSlug}`) as { cursor: string | null } | undefined;
-  if (!row?.cursor) return { updated_at_ms: 0, event_rowid: 0 };
-  const parsed = JSON.parse(row.cursor) as Partial<ObservabilityCursor>;
-  return normalizeCursor(parsed);
 }
 
 function normalizeCursor(cursor: unknown): ObservabilityCursor {
@@ -77,28 +68,28 @@ function normalizeCursor(cursor: unknown): ObservabilityCursor {
 
 function readJobsSince(db: Database, repoSlug: string, updatedAtMs: number): JobRow[] {
   return db.query(
-    "SELECT repo_slug, job_id, specialist, status, chain_id, epic_id, chain_kind, worktree, last_output, created_at, updated_at, updated_at_ms FROM specialist_jobs WHERE repo_slug = ? AND updated_at_ms > ? ORDER BY updated_at_ms ASC, job_id ASC",
-  ).all(repoSlug, updatedAtMs) as JobRow[];
+    "SELECT job_id, specialist, status, chain_id, epic_id, chain_kind, worktree_column AS worktree, last_output, updated_at_ms FROM specialist_jobs WHERE updated_at_ms > ? ORDER BY updated_at_ms ASC, job_id ASC",
+  ).all(updatedAtMs) as JobRow[];
 }
 
 function readAllJobs(db: Database, repoSlug: string): JobRow[] {
   return db.query(
-    "SELECT repo_slug, job_id, specialist, status, chain_id, epic_id, chain_kind, worktree, last_output, created_at, updated_at, updated_at_ms FROM specialist_jobs WHERE repo_slug = ? ORDER BY updated_at_ms ASC, job_id ASC",
-  ).all(repoSlug) as JobRow[];
+    "SELECT job_id, specialist, status, chain_id, epic_id, chain_kind, worktree_column AS worktree, last_output, updated_at_ms FROM specialist_jobs ORDER BY updated_at_ms ASC, job_id ASC",
+  ).all() as JobRow[];
 }
 
 function readJobsByIds(db: Database, repoSlug: string, jobIds: readonly string[]): JobRow[] {
   if (jobIds.length === 0) return [];
   const placeholders = jobIds.map(() => "?").join(", ");
   return db.query(
-    `SELECT repo_slug, job_id, specialist, status, chain_id, epic_id, chain_kind, worktree, last_output, created_at, updated_at, updated_at_ms FROM specialist_jobs WHERE repo_slug = ? AND job_id IN (${placeholders})`,
-  ).all(repoSlug, ...jobIds) as JobRow[];
+    `SELECT job_id, specialist, status, chain_id, epic_id, chain_kind, worktree_column AS worktree, last_output, updated_at_ms FROM specialist_jobs WHERE job_id IN (${placeholders})`,
+  ).all(...jobIds) as JobRow[];
 }
 
 function readEventsSince(db: Database, repoSlug: string, rowid: number): EventRow[] {
   return db.query(
-    "SELECT id AS rowid, repo_slug, job_id, event_type, payload, created_at FROM specialist_job_events WHERE repo_slug = ? AND id > ? ORDER BY id ASC",
-  ).all(repoSlug, rowid) as EventRow[];
+    "SELECT id AS rowid, job_id, type AS event_type, event_json AS payload FROM specialist_events WHERE id > ? ORDER BY id ASC",
+  ).all(rowid) as EventRow[];
 }
 
 function mergeJobs(primary: JobRow[], touched: JobRow[]): JobRow[] {
