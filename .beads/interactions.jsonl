@@ -373,3 +373,6 @@
 {"id":"int-cc858cfd","kind":"tool_call","created_at":"2026-05-25T13:54:53.99930522Z","actor":"dawid","issue_id":"forge-eorh.65","model":"openai-codex/gpt-5.3-codex","tool_name":"reviewer","exit_code":0}
 {"id":"int-5368d47a","kind":"field_change","created_at":"2026-05-25T13:56:04.378792077Z","actor":"dawid","issue_id":"forge-eorh.65","extra":{"field":"status","new_value":"closed","old_value":"open","reason":"Specialist reviewer completed (job 07213a)"}}
 {"id":"int-a2047ba9","kind":"field_change","created_at":"2026-05-25T13:57:07.637656671Z","actor":"dawid","issue_id":"forge-eorh.64","extra":{"field":"status","new_value":"closed","old_value":"in_progress","reason":"Specialist executor completed (job 77cfe7)"}}
+{"id":"int-4b9e755b","kind":"tool_call","created_at":"2026-05-25T14:02:23.215004269Z","actor":"dawid","issue_id":"forge-jblr","model":"nano-gpt/zai-org/glm-5","tool_name":"explorer","exit_code":0}
+{"id":"int-d23afdd7","kind":"field_change","created_at":"2026-05-25T21:33:43.55977073Z","actor":"dawid","issue_id":"forge-eorh.66","extra":{"field":"status","new_value":"closed","old_value":"in_progress","reason":"done"}}
+{"id":"int-70c846eb","kind":"tool_call","created_at":"2026-05-25T21:33:55.589174568Z","actor":"dawid","issue_id":"forge-eorh.66","model":"openai-codex/gpt-5.4-mini","tool_name":"executor","exit_code":0}

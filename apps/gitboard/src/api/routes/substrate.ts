@@ -25,7 +25,7 @@ function readProjects(db?: Database | null): BeadsProject[] {
   const rows = db.query("SELECT source_key, path, last_seen_at FROM sources WHERE kind = 'beads' ORDER BY source_key ASC").all() as Array<{ source_key: string; path: string; last_seen_at: string | null }>;
   return rows.map((row) => ({
     id: row.source_key.replace(/^beads:/, ""),
-    name: row.path.split("/").filter(Boolean).at(-1) ?? row.source_key,
+    name: row.path.split("/").filter(Boolean).at(-2) ?? row.source_key,
     path: row.path,
     beadsPath: row.path,
     source: "unknown",
