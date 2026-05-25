@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite";
 import type { ChannelRegistry } from "../../api/ws/channels.ts";
 import { emit, makeLogEntry } from "../logger.ts";
+import { bump as bumpEpoch } from "../../server/observability/epoch.ts";
 import { createAdapterRegistry, type AdapterRegistry } from "./adapter.ts";
 import { COALESCE_MS, SourceQueue } from "./queue.ts";
 import type { MaterializerAdapter } from "./types.ts";
@@ -45,6 +46,7 @@ export class Materializer {
       this.upsertMaterializationState(sourceKey, JSON.stringify(next.cursor));
       this.hooks.afterWritesBeforeCursorAdvance?.(sourceKey);
       this.db.exec("COMMIT");
+      if (sourceKey.startsWith("obs:")) bumpEpoch(sourceKey.slice(4));
       this.markSuccess(sourceKey);
     } catch (error) {
       this.db.exec("ROLLBACK");

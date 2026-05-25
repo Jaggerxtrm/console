@@ -31,6 +31,8 @@ type CachedValue<T> = {
   refreshedAt: number;
 };
 
+const CACHE_TTL_MS = 5000;
+
 type MaterializationStateRow = {
   source_key: string;
   last_status: string | null;
@@ -273,6 +275,7 @@ function cacheKey(prefix: string, repos: SpecialistRepoSummary, epochGetter: (re
 
 function readCache<T>(entry: CachedValue<T> | null, key: string): T | null {
   if (!entry || entry.key !== key) return null;
+  if (Date.now() - entry.refreshedAt > CACHE_TTL_MS) return null;
   return entry.value;
 }
 
