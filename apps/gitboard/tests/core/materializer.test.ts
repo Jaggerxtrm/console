@@ -91,7 +91,9 @@ describe("materializer", () => {
     const db = await createDb();
     const registry = new ChannelRegistry();
     const hints: unknown[] = [];
+    const errors: unknown[] = [];
     registry.subscribe("system", { id: "s1", send: (msg) => hints.push(msg) });
+    const unsubscribe = subscribe({ component: "system", event: "materializer.error", level: "error" }, (entry) => errors.push(entry));
     const materializer = new Materializer(db, registry);
     const adapterA = createAdapter([[{ issue_id: "1", title: "one" }], [{ issue_id: "1", title: "one-updated" }]]);
     let shouldFail = true;
@@ -120,12 +122,15 @@ describe("materializer", () => {
     expect(db.query("SELECT cursor FROM materialization_state WHERE source_key = 'a'").get() as { cursor: string }).toEqual({ cursor: '{"cursor":1}' });
     expect(db.query("SELECT cursor FROM materialization_state WHERE source_key = 'b'").get()).toBeNull();
     expect(hints).toHaveLength(1);
+    expect(errors).toHaveLength(1);
+    expect((errors[0] as { data?: { source_key?: string; error?: string } }).data).toEqual({ source_key: "b", error: "boom" });
 
     shouldFail = false;
     materializer.trigger("b");
     await new Promise((resolve) => setTimeout(resolve, COALESCE_MS + 200));
     expect(db.query("SELECT cursor FROM materialization_state WHERE source_key = 'b'").get() as { cursor: string }).toEqual({ cursor: '{"cursor":1}' });
     expect(hints).toHaveLength(2);
+    unsubscribe();
     db.close();
   });
 
@@ -161,6 +166,9 @@ describe("materializer", () => {
     const adapter = createAdapter([Array.from({ length: 100 }, (_, i) => ({ issue_id: String(i), title: `t${i}` }))]);
     materializer.register("a", adapter);
 
+    const runs: unknown[] = [];
+    const unsubscribe = subscribe({ component: "system", event: "materializer.run", level: "info" }, (entry) => runs.push(entry));
+
     await materializer.runOnce("a");
     const rows = db.query("SELECT issue_id, title FROM substrate_issues WHERE repo_slug = 'repo/a' ORDER BY issue_id").all() as Array<{ issue_id: string; title: string }>;
     expect(rows).toHaveLength(100);
@@ -168,6 +176,10 @@ describe("materializer", () => {
     expect(rows[99]).toEqual({ issue_id: "99", title: "t99" });
     expect(hints).toHaveLength(1);
     expect(db.query("SELECT json_extract(cursor, '$.cursor') AS cursor FROM materialization_state WHERE source_key = 'a'").get() as { cursor: number }).toEqual({ cursor: 1 });
+    expect(runs).toHaveLength(1);
+    expect((runs[0] as { data?: { source_key?: string; duration_ms?: number; rows_written?: number; dependencies_written?: number } }).data).toMatchObject({ source_key: "a", rows_written: 100, dependencies_written: 0 });
+    expect(((runs[0] as { data?: { duration_ms?: number } }).data?.duration_ms ?? -1)).toBeGreaterThanOrEqual(0);
+    unsubscribe();
     db.close();
   });
 

@@ -27,10 +27,11 @@ export class Materializer {
   trigger(sourceKey: string): void {
     const queue = this.queues.get(sourceKey);
     if (!queue) throw new Error(`unknown source: ${sourceKey}`);
-    queue.enqueue(() => this.runOnce(sourceKey));
+    queue.enqueue(sourceKey, () => this.runOnce(sourceKey));
   }
 
   async runOnce(sourceKey: string): Promise<void> {
+    const startedAt = Date.now();
     const adapter = this.registry.get(sourceKey);
     if (!adapter) throw new Error(`unknown source: ${sourceKey}`);
 
@@ -52,7 +53,7 @@ export class Materializer {
     }
 
     this.publishHint(sourceKey);
-    emit(makeLogEntry("system", "materializer.run", "info", undefined, { source_key: sourceKey, coalesce_ms: COALESCE_MS }));
+    emit(makeLogEntry("system", "materializer.run", "info", undefined, { source_key: sourceKey, duration_ms: Date.now() - startedAt, rows_written: next.rows.length, dependencies_written: next.dependencies?.length ?? 0 }));
   }
 
   async resync(sourceKey: string): Promise<void> {
