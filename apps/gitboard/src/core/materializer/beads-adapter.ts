@@ -60,12 +60,12 @@ export class BeadsAdapter implements MaterializerAdapter<MaterializedIssue, Mate
 
   private writeIssues(db: Database, rows: readonly MaterializedIssue[]): void {
     const stmt = db.query("INSERT INTO substrate_issues (repo_slug, issue_id, title, body, state, deleted_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(repo_slug, issue_id) DO UPDATE SET title=excluded.title, body=excluded.body, state=excluded.state, deleted_at=excluded.deleted_at, created_at=excluded.created_at, updated_at=excluded.updated_at");
-    for (const row of rows) stmt.run(row.repo_slug, row.issue_id, row.title ?? null, row.body ?? null, row.state, row.deleted_at ?? null, row.created_at ?? null, row.updated_at ?? null);
+    for (const row of rows) stmt.run(...normalizeSqliteBindings([row.repo_slug, row.issue_id, row.title, row.body, row.state, row.deleted_at, row.created_at, row.updated_at]));
   }
 
   private writeDependencies(db: Database, rows: readonly MaterializedDependency[]): void {
     const stmt = db.query("INSERT INTO substrate_dependencies (repo_slug, issue_id, dep_issue_id, relation, created_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(repo_slug, issue_id, dep_issue_id) DO UPDATE SET relation=excluded.relation, created_at=excluded.created_at");
-    for (const row of rows) stmt.run(row.repo_slug, row.issue_id, row.dep_issue_id, row.relation, row.created_at ?? null);
+    for (const row of rows) stmt.run(...normalizeSqliteBindings([row.repo_slug, row.issue_id, row.dep_issue_id, row.relation, row.created_at]));
   }
 
   private deleteDependencies(db: Database, issues: readonly MaterializedIssue[]): void {
@@ -114,13 +114,36 @@ function normalizeIssue(projectId: string, issue: BeadIssue): MaterializedIssue 
   return {
     repo_slug: projectId,
     issue_id: issue.id,
-    title: issue.title,
-    body: issue.description ?? issue.notes ?? null,
+    title: normalizeText(issue.title),
+    body: normalizeText(issue.description ?? issue.notes ?? null),
     state: issue.status === "closed" ? "closed" : issue.status,
-    deleted_at: issue.status === "closed" ? issue.closed_at ?? issue.updated_at : null,
-    created_at: issue.created_at,
-    updated_at: issue.updated_at,
+    deleted_at: issue.status === "closed" ? normalizeText(issue.closed_at ?? issue.updated_at) : null,
+    created_at: normalizeText(issue.created_at),
+    updated_at: normalizeText(issue.updated_at),
   };
+}
+
+function normalizeText(value: unknown): string | null {
+  if (value == null) return null;
+  return typeof value === "string" ? value : stringifyBindingValue(value);
+}
+
+function normalizeSqliteBindings(values: readonly unknown[]): Array<string | number | bigint | boolean | Uint8Array | null> {
+  return values.map(normalizeSqliteValue);
+}
+
+function normalizeSqliteValue(value: unknown): string | number | bigint | boolean | Uint8Array | null {
+  if (value == null) return null;
+  if (typeof value === "string" || typeof value === "number" || typeof value === "bigint" || typeof value === "boolean" || value instanceof Uint8Array) return value;
+  return stringifyBindingValue(value);
+}
+
+function stringifyBindingValue(value: unknown): string {
+  try {
+    return typeof value === "object" ? JSON.stringify(value) ?? String(value) : String(value);
+  } catch {
+    return String(value);
+  }
 }
 
 function markTombstone(row: MaterializedIssue): MaterializedIssue {
