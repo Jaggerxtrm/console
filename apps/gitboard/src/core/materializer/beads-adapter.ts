@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 import type { BeadIssue } from "../../../../beadboard/src/types/beads.ts";
-import { emit, makeLogEntry } from "../../logger.ts";
+import { emit, makeLogEntry } from "../logger.ts";
 import { BeadsSnapshotSource } from "./beads-snapshot-source.ts";
 import { snapshotDiff, snapshotHash } from "./snapshot-diff.ts";
 import type { MaterializedDependency, MaterializedIssue, MaterializerAdapter, MaterializerCursor, MaterializerDelta, MaterializerSnapshot } from "./types.ts";
@@ -171,6 +171,18 @@ function normalizeText(value: unknown): string | null {
 function normalizeJson(value: unknown): string | null {
   if (value == null) return null;
   return stringifyBindingValue(value);
+}
+
+function parseJsonArray(value: unknown): string[] {
+  if (value == null || value === "") return [];
+  if (Array.isArray(value)) return value.map(String);
+  if (typeof value !== "string") return [];
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return Array.isArray(parsed) ? parsed.map(String) : [];
+  } catch {
+    return [];
+  }
 }
 
 function normalizeSqliteBindings(values: readonly unknown[]): Array<string | number | bigint | boolean | Uint8Array | null> {
