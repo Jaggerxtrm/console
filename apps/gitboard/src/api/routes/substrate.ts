@@ -1,9 +1,12 @@
 import { Hono } from "hono";
 import type { Database } from "bun:sqlite";
 import { emit, makeLogEntry } from "../../core/logger.ts";
+import { BeadsReader } from "../../core/beads-reader.ts";
 import type { BeadDependency, BeadIssue, BeadIssueDetail, BeadsProject, Memory, Interaction } from "../../../../beadboard/src/types/beads.ts";
 
 let loggedSchemaColumns = false;
+const loggedProjectMemories = new Set<string>();
+const loggedProjectInteractions = new Set<string>();
 
 export function createSubstrateRouter(xtrmDb?: Database | null): Hono {
   const router = new Hono();
@@ -15,8 +18,8 @@ export function createSubstrateRouter(xtrmDb?: Database | null): Hono {
     const issue = readIssueDetail(xtrmDb, c.req.param("projectId"), c.req.param("issueId"));
     return issue ? c.json({ issue }) : c.json({ error: "Issue not found" }, 404);
   });
-  router.get("/projects/:projectId/memories", (c) => c.json({ memories: readMemories(xtrmDb, c.req.param("projectId")) }));
-  router.get("/projects/:projectId/interactions", (c) => c.json({ interactions: readInteractions(xtrmDb, c.req.param("projectId"), c.req.query("issue_id") ?? undefined) }));
+  router.get("/projects/:projectId/memories", async (c) => c.json({ memories: await readMemories(xtrmDb, c.req.param("projectId")) }));
+  router.get("/projects/:projectId/interactions", async (c) => c.json({ interactions: await readInteractions(xtrmDb, c.req.param("projectId"), c.req.query("issue_id") ?? undefined) }));
   router.get("/projects/:projectId/stats", (c) => c.json({ stats: readStats(xtrmDb, c.req.param("projectId")) }));
   router.get("/projects/:projectId/connection", (c) => c.json(readConnection(xtrmDb, c.req.param("projectId"))));
 
@@ -55,8 +58,30 @@ function readIssueDetail(db: Database | null | undefined, projectId: string, iss
   return { ...issue, dependents, children: dependents.filter((dep) => dep.dependency_type === "parent-child"), source: "unknown", sourceHealth: [{ kind: "unknown", state: "available" }] };
 }
 
-function readMemories(_db: Database | null | undefined, _projectId: string): Memory[] { return []; }
-function readInteractions(_db: Database | null | undefined, _projectId: string, _issueId?: string): Interaction[] { return []; }
+async function readMemories(db: Database | null | undefined, projectId: string): Promise<Memory[]> {
+  const beadsPath = getBeadsPath(db, projectId);
+  if (!beadsPath) return [];
+  const memories = await new BeadsReader(db as Database).getMemories(`${beadsPath}/knowledge.jsonl`);
+  if (memories.length === 0) {
+    logEmptyOrMissingProjectData(loggedProjectMemories, "substrate.readMemories", projectId, beadsPath);
+  } else {
+    logProjectDataOnce(loggedProjectMemories, "substrate.readMemories", projectId, beadsPath, memories.length);
+  }
+  return memories;
+}
+
+async function readInteractions(db: Database | null | undefined, projectId: string, issueId?: string): Promise<Interaction[]> {
+  const beadsPath = getBeadsPath(db, projectId);
+  if (!beadsPath) return [];
+  const interactions = await new BeadsReader(db as Database).getInteractions(`${beadsPath}/interactions.jsonl`);
+  const filtered = issueId ? interactions.filter((interaction) => interaction.issue_id === issueId) : interactions;
+  if (filtered.length === 0) {
+    logEmptyOrMissingProjectData(loggedProjectInteractions, "substrate.readInteractions", projectId, beadsPath);
+  } else {
+    logProjectDataOnce(loggedProjectInteractions, "substrate.readInteractions", projectId, beadsPath, filtered.length);
+  }
+  return filtered;
+}
 function readStats(db: Database | null | undefined, projectId: string) {
   const issues = queryIssues(db, projectId);
   type Stats = { total: number; open: number; in_progress: number; blocked: number; closed: number; by_priority: Record<string, number>; by_type: Record<string, number> };
@@ -68,6 +93,26 @@ function readStats(db: Database | null | undefined, projectId: string) {
 }
 
 function readConnection(_db: Database | null | undefined, _projectId: string) { return { source: "sqlite", status: "substrate_connected", degraded: false, message: "xtrm.sqlite connected" }; }
+
+function getBeadsPath(db: Database | null | undefined, projectId: string): string | null {
+  if (!db) return null;
+  const row = db.query("SELECT path FROM sources WHERE kind = 'beads' AND source_key = ?").get(`beads:${projectId}`) as { path: string } | undefined;
+  return row?.path ?? null;
+}
+
+function logEmptyOrMissingProjectData(seen: Set<string>, event: string, projectId: string, beadsPath: string): void {
+  const key = `${projectId}:${beadsPath}:empty-or-missing`;
+  if (seen.has(key)) return;
+  seen.add(key);
+  emit(makeLogEntry("api", event, "debug", undefined, { projectId, path: beadsPath, status: "empty-or-missing" }));
+}
+
+function logProjectDataOnce<T>(seen: Set<string>, event: string, projectId: string, beadsPath: string, count: number): void {
+  const key = `${projectId}:${beadsPath}`;
+  if (seen.has(key)) return;
+  seen.add(key);
+  emit(makeLogEntry("api", event, "info", undefined, { projectId, path: beadsPath, count }));
+}
 
 function queryIssues(db: Database | null | undefined, projectId: string): BeadIssue[] {
   if (!db) return [];
