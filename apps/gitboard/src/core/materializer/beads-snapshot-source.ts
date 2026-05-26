@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { stat } from "node:fs/promises";
 import type { BeadIssue } from "../../types/beads.ts";
+import { emit, makeLogEntry } from "../logger.ts";
 import { readIssuesFromJsonl } from "../jsonl-reader.ts";
 import type { DoltClient } from "../dolt-client.ts";
 import { snapshotHash } from "./snapshot-diff.ts";
@@ -44,7 +45,36 @@ export class BeadsSnapshotSource {
   private async readFromDolt(): Promise<BeadIssue[] | null> {
     if (!this.options.doltClient) return null;
     try {
-      return await this.options.doltClient.getIssues({ limit: 1000 });
+      const pageSize = 1000;
+      const safetyCap = 10000;
+      const issues: BeadIssue[] = [];
+      let page = 0;
+      while (issues.length < safetyCap) {
+        const offset = page * pageSize;
+        const pageIssues = await this.options.doltClient.getIssues({ limit: pageSize, offset });
+        page += 1;
+        emit(makeLogEntry("system", "beads-snapshot", "info", `readFromDolt page=${page} offset=${offset} got=${pageIssues.length} repo_slug=${this.options.sourceKey}`, {
+          repo_slug: this.options.sourceKey,
+          page,
+          offset,
+          got: pageIssues.length,
+        }));
+        issues.push(...pageIssues);
+        if (pageIssues.length < pageSize) {
+          emit(makeLogEntry("system", "beads-snapshot", "info", `readFromDolt complete repo_slug=${this.options.sourceKey} total_pages=${page} total_issues=${issues.length}`, {
+            repo_slug: this.options.sourceKey,
+            total_pages: page,
+            total_issues: issues.length,
+          }));
+          return issues;
+        }
+        if (issues.length >= safetyCap) break;
+      }
+      emit(makeLogEntry("system", "beads-snapshot", "warn", `readFromDolt safety-cap-hit repo_slug=${this.options.sourceKey} at offset=${issues.length}`, {
+        repo_slug: this.options.sourceKey,
+        at_offset: issues.length,
+      }));
+      return issues;
     } catch {
       return null;
     }
