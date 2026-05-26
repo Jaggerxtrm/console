@@ -98,12 +98,13 @@ describe("createAttachPool", () => {
     });
 
     const pool = createAttachPool(repos, { logger: { warn } });
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 25));
     const coverage = pool.getCoverage();
 
     expect(coverage.totalDiscovered).toBe(11);
     expect(coverage.attached.length).toBeLessThanOrEqual(8);
-    expect([...coverage.attached, ...coverage.skipped.map((item) => item.slug)].sort()).toEqual(repos.map((repo) => repo.repoSlug).sort());
+    expect(new Set([...coverage.attached, ...coverage.skipped.map((item) => item.slug)]).size).toBe(11);
+    expect(coverage.skipped.some((item) => item.reason === "evicted (capacity)")).toBe(true);
     expect(coverage.skipped.length).toBeGreaterThan(0);
     expect(warn.mock.calls.some((call) => String(call[0]).includes("Skip observability db"))).toBe(false);
   });

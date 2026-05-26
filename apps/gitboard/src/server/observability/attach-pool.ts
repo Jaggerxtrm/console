@@ -48,7 +48,11 @@ export function createAttachPool(entries: readonly RepoEntry[], options: PoolOpt
   }
 
   function getCoverage(): ObservabilityCoverage {
-    return { attached: [...coverage.attached], skipped: [...coverage.skipped], totalDiscovered: entries.length };
+    return {
+      attached: Array.from(attached.values()).map((entry) => entry.repoSlug),
+      skipped: [...coverage.skipped],
+      totalDiscovered: entries.length,
+    };
   }
 
   async function warmAttachPool(): Promise<void> {
@@ -71,7 +75,7 @@ export function createAttachPool(entries: readonly RepoEntry[], options: PoolOpt
         if (processed % 5 === 0) await yieldToEventLoop();
       }
       if (coverage.skipped.length > 0) {
-        logger.warn(`Observability coverage degraded: attached ${coverage.attached.length}/${entries.length}, skipped ${coverage.skipped.length}`);
+        logger.warn(`Observability coverage degraded: attached ${attached.size}/${entries.length}, skipped ${coverage.skipped.length}`);
       }
     })()
       .catch((err) => {
@@ -124,7 +128,6 @@ export function createAttachPool(entries: readonly RepoEntry[], options: PoolOpt
     const attachedRepo = { ...entry, alias };
     attached.set(entry.dbPath, attachedRepo);
     lru.set(entry.dbPath, attachedRepo);
-    coverage.attached = [...coverage.attached, entry.repoSlug];
     return true;
   }
 
@@ -153,6 +156,7 @@ export function createAttachPool(entries: readonly RepoEntry[], options: PoolOpt
     db.exec(`DETACH DATABASE ${entry.alias}`);
     attached.delete(dbPath);
     lru.delete(dbPath);
+    recordSkipped(entry.repoSlug, "evicted (capacity)");
   }
 
   function touch(dbPath: string): void {
