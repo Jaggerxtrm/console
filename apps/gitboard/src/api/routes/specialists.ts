@@ -171,7 +171,7 @@ function hasSuccessfulObsMaterialization(rows: MaterializationStateRow[]): boole
 
 function createXtrmSpecialistsDao(db: import("bun:sqlite").Database, repoLister: () => SpecialistRepoList, epochGetter: (repoSlug: string) => number): XtrmSpecialistsDao {
   return {
-    jobsByBead: (beadId) => loadJobs(db, `WHERE l.issue_id = ?`, [beadId]),
+    jobsByBead: (beadId) => loadJobs(db, `WHERE COALESCE(l.issue_id, j.bead_id) = ?`, [beadId]),
     inFlightJobs: () => loadJobs(db, `WHERE j.status IN ("starting", "running", "waiting")`, []),
     recentJobs: (limit) => loadJobs(db, `WHERE j.status IN ("done", "error", "cancelled")`, []).slice(0, limit),
     chainById: (chainId) => loadJobs(db, `WHERE j.chain_id = ?`, [chainId]) as unknown as SpecialistChain[],
