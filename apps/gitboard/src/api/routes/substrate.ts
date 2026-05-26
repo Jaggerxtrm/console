@@ -117,7 +117,7 @@ function logProjectDataOnce<T>(seen: Set<string>, event: string, projectId: stri
 function queryIssues(db: Database | null | undefined, projectId: string): BeadIssue[] {
   if (!db) return [];
   logSchemaColumnsOnce(db);
-  const rows = db.query("SELECT issue_id, title, body, state, priority, issue_type, owner, labels, related_ids, parent_id, deleted_at, closed_at, close_reason, notes, created_at, updated_at FROM substrate_issues WHERE repo_slug = ? ORDER BY issue_id ASC").all(projectId) as Array<Record<string, unknown>>;
+  const rows = db.query("SELECT issue_id, title, body, state, priority, issue_type, owner, labels, related_ids, parent_id, deleted_at, closed_at, close_reason, notes, created_at, updated_at FROM substrate_issues WHERE repo_slug = ? AND (deleted_at IS NULL OR deleted_at = '') ORDER BY priority ASC, created_at DESC, issue_id ASC").all(projectId) as Array<Record<string, unknown>>;
   const dependencies = db.query("SELECT issue_id, dep_issue_id, relation FROM substrate_dependencies WHERE repo_slug = ?").all(projectId) as Array<{ issue_id: string; dep_issue_id: string; relation: string }>;
   const depsByIssue = new Map<string, BeadDependency[]>();
   for (const dep of dependencies) {
@@ -191,7 +191,7 @@ function applyIssueFilters(issues: BeadIssue[], filters: { status?: string[]; pr
     const search = filters.search.toLowerCase();
     filtered = filtered.filter((issue) => issue.title.toLowerCase().includes(search) || issue.description?.toLowerCase().includes(search) || issue.notes?.toLowerCase().includes(search));
   }
-  return filtered.slice(0, filters.limit ?? 100);
+  return filters.limit == null ? filtered : filtered.slice(0, filters.limit);
 }
 
 function parseIssueFilters(c: { req: { query(name: string): string | undefined } }) {
@@ -199,11 +199,12 @@ function parseIssueFilters(c: { req: { query(name: string): string | undefined }
     status: c.req.query("status")?.split(","),
     priority: c.req.query("priority")?.split(",").map(Number),
     search: c.req.query("search") ?? undefined,
-    limit: parseLimit(c.req.query("limit"), 100),
+    limit: parseLimit(c.req.query("limit")),
   };
 }
 
-function parseLimit(value: string | undefined, fallback: number): number {
-  const parsed = Number.parseInt(value ?? String(fallback), 10);
+function parseLimit(value: string | undefined, fallback?: number): number | undefined {
+  if (value == null) return fallback;
+  const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) ? parsed : fallback;
 }
