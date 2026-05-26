@@ -25,28 +25,19 @@ export class BeadsSnapshotSource {
 
   async readSnapshot(): Promise<BeadIssue[]> {
     const doltIssues = await this.readFromDolt();
-    if (doltIssues) {
-      emit(makeLogEntry("system", "beads-snapshot", "info", `source=dolt issues=${doltIssues.length} repo_slug=${this.options.sourceKey} dolt_port=${this.options.doltPort ?? "none"}`, {
-        repo_slug: this.options.sourceKey,
-        source: "dolt",
-        issues: doltIssues.length,
-        dolt_port: this.options.doltPort ?? "none",
-      }));
-      return doltIssues;
-    }
-
-    const jsonlIssues = await readIssuesFromJsonl(this.options.beadsPath);
-    emit(makeLogEntry("system", "beads-snapshot", "info", `source=jsonl issues=${jsonlIssues.length} repo_slug=${this.options.sourceKey} dolt_port=${this.options.doltPort ?? "none"}`, {
-      repo_slug: this.options.sourceKey,
-      source: "jsonl",
-      issues: jsonlIssues.length,
-      dolt_port: this.options.doltPort ?? "none",
-    }));
-    return jsonlIssues;
+    if (doltIssues) return doltIssues;
+    return readIssuesFromJsonl(this.options.beadsPath);
   }
 
   async snapshotHash(): Promise<string> {
     const rows = await this.readSnapshot();
+    const source = this.options.doltClient ? "dolt" : "jsonl";
+    emit(makeLogEntry("system", "beads-snapshot", "info", `source=${source} issues=${rows.length} repo_slug=${this.options.sourceKey} dolt_port=${this.options.doltPort ?? "none"}`, {
+      repo_slug: this.options.sourceKey,
+      source,
+      issues: rows.length,
+      dolt_port: this.options.doltPort ?? "none",
+    }));
     return snapshotHash(rows, (row) => row.id);
   }
 
@@ -70,10 +61,27 @@ export class BeadsSnapshotSource {
         const offset = page * pageSize;
         const pageIssues = await this.options.doltClient.getIssues({ limit: pageSize, offset });
         page += 1;
+        emit(makeLogEntry("system", "beads-snapshot", "debug", `page=${page} offset=${offset} got=${pageIssues.length} repo_slug=${this.options.sourceKey}`, {
+          repo_slug: this.options.sourceKey,
+          page,
+          offset,
+          got: pageIssues.length,
+        }));
         issues.push(...pageIssues);
-        if (pageIssues.length < pageSize) return issues;
+        if (pageIssues.length < pageSize) {
+          emit(makeLogEntry("system", "beads-snapshot", "debug", `complete repo_slug=${this.options.sourceKey} total_pages=${page} total_issues=${issues.length}`, {
+            repo_slug: this.options.sourceKey,
+            total_pages: page,
+            total_issues: issues.length,
+          }));
+          return issues;
+        }
         if (issues.length >= safetyCap) break;
       }
+      emit(makeLogEntry("system", "beads-snapshot", "warn", `safety-cap-hit repo_slug=${this.options.sourceKey} at offset=${issues.length}`, {
+        repo_slug: this.options.sourceKey,
+        at_offset: issues.length,
+      }));
       return issues;
     } catch {
       return null;
