@@ -17,5 +17,6 @@ export function createInternalSubstrateRouter(xtrmDb?: Database | null): Hono {
 }
 
 function isLocalhost(host: string): boolean {
-  return host.startsWith("localhost") || host.startsWith("127.0.0.1") || host.startsWith("[::1]");
+  const allowedHosts = ["localhost", "127.0.0.1", "[::1]", process.env.HOST].filter((value): value is string => Boolean(value));
+  return allowedHosts.some((allowedHost) => host.startsWith(allowedHost));
 }
