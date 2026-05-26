@@ -32,6 +32,13 @@ export interface AttachedRepoRef {
   slug: string;
 }
 
+export type ObservabilityCoverage = {
+  attached: string[];
+  skipped: Array<{ slug: string; reason: string }>;
+  totalDiscovered: number;
+};
+
 export interface AttachPoolLike {
   withAttached<T>(fn: (db: import("bun:sqlite").Database, attached: ReadonlyArray<AttachedRepoRef>) => T): T;
+  getCoverage(): ObservabilityCoverage;
 }

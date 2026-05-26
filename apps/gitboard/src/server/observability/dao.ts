@@ -28,6 +28,7 @@ export function createObservabilityDao(pool: AttachPoolLike) {
     recentJobs: (limit: number) => sortDesc(readJobs(pool, { whereSql: `WHERE status IN (${HISTORY_STATUSES.map(() => "?").join(",")})`, orderSql: ``, params: [...HISTORY_STATUSES] })).slice(0, limit),
     chainById: (chainId: string) => sortChain(readJobs(pool, { whereSql: `WHERE chain_id = ?`, orderSql: ``, params: [chainId] })) as SpecialistChain[],
     epicById: (epicId: string) => sortAsc(readJobs(pool, { whereSql: `WHERE epic_id = ?`, orderSql: ``, params: [epicId] })) as EpicRun[],
+    coverage: () => pool.getCoverage(),
     refreshInFlight: async (limit: number) => {
       const inFlight = await readJobsChunked(pool, { whereSql: `WHERE status IN (${IN_FLIGHT_STATUSES.map(() => "?").join(",")})`, orderSql: ``, params: [...IN_FLIGHT_STATUSES] });
       const recentHistory = (await readJobsChunked(pool, { whereSql: `WHERE status IN (${HISTORY_STATUSES.map(() => "?").join(",")})`, orderSql: ``, params: [...HISTORY_STATUSES] })).slice(0, limit);

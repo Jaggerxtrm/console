@@ -86,4 +86,26 @@ describe("createAttachPool", () => {
 
     expect(jobs.count).toBe(1);
   });
+
+  it("keeps all discovered dbs represented in coverage when more than sqlite attach limit exist", async () => {
+    const warn = vi.fn();
+    const repos = Array.from({ length: 11 }, (_, index) => {
+      const root = mkdtempSync(join(tmpdir(), `gitboard-attach-pool-${index}-`));
+      roots.push(root);
+      const dbPath = join(root, "observability.db");
+      seedObservabilityDb(dbPath, [{ beadId: `bead-${index}`, status: "running", updatedAtMs: index + 1 }]);
+      return { repoSlug: `repo-${index}`, repoPath: root, dbPath, mtimeMs: 0 };
+    });
+
+    const pool = createAttachPool(repos, { logger: { warn } });
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    const coverage = pool.getCoverage();
+
+    expect(coverage.totalDiscovered).toBe(11);
+    expect(coverage.attached.length).toBeLessThanOrEqual(8);
+    expect(new Set([...coverage.attached, ...coverage.skipped.map((item) => item.slug)]).size).toBe(11);
+    expect(coverage.skipped.some((item) => item.reason === "evicted (capacity)")).toBe(true);
+    expect(coverage.skipped.length).toBeGreaterThan(0);
+    expect(warn.mock.calls.some((call) => String(call[0]).includes("Skip observability db"))).toBe(false);
+  });
 });
