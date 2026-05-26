@@ -154,7 +154,7 @@ function normalizeIssue(projectId: string, issue: BeadIssue): MaterializedIssue 
     labels: normalizeJson(issue.labels),
     related_ids: normalizeJson(issue.related_ids),
     parent_id: normalizeText(issue.parent_id),
-    deleted_at: issue.status === "closed" ? normalizeText(issue.closed_at ?? issue.updated_at) : null,
+    deleted_at: null,
     closed_at: normalizeText(issue.closed_at),
     close_reason: normalizeText(issue.close_reason),
     notes: normalizeText(issue.notes),
