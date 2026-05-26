@@ -26,6 +26,7 @@ export class BeadsAdapter implements MaterializerAdapter<MaterializedIssue, Mate
       beadsPath: options.beadsPath,
       doltCommitHash: null,
       xtrmDb: options.xtrmDb,
+      doltPort: options.doltPort,
       doltClient: options.doltPort && options.doltDatabase ? createLazyDoltClient(options.doltPort, options.doltDatabase) : undefined,
     });
   }

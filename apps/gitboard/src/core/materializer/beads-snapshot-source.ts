@@ -10,6 +10,7 @@ export interface BeadsSnapshotSourceOptions {
   sourceKey: string;
   beadsPath: string;
   doltClient?: Pick<DoltClient, "getIssues">;
+  doltPort?: number;
   doltCommitHash?: string | null;
   xtrmDb?: Database;
 }
@@ -30,6 +31,13 @@ export class BeadsSnapshotSource {
 
   async snapshotHash(): Promise<string> {
     const rows = await this.readSnapshot();
+    const source = this.options.doltClient ? "dolt" : "jsonl";
+    emit(makeLogEntry("system", "beads-snapshot", "info", `source=${source} issues=${rows.length} repo_slug=${this.options.sourceKey} dolt_port=${this.options.doltPort ?? "none"}`, {
+      repo_slug: this.options.sourceKey,
+      source,
+      issues: rows.length,
+      dolt_port: this.options.doltPort ?? "none",
+    }));
     return snapshotHash(rows, (row) => row.id);
   }
 
@@ -53,7 +61,7 @@ export class BeadsSnapshotSource {
         const offset = page * pageSize;
         const pageIssues = await this.options.doltClient.getIssues({ limit: pageSize, offset });
         page += 1;
-        emit(makeLogEntry("system", "beads-snapshot", "info", `readFromDolt page=${page} offset=${offset} got=${pageIssues.length} repo_slug=${this.options.sourceKey}`, {
+        emit(makeLogEntry("system", "beads-snapshot", "debug", `page=${page} offset=${offset} got=${pageIssues.length} repo_slug=${this.options.sourceKey}`, {
           repo_slug: this.options.sourceKey,
           page,
           offset,
@@ -61,7 +69,7 @@ export class BeadsSnapshotSource {
         }));
         issues.push(...pageIssues);
         if (pageIssues.length < pageSize) {
-          emit(makeLogEntry("system", "beads-snapshot", "info", `readFromDolt complete repo_slug=${this.options.sourceKey} total_pages=${page} total_issues=${issues.length}`, {
+          emit(makeLogEntry("system", "beads-snapshot", "debug", `complete repo_slug=${this.options.sourceKey} total_pages=${page} total_issues=${issues.length}`, {
             repo_slug: this.options.sourceKey,
             total_pages: page,
             total_issues: issues.length,
@@ -70,7 +78,7 @@ export class BeadsSnapshotSource {
         }
         if (issues.length >= safetyCap) break;
       }
-      emit(makeLogEntry("system", "beads-snapshot", "warn", `readFromDolt safety-cap-hit repo_slug=${this.options.sourceKey} at offset=${issues.length}`, {
+      emit(makeLogEntry("system", "beads-snapshot", "warn", `safety-cap-hit repo_slug=${this.options.sourceKey} at offset=${issues.length}`, {
         repo_slug: this.options.sourceKey,
         at_offset: issues.length,
       }));

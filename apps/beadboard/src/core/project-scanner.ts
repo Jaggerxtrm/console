@@ -145,23 +145,19 @@ export class ProjectScanner {
 
       try {
         const configContent = await readFile(configPath, "utf-8");
+        const sharedServerEnabled = /dolt\.shared-server:\s*true|shared-server:\s*true/.test(configContent);
         const portMatch = configContent.match(/port:\s*(\d+)/);
-        if (portMatch) doltPort = Number.parseInt(portMatch[1], 10);
+        if (portMatch && !sharedServerEnabled) doltPort = Number.parseInt(portMatch[1], 10);
 
         const dbMatch = configContent.match(/dolt_database:\s*(\S+)/);
         if (dbMatch) doltDatabase = dbMatch[1];
 
-        // Shared-server fallback: when project opts into the host-wide Dolt server
-        // via `dolt.shared-server: true` (or nested `dolt:\n  shared-server: true`),
-        // read the port from ~/.beads/shared-server/dolt-server.port.
-        if (doltPort === undefined && /dolt\.shared-server:\s*true|shared-server:\s*true/.test(configContent)) {
-          if (process.env.HOME) {
-            try {
-              const sharedPortContent = await readFile(join(process.env.HOME, ".beads/shared-server/dolt-server.port"), "utf-8");
-              const sharedPort = Number.parseInt(sharedPortContent.trim(), 10);
-              if (Number.isFinite(sharedPort)) doltPort = sharedPort;
-            } catch { /* missing shared-server file — fall through */ }
-          }
+        if (sharedServerEnabled && process.env.HOME) {
+          try {
+            const sharedPortContent = await readFile(join(process.env.HOME, ".beads/shared-server/dolt-server.port"), "utf-8");
+            const sharedPort = Number.parseInt(sharedPortContent.trim(), 10);
+            if (Number.isFinite(sharedPort)) doltPort = sharedPort;
+          } catch { /* missing shared-server file — fall through */ }
         }
       } catch {
         // no config
