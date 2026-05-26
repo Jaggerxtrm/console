@@ -116,6 +116,32 @@ function findProject(projects: BeadsProject[], candidates: string[]): BeadsProje
   return projects.find((project) => candidates.includes(project.id) || candidates.includes(project.name)) ?? null;
 }
 
+function sameIssueSignature(left: BeadIssue, right: BeadIssue): boolean {
+  return left.id === right.id
+    && left.status === right.status
+    && left.priority === right.priority
+    && left.updated_at === right.updated_at
+    && JSON.stringify(left.labels ?? []) === JSON.stringify(right.labels ?? []);
+}
+
+function sameIssues(next: BeadIssue[] | null, current: BeadIssue[]): boolean {
+  return next !== null
+    && next.length === current.length
+    && next.every((issue, index) => sameIssueSignature(issue, current[index]));
+}
+
+function sameMemories(next: Memory[] | null, current: Memory[]): boolean {
+  return next !== null
+    && next.length === current.length
+    && next.every((memory, index) => memory.id === current[index]?.id);
+}
+
+function sameInteractions(next: Interaction[] | null, current: Interaction[]): boolean {
+  return next !== null
+    && next.length === current.length
+    && next.every((interaction, index) => interaction.id === current[index]?.id);
+}
+
 export function BeadsRepoView({ repo, tab }: { repo: RepoNode; tab: BeadsTab }) {
   const [state, setState] = useState<State>(INITIAL);
   const [reloadKey, setReloadKey] = useState(0);
@@ -189,10 +215,22 @@ export function BeadsRepoView({ repo, tab }: { repo: RepoNode; tab: BeadsTab }) 
           loading: false,
           error: null,
           project,
-          issues: issuesResult ?? (current.project?.id === project.id ? current.issues : []),
+          issues: issuesResult === null
+            ? (current.project?.id === project.id ? current.issues : [])
+            : sameIssues(issuesResult, current.issues)
+              ? current.issues
+              : issuesResult,
           closedIssues: current.project?.id === project.id ? current.closedIssues : [],
-          memories: memoriesResult ?? (current.project?.id === project.id ? current.memories : []),
-          interactions: interactionsResult ?? (current.project?.id === project.id ? current.interactions : []),
+          memories: memoriesResult === null
+            ? (current.project?.id === project.id ? current.memories : [])
+            : sameMemories(memoriesResult, current.memories)
+              ? current.memories
+              : memoriesResult,
+          interactions: interactionsResult === null
+            ? (current.project?.id === project.id ? current.interactions : [])
+            : sameInteractions(interactionsResult, current.interactions)
+              ? current.interactions
+              : interactionsResult,
         }));
 
         void beadsApi.listClosedIssues(project.id, 50)
