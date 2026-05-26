@@ -21,6 +21,7 @@ import { WsHandler } from "./ws/handler.ts";
 import { Materializer } from "../core/materializer/index.ts";
 import { createObservabilityAdapter } from "../core/materializer/observability-adapter.ts";
 import { createObservabilityParityHarness } from "../server/observability/parity.ts";
+import { onBump } from "../server/observability/epoch.ts";
 import { createBeadsParityHarness } from "./routes/beads-parity.ts";
 import { TriggerWatcher } from "../server/beads/trigger-watcher.ts";
 import { createObservabilityWatcher } from "../server/observability/watcher.ts";
@@ -40,6 +41,7 @@ let currentObservabilityWatcher: ReturnType<typeof createObservabilityWatcher> |
 let currentMaterializer: Materializer | null = null;
 let currentBeadsParityHarness: ReturnType<typeof createBeadsParityHarness> | null = null;
 let currentObservabilityParityHarness: ReturnType<typeof createObservabilityParityHarness> | null = null;
+let currentEpochBumpUnsubscribe: (() => void) | null = null;
 
 export function getCurrentRegistry(): ChannelRegistry | null {
   return currentRegistry;
@@ -75,6 +77,13 @@ export function createApp(db: Database, xtrmDb?: Database): {
       xtrmDb.query("INSERT INTO sources (source_key, kind, path, origin, status, discovered_at, last_seen_at) VALUES (?, 'observability', ?, 'discovered', 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) ON CONFLICT(source_key) DO UPDATE SET path=excluded.path, status=excluded.status, last_seen_at=excluded.last_seen_at").run(sourceKey, repo.dbPath);
       materializer.register(sourceKey, createObservabilityAdapter(repo.dbPath, repo.repoSlug));
     }
+    currentEpochBumpUnsubscribe?.();
+    currentEpochBumpUnsubscribe = onBump((repoSlug) => {
+      const sourceKey = `obs:${repoSlug}`;
+      for (const channel of ["specialists:activity", `specialists:repo:${repoSlug}`]) {
+        registry.publish(channel, "specialists:sync_hint", { source_key: sourceKey, kind: "epoch_bump" }, String(Date.now()));
+      }
+    });
     queueMicrotask(() => {
       for (const repo of obsRepos) materializer.trigger(`obs:${repo.repoSlug}`);
     });
@@ -249,6 +258,7 @@ export function startServer(db: Database, xtrmDb?: Database, options: ServerOpti
   const stopObservability = currentObservabilityWatcher;
   process.once("exit", () => {
     stopObservability?.stop();
+    currentEpochBumpUnsubscribe?.();
     currentObservabilityParityHarness?.stop();
     currentBeadsParityHarness?.stop();
   });

@@ -78,7 +78,20 @@ export class Materializer {
   private publishHint(sourceKey: string, kind?: string): void {
     const hint = this.realtimeHintFor(sourceKey);
     if (!hint) return;
+    emit(makeLogEntry("system", "materializer.publishHint", "info", undefined, {
+      source_key: sourceKey,
+      event: hint.event,
+      channels: hint.channels,
+      ws_registry_set: this.wsRegistry != null,
+      ...(kind ? { kind } : {}),
+    }));
     for (const channel of hint.channels) {
+      emit(makeLogEntry("system", "materializer.publishHint.publish", "info", undefined, {
+        source_key: sourceKey,
+        channel,
+        event: hint.event,
+        ...(kind ? { kind } : {}),
+      }));
       this.wsRegistry?.publish(channel as Parameters<ChannelRegistry["publish"]>[0], hint.event, { source_key: sourceKey, ...(kind ? { kind } : {}) }, String(Date.now()));
     }
   }
