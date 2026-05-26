@@ -179,11 +179,11 @@ export function BeadsRepoView({ repo, tab }: { repo: RepoNode; tab: BeadsTab }) 
           projectName: project.name,
           projectKey,
           ms: Math.round(performance.now() - startedAt),
-          issues: issues.length,
-          memories: memories.length,
-          interactions: interactions.length,
-          newestIssue: newestIssueSummary(issues),
-          issueIds: issues.slice(0, 50).map((issue) => issue.id),
+          issues: (issuesResult ?? []).length,
+          memories: (memoriesResult ?? []).length,
+          interactions: (interactionsResult ?? []).length,
+          newestIssue: newestIssueSummary(issuesResult ?? []),
+          issueIds: (issuesResult ?? []).slice(0, 50).map((issue) => issue.id),
         });
         setState((current) => ({
           loading: false,
