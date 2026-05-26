@@ -74,11 +74,12 @@ export class BeadsAdapter implements MaterializerAdapter<MaterializedIssue, Mate
   }
 
   private tombstoneMissing(db: Database, rows: readonly MaterializedIssue[]): void {
-    const keys = new Set(rows.map((row) => `${row.repo_slug}::${row.issue_id}`));
-    const active = db.query("SELECT repo_slug, issue_id FROM substrate_issues WHERE deleted_at IS NULL").all() as Array<{ repo_slug: string; issue_id: string }>;
+    const projectId = this.options.projectId;
+    const keys = new Set(rows.filter((row) => row.repo_slug === projectId).map((row) => row.issue_id));
+    const active = db.query("SELECT issue_id FROM substrate_issues WHERE deleted_at IS NULL AND repo_slug = ?").all(projectId) as Array<{ issue_id: string }>;
     const stmt = db.query("UPDATE substrate_issues SET deleted_at = CURRENT_TIMESTAMP, state = 'deleted' WHERE repo_slug = ? AND issue_id = ?");
     for (const row of active) {
-      if (!keys.has(`${row.repo_slug}::${row.issue_id}`)) stmt.run(row.repo_slug, row.issue_id);
+      if (!keys.has(row.issue_id)) stmt.run(projectId, row.issue_id);
     }
   }
 
