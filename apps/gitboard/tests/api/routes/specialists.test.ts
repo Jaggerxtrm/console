@@ -134,6 +134,22 @@ describe("GET /api/specialists/jobs/in-flight", () => {
     expect(json.jobs.every((job) => job.repoSlug === "repo-a")).toBe(true);
   });
 
+  it("returns coverage for more than 10 discovered observability dbs", async () => {
+    const manyRepos = Array.from({ length: 11 }, (_, index) => ({
+      repoSlug: `repo-${index}`,
+      rows: [{ beadId: `bead-${index}`, chainId: null, epicId: null, chainKind: null, status: "running", updatedAtMs: 1700000010000 + index }],
+    }));
+    const app = createAppWithDao(manyRepos);
+    const res = await app.fetch(new Request("http://localhost/api/specialists/jobs/in-flight"));
+
+    expect(res.status).toBe(200);
+    const json = await res.json() as { coverage?: { attached: string[]; skipped: Array<{ slug: string; reason: string }>; totalDiscovered: number }; source_health: { status: string } };
+    expect(json.coverage?.totalDiscovered).toBe(11);
+    expect((json.coverage?.attached.length ?? 0) + (json.coverage?.skipped.length ?? 0)).toBe(11);
+    expect(json.coverage?.skipped.length).toBeGreaterThan(0);
+    expect(json.source_health.status).toBe("degraded");
+  });
+
   it("reuses cached live summaries until repo epoch changes", async () => {
     let epoch = 0;
     let inFlightCalls = 0;

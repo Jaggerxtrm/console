@@ -1,5 +1,6 @@
 import { Database } from "bun:sqlite";
 import { isCompatible } from "./schema-guard.js";
+import type { ObservabilityCoverage } from "./types.js";
 
 type RepoEntry = {
   repoSlug: string;
@@ -17,25 +18,25 @@ type PoolOptions = {
 
 type AttachedRepo = RepoEntry & { alias: string };
 
-const DEFAULT_MAX_ATTACHED = 12;
+type CoverageState = {
+  attached: string[];
+  skipped: Array<{ slug: string; reason: string }>;
+};
 
-// Module-scoped dead-cache shared across all pools in this process.
-// Callers like apps/gitboard/src/api/routes/specialists.ts recreate the pool
-// on a 2s TTL — without module scope, the dead-cache would reset every 2s and
-// the file-watcher's churn on observability.db (sp writes it constantly) would
-// trigger an infinite re-probe loop, burning 60%+ CPU on a known-dead db. The
-// failure modes we cache (schema_version incompatible, missing specialist_jobs
-// table, attach permission errors) are structural — they survive process
-// lifetime, so caching at module scope is correct.
+const DEFAULT_MAX_ATTACHED = 8;
+const MIN_MAX_ATTACHED = 1;
+const MAX_MAX_ATTACHED = 10;
+
 const moduleDead = new Map<string, { reason: string }>();
 
 export function createAttachPool(entries: readonly RepoEntry[], options: PoolOptions = {}) {
-  const maxAttached = options.maxAttached ?? DEFAULT_MAX_ATTACHED;
+  const maxAttached = clampMaxAttached(options.maxAttached ?? DEFAULT_MAX_ATTACHED);
   const logger = options.logger ?? console;
   const db = new Database(":memory:", { create: true });
   const attached = new Map<string, AttachedRepo>();
   const lru = new Map<string, AttachedRepo>();
   const dead = moduleDead;
+  const coverage: CoverageState = { attached: [], skipped: [] };
   let aliasCounter = 0;
   let warmPromise: Promise<void> | null = null;
 
@@ -44,6 +45,10 @@ export function createAttachPool(entries: readonly RepoEntry[], options: PoolOpt
   function withAttached<T>(fn: (db: Database, attached: ReadonlyArray<{ alias: string; slug: string }>) => T): T {
     const list = Array.from(attached.values()).map((entry) => ({ alias: entry.alias, slug: entry.repoSlug }));
     return fn(db, list);
+  }
+
+  function getCoverage(): ObservabilityCoverage {
+    return { attached: [...coverage.attached], skipped: [...coverage.skipped], totalDiscovered: entries.length };
   }
 
   async function warmAttachPool(): Promise<void> {
@@ -56,30 +61,25 @@ export function createAttachPool(entries: readonly RepoEntry[], options: PoolOpt
           touch(entry.dbPath);
           continue;
         }
-
-        // Skip dbs already known to be unhealthy. We deliberately do NOT re-probe
-        // on mtime change: sp processes write to observability.db continuously
-        // (every turn/event), so mtime ticks up dozens of times per minute. The
-        // failure modes we cache (schema_version incompatible, missing
-        // specialist_jobs table, attach permission errors) are structural — they
-        // don't get fixed by another sp write. Re-probing on every mtime tick
-        // burned 90%+ CPU and starved the rest of the API. If the db is genuinely
-        // upgraded, restart the API.
         if (dead.has(entry.dbPath)) continue;
-
-        if (!ensureCapacity()) break;
-        if (!attachRepo(entry)) continue;
-
-        processed += 1;
-        if (processed % 5 === 0) {
-          await yieldToEventLoop();
+        if (!ensureCapacity()) {
+          recordSkipped(entry.repoSlug, "capacity reached");
+          continue;
         }
+        if (!attachRepo(entry)) continue;
+        processed += 1;
+        if (processed % 5 === 0) await yieldToEventLoop();
       }
-    })().catch((err) => {
-      logger.warn(`Attach pool warm failed: ${errorMessage(err)}`);
-    }).finally(() => {
-      warmPromise = null;
-    });
+      if (coverage.skipped.length > 0) {
+        logger.warn(`Observability coverage degraded: attached ${coverage.attached.length}/${entries.length}, skipped ${coverage.skipped.length}`);
+      }
+    })()
+      .catch((err) => {
+        logger.warn(`Attach pool warm failed: ${errorMessage(err)}`);
+      })
+      .finally(() => {
+        warmPromise = null;
+      });
 
     return warmPromise;
   }
@@ -112,20 +112,29 @@ export function createAttachPool(entries: readonly RepoEntry[], options: PoolOpt
     try {
       db.exec(`ATTACH DATABASE '${escapeSql(entry.dbPath)}' AS ${alias}`);
     } catch (err) {
-      markDead(entry, `attach failed (${errorMessage(err)})`);
+      const message = errorMessage(err);
+      if (isAttachLimitError(message)) {
+        recordSkipped(entry.repoSlug, message);
+        return false;
+      }
+      markDead(entry, `attach failed (${message})`);
       return false;
     }
+
     const attachedRepo = { ...entry, alias };
     attached.set(entry.dbPath, attachedRepo);
     lru.set(entry.dbPath, attachedRepo);
+    coverage.attached = [...coverage.attached, entry.repoSlug];
     return true;
+  }
+
+  function recordSkipped(slug: string, reason: string): void {
+    coverage.skipped = [...coverage.skipped, { slug, reason }];
   }
 
   function markDead(entry: RepoEntry, reason: string): void {
     const prev = dead.get(entry.dbPath);
-    if (!prev || prev.reason !== reason) {
-      logger.warn(`Skip observability db ${entry.dbPath}: ${reason}`);
-    }
+    if (!prev || prev.reason !== reason) logger.warn(`Skip observability db ${entry.dbPath}: ${reason}`);
     dead.set(entry.dbPath, { reason });
   }
 
@@ -153,7 +162,15 @@ export function createAttachPool(entries: readonly RepoEntry[], options: PoolOpt
     lru.set(dbPath, entry);
   }
 
-  return { withAttached };
+  return { withAttached, getCoverage };
+}
+
+function clampMaxAttached(value: number): number {
+  return Math.min(MAX_MAX_ATTACHED, Math.max(MIN_MAX_ATTACHED, Math.floor(value)));
+}
+
+function isAttachLimitError(message: string): boolean {
+  return /too many attached databases/i.test(message);
 }
 
 function yieldToEventLoop(): Promise<void> {

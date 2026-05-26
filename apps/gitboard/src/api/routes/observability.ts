@@ -9,7 +9,11 @@ let defaultDao: ReturnType<typeof createMetricsDao> | null = null;
 export function createObservabilityRouter(dao?: ReturnType<typeof createMetricsDao>, xtrmDb?: Database): Hono {
   const router = new Hono();
   const resolvedDao = xtrmDb ? createMetricsDao(singleDbPool(xtrmDb)) : (dao ?? getDefaultDao());
-  router.get("/summary", (c) => c.json(resolvedDao.summary(parseRange(c.req.query("range")))));
+  router.get("/summary", (c) => {
+    const summary = resolvedDao.summary(parseRange(c.req.query("range")));
+    const coverage = "coverage" in resolvedDao ? (resolvedDao as { coverage?: () => { attached: string[]; skipped: Array<{ slug: string; reason: string }>; totalDiscovered: number } }).coverage?.() : undefined;
+    return c.json({ ...summary, coverage, source_health: coverage && coverage.skipped.length > 0 ? { source: "observability", status: "degraded", metadata: { coverage } } : { source: "observability", status: "fresh", metadata: {} } });
+  });
   return router;
 }
 

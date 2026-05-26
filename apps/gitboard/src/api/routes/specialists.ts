@@ -13,6 +13,7 @@ export interface SpecialistsDao {
   inFlightJobs(): SpecialistJob[];
   recentJobs(limit: number): SpecialistJob[];
   chainById(chainId: string): SpecialistChain[];
+  coverage?(): ObservabilityCoverage;
 }
 
 type SpecialistRepoSummary = ReadonlyArray<Pick<RepoEntry, "repoSlug">>;
@@ -39,9 +40,16 @@ type MaterializationStateRow = {
   last_success_at: string | null;
 };
 
+type ObservabilityCoverage = {
+  attached: string[];
+  skipped: Array<{ slug: string; reason: string }>;
+  totalDiscovered: number;
+};
+
 type XtrmSpecialistsDao = SpecialistsDao & {
   inFlightWithRecent(limit: number): { in_flight: SpecialistJob[]; recent_history: SpecialistJob[]; jobs: SpecialistJob[]; epoch: Record<string, number> };
   materializationState(): MaterializationStateRow[];
+  coverage?: () => ObservabilityCoverage;
 };
 
 let defaultBundle: DefaultDaoBundle | null = null;
@@ -90,13 +98,13 @@ export function createSpecialistsRouter(
     const cached = readCache(jobsByBeadCache, key);
     if (cached) {
       logJobsByBeadResponse(beadId, cached.jobs, "cache", startedAt);
-      return c.json({ ...cached, freshness: "fresh", source_health: getSourceHealth() });
+      return c.json({ ...cached, coverage: current.dao.coverage?.(), freshness: "fresh", source_health: sourceHealthFromCoverage(current.dao.coverage?.(), getSourceHealth()) });
     }
 
     const refreshed = await refreshJobsByBead(current.dao, beadId, key);
     jobsByBeadCache = refreshed;
     logJobsByBeadResponse(beadId, refreshed.value.jobs, "fresh", startedAt);
-    return c.json({ ...refreshed.value, freshness: "fresh", source_health: getSourceHealth() });
+    return c.json({ ...refreshed.value, coverage: current.dao.coverage?.(), freshness: "fresh", source_health: sourceHealthFromCoverage(current.dao.coverage?.(), getSourceHealth()) });
   });
 
   router.get("/jobs/in-flight", async (c) => {
@@ -107,13 +115,14 @@ export function createSpecialistsRouter(
     const cached = readCache(inFlightCache, key);
     if (cached) {
       logInFlightResponse(cached.jobs, cached.recent_history, cached.epoch, "cache", startedAt);
-      return c.json({ ...cached, freshness: "fresh", source_health: getSourceHealth() });
+      return c.json({ ...cached, coverage: current.dao.coverage?.(), freshness: "fresh", source_health: sourceHealthFromCoverage(current.dao.coverage?.(), getSourceHealth()) });
     }
 
     const refreshed = await refreshInFlight(current.dao, current.repos, epochGetter, limit, key);
     inFlightCache = refreshed;
+    const coverage = current.dao.coverage?.();
     logInFlightResponse(refreshed.value.jobs, refreshed.value.recent_history, refreshed.value.epoch, "fresh", startedAt);
-    return c.json({ ...refreshed.value, freshness: "fresh", source_health: getSourceHealth() });
+    return c.json({ ...refreshed.value, coverage, freshness: "fresh", source_health: sourceHealthFromCoverage(coverage, getSourceHealth()) });
   });
 
   router.get("/chains/:chain_id", async (c) => {
@@ -123,16 +132,21 @@ export function createSpecialistsRouter(
     const cached = readCache(chainCache, key);
     if (cached) {
       if (cached.chain.jobs.length === 0) return c.json({ error: "Chain not found" }, 404);
-      return c.json({ ...cached, freshness: "fresh", source_health: getSourceHealth() });
+      return c.json({ ...cached, coverage: current.dao.coverage?.(), freshness: "fresh", source_health: sourceHealthFromCoverage(current.dao.coverage?.(), getSourceHealth()) });
     }
 
     const refreshed = await refreshChain(current.dao, chainId, key);
     chainCache = refreshed;
     if (refreshed.value.chain.jobs.length === 0) return c.json({ error: "Chain not found" }, 404);
-    return c.json({ ...refreshed.value, freshness: "fresh", source_health: getSourceHealth() });
+    return c.json({ ...refreshed.value, coverage: current.dao.coverage?.(), freshness: "fresh", source_health: sourceHealthFromCoverage(current.dao.coverage?.(), getSourceHealth()) });
   });
 
   return router;
+}
+
+function sourceHealthFromCoverage(coverage: ObservabilityCoverage | undefined, fallback: ReturnType<typeof makeSourceHealth>) {
+  if (!coverage || coverage.skipped.length === 0) return fallback;
+  return makeSourceHealth("specialists", "degraded", { metadata: { coverage } });
 }
 
 function getSourceHealth() {
