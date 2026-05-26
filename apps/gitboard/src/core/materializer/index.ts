@@ -55,7 +55,8 @@ export class Materializer {
     }
 
     this.publishHint(sourceKey);
-    emit(makeLogEntry("system", "materializer.run", "info", undefined, { source_key: sourceKey, duration_ms: Date.now() - startedAt, rows_written: next.rows.length, dependencies_written: next.dependencies?.length ?? 0 }));
+    const counts = this.countMaterializedIssueVariants(sourceKey);
+    emit(makeLogEntry("system", "materializer.run", "info", undefined, { source_key: sourceKey, duration_ms: Date.now() - startedAt, rows_written: next.rows.length, dependencies_written: next.dependencies?.length ?? 0, rows_with_real_priority: counts.rows_with_real_priority, rows_with_real_type: counts.rows_with_real_type, rows_with_labels: counts.rows_with_labels }));
   }
 
   async resync(sourceKey: string): Promise<void> {
@@ -104,6 +105,12 @@ export class Materializer {
       emit(makeLogEntry("system", "materializer.cursor.invalid", "warn", undefined, { source_key: sourceKey, cursor: row.cursor }));
       return null;
     }
+  }
+
+  private countMaterializedIssueVariants(sourceKey: string): { rows_with_real_priority: number; rows_with_real_type: number; rows_with_labels: number } {
+    const projectId = sourceKey.replace(/^beads:/, "");
+    const row = this.db.query("SELECT SUM(CASE WHEN priority IS NOT NULL AND priority <> 2 THEN 1 ELSE 0 END) AS rows_with_real_priority, SUM(CASE WHEN issue_type IS NOT NULL AND issue_type <> 'task' THEN 1 ELSE 0 END) AS rows_with_real_type, SUM(CASE WHEN labels IS NOT NULL AND labels <> '[]' AND labels <> '' THEN 1 ELSE 0 END) AS rows_with_labels FROM substrate_issues WHERE repo_slug = ?").get(projectId) as { rows_with_real_priority: number | null; rows_with_real_type: number | null; rows_with_labels: number | null } | undefined;
+    return { rows_with_real_priority: Number(row?.rows_with_real_priority ?? 0), rows_with_real_type: Number(row?.rows_with_real_type ?? 0), rows_with_labels: Number(row?.rows_with_labels ?? 0) };
   }
 
   private upsertMaterializationState(sourceKey: string, cursor: string): void {

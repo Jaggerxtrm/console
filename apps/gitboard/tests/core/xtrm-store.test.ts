@@ -43,7 +43,9 @@ describe("createXtrmDatabase", () => {
     }).toThrow();
 
     const columns = db.query<{ name: string }, []>("PRAGMA table_info('substrate_issues')").all().map((row) => row.name);
-    expect(columns).toContain("deleted_at");
+    for (const column of ["priority", "issue_type", "owner", "labels", "related_ids", "parent_id", "deleted_at", "closed_at", "close_reason", "notes"]) {
+      expect(columns).toContain(column);
+    }
 
     const rows = db.query<{ c: number }, []>("SELECT COUNT(*) AS c FROM substrate_issues WHERE repo_slug='repo-a' AND issue_id='1'").get();
     expect(rows?.c).toBe(1);

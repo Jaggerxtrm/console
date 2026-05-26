@@ -1,6 +1,9 @@
 import { Hono } from "hono";
 import type { Database } from "bun:sqlite";
+import { emit, makeLogEntry } from "../../core/logger.ts";
 import type { BeadDependency, BeadIssue, BeadIssueDetail, BeadsProject, Memory, Interaction } from "../../../../beadboard/src/types/beads.ts";
+
+let loggedSchemaColumns = false;
 
 export function createSubstrateRouter(xtrmDb?: Database | null): Hono {
   const router = new Hono();
@@ -16,6 +19,7 @@ export function createSubstrateRouter(xtrmDb?: Database | null): Hono {
   router.get("/projects/:projectId/interactions", (c) => c.json({ interactions: readInteractions(xtrmDb, c.req.param("projectId"), c.req.query("issue_id") ?? undefined) }));
   router.get("/projects/:projectId/stats", (c) => c.json({ stats: readStats(xtrmDb, c.req.param("projectId")) }));
   router.get("/projects/:projectId/connection", (c) => c.json(readConnection(xtrmDb, c.req.param("projectId"))));
+  router.get("/schema", (c) => c.json(readSchema(xtrmDb)));
 
   return router;
 }
@@ -68,7 +72,8 @@ function readConnection(_db: Database | null | undefined, _projectId: string) { 
 
 function queryIssues(db: Database | null | undefined, projectId: string): BeadIssue[] {
   if (!db) return [];
-  const rows = db.query("SELECT issue_id, title, body, state, deleted_at, created_at, updated_at FROM substrate_issues WHERE repo_slug = ? ORDER BY issue_id ASC").all(projectId) as Array<Record<string, unknown>>;
+  logSchemaColumnsOnce(db);
+  const rows = db.query("SELECT issue_id, title, body, state, priority, issue_type, owner, labels, related_ids, parent_id, deleted_at, closed_at, close_reason, notes, created_at, updated_at FROM substrate_issues WHERE repo_slug = ? ORDER BY issue_id ASC").all(projectId) as Array<Record<string, unknown>>;
   const dependencies = db.query("SELECT issue_id, dep_issue_id, relation FROM substrate_dependencies WHERE repo_slug = ?").all(projectId) as Array<{ issue_id: string; dep_issue_id: string; relation: string }>;
   const depsByIssue = new Map<string, BeadDependency[]>();
   for (const dep of dependencies) {
@@ -80,20 +85,48 @@ function queryIssues(db: Database | null | undefined, projectId: string): BeadIs
     id: String(row.issue_id),
     title: String(row.title ?? ""),
     description: row.body == null ? null : String(row.body),
-    notes: null,
+    notes: row.notes == null ? null : String(row.notes),
     status: String(row.state ?? "open"),
-    priority: 2,
-    issue_type: "task",
-    owner: null,
+    priority: Number(row.priority ?? 2),
+    issue_type: String(row.issue_type ?? "task"),
+    owner: row.owner == null ? null : String(row.owner),
     created_at: String(row.created_at ?? new Date(0).toISOString()),
     created_by: null,
     updated_at: String(row.updated_at ?? new Date(0).toISOString()),
-    closed_at: row.deleted_at == null ? undefined : String(row.deleted_at),
+    closed_at: row.closed_at == null ? (row.deleted_at == null ? undefined : String(row.deleted_at)) : String(row.closed_at),
+    close_reason: row.close_reason == null ? undefined : String(row.close_reason),
     project_id: projectId,
     dependencies: depsByIssue.get(String(row.issue_id)) ?? [],
-    related_ids: [],
-    labels: [],
+    parent_id: row.parent_id == null ? undefined : String(row.parent_id),
+    related_ids: parseJsonArray(row.related_ids),
+    labels: parseJsonArray(row.labels),
   }));
+}
+
+function logSchemaColumnsOnce(db: Database): void {
+  if (loggedSchemaColumns) return;
+  loggedSchemaColumns = true;
+  const columns = db.query("PRAGMA table_info(substrate_issues)").all() as Array<{ name: string }>;
+  emit(makeLogEntry("api", "substrate.queryIssues", "info", undefined, { schema_columns: columns.map((column) => column.name) }));
+}
+
+function readSchema(db?: Database | null) {
+  if (!db) return { columns: [], counts: { with_priority_nonzero: 0, with_type_nontask: 0, with_labels: 0, with_related: 0 } };
+  const columns = (db.query("PRAGMA table_info(substrate_issues)").all() as Array<{ name: string }>).map((column) => column.name);
+  const counts = db.query("SELECT COUNT(*) AS with_priority_nonzero, SUM(CASE WHEN issue_type IS NOT NULL AND issue_type <> 'task' THEN 1 ELSE 0 END) AS with_type_nontask, SUM(CASE WHEN labels IS NOT NULL AND labels <> '[]' AND labels <> '' THEN 1 ELSE 0 END) AS with_labels, SUM(CASE WHEN related_ids IS NOT NULL AND related_ids <> '[]' AND related_ids <> '' THEN 1 ELSE 0 END) AS with_related FROM substrate_issues").get() as { with_priority_nonzero: number; with_type_nontask: number; with_labels: number; with_related: number } | undefined;
+  return { columns, counts: counts ?? { with_priority_nonzero: 0, with_type_nontask: 0, with_labels: 0, with_related: 0 } };
+}
+
+function parseJsonArray(value: unknown): string[] {
+  if (value == null || value === "") return [];
+  if (Array.isArray(value)) return value.map(String);
+  if (typeof value !== "string") return [];
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return Array.isArray(parsed) ? parsed.map(String) : [];
+  } catch {
+    return [];
+  }
 }
 
 function queryDependents(db: Database | null | undefined, projectId: string, issueId: string): BeadDependency[] {

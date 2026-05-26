@@ -5,6 +5,7 @@ import type { Database } from "bun:sqlite";
 import { createGithubRouter } from "./routes/github.ts";
 import { createInternalDoltHealthRouter } from "./routes/internal-dolt-health.ts";
 import { createInternalLogsRouter } from "./routes/internal-logs.ts";
+import { createInternalSubstrateRouter } from "./routes/internal-substrate.ts";
 import { createInternalVerifyRouter } from "./routes/internal-verify.ts";
 import { createInternalParityRouter } from "./routes/internal-parity.ts";
 import { setRealtimePublisher, emit, makeLogEntry } from "../core/logger.ts";
@@ -135,6 +136,7 @@ export function createApp(db: Database, xtrmDb?: Database): {
   app.route("/api/console/terminal", createTerminalRouter());
   app.route("/api/internal", createInternalDoltHealthRouter());
   app.route("/api/internal", createInternalLogsRouter());
+  app.route("/api/internal", createInternalSubstrateRouter(xtrmDb ?? null));
   app.route("/api/internal", createInternalVerifyRouter());
   app.route("/api/internal", createInternalParityRouter());
   app.get("/api/internal/parity/beads", (c) => {

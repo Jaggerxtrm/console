@@ -21,7 +21,7 @@ describe("BeadsAdapter", () => {
     tempDirs.push(root);
     const beadsPath = join(root, ".beads");
     mkdirSync(beadsPath, { recursive: true });
-    writeFileSync(join(beadsPath, "issues.jsonl"), `${JSON.stringify({ _type: "issue", id: "A", title: "Alpha", description: "one", status: "open", created_at: "2026-01-01T00:00:00.000Z", updated_at: "2026-01-01T00:00:00.000Z", dependencies: [{ id: "B", dependency_type: "blocks" }] })}\n`);
+    writeFileSync(join(beadsPath, "issues.jsonl"), `${JSON.stringify({ _type: "issue", id: "A", title: "Alpha", description: "one", status: "open", priority: 1, issue_type: "bug", owner: "alice", labels: ["ui"], related_ids: ["B"], parent_id: null, notes: "note", created_at: "2026-01-01T00:00:00.000Z", updated_at: "2026-01-01T00:00:00.000Z", dependencies: [{ id: "B", dependency_type: "blocks" }] })}\n`);
 
     const xtrmDb = createXtrmDatabase(join(root, "xtrm.sqlite"));
     const adapter = new BeadsAdapter({ sourceKey: "beads:proj-1", projectId: "proj-1", beadsPath, xtrmDb });
@@ -42,7 +42,7 @@ describe("BeadsAdapter", () => {
     tempDirs.push(root);
     const beadsPath = join(root, ".beads");
     mkdirSync(beadsPath, { recursive: true });
-    writeFileSync(join(beadsPath, "issues.jsonl"), `${JSON.stringify({ _type: "issue", id: "A", title: { text: "Alpha" }, description: { rich: true }, notes: ["fallback", 1], status: "open", created_at: "2026-01-01T00:00:00.000Z", updated_at: "2026-01-01T00:00:00.000Z", dependencies: [{ id: "B", dependency_type: "blocks" }] })}\n`);
+    writeFileSync(join(beadsPath, "issues.jsonl"), `${JSON.stringify({ _type: "issue", id: "A", title: { text: "Alpha" }, description: { rich: true }, notes: ["fallback", 1], status: "open", priority: 3, issue_type: "feature", owner: null, labels: ["l1", "l2"], related_ids: ["R1"], parent_id: "P1", created_at: "2026-01-01T00:00:00.000Z", updated_at: "2026-01-01T00:00:00.000Z", dependencies: [{ id: "B", dependency_type: "blocks" }] })}\n`);
 
     const xtrmDb = createXtrmDatabase(join(root, "xtrm.sqlite"));
     const adapter = new BeadsAdapter({ sourceKey: "beads:proj-1", projectId: "proj-1", beadsPath, xtrmDb });
@@ -54,7 +54,16 @@ describe("BeadsAdapter", () => {
         title: { text: "Alpha" } as never,
         body: { rich: true } as never,
         state: "open",
+        priority: 3,
+        issue_type: "feature",
+        owner: null,
+        labels: JSON.stringify(["l1", "l2"]),
+        related_ids: JSON.stringify(["R1"]),
+        parent_id: "P1",
         deleted_at: null,
+        closed_at: null,
+        close_reason: null,
+        notes: "note",
         created_at: "2026-01-01T00:00:00.000Z",
         updated_at: "2026-01-01T00:00:00.000Z",
       }],

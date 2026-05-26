@@ -22,7 +22,16 @@ CREATE TABLE IF NOT EXISTS substrate_issues (
   title          TEXT,
   body           TEXT,
   state          TEXT NOT NULL,
+  priority       INTEGER,
+  issue_type     TEXT,
+  owner          TEXT,
+  labels         TEXT,
+  related_ids    TEXT,
+  parent_id      TEXT,
   deleted_at     DATETIME,
+  closed_at      DATETIME,
+  close_reason   TEXT,
+  notes          TEXT,
   created_at     DATETIME,
   updated_at     DATETIME,
   PRIMARY KEY (repo_slug, issue_id)
@@ -94,6 +103,8 @@ CREATE TABLE IF NOT EXISTS materialization_state (
 
 const MIGRATIONS = [
   "CREATE INDEX IF NOT EXISTS idx_substrate_issues_repo_state ON substrate_issues(repo_slug, state)",
+  "CREATE INDEX IF NOT EXISTS idx_substrate_issues_repo_priority ON substrate_issues(repo_slug, priority)",
+  "CREATE INDEX IF NOT EXISTS idx_substrate_issues_repo_type ON substrate_issues(repo_slug, issue_type)",
   "CREATE INDEX IF NOT EXISTS idx_substrate_dependencies_repo_issue ON substrate_dependencies(repo_slug, issue_id)",
   "CREATE INDEX IF NOT EXISTS idx_specialist_jobs_repo_status ON specialist_jobs(repo_slug, status)",
   "CREATE INDEX IF NOT EXISTS idx_specialist_job_events_repo_job ON specialist_job_events(repo_slug, job_id, created_at)",
@@ -105,9 +116,11 @@ export function createXtrmDatabase(path: string): Database {
   const db = new Database(path, { create: true });
   db.exec(SCHEMA);
   ensureSpecialistJobsUpdatedAtMsColumn(db);
+  ensureSubstrateIssuesColumns(db);
   for (const sql of MIGRATIONS) {
     db.exec(sql);
   }
+  
   return db;
 }
 
@@ -115,4 +128,26 @@ function ensureSpecialistJobsUpdatedAtMsColumn(db: Database): void {
   const row = db.query("PRAGMA table_info(specialist_jobs)").all() as Array<{ name: string }>;
   if (row.some((column) => column.name === "updated_at_ms")) return;
   db.exec("ALTER TABLE specialist_jobs ADD COLUMN updated_at_ms INTEGER");
+}
+
+function ensureSubstrateIssuesColumns(db: Database): void {
+  const columns = new Set((db.query("PRAGMA table_info(substrate_issues)").all() as Array<{ name: string }>).map((column) => column.name));
+  for (const column of [
+    ["priority", "INTEGER"],
+    ["issue_type", "TEXT"],
+    ["owner", "TEXT"],
+    ["labels", "TEXT"],
+    ["related_ids", "TEXT"],
+    ["parent_id", "TEXT"],
+    ["closed_at", "DATETIME"],
+    ["close_reason", "TEXT"],
+    ["notes", "TEXT"],
+  ] as const) {
+    if (columns.has(column[0])) {
+      console.log(`xtrm-store: ALTER substrate_issues ADD COLUMN ${column[0]} ${column[1]} [already-present]`);
+      continue;
+    }
+    console.log(`xtrm-store: ALTER substrate_issues ADD COLUMN ${column[0]} ${column[1]} [added]`);
+    db.exec(`ALTER TABLE substrate_issues ADD COLUMN ${column[0]} ${column[1]}`);
+  }
 }

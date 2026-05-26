@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite";
 import type { BeadIssue } from "../../../../beadboard/src/types/beads.ts";
+import { emit, makeLogEntry } from "../../logger.ts";
 import { BeadsSnapshotSource } from "./beads-snapshot-source.ts";
 import { snapshotDiff, snapshotHash } from "./snapshot-diff.ts";
 import type { MaterializedDependency, MaterializedIssue, MaterializerAdapter, MaterializerCursor, MaterializerDelta, MaterializerSnapshot } from "./types.ts";
@@ -17,6 +18,7 @@ type BeadsCursor = { snapshot_hash: string | null };
 
 export class BeadsAdapter implements MaterializerAdapter<MaterializedIssue, MaterializedDependency> {
   private readonly source: BeadsSnapshotSource;
+  private static loggedNormalize = false;
 
   constructor(private readonly options: BeadsAdapterOptions) {
     this.source = new BeadsSnapshotSource({
@@ -75,9 +77,16 @@ export class BeadsAdapter implements MaterializerAdapter<MaterializedIssue, Mate
     this.tombstoneMissing(db, snapshot.rows);
   }
 
-  private writeIssues(db: Database, rows: readonly MaterializedIssue[]): void {
-    const stmt = db.query("INSERT INTO substrate_issues (repo_slug, issue_id, title, body, state, deleted_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(repo_slug, issue_id) DO UPDATE SET title=excluded.title, body=excluded.body, state=excluded.state, deleted_at=excluded.deleted_at, created_at=excluded.created_at, updated_at=excluded.updated_at");
-    for (const row of rows) stmt.run(...normalizeSqliteBindings([row.repo_slug, row.issue_id, row.title, row.body, row.state, row.deleted_at, row.created_at, row.updated_at]));
+  private writeIssues(db: Database, rows: readonly MaterializedIssue[]): { rowsWithRealPriority: number; rowsWithRealType: number; rowsWithLabels: number } {
+    const stmt = db.query("INSERT INTO substrate_issues (repo_slug, issue_id, title, body, state, priority, issue_type, owner, labels, related_ids, parent_id, deleted_at, closed_at, close_reason, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(repo_slug, issue_id) DO UPDATE SET title=excluded.title, body=excluded.body, state=excluded.state, priority=excluded.priority, issue_type=excluded.issue_type, owner=excluded.owner, labels=excluded.labels, related_ids=excluded.related_ids, parent_id=excluded.parent_id, deleted_at=excluded.deleted_at, closed_at=excluded.closed_at, close_reason=excluded.close_reason, notes=excluded.notes, created_at=excluded.created_at, updated_at=excluded.updated_at");
+    const counts = { rowsWithRealPriority: 0, rowsWithRealType: 0, rowsWithLabels: 0 };
+    for (const row of rows) {
+      if ((row.priority ?? 2) !== 2) counts.rowsWithRealPriority += 1;
+      if ((row.issue_type ?? "task") !== "task") counts.rowsWithRealType += 1;
+      if (parseJsonArray(row.labels).length > 0) counts.rowsWithLabels += 1;
+      stmt.run(...normalizeSqliteBindings([row.repo_slug, row.issue_id, row.title, row.body, row.state, row.priority, row.issue_type, row.owner, row.labels, row.related_ids, row.parent_id, row.deleted_at, row.closed_at, row.close_reason, row.notes, row.created_at, row.updated_at]));
+    }
+    return counts;
   }
 
   private writeDependencies(db: Database, rows: readonly MaterializedDependency[]): void {
@@ -113,7 +122,7 @@ export class BeadsAdapter implements MaterializerAdapter<MaterializedIssue, Mate
   }
 
   private async readCurrentIssues(): Promise<{ rows: MaterializedIssue[] }> {
-    return { rows: this.options.xtrmDb.query("SELECT repo_slug, issue_id, title, body, state, deleted_at, created_at, updated_at FROM substrate_issues WHERE repo_slug = ? ORDER BY issue_id ASC").all(this.options.projectId) as MaterializedIssue[] };
+    return { rows: this.options.xtrmDb.query("SELECT repo_slug, issue_id, title, body, state, priority, issue_type, owner, labels, related_ids, parent_id, deleted_at, closed_at, close_reason, notes, created_at, updated_at FROM substrate_issues WHERE repo_slug = ? ORDER BY issue_id ASC").all(this.options.projectId) as MaterializedIssue[] };
   }
 
   private async getStoredSnapshotHash(): Promise<string | null> {
@@ -129,13 +138,26 @@ export class BeadsAdapter implements MaterializerAdapter<MaterializedIssue, Mate
 }
 
 function normalizeIssue(projectId: string, issue: BeadIssue): MaterializedIssue {
+  if (!BeadsAdapter.loggedNormalize) {
+    BeadsAdapter.loggedNormalize = true;
+    emit(makeLogEntry("system", "beads.normalizeIssue", "debug", undefined, { repo_slug: projectId, issue_id: issue.id, priority: issue.priority, issue_type: issue.issue_type, labels_len: issue.labels.length, related_ids_len: issue.related_ids.length }));
+  }
   return {
     repo_slug: projectId,
     issue_id: issue.id,
     title: normalizeText(issue.title),
-    body: normalizeText(issue.description ?? issue.notes ?? null),
+    body: normalizeText(issue.description),
     state: issue.status === "closed" ? "closed" : issue.status,
+    priority: typeof issue.priority === "number" ? issue.priority : null,
+    issue_type: normalizeText(issue.issue_type),
+    owner: normalizeText(issue.owner),
+    labels: normalizeJson(issue.labels),
+    related_ids: normalizeJson(issue.related_ids),
+    parent_id: normalizeText(issue.parent_id),
     deleted_at: issue.status === "closed" ? normalizeText(issue.closed_at ?? issue.updated_at) : null,
+    closed_at: normalizeText(issue.closed_at),
+    close_reason: normalizeText(issue.close_reason),
+    notes: normalizeText(issue.notes),
     created_at: normalizeText(issue.created_at),
     updated_at: normalizeText(issue.updated_at),
   };
@@ -144,6 +166,11 @@ function normalizeIssue(projectId: string, issue: BeadIssue): MaterializedIssue 
 function normalizeText(value: unknown): string | null {
   if (value == null) return null;
   return typeof value === "string" ? value : stringifyBindingValue(value);
+}
+
+function normalizeJson(value: unknown): string | null {
+  if (value == null) return null;
+  return stringifyBindingValue(value);
 }
 
 function normalizeSqliteBindings(values: readonly unknown[]): Array<string | number | bigint | boolean | Uint8Array | null> {
