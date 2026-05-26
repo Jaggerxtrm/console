@@ -1,4 +1,3 @@
-import { access } from "fs/promises";
 import { Hono } from "hono";
 import type { Database } from "bun:sqlite";
 import { emit, makeLogEntry } from "../../core/logger.ts";
@@ -62,27 +61,25 @@ function readIssueDetail(db: Database | null | undefined, projectId: string, iss
 async function readMemories(db: Database | null | undefined, projectId: string): Promise<Memory[]> {
   const beadsPath = getBeadsPath(db, projectId);
   if (!beadsPath) return [];
-  const knowledgePath = `${beadsPath}/knowledge.jsonl`;
-  if (!(await fileExists(knowledgePath))) {
-    logMissingProjectData("substrate.readMemories", projectId, beadsPath);
-    return [];
+  const memories = await new BeadsReader(db as Database).getMemories(`${beadsPath}/knowledge.jsonl`);
+  if (memories.length === 0) {
+    logEmptyOrMissingProjectData(loggedProjectMemories, "substrate.readMemories", projectId, beadsPath);
+  } else {
+    logProjectDataOnce(loggedProjectMemories, "substrate.readMemories", projectId, beadsPath, memories.length);
   }
-  const memories = await new BeadsReader(db ?? ({} as Database)).getMemories(knowledgePath);
-  logProjectDataOnce(loggedProjectMemories, "substrate.readMemories", projectId, beadsPath, memories.length);
   return memories;
 }
 
 async function readInteractions(db: Database | null | undefined, projectId: string, issueId?: string): Promise<Interaction[]> {
   const beadsPath = getBeadsPath(db, projectId);
   if (!beadsPath) return [];
-  const interactionsPath = `${beadsPath}/interactions.jsonl`;
-  if (!(await fileExists(interactionsPath))) {
-    logMissingProjectData("substrate.readInteractions", projectId, beadsPath);
-    return [];
-  }
-  const interactions = await new BeadsReader(db ?? ({} as Database)).getInteractions(interactionsPath);
+  const interactions = await new BeadsReader(db as Database).getInteractions(`${beadsPath}/interactions.jsonl`);
   const filtered = issueId ? interactions.filter((interaction) => interaction.issue_id === issueId) : interactions;
-  logProjectDataOnce(loggedProjectInteractions, "substrate.readInteractions", projectId, beadsPath, filtered.length);
+  if (filtered.length === 0) {
+    logEmptyOrMissingProjectData(loggedProjectInteractions, "substrate.readInteractions", projectId, beadsPath);
+  } else {
+    logProjectDataOnce(loggedProjectInteractions, "substrate.readInteractions", projectId, beadsPath, filtered.length);
+  }
   return filtered;
 }
 function readStats(db: Database | null | undefined, projectId: string) {
@@ -103,17 +100,11 @@ function getBeadsPath(db: Database | null | undefined, projectId: string): strin
   return row?.path ?? null;
 }
 
-async function fileExists(path: string): Promise<boolean> {
-  try {
-    await access(path);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function logMissingProjectData(event: string, projectId: string, beadsPath: string): void {
-  emit(makeLogEntry("api", event, "debug", undefined, { projectId, path: beadsPath, status: "ENOENT" }));
+function logEmptyOrMissingProjectData(seen: Set<string>, event: string, projectId: string, beadsPath: string): void {
+  const key = `${projectId}:${beadsPath}:empty-or-missing`;
+  if (seen.has(key)) return;
+  seen.add(key);
+  emit(makeLogEntry("api", event, "debug", undefined, { projectId, path: beadsPath, status: "empty-or-missing" }));
 }
 
 function logProjectDataOnce<T>(seen: Set<string>, event: string, projectId: string, beadsPath: string, count: number): void {
