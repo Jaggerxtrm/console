@@ -5,7 +5,7 @@ export const DASHBOARD_PERFORMANCE_BUDGETS = {
     fast: 250,
     slowLog: 500,
     graphP95: 1_500,
-    beadsProjectsP95: 1_000,
+    substrateProjectsP95: 1_000,
     githubListP95: 1_000,
     specialistsJobsP95: 1_000,
   },
@@ -21,7 +21,7 @@ export const DASHBOARD_PERFORMANCE_BUDGETS = {
 
 export const DASHBOARD_SLOW_PATHS = [
   "/api/console/graph",
-  "/api/beads/projects",
+  "/api/substrate/projects",
   "/api/github/prs",
   "/api/specialists/jobs",
 ] as const;

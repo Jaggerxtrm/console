@@ -3,13 +3,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useBeadSideDrawer } from "../../../../src/dashboard/hooks/useBeadSideDrawer.ts";
-vi.mock("../../../../src/dashboard/hooks/useBeadSideDrawer.ts", () => ({}));
 import { useShellStore } from "../../../../src/dashboard/stores/shell.ts";
 
 vi.mock("../../../../src/dashboard/hooks/useSpecialistOwnership.ts", () => ({ useSpecialistOwnership: () => ({ role: "executor", state: "running", repoSlug: "gitboard", jobId: "job-1" }) }));
 vi.mock("../../../../src/dashboard/hooks/useSpecialistHistory.ts", () => ({ useSpecialistHistory: () => ({ count: 2, jobs: [], loading: false, error: null }) }));
-vi.mock("../../../../src/dashboard/lib/beads-api.ts", () => ({ beadsApi: { getIssue: vi.fn(async () => ({ id: "forge-b2", title: "Beta", priority: 1, issue_type: "task", status: "open", description: null, notes: null, labels: [], related_ids: [], dependencies: [], project_id: "gitboard" })) } }));
-vi.mock("../../components/beads/IssueFeed.tsx", () => ({ IssueDossier: () => <div data-testid="issue-dossier" /> }));
+vi.mock("../../../../src/dashboard/lib/substrate-api.ts", () => ({ substrateApi: { getIssue: vi.fn(async () => ({ id: "forge-b2", title: "Beta", priority: 1, issue_type: "task", status: "open", description: null, notes: null, labels: [], related_ids: [], dependencies: [], project_id: "gitboard" })) } }));
+vi.mock("../../../../src/dashboard/components/beads/IssueFeed.tsx", () => ({ IssueDossier: () => <div data-testid="issue-dossier" /> }));
 
 import { BeadSideDrawer } from "../../../../src/dashboard/pages/console/BeadSideDrawer.tsx";
 

@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { XIcon } from "@primer/octicons-react";
 import type { BeadIssueDetail } from "../../../types/beads.ts";
 import { useBeadSideDrawer } from "../../hooks/useBeadSideDrawer.ts";
-import { beadsApi } from "../../lib/beads-api.ts";
+import { substrateApi } from "../../lib/substrate-api.ts";
 import { useShellStore } from "../../stores/shell.ts";
 import { useSpecialistOwnership } from "../../hooks/useSpecialistOwnership.ts";
 import { useSpecialistHistory } from "../../hooks/useSpecialistHistory.ts";
@@ -32,7 +32,7 @@ export function BeadSideDrawer({ onClose }: { onClose?: () => void } = {}) {
       return;
     }
     setLoading(true);
-    void beadsApi.getIssue(projectId, beadId).then((next) => {
+    void substrateApi.getIssue(projectId, beadId).then((next) => {
       if (!cancelled) setDetail(next);
     }).catch(() => {
       if (!cancelled) setDetail(null);

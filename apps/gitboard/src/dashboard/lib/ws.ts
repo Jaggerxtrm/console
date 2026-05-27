@@ -13,6 +13,8 @@ export type WsMessage = {
 
 export type WsHandler = (msg: WsMessage) => void;
 
+export const UNSUBSCRIBE_GRACE_MS = 2000;
+
 function isWsDebugEnabled(): boolean {
   try {
     if (typeof window === "undefined") return false;
@@ -33,6 +35,7 @@ export class WsClient {
   private subscriptions = new Map<string, number>();
   private handlers: WsHandler[] = [];
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private unsubscribeTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private reconnectDelay = 1000;
   private closed = false;
   private lastSeqByChannel = new Map<string, number>();
@@ -60,7 +63,8 @@ export class WsClient {
       const connectMs = Math.round(performance.now() - this.connectStartedAt);
       this.reconnectDelay = 1000;
       wsDebugLog("connected", { connectMs, subscriptions: this.subscriptions.size });
-      for (const channel of this.subscriptions.keys()) {
+      for (const [channel, count] of this.subscriptions) {
+        if (count === 0) continue;
         const since_seq = this.lastSeqByChannel.get(channel) ?? 0;
         if (since_seq > 0 && this.bootId) {
           wsDebugLog("resume", { channel, since_seq, boot_id: this.bootId });
@@ -111,9 +115,17 @@ export class WsClient {
   }
 
   subscribe(channel: string): void {
-    const nextCount = (this.subscriptions.get(channel) ?? 0) + 1;
+    const pendingUnsubscribe = this.unsubscribeTimers.get(channel);
+    if (pendingUnsubscribe) {
+      clearTimeout(pendingUnsubscribe);
+      this.unsubscribeTimers.delete(channel);
+      wsDebugLog("unsubscribe_canceled", { channel });
+    }
+
+    const currentCount = this.subscriptions.get(channel);
+    const nextCount = (currentCount ?? 0) + 1;
     this.subscriptions.set(channel, nextCount);
-    if (nextCount !== 1) return;
+    if (currentCount !== undefined) return;
 
     this._send({ action: "subscribe", channel, version: String(REALTIME_PROTOCOL_VERSION) });
   }
@@ -127,8 +139,16 @@ export class WsClient {
       return;
     }
 
-    this.subscriptions.delete(channel);
-    this._send({ action: "unsubscribe", channel });
+    this.subscriptions.set(channel, 0);
+    wsDebugLog("unsubscribe_scheduled", { channel, delayMs: UNSUBSCRIBE_GRACE_MS });
+    const timer = setTimeout(() => {
+      this.unsubscribeTimers.delete(channel);
+      if (this.subscriptions.get(channel) !== 0) return;
+      this.subscriptions.delete(channel);
+      this._send({ action: "unsubscribe", channel });
+      wsDebugLog("unsubscribe_sent", { channel });
+    }, UNSUBSCRIBE_GRACE_MS);
+    this.unsubscribeTimers.set(channel, timer);
   }
 
   onMessage(handler: WsHandler): () => void {
@@ -141,6 +161,11 @@ export class WsClient {
   disconnect(): void {
     this.closed = true;
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    for (const [channel, timer] of this.unsubscribeTimers) {
+      clearTimeout(timer);
+      if (this.subscriptions.get(channel) === 0) this.subscriptions.delete(channel);
+    }
+    this.unsubscribeTimers.clear();
     this.ws?.close();
     this.ws = null;
   }

@@ -1,6 +1,6 @@
-// Beads API client (forge-5w9.2).
-// Calls gitboard's own /api/beads/* surface, which mounts beadboard routes (server.ts:6,35).
-// Same-origin: no port 3010, no CORS. VITE_BEADS_API_URL override for split-host setups.
+// Substrate API client (forge-5w9.2).
+// Calls gitboard's own /api/substrate/* surface.
+// Same-origin by default; env override supports split-host setups during development.
 
 import type {
   BeadIssue,
@@ -26,12 +26,12 @@ export interface OpenPr {
   merged_at: string | null;
 }
 
-const API_BASE = import.meta.env.VITE_BEADS_API_URL || "";
+const API_BASE = import.meta.env.VITE_SUBSTRATE_API_URL || import.meta.env.VITE_BEADS_API_URL || "";
 
 async function jsonFetch<T>(path: string): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`);
   if (!res.ok) {
-    throw new Error(`beads-api ${path} → ${res.status} ${res.statusText}`);
+    throw new Error(`substrate-api ${path} → ${res.status} ${res.statusText}`);
   }
   return res.json() as Promise<T>;
 }
@@ -41,9 +41,9 @@ async function jsonFetch<T>(path: string): Promise<T> {
 // (forge-bvq security-auditor finding).
 const enc = encodeURIComponent;
 
-export const beadsApi = {
+export const substrateApi = {
   async listProjects(): Promise<BeadsProject[]> {
-    const data = await jsonFetch<{ projects?: BeadsProject[] }>("/api/beads/projects");
+    const data = await jsonFetch<{ projects?: BeadsProject[] }>("/api/substrate/projects");
     return data.projects ?? [];
   },
 
@@ -58,7 +58,7 @@ export const beadsApi = {
     if (filters?.limit) params.set("limit", String(filters.limit));
     const qs = params.toString();
     const data = await jsonFetch<{ issues?: BeadIssue[] }>(
-      `/api/beads/projects/${enc(projectId)}/issues${qs ? `?${qs}` : ""}`,
+      `/api/substrate/projects/${enc(projectId)}/issues${qs ? `?${qs}` : ""}`,
     );
     return data.issues ?? [];
   },
@@ -66,7 +66,7 @@ export const beadsApi = {
   async getIssue(projectId: string, issueId: string): Promise<BeadIssueDetail | null> {
     try {
       const data = await jsonFetch<{ issue?: BeadIssueDetail }>(
-        `/api/beads/projects/${enc(projectId)}/issues/${enc(issueId)}`,
+        `/api/substrate/projects/${enc(projectId)}/issues/${enc(issueId)}`,
       );
       return data.issue ?? null;
     } catch {
@@ -77,14 +77,14 @@ export const beadsApi = {
   async listClosedIssues(projectId: string, limit?: number): Promise<BeadIssue[]> {
     const qs = limit ? `?limit=${limit}` : "";
     const data = await jsonFetch<{ issues?: BeadIssue[] }>(
-      `/api/beads/projects/${enc(projectId)}/issues/closed${qs}`,
+      `/api/substrate/projects/${enc(projectId)}/issues/closed${qs}`,
     );
     return data.issues ?? [];
   },
 
   async listMemories(projectId: string): Promise<Memory[]> {
     const data = await jsonFetch<{ memories?: Memory[] }>(
-      `/api/beads/projects/${enc(projectId)}/memories`,
+      `/api/substrate/projects/${enc(projectId)}/memories`,
     );
     return data.memories ?? [];
   },
@@ -92,21 +92,21 @@ export const beadsApi = {
   async listInteractions(projectId: string, issueId?: string): Promise<Interaction[]> {
     const qs = issueId ? `?issue_id=${enc(issueId)}` : "";
     const data = await jsonFetch<{ interactions?: Interaction[] }>(
-      `/api/beads/projects/${enc(projectId)}/interactions${qs}`,
+      `/api/substrate/projects/${enc(projectId)}/interactions${qs}`,
     );
     return data.interactions ?? [];
   },
 
   async getStats(projectId: string): Promise<BeadsStats> {
     const data = await jsonFetch<{ stats: BeadsStats }>(
-      `/api/beads/projects/${enc(projectId)}/stats`,
+      `/api/substrate/projects/${enc(projectId)}/stats`,
     );
     return data.stats;
   },
 
   async getConnection(projectId: string): Promise<BeadsConnectionStatus> {
     return await jsonFetch<BeadsConnectionStatus>(
-      `/api/beads/projects/${enc(projectId)}/connection`,
+      `/api/substrate/projects/${enc(projectId)}/connection`,
     );
   },
 };

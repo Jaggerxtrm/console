@@ -1,7 +1,7 @@
 import { act, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { BeadsRepoView } from "../../../../src/dashboard/components/beads/BeadsRepoView.tsx";
-import { beadsApi } from "../../../../src/dashboard/lib/beads-api.ts";
+import { substrateApi } from "../../../../src/dashboard/lib/substrate-api.ts";
 import type { BeadIssue, BeadsProject } from "../../../../src/types/beads.ts";
 import type { WsMessage } from "../../../../src/dashboard/lib/ws.ts";
 
@@ -67,23 +67,23 @@ beforeEach(() => {
   vi.restoreAllMocks();
   vi.useRealTimers();
   inFlightJobs = [];
-  vi.spyOn(beadsApi, "listProjects").mockResolvedValue([project]);
-  vi.spyOn(beadsApi, "listIssues").mockResolvedValue([issue]);
-  vi.spyOn(beadsApi, "listClosedIssues").mockResolvedValue([]);
-  vi.spyOn(beadsApi, "listMemories").mockResolvedValue([]);
-  vi.spyOn(beadsApi, "listInteractions").mockResolvedValue([]);
+  vi.spyOn(substrateApi, "listProjects").mockResolvedValue([project]);
+  vi.spyOn(substrateApi, "listIssues").mockResolvedValue([issue]);
+  vi.spyOn(substrateApi, "listClosedIssues").mockResolvedValue([]);
+  vi.spyOn(substrateApi, "listMemories").mockResolvedValue([]);
+  vi.spyOn(substrateApi, "listInteractions").mockResolvedValue([]);
 });
 
 describe("BeadsRepoView realtime updates", () => {
   it("renders open issues before closed history finishes loading", async () => {
     let resolveClosed!: (issues: BeadIssue[]) => void;
-    vi.spyOn(beadsApi, "listClosedIssues").mockReturnValue(new Promise((resolve) => { resolveClosed = resolve; }));
+    vi.spyOn(substrateApi, "listClosedIssues").mockReturnValue(new Promise((resolve) => { resolveClosed = resolve; }));
 
     render(<BeadsRepoView repo={{ fullName: "owner/repo-a", displayName: "repo-a", lastActivityAt: null, openBeadsCount: 1, githubStats: { openPRs: 0, commitsToday: 0, openIssues: 0, releases: 0 }, beadsStats: { open: 1, inProgress: 0, blocked: 0, epics: 0 }, beadsSource: { label: "dolt", title: "Beads reading from Dolt", healthy: true }, hasGithub: true, hasBeads: true }} tab="feed" />);
 
     expect(await screen.findByText("Initial issue")).toBeInTheDocument();
-    expect(beadsApi.listIssues).toHaveBeenCalledWith(project.id, { status: ["open", "in_progress", "blocked", "in_review"], limit: 100 });
-    expect(beadsApi.listClosedIssues).toHaveBeenCalledWith(project.id, 50);
+    expect(substrateApi.listIssues).toHaveBeenCalledWith(project.id, { status: ["open", "in_progress", "blocked", "in_review"], limit: 100 });
+    expect(substrateApi.listClosedIssues).toHaveBeenCalledWith(project.id, 50);
 
     act(() => resolveClosed([{ ...issue, id: "GB-closed", title: "Closed issue", status: "closed" }]));
     expect(await screen.findByText("Closed issue")).toBeInTheDocument();
@@ -130,7 +130,7 @@ describe("BeadsRepoView realtime updates", () => {
 
   it("keeps visible rows mounted while a sync-hint refresh is pending", async () => {
     let resolveReload!: (issues: BeadIssue[]) => void;
-    const listIssues = vi.spyOn(beadsApi, "listIssues")
+    const listIssues = vi.spyOn(substrateApi, "listIssues")
       .mockResolvedValueOnce([issue])
       .mockReturnValueOnce(new Promise((resolve) => { resolveReload = resolve; }));
 
@@ -163,7 +163,7 @@ describe("BeadsRepoView realtime updates", () => {
 
 
   it("reloads mounted data on sync hints", async () => {
-    const listIssues = vi.spyOn(beadsApi, "listIssues")
+    const listIssues = vi.spyOn(substrateApi, "listIssues")
       .mockResolvedValueOnce([issue])
       .mockResolvedValueOnce([{ ...issue, id: "GB-3", title: "Reloaded issue" }]);
 

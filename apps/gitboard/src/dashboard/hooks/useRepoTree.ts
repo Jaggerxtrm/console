@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { apiClient } from "../lib/client.ts";
-import { beadsApi } from "../lib/beads-api.ts";
+import { substrateApi } from "../lib/substrate-api.ts";
 import { useShellStore } from "../stores/shell.ts";
 import type { GithubChips, BeadsChips, BeadsSourceChip, RepoNode } from "../../types/shell.ts";
 import type { BeadsConnectionStatus, BeadsProject, BeadsStats } from "../../types/beads.ts";
@@ -75,7 +75,7 @@ export function useRepoTree(): void {
         const [reposRes, statsRes, projects] = await Promise.all([
           apiClient.getRepos(),
           apiClient.getRepoStats().catch(() => ({ data: [] })),
-          beadsApi.listProjects(),
+          substrateApi.listProjects(),
         ]);
         if (cancelled) return;
 
@@ -83,8 +83,8 @@ export function useRepoTree(): void {
         const projectStats = await Promise.all(
           projects.map(async (p) => {
             const [stats, connection] = await Promise.all([
-              beadsApi.getStats(p.id).catch(() => null as BeadsStats | null),
-              beadsApi.getConnection(p.id).catch(() => null as BeadsConnectionStatus | null),
+              substrateApi.getStats(p.id).catch(() => null as BeadsStats | null),
+              substrateApi.getConnection(p.id).catch(() => null as BeadsConnectionStatus | null),
             ]);
             return [p, stats, connection] as const;
           }),

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { WsClient, buildWsUrl } from "../../../src/dashboard/lib/ws.ts";
+import { WsClient, buildWsUrl, UNSUBSCRIBE_GRACE_MS } from "../../../src/dashboard/lib/ws.ts";
 
 class MockWs {
   readyState = 1; // OPEN
@@ -44,6 +44,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   (globalThis as unknown as { WebSocket: unknown }).WebSocket = OriginalWebSocket;
 });
 
@@ -73,6 +74,7 @@ describe("WsClient.subscribe", () => {
   });
 
   it("keeps one server subscription alive until last local handler unmounts", () => {
+    vi.useFakeTimers();
     const client = new WsClient("ws://localhost/ws");
     client.connect();
     mockWs.triggerOpen();
@@ -107,7 +109,65 @@ describe("WsClient.subscribe", () => {
     unsubSecond();
     client.unsubscribe("github:activity");
 
+    expect(mockWs.sent.map((entry) => JSON.parse(entry)).some((msg) => msg.action === "unsubscribe")).toBe(false);
+    vi.advanceTimersByTime(UNSUBSCRIBE_GRACE_MS);
     expect(mockWs.sent.map((entry) => JSON.parse(entry)).filter((msg) => msg.action === "unsubscribe")).toEqual([
+      { action: "unsubscribe", channel: "github:activity" },
+    ]);
+  });
+
+  it("schedules unsubscribe after the grace timeout", () => {
+    vi.useFakeTimers();
+    const client = new WsClient("ws://localhost/ws");
+    client.connect();
+    mockWs.triggerOpen();
+
+    client.subscribe("github:activity");
+    client.unsubscribe("github:activity");
+
+    expect(mockWs.sent.map((entry) => JSON.parse(entry)).some((msg) => msg.action === "unsubscribe")).toBe(false);
+    vi.advanceTimersByTime(UNSUBSCRIBE_GRACE_MS - 1);
+    expect(mockWs.sent.map((entry) => JSON.parse(entry)).some((msg) => msg.action === "unsubscribe")).toBe(false);
+    vi.advanceTimersByTime(1);
+    expect(mockWs.sent.map((entry) => JSON.parse(entry)).filter((msg) => msg.action === "unsubscribe")).toEqual([
+      { action: "unsubscribe", channel: "github:activity" },
+    ]);
+  });
+
+  it("cancels pending unsubscribe on resubscribe within grace", () => {
+    vi.useFakeTimers();
+    const client = new WsClient("ws://localhost/ws");
+    client.connect();
+    mockWs.triggerOpen();
+
+    client.subscribe("github:activity");
+    client.unsubscribe("github:activity");
+    client.subscribe("github:activity");
+    vi.advanceTimersByTime(UNSUBSCRIBE_GRACE_MS);
+
+    const actions = mockWs.sent.map((entry) => JSON.parse(entry)).filter((msg) => msg.channel === "github:activity");
+    expect(actions.filter((msg) => msg.action === "subscribe")).toHaveLength(1);
+    expect(actions.some((msg) => msg.action === "unsubscribe")).toBe(false);
+  });
+
+  it("does not replay zero-ref grace subscriptions on reconnect", () => {
+    vi.useFakeTimers();
+    const firstSocket = mockWs;
+    const client = new WsClient("ws://localhost/ws");
+    client.connect();
+    client.subscribe("github:activity");
+    firstSocket.triggerOpen();
+
+    client.unsubscribe("github:activity");
+    const secondSocket = new MockWs();
+    wsFactory.mockImplementation(() => secondSocket);
+    firstSocket.close();
+    vi.advanceTimersByTime(1000);
+    secondSocket.triggerOpen();
+
+    expect(secondSocket.sent.map((entry) => JSON.parse(entry)).some((msg) => msg.channel === "github:activity")).toBe(false);
+    vi.advanceTimersByTime(UNSUBSCRIBE_GRACE_MS);
+    expect(secondSocket.sent.map((entry) => JSON.parse(entry))).toEqual([
       { action: "unsubscribe", channel: "github:activity" },
     ]);
   });
@@ -121,6 +181,7 @@ describe("WsClient.subscribe", () => {
   });
 
   it("keeps last seen seq after unsubscribe so remount can resume", () => {
+    vi.useFakeTimers();
     const client = new WsClient("ws://localhost/ws");
     client.connect();
     client.subscribe("github:activity");
@@ -130,7 +191,6 @@ describe("WsClient.subscribe", () => {
     client.unsubscribe("github:activity");
     client.subscribe("github:activity");
 
-    vi.useFakeTimers();
     const nextSocket = new MockWs();
     wsFactory.mockImplementation(() => nextSocket);
     mockWs.close();

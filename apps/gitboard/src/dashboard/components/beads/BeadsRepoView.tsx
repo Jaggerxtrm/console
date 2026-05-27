@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { IssueFeed } from "./IssueFeed.tsx";
 import { IssueOverlay } from "./IssueOverlay.tsx";
-import { beadsApi } from "../../lib/beads-api.ts";
+import { substrateApi } from "../../lib/substrate-api.ts";
 import { logClientEvent } from "../../lib/client-log.ts";
 import { useWebSocket } from "../../hooks/useWebSocket.ts";
 import { useInFlightJobs } from "../../hooks/useInFlightJobs.ts";
@@ -178,7 +178,7 @@ export function BeadsRepoView({ repo, tab }: { repo: RepoNode; tab: BeadsTab }) 
       const startedAt = performance.now();
       logClientEvent("beads.feed.load_start", { projectKey, candidates: projectCandidates, isProjectSwitch });
       try {
-        const projects = await beadsApi.listProjects();
+        const projects = await substrateApi.listProjects();
         const project = findProject(projects, projectCandidates);
         if (!project) {
           if (!cancelled) {
@@ -195,9 +195,9 @@ export function BeadsRepoView({ repo, tab }: { repo: RepoNode; tab: BeadsTab }) 
           return;
         }
         const [issuesResult, memoriesResult, interactionsResult] = await Promise.all([
-          beadsApi.listIssues(project.id, { status: ["open", "in_progress", "blocked", "in_review"], limit: 100 }).then((data) => data).catch(() => null as BeadIssue[] | null),
-          beadsApi.listMemories(project.id).then((data) => data).catch(() => null as Memory[] | null),
-          beadsApi.listInteractions(project.id).then((data) => data).catch(() => null as Interaction[] | null),
+          substrateApi.listIssues(project.id, { status: ["open", "in_progress", "blocked", "in_review"], limit: 100 }).then((data) => data).catch(() => null as BeadIssue[] | null),
+          substrateApi.listMemories(project.id).then((data) => data).catch(() => null as Memory[] | null),
+          substrateApi.listInteractions(project.id).then((data) => data).catch(() => null as Interaction[] | null),
         ]);
         if (cancelled) return;
         logClientEvent("beads.feed.load_result", {
@@ -233,7 +233,7 @@ export function BeadsRepoView({ repo, tab }: { repo: RepoNode; tab: BeadsTab }) 
               : interactionsResult,
         }));
 
-        void beadsApi.listClosedIssues(project.id, 50)
+        void substrateApi.listClosedIssues(project.id, 50)
           .then((closedIssues) => {
             if (!cancelled) setState((current) => current.project?.id === project.id ? { ...current, closedIssues } : current);
           })
@@ -296,7 +296,7 @@ export function BeadsRepoView({ repo, tab }: { repo: RepoNode; tab: BeadsTab }) 
 
     const changedIssueId = data.issue?.id ?? data.issueId ?? data.id;
     if (selectedId && changedIssueId === selectedId) {
-      void beadsApi.getIssue(state.project.id, selectedId).then(setDetail);
+      void substrateApi.getIssue(state.project.id, selectedId).then(setDetail);
     }
   }, [scheduleCoalescedRefetch, selectedId, state.issues.length, state.project]);
 
@@ -395,7 +395,7 @@ export function BeadsRepoView({ repo, tab }: { repo: RepoNode; tab: BeadsTab }) 
     setDetail(null);
     setLoadingDetailId(issue.id);
     try {
-      const d = await beadsApi.getIssue(state.project.id, issue.id);
+      const d = await substrateApi.getIssue(state.project.id, issue.id);
       setDetail(d);
     } finally {
       setLoadingDetailId(null);
@@ -453,6 +453,7 @@ export function BeadsRepoView({ repo, tab }: { repo: RepoNode; tab: BeadsTab }) 
 }
 
 function summarizeIssueForLog(issue: BeadIssue): Record<string, unknown> {
+  const maybeAssignee = "assignee" in issue ? issue.assignee : null;
   return {
     id: issue.id,
     title: truncateForLog(issue.title, 120),
@@ -460,7 +461,7 @@ function summarizeIssueForLog(issue: BeadIssue): Record<string, unknown> {
     priority: issue.priority,
     issue_type: issue.issue_type,
     owner: issue.owner ?? null,
-    assignee: issue.assignee ?? null,
+    assignee: maybeAssignee,
     created_at: issue.created_at,
     updated_at: issue.updated_at,
   };

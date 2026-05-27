@@ -25,7 +25,7 @@ describe("dashboard performance budgets", () => {
   it("names every currently known slow dashboard path", () => {
     expect(DASHBOARD_SLOW_PATHS).toEqual([
       "/api/console/graph",
-      "/api/beads/projects",
+      "/api/substrate/projects",
       "/api/github/prs",
       "/api/specialists/jobs",
     ]);

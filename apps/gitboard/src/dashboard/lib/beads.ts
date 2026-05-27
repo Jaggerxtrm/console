@@ -15,4 +15,4 @@ export type {
   ProjectSourceState,
   Status,
 } from "../../types/beads.ts";
-export { beadsApi } from "./beads-api.ts";
+export { substrateApi } from "./substrate-api.ts";

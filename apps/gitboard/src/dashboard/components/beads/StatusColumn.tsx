@@ -4,7 +4,7 @@
 
 import { AlertIcon, CheckCircleIcon, CircleIcon, DotFillIcon, PlayIcon } from "@primer/octicons-react";
 import type { BeadIssue } from "../../../types/beads.ts";
-import type { OpenPr } from "../../lib/beads-api.ts";
+import type { OpenPr } from "../../lib/substrate-api.ts";
 import { BeadCard } from "./BeadCard";
 
 interface StatusColumnProps {

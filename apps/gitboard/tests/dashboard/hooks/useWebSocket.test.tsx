@@ -73,8 +73,9 @@ vi.mock("react-dom/client", () => ({
   },
 }));
 
-import { createRoot, type Root } from "react-dom/client";
+import { createRoot } from "react-dom/client";
 import { _resetSharedClient, useWebSocket } from "../../../src/dashboard/hooks/useWebSocket.ts";
+import { UNSUBSCRIBE_GRACE_MS } from "../../../src/dashboard/lib/ws.ts";
 
 class MockWs {
   readyState = 0; // CONNECTING
@@ -92,11 +93,15 @@ class MockWs {
 
 let mockWs: MockWs;
 let wsFactory: ReturnType<typeof vi.fn>;
-let originalWindow: Window | undefined;
+let originalWindow: typeof globalThis.window | undefined;
 let originalDocument: Document | undefined;
 let windowStub: Window;
-let firstRoot: Root;
-let secondRoot: Root;
+type TestRoot = {
+  render: (next: null | ComponentFn) => void;
+  unmount: () => void;
+};
+let firstRoot: TestRoot;
+let secondRoot: TestRoot;
 let firstContainer: HTMLDivElement;
 let secondContainer: HTMLDivElement;
 const OriginalWebSocket = globalThis.WebSocket;
@@ -107,6 +112,7 @@ function Probe({ handler }: { handler: (msg: { type?: string; channel?: string; 
 }
 
 beforeEach(() => {
+  vi.useFakeTimers();
   _resetSharedClient();
   originalWindow = globalThis.window;
   originalDocument = globalThis.document;
@@ -128,8 +134,8 @@ beforeEach(() => {
   firstContainer = document.createElement("div");
   secondContainer = document.createElement("div");
   document.body.append(firstContainer, secondContainer);
-  firstRoot = createRoot(firstContainer);
-  secondRoot = createRoot(secondContainer);
+  firstRoot = createRoot(firstContainer) as unknown as TestRoot;
+  secondRoot = createRoot(secondContainer) as unknown as TestRoot;
 });
 
 afterEach(() => {
@@ -143,6 +149,7 @@ afterEach(() => {
   (globalThis as any).window = originalWindow;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (globalThis as any).document = originalDocument;
+  vi.useRealTimers();
 });
 
 describe("useWebSocket", () => {
@@ -164,8 +171,29 @@ describe("useWebSocket", () => {
     expect(secondHandler).toHaveBeenCalledTimes(1);
 
     secondRoot.render(null);
+    expect(mockWs.sent.map((entry) => JSON.parse(entry)).some((msg) => msg.action === "unsubscribe")).toBe(false);
+    vi.advanceTimersByTime(UNSUBSCRIBE_GRACE_MS);
     expect(mockWs.sent.map((entry) => JSON.parse(entry)).filter((msg) => msg.action === "unsubscribe")).toEqual([
       { action: "unsubscribe", channel: "github:activity" },
     ]);
+  });
+
+  it("does not churn server subscription during rapid remount navigation", () => {
+    const firstHandler = vi.fn();
+    const secondHandler = vi.fn();
+
+    firstRoot.render(() => Probe({ handler: firstHandler }));
+    mockWs.triggerOpen();
+    firstRoot.render(null);
+    secondRoot.render(() => Probe({ handler: secondHandler }));
+    vi.advanceTimersByTime(UNSUBSCRIBE_GRACE_MS);
+
+    const messages = mockWs.sent.map((entry) => JSON.parse(entry));
+    expect(messages.filter((msg) => msg.action === "subscribe")).toHaveLength(1);
+    expect(messages.some((msg) => msg.action === "unsubscribe")).toBe(false);
+
+    mockWs.triggerMessage({ type: "event", channel: "github:activity", event: "new_event", data: { id: "nav" } });
+    expect(firstHandler).toHaveBeenCalledTimes(0);
+    expect(secondHandler).toHaveBeenCalledTimes(1);
   });
 });

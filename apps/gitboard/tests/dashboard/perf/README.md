@@ -10,7 +10,7 @@ Use `DASHBOARD_PERFORMANCE_BUDGETS` from `realtime-helpers.ts` as the shared tar
 - API slow-log threshold: `500ms`.
 - P95 targets for slow dashboard families:
   - `/api/console/graph`: `1500ms`
-  - `/api/beads/projects*`: `1000ms`
+  - `/api/substrate/projects*`: `1000ms`
   - `/api/github/*` list endpoints: `1000ms`
   - `/api/specialists/jobs*`: `1000ms`
 - Tab switches should not trigger unrelated endpoint families.
