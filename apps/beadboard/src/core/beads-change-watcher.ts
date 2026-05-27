@@ -210,7 +210,7 @@ export class BeadsChangeWatcher {
         eventCounts: countEvents(batch),
         version: batch.at(-1)?.version ?? null,
       }));
-      this.registry.publish("substrate:changes", "beads:sync_hint", { reason: "overflow" }, batch.at(-1)?.version);
+      this.registry.publish("substrate:changes", "substrate:sync_hint", { reason: "overflow" }, batch.at(-1)?.version);
       return;
     }
     const grouped = new Map<string, PendingEvent[]>();
