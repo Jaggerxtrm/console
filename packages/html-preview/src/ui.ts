@@ -38,7 +38,10 @@ export function renderIndex(index: PreviewIndex): string {
                 <input id="search" type="search" placeholder="Filter by title, repo, or path" autocomplete="off" />
                 <span class="muted" id="result-count">${index.documents.length} visible</span>
               </div>
-              <div class="rows" id="rows">${rows || renderEmptyState()}</div>
+              <div class="rows" id="rows">
+                ${rows || renderEmptyState()}
+                <div class="empty filtered-empty" id="filtered-empty" hidden>No matching HTML files.</div>
+              </div>
             </section>
           </main>
         </div>
@@ -162,6 +165,7 @@ const search = document.querySelector("#search");
 const rows = Array.from(document.querySelectorAll(".html-row"));
 const count = document.querySelector("#result-count");
 const filters = Array.from(document.querySelectorAll(".repo-filter"));
+const empty = document.querySelector("#filtered-empty");
 let activeRepo = "all";
 
 function applyFilters() {
@@ -175,6 +179,7 @@ function applyFilters() {
     if (show) visible += 1;
   }
   if (count) count.textContent = visible + " visible";
+  if (empty) empty.hidden = visible !== 0 || rows.length === 0;
 }
 
 for (const filter of filters) {
@@ -195,12 +200,20 @@ function renderThemeScript(): string {
 
 const themeScript = `
 const shell = document.querySelector(".ide-shell");
-const savedTheme = localStorage.getItem("xtrm-html-preview-theme") || "dark";
+const themeStorage = {
+  get() {
+    try { return localStorage.getItem("xtrm-html-preview-theme"); } catch { return null; }
+  },
+  set(value) {
+    try { localStorage.setItem("xtrm-html-preview-theme", value); } catch {}
+  }
+};
+const savedTheme = themeStorage.get() || "dark";
 shell?.setAttribute("data-theme", savedTheme);
 document.querySelector(".ide-theme-toggle")?.addEventListener("click", () => {
   const next = shell?.getAttribute("data-theme") === "light" ? "dark" : "light";
   shell?.setAttribute("data-theme", next);
-  localStorage.setItem("xtrm-html-preview-theme", next);
+  themeStorage.set(next);
 });
 `;
 
@@ -245,6 +258,7 @@ html, body { margin: 0; min-height: 100%; }
 body { font-family: var(--font-ui); font-size: 14px; background: var(--bg); color: var(--text-primary); overflow: hidden; }
 a { color: inherit; text-decoration: none; }
 button, input { font: inherit; }
+[hidden] { display: none !important; }
 * { scrollbar-width: thin; scrollbar-color: #333 transparent; }
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -360,6 +374,7 @@ dd { margin: 0 0 10px; color: var(--text-secondary); overflow-wrap: anywhere; }
 .preview-stage { min-width: 0; min-height: 0; background: #fff; }
 iframe { width: 100%; height: 100%; border: 0; background: #fff; }
 .empty, .not-found { padding: 24px; color: var(--text-muted); }
+.filtered-empty { border-bottom: 1px solid var(--border-subtle); }
 .not-found h1 { color: var(--text-primary); margin: 0 0 8px; }
 
 @media (max-width: 780px) {
