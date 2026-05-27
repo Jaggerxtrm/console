@@ -3,8 +3,8 @@ import { REALTIME_PROTOCOL_VERSION } from "../../types/realtime.ts";
 export type ChannelName =
   | "github:activity"
   | `github:repo:${string}`
-  | "beads:changes"
-  | `beads:project:${string}`
+  | "substrate:changes"
+  | `substrate:project:${string}`
   | "specialists:activity"
   | `specialists:repo:${string}`
   | `session:${string}`

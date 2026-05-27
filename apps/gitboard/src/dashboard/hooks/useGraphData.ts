@@ -22,7 +22,7 @@ export function useGraphData(projectId: string | null) {
     },
   });
 
-  useDashboardResourceInvalidation("beads:changes", key, (msg: WsMessage) => {
+  useDashboardResourceInvalidation("substrate:changes", key, (msg: WsMessage) => {
     const data = msg.data as { projectId?: string; project_id?: string } | undefined;
     const eventProject = data?.projectId ?? data?.project_id;
     return eventProject === projectId;

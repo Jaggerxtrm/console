@@ -286,7 +286,7 @@ export function BeadsRepoView({ repo, tab }: { repo: RepoNode; tab: BeadsTab }) 
       currentIssues: state.issues.length,
     });
 
-    if (msg.event === "beads:sync_hint") {
+    if (msg.event === "substrate:sync_hint") {
       scheduleCoalescedRefetch();
       return;
     }
@@ -300,7 +300,7 @@ export function BeadsRepoView({ repo, tab }: { repo: RepoNode; tab: BeadsTab }) 
     }
   }, [scheduleCoalescedRefetch, selectedId, state.issues.length, state.project]);
 
-  useWebSocket("beads:changes", handleBeadsMessage);
+  useWebSocket("substrate:changes", handleBeadsMessage);
 
   const specialistByIssueId = useMemo(() => buildSpecialistByIssueId(inFlight.jobs, state.project), [inFlight.jobs, state.project]);
 

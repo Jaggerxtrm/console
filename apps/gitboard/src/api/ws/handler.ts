@@ -80,8 +80,8 @@ export class WsHandler {
         JSON.stringify({
           type: "event",
           channel,
-          event: channel.startsWith("beads:")
-            ? "beads:sync_hint"
+          event: channel.startsWith("substrate:")
+            ? "substrate:sync_hint"
             : channel.startsWith("specialists:")
               ? "specialists:sync_hint"
               : "github:sync_hint",

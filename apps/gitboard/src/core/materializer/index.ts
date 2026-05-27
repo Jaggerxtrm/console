@@ -86,10 +86,12 @@ export class Materializer {
       ...(kind ? { kind } : {}),
     }));
     for (const channel of hint.channels) {
-      emit(makeLogEntry("system", "materializer.publishHint.publish", "info", undefined, {
+      emit(makeLogEntry("ws", "channel.publish", "debug", undefined, {
+        component: "ws",
+        event: "channel.publish",
         source_key: sourceKey,
         channel,
-        event: hint.event,
+        realtime_event: hint.event,
         ...(kind ? { kind } : {}),
       }));
       this.wsRegistry?.publish(channel as Parameters<ChannelRegistry["publish"]>[0], hint.event, { source_key: sourceKey, ...(kind ? { kind } : {}) }, String(Date.now()));
@@ -103,7 +105,7 @@ export class Materializer {
     }
     if (sourceKey.startsWith("beads:")) {
       const projectId = sourceKey.slice(6);
-      return { channels: ["beads:changes", `beads:project:${projectId}`], event: "beads:sync_hint" };
+      return { channels: ["substrate:changes", `substrate:project:${projectId}`], event: "substrate:sync_hint" };
     }
     return { channels: ["system"], event: "materializer:hint" };
   }
