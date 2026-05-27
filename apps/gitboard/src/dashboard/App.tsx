@@ -9,13 +9,15 @@ import type { TabId } from "../types/shell.ts";
 import { MainPane } from "./components/shell/MainPane.tsx";
 import { BeadSideDrawer } from "./pages/console/BeadSideDrawer.tsx";
 import { useGithubActivity } from "./hooks/useGithubActivity.ts";
+import { SourcesPanel } from "./components/settings/SourcesPanel.tsx";
 
-type Tab = "github" | "console";
+type Tab = "github" | "console" | "settings";
 type View = "dashboard" | "design-preview";
 
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: "github", label: "GitHub" },
   { id: "console", label: "Console" },
+  { id: "settings", label: "Settings" },
 ];
 
 // Beadboard is served from the same server at /beadboard
@@ -23,25 +25,16 @@ const BEADBOARD_URL = import.meta.env.VITE_BEADBOARD_URL || "/beadboard";
 
 export function App() {
   const path = window.location.pathname;
-  if (path.includes("/gitboard/beads")) {
+  useEffect(() => {
     const store = useShellStore.getState();
-    if (store.selection.surface !== "console" || store.selection.tab !== routeTab(path)) {
-      store.setSurface("console");
+    if (path.includes("/gitboard/beads") || path.endsWith("/console") || path.includes("/gitboard/console/")) {
+      if (store.selection.surface !== "console") store.setSurface("console");
       const tab = routeTab(path);
-      if (tab) store.setTab(tab);
+      if (tab && store.selection.tab !== tab) store.setTab(tab);
     }
-  } else if (path.endsWith("/console") || path.includes("/gitboard/console/")) {
-    const store = useShellStore.getState();
-    if (store.selection.surface !== "console") store.setSurface("console");
-    const tab = routeTab(path);
-    if (tab) store.setTab(tab);
-  }
-  // /gitboard/legacy → old TabBar shell (preserved for parity testing)
-  // /gitboard/design-preview, /preview → design preview
-  // default → unified IDE shell (forge-7xu)
+  }, [path]);
   if (path.endsWith("/legacy")) return <DashboardShell view="dashboard" />;
-  if (path.endsWith("/design-preview") || path.endsWith("/preview"))
-    return <DashboardShell view="design-preview" />;
+  if (path.endsWith("/design-preview") || path.endsWith("/preview")) return <DashboardShell view="design-preview" />;
   return <ShellApp />;
 }
 
@@ -158,7 +151,7 @@ function DashboardShell({ view }: { view: View }) {
           <DesignPreview />
         ) : activeTab === "github" ? (
           <GithubPanel />
-        ) : (
+        ) : activeTab === "console" ? (
           <iframe 
             src={BEADBOARD_URL}
             style={{ 
@@ -169,6 +162,10 @@ function DashboardShell({ view }: { view: View }) {
             }}
             title="Beadboard"
           />
+        ) : (
+          <div style={{ padding: 16 }}>
+            <SourcesPanel />
+          </div>
         )}
       </main>
     </div>

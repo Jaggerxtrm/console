@@ -97,7 +97,7 @@ export class UnifiedScanner {
     const beads = (await Promise.all(beadsRoots.map((root) => this.scanBeadsRoot(root)))).flat();
     const obsRoots = this.getObservabilityRoots();
     const observabilityCandidates = obsRoots.flatMap((root) => this.scanObservabilityCandidates(root));
-    const observability = this.assignObsSlugs(observabilityCandidates).map((entry) => ({ sourceKey: `obs:${entry.repoSlug}`, kind: "observability", path: entry.dbPath, status: "active" }));
+    const observability: UnifiedSource[] = this.assignObsSlugs(observabilityCandidates).map((entry) => ({ sourceKey: `obs:${entry.repoSlug}`, kind: "observability" as const, path: entry.dbPath, status: "active" as const }));
     return [...beads, ...observability];
   }
 
@@ -123,7 +123,7 @@ export class UnifiedScanner {
       const beadsDir = entries.find((entry) => entry.name === ".beads" && entry.isDirectory());
       if (beadsDir) {
         const projectId = await this.getBeadsProjectId(dirPath);
-        if (projectId) discovered.push({ sourceKey: `beads:${projectId}`, kind: "beads", path: join(dirPath, ".beads"), status: "active" });
+        if (projectId) discovered.push({ sourceKey: `beads:${projectId}`, kind: "beads" as const, path: join(dirPath, ".beads"), status: "active" as const });
       }
       for (const entry of entries) {
         if (!entry.isDirectory()) continue;
@@ -267,7 +267,7 @@ export class UnifiedScanner {
     return discovered.reduce((counts, source) => {
       counts[source.kind] += 1;
       return counts;
-    }, { beads: 0, observability: 0 });
+    }, { beads: 0, observability: 0 } as Record<UnifiedSourceKind, number>);
   }
 
   private isWorktreePath(dirPath: string): boolean {

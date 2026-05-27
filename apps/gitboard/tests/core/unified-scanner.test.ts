@@ -61,6 +61,20 @@ describe("UnifiedScanner", () => {
     db.close();
   });
 
+  it("preserves manual rows across refresh", async () => {
+    const db = createXtrmDatabase(dbPath);
+    const scanner = new UnifiedScanner(db, { beadsSearchPath: tmpDir, observabilityRoots: [tmpDir], parityEnabled: false });
+    db.query("INSERT INTO sources (source_key, kind, path, origin, status) VALUES ('manual:repo', 'beads', '/manual/repo', 'manual', 'active')").run();
+
+    await scanner.refresh();
+
+    const row = db.query<{ origin: string; status: string }, []>("SELECT origin, status FROM sources WHERE source_key = 'manual:repo'").get();
+    expect(row?.origin).toBe("manual");
+    expect(row?.status).toBe("active");
+
+    db.close();
+  });
+
   it("skips git worktree paths", async () => {
     const db = createXtrmDatabase(dbPath);
     const scanner = new UnifiedScanner(db, { beadsScanPaths: [tmpDir], observabilityRoots: [tmpDir], parityEnabled: false });

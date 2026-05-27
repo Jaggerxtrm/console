@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { Database } from "bun:sqlite";
 import { emit, makeLogEntry } from "../../core/logger.ts";
 import { BeadsReader } from "../../core/beads-reader.ts";
+import { formatSourceDisplayPath } from "./sources-policy.ts";
 import type { BeadDependency, BeadIssue, BeadIssueDetail, BeadsProject, Memory, Interaction } from "../../../../beadboard/src/types/beads.ts";
 
 let loggedSchemaColumns = false;
@@ -13,7 +14,7 @@ export function createSubstrateRouter(xtrmDb?: Database | null): Hono {
 
   router.get("/projects", (c) => c.json({ projects: readProjects(xtrmDb) }));
   router.get("/projects/:projectId/issues", (c) => c.json({ issues: readIssues(xtrmDb, c.req.param("projectId"), parseIssueFilters(c)) }));
-  router.get("/projects/:projectId/issues/closed", (c) => c.json({ issues: readClosedIssues(xtrmDb, c.req.param("projectId"), parseLimit(c.req.query("limit"), 50)) }));
+  router.get("/projects/:projectId/issues/closed", (c) => c.json({ issues: readClosedIssues(xtrmDb, c.req.param("projectId"), parseLimit(c.req.query("limit"), 50) ?? 50) }));
   router.get("/projects/:projectId/issues/:issueId", (c) => {
     const issue = readIssueDetail(xtrmDb, c.req.param("projectId"), c.req.param("issueId"));
     return issue ? c.json({ issue }) : c.json({ error: "Issue not found" }, 404);
@@ -32,8 +33,8 @@ function readProjects(db?: Database | null): BeadsProject[] {
   return rows.map((row) => ({
     id: row.source_key.replace(/^beads:/, ""),
     name: row.path.split("/").filter(Boolean).at(-2) ?? row.source_key,
-    path: row.path,
-    beadsPath: row.path,
+    path: formatSourceDisplayPath(row.path),
+    beadsPath: formatSourceDisplayPath(row.path),
     source: "unknown",
     status: "active",
     lastScanned: row.last_seen_at ?? new Date(0).toISOString(),
