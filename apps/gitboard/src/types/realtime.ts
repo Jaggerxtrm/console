@@ -52,7 +52,7 @@ export type BeadsRealtimeEvent =
   | "beads:kv.delete"
   | "beads:comment.append"
   | "beads:batch"
-  | "beads:sync_hint"
+  | "substrate:sync_hint"
   | "beads:source_health";
 
 export type GithubPrUpsert = GithubPr;
@@ -85,5 +85,5 @@ export type BeadsBatch = {
   closes?: string[];
   deletes?: string[];
 };
-export type BeadsSyncHint = { reason: string; project_id?: string; since_seq?: number };
+export type SubstrateSyncHint = { reason: string; project_id?: string; since_seq?: number };
 export type BeadsSourceHealth = { project: BeadsProject; health: ProjectSourceHealth[] };

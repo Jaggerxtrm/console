@@ -17,8 +17,8 @@ const xtrmDb = createXtrmDatabase(join(root, "xtrm.sqlite"));
 const registry = new ChannelRegistry();
 const published: Array<{ event: string; payload: unknown }> = [];
 const originalPublish = registry.publish.bind(registry);
-registry.publish = ((channel: string, event: string, payload: unknown, version?: string) => {
-  if (channel === "system" && event === "materializer:hint") published.push({ event, payload });
+registry.publish = ((channel, event, payload, version) => {
+  if (channel.startsWith("substrate:") && event === "substrate:sync_hint") published.push({ event, payload });
   return originalPublish(channel, event, payload, version);
 }) as typeof registry.publish;
 

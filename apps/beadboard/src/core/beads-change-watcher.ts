@@ -1,7 +1,7 @@
 import { watch, type FSWatcher } from "node:fs";
 import { join } from "node:path";
 import type { ChannelRegistry } from "../../../gitboard/src/api/ws/channels.ts";
-import type { BeadDependency, BeadIssue, BeadsProject, Memory } from "../types/beads.ts";
+import type { BeadDependency, BeadIssue, BeadsProject, Memory, Status } from "../types/beads.ts";
 import { ProjectScanner } from "./project-scanner.ts";
 import { DoltClient } from "./dolt-client.ts";
 import { BeadsReader } from "./beads-reader.ts";
@@ -210,7 +210,7 @@ export class BeadsChangeWatcher {
         eventCounts: countEvents(batch),
         version: batch.at(-1)?.version ?? null,
       }));
-      this.registry.publish("beads:changes", "beads:sync_hint", { reason: "overflow" }, batch.at(-1)?.version);
+      this.registry.publish("substrate:changes", "substrate:sync_hint", { reason: "overflow" }, batch.at(-1)?.version);
       return;
     }
     const grouped = new Map<string, PendingEvent[]>();
@@ -223,9 +223,9 @@ export class BeadsChangeWatcher {
         issueEvents: summarizeIssueEvents(events),
         version: events.at(-1)?.version ?? null,
       }));
-      this.registry.publish("beads:changes", "beads:batch", { project_id: projectId, issues: events.filter((e) => e.event === "beads:issue.upsert").map((e) => e.data.issue), dependencies: events.filter((e) => e.event === "beads:dep.upsert").map((e) => e.data as unknown as BeadDependency), memories: events.filter((e) => e.event === "beads:memory.upsert").map((e) => e.data as unknown as Memory), kv: events.filter((e) => e.event === "beads:kv.upsert").map((e) => e.data as { key: string; value: unknown; project_id: string }) }, events.at(-1)?.version);
+      this.registry.publish("substrate:changes", "beads:batch", { project_id: projectId, issues: events.filter((e) => e.event === "beads:issue.upsert").map((e) => e.data.issue), dependencies: events.filter((e) => e.event === "beads:dep.upsert").map((e) => e.data as unknown as BeadDependency), memories: events.filter((e) => e.event === "beads:memory.upsert").map((e) => e.data as unknown as Memory), kv: events.filter((e) => e.event === "beads:kv.upsert").map((e) => e.data as { key: string; value: unknown; project_id: string }) }, events.at(-1)?.version);
     }
-    for (const item of batch) this.registry.publish("beads:changes", item.event, { projectId: item.projectId, source: item.source, ...item.data }, item.version);
+    for (const item of batch) this.registry.publish("substrate:changes", item.event, { projectId: item.projectId, source: item.source, ...item.data }, item.version);
   }
 
   private async readSnapshot(project: BeadsProject): Promise<Snapshot> {
@@ -297,7 +297,16 @@ function summarizeIssueEvents(events: PendingEvent[]): Array<Record<string, unkn
         version: event.version,
       };
     })
-    .filter((event): event is Record<string, unknown> => Boolean(event));
+    .filter((event): event is {
+      event: string;
+      projectId: string;
+      issueId: string;
+      status: Status | undefined;
+      title: string | undefined;
+      created_at: string | undefined;
+      updated_at: string | undefined;
+      version: string;
+    } => Boolean(event));
   return issueEvents.slice(0, 50);
 }
 
@@ -309,7 +318,6 @@ function summarizeIssue(issue: BeadIssue): Record<string, unknown> {
     priority: issue.priority,
     issue_type: issue.issue_type,
     owner: issue.owner ?? null,
-    assignee: issue.assignee ?? null,
     created_at: issue.created_at,
     updated_at: issue.updated_at,
   };

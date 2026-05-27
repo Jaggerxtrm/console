@@ -98,7 +98,7 @@ describe("BeadsRepoView realtime updates", () => {
     act(() => {
       wsHandler?.({
         type: "event",
-        channel: "beads:changes",
+        channel: "substrate:changes",
         event: "beads:issue.upsert",
         data: { projectId: project.id, issue: { ...issue, id: "GB-2", title: "Live issue" } },
       });
@@ -117,7 +117,7 @@ describe("BeadsRepoView realtime updates", () => {
     act(() => {
       wsHandler?.({
         type: "event",
-        channel: "beads:changes",
+        channel: "substrate:changes",
         event: "beads:issue.close",
         data: { projectId: project.id, issueId: issue.id },
       });
@@ -139,7 +139,7 @@ describe("BeadsRepoView realtime updates", () => {
     expect(await screen.findByText("Initial issue")).toBeInTheDocument();
     vi.useFakeTimers();
     await act(async () => {
-      wsHandler?.({ type: "event", channel: "beads:changes", event: "beads:sync_hint", data: { project_id: project.id, reason: "buffer_miss" } });
+      wsHandler?.({ type: "event", channel: "substrate:changes", event: "substrate:sync_hint", data: { project_id: project.id, reason: "buffer_miss" } });
       vi.advanceTimersByTime(1500);
     });
     await act(async () => { await Promise.resolve(); });
@@ -172,7 +172,7 @@ describe("BeadsRepoView realtime updates", () => {
     expect(await screen.findByText("Initial issue")).toBeInTheDocument();
     vi.useFakeTimers();
     await act(async () => {
-      wsHandler?.({ type: "event", channel: "beads:changes", event: "beads:sync_hint", data: { project_id: project.id, reason: "buffer_miss" } });
+      wsHandler?.({ type: "event", channel: "substrate:changes", event: "substrate:sync_hint", data: { project_id: project.id, reason: "buffer_miss" } });
       vi.advanceTimersByTime(1500);
     });
     await act(async () => { await Promise.resolve(); });

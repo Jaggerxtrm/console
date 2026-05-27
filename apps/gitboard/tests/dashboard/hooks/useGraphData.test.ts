@@ -56,7 +56,7 @@ describe("useGraphData", () => {
     renderHook(() => useGraphData("gitboard-ignore-2"));
     await act(async () => { await Promise.resolve(); });
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    wsHandlerByChannel.get("beads:changes")?.({ type: "event", channel: "beads:changes", event: "beads:sync_hint", data: { reason: "global" } });
+    wsHandlerByChannel.get("substrate:changes")?.({ type: "event", channel: "substrate:changes", event: "substrate:sync_hint", data: { reason: "global" } });
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
@@ -89,8 +89,8 @@ describe("useGraphData", () => {
     (globalThis as any).fetch = fetchMock as any;
     renderHook(() => useGraphData("gitboard-sync"));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
-    expect(wsHandlerByChannel.get("beads:changes")).toBeTypeOf("function");
-    wsHandlerByChannel.get("beads:changes")?.({ type: "event", channel: "beads:changes", event: "beads:sync_hint", data: { project_id: "gitboard-sync" } });
+    expect(wsHandlerByChannel.get("substrate:changes")).toBeTypeOf("function");
+    wsHandlerByChannel.get("substrate:changes")?.({ type: "event", channel: "substrate:changes", event: "substrate:sync_hint", data: { project_id: "gitboard-sync" } });
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
     expect(fetchMock.mock.calls[1][0]).not.toContain("refresh=true");
   });});

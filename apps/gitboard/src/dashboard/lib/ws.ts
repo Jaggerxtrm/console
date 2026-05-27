@@ -127,6 +127,9 @@ export class WsClient {
     this.subscriptions.set(channel, nextCount);
     if (currentCount !== undefined) return;
 
+    if (channel.startsWith("substrate:")) {
+      wsDebugLog("channel.subscribe", { component: "ws", event: "channel.subscribe", channel });
+    }
     this._send({ action: "subscribe", channel, version: String(REALTIME_PROTOCOL_VERSION) });
   }
 
