@@ -1,3 +1,4 @@
+import type { Database } from "bun:sqlite";
 import { createAttachPool } from "../server/observability/attach-pool.ts";
 import { emit, makeLogEntry } from "./logger.ts";
 import { createObservabilityDao } from "../server/observability/dao.ts";
@@ -7,6 +8,7 @@ import { ProjectScanner } from "./project-scanner.ts";
 import { DoltClient } from "./dolt-client.ts";
 import type { BeadDependency, BeadIssue, BeadsProject } from "../types/beads.ts";
 import type { GraphEdge, GraphEdgeType, GraphNode, GraphNodeStatus, GraphNodeType, GraphResponse, GraphSpecialist } from "../types/graph.ts";
+import { makeSourceHealth, type SourceHealth } from "../types/source-health.ts";
 import type { SpecialistJob } from "../server/observability/types.ts";
 
 const NODE_TYPES = new Set(["task", "bug", "feature", "epic", "chore", "decision", "molecule"]);
@@ -37,17 +39,38 @@ let globalIssueEpoch = 0;
 export interface GraphDaoOptions {
   scanner?: ProjectScanner;
   observability?: ReturnType<typeof createObservabilityDao>;
+  xtrmDb?: Database | null;
+  triggerMaterialization?: (projectId?: string | null) => void;
 }
 
+type GraphSnapshotResult = { graph: GraphResponse; freshness: "fresh" | "stale" | "degraded"; sourceHealth?: SourceHealth };
+
 export function createGraphDao(options: GraphDaoOptions = {}) {
+  if (options.xtrmDb) {
+    const xtrmDb = options.xtrmDb;
+    return {
+      requiresProtectedRefresh: true,
+      getGraphSnapshot(projectId: string | null | undefined, includeClosed = false): GraphSnapshotResult {
+        return readXtrmGraphSnapshot(xtrmDb, projectId, includeClosed);
+      },
+      async getGraphSnapshotWarm(projectId: string | null | undefined, includeClosed = false): Promise<GraphSnapshotResult> {
+        return readXtrmGraphSnapshot(xtrmDb, projectId, includeClosed);
+      },
+      invalidate(projectId?: string | null): void {
+        options.triggerMaterialization?.(projectId);
+      },
+    };
+  }
+
   const scanner = options.scanner ?? getScanner();
   const getDao = () => options.observability ?? getObservabilityDao();
 
   return {
-    getGraphSnapshot(projectId: string | null | undefined, includeClosed = false): { graph: GraphResponse; freshness: "fresh" | "stale" | "degraded" } {
+    requiresProtectedRefresh: false,
+    getGraphSnapshot(projectId: string | null | undefined, includeClosed = false): GraphSnapshotResult {
       return readGraphSnapshot(scanner, getDao, projectId, includeClosed);
     },
-    async getGraphSnapshotWarm(projectId: string | null | undefined, includeClosed = false): Promise<{ graph: GraphResponse; freshness: "fresh" | "stale" | "degraded" }> {
+    async getGraphSnapshotWarm(projectId: string | null | undefined, includeClosed = false): Promise<GraphSnapshotResult> {
       if (hasCachedGraphSnapshot(scanner, projectId, includeClosed)) return readGraphSnapshot(scanner, getDao, projectId, includeClosed);
 
       const startedAt = performance.now();
@@ -71,6 +94,43 @@ export function createGraphDao(options: GraphDaoOptions = {}) {
       invalidateGraphCache(resolveProject(readCachedProjects(scanner)?.projects ?? [], projectId)?.id ?? projectId);
     },
   };
+}
+
+function readXtrmGraphSnapshot(db: Database, projectId: string | null | undefined, includeClosed: boolean): GraphSnapshotResult {
+  const startedAt = performance.now();
+  const source = resolveXtrmSource(db, projectId);
+  if (!source) {
+    const graph = emptyGraph(projectId ?? "", projectFallbackNote(projectId, []));
+    const sourceHealth = makeSourceHealth("graph", "degraded", {
+      message: projectId ? `Graph project "${projectId}" was not found.` : "Graph project_id is missing; select a beads project.",
+      metadata: { project: graph.project },
+    });
+    return { graph, freshness: "degraded", sourceHealth };
+  }
+
+  const issues = readXtrmIssues(db, source.projectId, includeClosed);
+  const specialists = readXtrmSpecialists(db, source.projectId);
+  const graph = buildGraph({
+    id: source.projectId,
+    name: source.projectId,
+    path: source.path,
+    beadsPath: source.path,
+    status: "active",
+    lastScanned: stateTimestampFallback(),
+    issueCount: issues.length,
+  }, issues, specialists, includeClosed);
+  const state = readXtrmMaterializationState(db, source.sourceKey);
+  const health = graphHealthFromMaterialization(state);
+  emit(makeLogEntry("api", "graph.xtrm_snapshot.timing", "info", undefined, {
+    projectId: source.projectId,
+    includeClosed,
+    rows: issues.length,
+    specialists: specialists.length,
+    sourceHealth: health.sourceHealth.status,
+    freshness: health.freshness,
+    ms: Math.round(performance.now() - startedAt),
+  }));
+  return { graph, freshness: health.freshness, sourceHealth: health.sourceHealth };
 }
 
 function hasCachedGraphSnapshot(scanner: ProjectScanner, projectId: string | null | undefined, includeClosed: boolean): boolean {
@@ -308,6 +368,109 @@ async function readIssues(project: BeadsProject, includeClosed: boolean): Promis
   const issues = await readIssuesFromJsonl(project.beadsPath);
   emit(makeLogEntry("api", "graph.source.timing", "info", undefined, { projectId: project.id, source: "jsonl", ms: Math.round(performance.now() - startedAt), rows: issues.length }));
   return issues;
+}
+
+function resolveXtrmSource(db: Database, projectId: string | null | undefined): { sourceKey: string; projectId: string; path: string } | null {
+  const normalizedProjectId = projectId?.trim();
+  const row = normalizedProjectId
+    ? db.query("SELECT source_key, path FROM sources WHERE kind = 'beads' AND source_key = ? LIMIT 1").get(`beads:${normalizedProjectId}`) as { source_key: string; path: string } | undefined
+    : db.query("SELECT source_key, path FROM sources WHERE kind = 'beads' AND status IN ('active', 'missing') ORDER BY source_key ASC LIMIT 1").get() as { source_key: string; path: string } | undefined;
+  if (!row) return null;
+  const sourceProjectId = row.source_key.replace(/^beads:/, "");
+  return { sourceKey: row.source_key, projectId: sourceProjectId, path: row.path };
+}
+
+function readXtrmIssues(db: Database, projectId: string, includeClosed: boolean): BeadIssue[] {
+  const where = includeClosed
+    ? "repo_slug = ? AND (deleted_at IS NULL OR deleted_at = '')"
+    : "repo_slug = ? AND (deleted_at IS NULL OR deleted_at = '') AND state <> 'closed'";
+  const rows = db.query(`
+    SELECT issue_id, title, body, state, priority, issue_type, owner, labels, related_ids, parent_id, deleted_at, closed_at, close_reason, notes, created_at, updated_at
+    FROM substrate_issues
+    WHERE ${where}
+    ORDER BY priority ASC, created_at DESC, issue_id ASC
+  `).all(projectId) as Array<Record<string, unknown>>;
+  const dependencies = db.query("SELECT issue_id, dep_issue_id, relation FROM substrate_dependencies WHERE repo_slug = ?").all(projectId) as Array<{ issue_id: string; dep_issue_id: string; relation: string }>;
+  const depsByIssue = new Map<string, BeadDependency[]>();
+  for (const dep of dependencies) {
+    const list = depsByIssue.get(dep.issue_id) ?? [];
+    list.push({ id: dep.dep_issue_id, title: "", status: "open", dependency_type: dep.relation });
+    depsByIssue.set(dep.issue_id, list);
+  }
+
+  return rows.map((row) => ({
+    id: String(row.issue_id),
+    title: String(row.title ?? ""),
+    description: row.body == null ? null : String(row.body),
+    notes: row.notes == null ? null : String(row.notes),
+    status: String(row.state ?? "open"),
+    priority: Number(row.priority ?? 2),
+    issue_type: String(row.issue_type ?? "task"),
+    owner: row.owner == null ? null : String(row.owner),
+    created_at: String(row.created_at ?? new Date(0).toISOString()),
+    created_by: null,
+    updated_at: String(row.updated_at ?? new Date(0).toISOString()),
+    closed_at: row.closed_at == null ? (row.deleted_at == null ? undefined : String(row.deleted_at)) : String(row.closed_at),
+    close_reason: row.close_reason == null ? undefined : String(row.close_reason),
+    project_id: projectId,
+    dependencies: depsByIssue.get(String(row.issue_id)) ?? [],
+    parent_id: row.parent_id == null ? undefined : String(row.parent_id),
+    related_ids: parseJsonStringArray(row.related_ids),
+    labels: parseJsonStringArray(row.labels),
+  }));
+}
+
+function readXtrmSpecialists(db: Database, projectId: string): SpecialistJob[] {
+  const rows = db.query(`
+    SELECT repo_slug, job_id, bead_id, chain_id, epic_id, chain_kind, status, updated_at, specialist, last_output
+    FROM specialist_jobs
+    WHERE repo_slug = ? AND status IN ('starting', 'running', 'waiting')
+    ORDER BY COALESCE(updated_at, '') DESC, job_id ASC
+  `).all(projectId) as Array<Record<string, unknown>>;
+  return rows.map((row) => ({
+    jobId: row.job_id == null ? null : String(row.job_id),
+    repoSlug: String(row.repo_slug),
+    beadId: String(row.bead_id ?? row.job_id),
+    chainId: row.chain_id == null ? null : String(row.chain_id),
+    epicId: row.epic_id == null ? null : String(row.epic_id),
+    chainKind: row.chain_kind == null ? null : String(row.chain_kind),
+    status: String(row.status),
+    updatedAt: String(row.updated_at ?? new Date().toISOString()),
+    specialist: row.specialist == null ? null : String(row.specialist),
+    lastOutput: row.last_output == null ? null : String(row.last_output),
+    turns: null,
+    tools: null,
+    model: null,
+  }));
+}
+
+function readXtrmMaterializationState(db: Database, sourceKey: string): { last_success_at: string | null; last_status: string | null; last_error: string | null } | null {
+  return db.query("SELECT last_success_at, last_status, last_error FROM materialization_state WHERE source_key = ?").get(sourceKey) as { last_success_at: string | null; last_status: string | null; last_error: string | null } | null;
+}
+
+function stateTimestampFallback(): string {
+  return new Date(0).toISOString();
+}
+
+function graphHealthFromMaterialization(state: ReturnType<typeof readXtrmMaterializationState>): { freshness: "fresh" | "stale" | "degraded"; sourceHealth: SourceHealth } {
+  const ageSeconds = state?.last_success_at ? Math.max(0, Math.floor((Date.now() - Date.parse(state.last_success_at)) / 1000)) : null;
+  const metadata = { last_status: state?.last_status ?? null, last_success_at: state?.last_success_at ?? null, age_seconds: ageSeconds };
+  if (!state?.last_success_at) return { freshness: "stale", sourceHealth: makeSourceHealth("graph", "degraded", { metadata }) };
+  if (state.last_status === "error") return { freshness: "fresh", sourceHealth: makeSourceHealth("graph", "degraded", { message: "Graph source materialization failed.", metadata }) };
+  if (state.last_status === "success") return { freshness: "fresh", sourceHealth: makeSourceHealth("graph", "fresh", { metadata }) };
+  return { freshness: "stale", sourceHealth: makeSourceHealth("graph", "stale", { metadata }) };
+}
+
+function parseJsonStringArray(value: unknown): string[] {
+  if (value == null || value === "") return [];
+  if (Array.isArray(value)) return value.map(String);
+  if (typeof value !== "string") return [];
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return Array.isArray(parsed) ? parsed.map(String) : [];
+  } catch {
+    return [];
+  }
 }
 
 function buildGraph(project: BeadsProject, issues: BeadIssue[], specialists: SpecialistJob[], includeClosed: boolean): GraphResponse {

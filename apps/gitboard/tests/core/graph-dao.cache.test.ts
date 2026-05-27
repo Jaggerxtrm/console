@@ -100,6 +100,7 @@ describe("graph cache identity", () => {
 });
 
 const baseIssue: BeadIssue = {
+  id: "repo-a-issue",
   title: "issue",
   description: null,
   notes: null,

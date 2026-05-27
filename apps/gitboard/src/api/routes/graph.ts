@@ -2,8 +2,10 @@ import { Hono } from "hono";
 import { createGraphDao } from "../../core/graph-dao.ts";
 import { makeSourceHealth, type SourceHealth } from "../../types/source-health.ts";
 import type { GraphResponse } from "../../types/graph.ts";
+import { canRefreshSources, createSourceRefreshState, isAllowedMutationRequest } from "./sources-policy.ts";
 
 let defaultDao: ReturnType<typeof createGraphDao> | null = null;
+const refreshStateByProject = new Map<string, ReturnType<typeof createSourceRefreshState>>();
 
 export function createGraphRouter(dao = getDefaultDao()): Hono {
   const app = new Hono();
@@ -11,14 +13,26 @@ export function createGraphRouter(dao = getDefaultDao()): Hono {
   app.get("/", async (c) => {
     const projectId = c.req.query("project") ?? c.req.query("project_id");
     const includeClosed = c.req.query("include_closed") === "true";
-    if (c.req.query("refresh") === "true") dao.invalidate(projectId);
-    const { graph, freshness } = await dao.getGraphSnapshotWarm(projectId, includeClosed);
-    return c.json({ ...graph, freshness, source_health: makeGraphSourceHealth(graph, freshness) });
+    if (c.req.query("refresh") === "true" && !dao.requiresProtectedRefresh) dao.invalidate(projectId);
+    const { graph, freshness, sourceHealth } = await dao.getGraphSnapshotWarm(projectId, includeClosed);
+    return c.json({ ...graph, freshness, source_health: sourceHealth ?? makeGraphSourceHealth(graph, freshness) });
   });
 
   app.post("/invalidate", async (c) => {
+    if (!isAllowedMutationRequest(c.req.url, c.req.header("host") ?? "", c.req.header("origin") ?? null, c.req.header("x-gitboard-sources-admin-token") ?? null)) {
+      return c.json({ error: "forbidden" }, 403);
+    }
     const body = await c.req.json().catch(() => ({})) as { project_id?: string | null };
-    dao.invalidate(body.project_id);
+    const key = body.project_id ?? "__all__";
+    const state = refreshStateByProject.get(key) ?? createSourceRefreshState();
+    refreshStateByProject.set(key, state);
+    const allowed = canRefreshSources(Date.now(), state);
+    if (!allowed.ok) return c.json(allowed.body, allowed.status);
+    state.inFlight = Promise.resolve().then(() => dao.invalidate(body.project_id)).finally(() => {
+      state.inFlight = null;
+      state.lastCompletedAt = Date.now();
+    });
+    await state.inFlight;
     return c.json({ ok: true });
   });
 

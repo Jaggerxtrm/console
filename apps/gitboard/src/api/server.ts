@@ -14,10 +14,11 @@ import { createSubstrateRouter } from "./routes/substrate.ts";
 import { createSpecialistsRouter } from "./routes/specialists.ts";
 import { createObservabilityRouter } from "./routes/observability.ts";
 import { createGraphRouter } from "./routes/graph.ts";
+import { createGraphDao } from "../core/graph-dao.ts";
 import { createShellRouter } from "./routes/shell.ts";
 import { createSourcesRouter } from "./routes/sources.ts";
 import { createTerminalRouter } from "./routes/terminal.ts";
-import { ChannelRegistry } from "./ws/channels.ts";
+import { ChannelRegistry, type ChannelName } from "./ws/channels.ts";
 import { WsHandler } from "./ws/handler.ts";
 import { Materializer } from "../core/materializer/index.ts";
 import { createObservabilityAdapter } from "../core/materializer/observability-adapter.ts";
@@ -86,7 +87,7 @@ export function createApp(db: Database, xtrmDb?: Database): {
     currentEpochBumpUnsubscribe?.();
     currentEpochBumpUnsubscribe = onBump((repoSlug) => {
       const sourceKey = `obs:${repoSlug}`;
-      for (const channel of ["specialists:activity", `specialists:repo:${repoSlug}`]) {
+      for (const channel of ["specialists:activity", `specialists:repo:${repoSlug}`] as ChannelName[]) {
         registry.publish(channel, "specialists:sync_hint", { source_key: sourceKey, kind: "epoch_bump" }, String(Date.now()));
       }
     });
@@ -146,7 +147,13 @@ export function createApp(db: Database, xtrmDb?: Database): {
   app.route("/api/beads", createBeadsRouter(xtrmDb ?? null));
   app.route("/api/specialists", createSpecialistsRouter(undefined, xtrmDb));
   app.route("/api/console/observability", createObservabilityRouter(undefined, xtrmDb));
-  app.route("/api/console/graph", createGraphRouter());
+  app.route("/api/console/graph", createGraphRouter(xtrmDb ? createGraphDao({
+    xtrmDb,
+    triggerMaterialization: (projectId) => {
+      if (!projectId) return;
+      materializer?.trigger(`beads:${projectId}`);
+    },
+  }) : undefined));
   app.route("/api/sources", createSourcesRouter(xtrmDb ?? null, currentUnifiedScanner));
   app.route("/api/console/shell", createShellRouter());
   app.route("/api/console/terminal", createTerminalRouter());
