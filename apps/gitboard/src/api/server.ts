@@ -9,7 +9,6 @@ import { createInternalSubstrateRouter } from "./routes/internal-substrate.ts";
 import { createInternalVerifyRouter } from "./routes/internal-verify.ts";
 import { createInternalParityRouter } from "./routes/internal-parity.ts";
 import { setRealtimePublisher, emit, makeLogEntry } from "../core/logger.ts";
-import { createBeadsRouter } from "../../../beadboard/src/api/routes/beads.ts";
 import { createSubstrateRouter } from "./routes/substrate.ts";
 import { createSpecialistsRouter } from "./routes/specialists.ts";
 import { createObservabilityRouter } from "./routes/observability.ts";
@@ -125,7 +124,7 @@ export function createApp(db: Database, xtrmDb?: Database): {
       throw error;
     } finally {
       const ms = Math.round(performance.now() - start);
-      if (c.req.path.startsWith("/api/github") || c.req.path.startsWith("/api/console") || c.req.path.startsWith("/api/beads")) {
+      if (c.req.path.startsWith("/api/github") || c.req.path.startsWith("/api/console")) {
         emit(makeLogEntry("api", "request.timing", "info", undefined, { path: c.req.path, ms, status: c.res.status }));
       }
       if (ms > 500) emit(makeLogEntry("api", "request.slow", "warn", "slow request", { path: c.req.path, ms }));
@@ -144,7 +143,6 @@ export function createApp(db: Database, xtrmDb?: Database): {
   // API routes
   app.route("/api/github", createGithubRouter(db, registry));
   app.route("/api/substrate", createSubstrateRouter(xtrmDb ?? null));
-  app.route("/api/beads", createBeadsRouter(xtrmDb ?? null));
   app.route("/api/specialists", createSpecialistsRouter(undefined, xtrmDb));
   app.route("/api/console/observability", createObservabilityRouter(undefined, xtrmDb));
   app.route("/api/console/graph", createGraphRouter(xtrmDb ? createGraphDao({
@@ -186,12 +184,6 @@ export function createApp(db: Database, xtrmDb?: Database): {
       const file = Bun.file(join(gitboardDist, "gitboard/index.html"));
       return new Response(file, { headers: { "Content-Type": "text/html" } });
     });
-
-    // Beadboard frontend deprecated (forge-5w9.9) — unified into gitboard's IDE shell.
-    // /beadboard and /beadboard/* now redirect to gitboard. Backend routes at
-    // /api/beads/* still come from beadboard's source via beadsRoutes above.
-    app.get("/beadboard", (c) => c.redirect("/gitboard"));
-    app.get("/beadboard/*", (c) => c.redirect("/gitboard"));
 
     // Root redirects to gitboard
     app.get("/", (c) => c.redirect("/gitboard"));
@@ -280,7 +272,6 @@ export function startServer(db: Database, xtrmDb?: Database, options: ServerOpti
 
   console.log(`[xtrm] Server running at http://${hostname}:${port}`);
   console.log(`[xtrm] - Gitboard: http://${hostname}:${port}/gitboard`);
-  console.log(`[xtrm] - Beadboard: http://${hostname}:${port}/beadboard`);
   console.log(`[xtrm] - Console: http://${hostname}:${port}/console`);
 }
 

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { substrateApi } from "../../../src/dashboard/lib/substrate-api.ts";
+import { substrateApi } from "../../../src/dashboard/lib/beads.ts";
 
 const originalFetch = globalThis.fetch;
 let fetchMock: ReturnType<typeof vi.fn>;

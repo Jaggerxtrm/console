@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { apiClient } from "../lib/client.ts";
-import { substrateApi } from "../lib/substrate-api.ts";
+import { substrateApi } from "../lib/beads.ts";
 import { useShellStore } from "../stores/shell.ts";
 import type { GithubChips, BeadsChips, BeadsSourceChip, RepoNode } from "../../types/shell.ts";
 import type { BeadsConnectionStatus, BeadsProject, BeadsStats } from "../../types/beads.ts";

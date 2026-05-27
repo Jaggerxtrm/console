@@ -1,7 +1,7 @@
 import { act, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { BeadsRepoView } from "../../../../src/dashboard/components/beads/BeadsRepoView.tsx";
-import { substrateApi } from "../../../../src/dashboard/lib/substrate-api.ts";
+import { substrateApi } from "../../../../src/dashboard/lib/beads.ts";
 import type { BeadIssue, BeadsProject } from "../../../../src/types/beads.ts";
 import type { WsMessage } from "../../../../src/dashboard/lib/ws.ts";
 
