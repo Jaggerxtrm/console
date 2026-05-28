@@ -1,35 +1,31 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { createDatabase } from "./core/store.ts";
+import { foldGitboardSQLite } from "./core/migrations/fold-gitboard-sqlite.ts";
 import { createXtrmDatabase } from "./core/xtrm-store.ts";
 import { GithubPoller, getGithubToken, getAuthenticatedUsername } from "./core/github-poller.ts";
 import { discoverAndInsert } from "./core/github-discover.ts";
 import { startServer, getCurrentRegistry } from "./api/server.ts";
-import { setLogLevel } from "./core/logger.ts";
+import { emit, makeLogEntry, setLogLevel } from "./core/logger.ts";
 
 const DATA_DIR = process.env.GITBOARD_DATA_DIR ?? `${process.env.HOME}/.agent-forge`;
-const DB_PATH = join(DATA_DIR, "gitboard.sqlite");
+const GITBOARD_DB_PATH = join(DATA_DIR, "gitboard.sqlite");
 const XTRM_DB_PATH = join(DATA_DIR, "xtrm.sqlite");
 mkdirSync(DATA_DIR, { recursive: true });
 const PORT = Number(process.env.PORT ?? 3000);
 setLogLevel((process.env.LOG_LEVEL as "debug" | "info" | "warn" | "error" | undefined) ?? "info");
 
-const db = createDatabase(DB_PATH);
-console.log(`[gitboard] Database initialized at ${DB_PATH}`);
+const xtrmDb = createXtrmDatabase(XTRM_DB_PATH);
+emit(makeLogEntry("store", "db.path", "info", undefined, { path: XTRM_DB_PATH }));
+console.log(`[xtrm] Database initialized at ${XTRM_DB_PATH}`);
 
-const xtrmEnabled = process.env.GITBOARD_XTRM_PATH === "1";
-const xtrmDb = xtrmEnabled ? createXtrmDatabase(XTRM_DB_PATH) : undefined;
-if (xtrmDb) console.log(`[xtrm] Database initialized at ${XTRM_DB_PATH}`);
-else console.log("[xtrm] Disabled — set GITBOARD_XTRM_PATH=1 to enable materializer path");
-
-startServer(db, xtrmDb, { port: PORT });
+foldGitboardSQLite(GITBOARD_DB_PATH, xtrmDb);
+startServer(xtrmDb, { port: PORT });
 
 try {
   if (process.env.SKIP_GITHUB_POLLER === "1") {
     console.log("[gitboard] GitHub poller disabled: SKIP_GITHUB_POLLER=1");
     process.on("SIGINT", () => {
-      db.close();
-      xtrmDb?.close();
+      xtrmDb.close();
       process.exit(0);
     });
   } else {
@@ -37,9 +33,9 @@ try {
   const username = await getAuthenticatedUsername(token);
 
   // Auto-discover repos on first run so the DB is populated
-  await discoverAndInsert(db);
+  await discoverAndInsert(xtrmDb);
 
-  const poller = new GithubPoller(db, token, { registry: getCurrentRegistry() ?? undefined });
+  const poller = new GithubPoller(xtrmDb, token, { registry: getCurrentRegistry() ?? undefined });
 
   console.log(`[gitboard] Backfilling events for user ${username}...`);
   await poller.backfill(username);
@@ -49,16 +45,14 @@ try {
   process.on("SIGINT", () => {
     console.log("\n[gitboard] Shutting down...");
     poller.stop();
-    db.close();
-    xtrmDb?.close();
+    xtrmDb.close();
     process.exit(0);
   });
   }
 } catch (err) {
   console.warn("[gitboard] GitHub poller disabled:", (err as Error).message);
   process.on("SIGINT", () => {
-    db.close();
-    xtrmDb?.close();
+    xtrmDb.close();
     process.exit(0);
   });
 }

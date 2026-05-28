@@ -71,11 +71,12 @@ export function createApp(db: Database, xtrmDb?: Database): {
   const app = new Hono<{ Variables: AppVariables }>();
   const registry = new ChannelRegistry();
   currentRegistry = registry;
-  const materializer = xtrmDb ? new Materializer(xtrmDb, registry) : null;
+  const storeDb = xtrmDb ?? db;
+  const materializer = xtrmDb ? new Materializer(storeDb, registry) : null;
   currentMaterializer = materializer;
   const obsRepos = listRepos();
   currentUnifiedScanner?.stop();
-  currentUnifiedScanner = xtrmDb ? new UnifiedScanner(xtrmDb, { parityEnabled: process.env.GITBOARD_ENABLE_PARITY === "1" }) : null;
+  currentUnifiedScanner = xtrmDb ? new UnifiedScanner(storeDb, { parityEnabled: process.env.GITBOARD_ENABLE_PARITY === "1" }) : null;
   currentUnifiedScanner?.start();
   if (materializer && xtrmDb) {
     for (const repo of obsRepos) {
@@ -141,7 +142,7 @@ export function createApp(db: Database, xtrmDb?: Database): {
   app.get("/health", (c) => c.json({ status: "ok" }));
 
   // API routes
-  app.route("/api/github", createGithubRouter(db, registry));
+  app.route("/api/github", createGithubRouter(storeDb, registry));
   app.route("/api/substrate", createSubstrateRouter(xtrmDb ?? null));
   app.route("/api/specialists", createSpecialistsRouter(undefined, xtrmDb));
   app.route("/api/console/observability", createObservabilityRouter(undefined, xtrmDb));
@@ -192,11 +193,11 @@ export function createApp(db: Database, xtrmDb?: Database): {
   return { app, registry, wsHandler, materializer };
 }
 
-export function startServer(db: Database, xtrmDb?: Database, options: ServerOptions = {}): void {
+export function startServer(xtrmDb: Database, options: ServerOptions = {}): void {
   const port = options.port ?? 3000;
   const hostname = options.hostname ?? process.env.HOST ?? (process.env.NODE_ENV === "production" ? "0.0.0.0" : "127.0.0.1");
 
-  const { app, wsHandler } = createApp(db, xtrmDb);
+  const { app, wsHandler } = createApp(xtrmDb);
   const terminalBridge = new TerminalBridge(createTerminalProviderRegistry(process.env));
 
   const server = Bun.serve({

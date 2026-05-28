@@ -1,5 +1,5 @@
 export type LogLevel = "debug" | "info" | "warn" | "error";
-export type LogComponent = "poller" | "watcher" | "dolt" | "ws" | "api" | "breaker" | "system";
+export type LogComponent = "poller" | "watcher" | "dolt" | "ws" | "api" | "breaker" | "system" | "migration" | "store";
 
 export type LogEntry = {
   ts: string;

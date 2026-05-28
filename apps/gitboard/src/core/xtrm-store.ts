@@ -1,6 +1,13 @@
 import { Database } from "bun:sqlite";
 
 export const XTRM_TABLES = [
+  "github_events",
+  "github_commits",
+  "github_repos",
+  "github_prs",
+  "github_issues",
+  "github_releases",
+  "github_repo_poll_state",
   "substrate_issues",
   "substrate_dependencies",
   "specialist_jobs",
@@ -15,6 +22,125 @@ export type XtrmTableName = (typeof XTRM_TABLES)[number];
 const SCHEMA = `
 PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
+
+CREATE TABLE IF NOT EXISTS github_events (
+  id              TEXT PRIMARY KEY,
+  type            TEXT NOT NULL,
+  repo            TEXT NOT NULL,
+  branch          TEXT,
+  actor           TEXT NOT NULL,
+  action          TEXT,
+  title           TEXT,
+  body            TEXT,
+  url             TEXT,
+  additions       INTEGER,
+  deletions       INTEGER,
+  changed_files   INTEGER,
+  commit_count    INTEGER,
+  created_at      DATETIME NOT NULL,
+  ingested_at     DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_gh_events_repo   ON github_events(repo, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_gh_events_type   ON github_events(type, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_gh_events_date   ON github_events(created_at DESC);
+
+CREATE TABLE IF NOT EXISTS github_commits (
+  sha             TEXT PRIMARY KEY,
+  repo            TEXT NOT NULL,
+  branch          TEXT,
+  author          TEXT NOT NULL,
+  message         TEXT NOT NULL,
+  message_full    TEXT,
+  url             TEXT,
+  additions       INTEGER,
+  deletions       INTEGER,
+  changed_files   INTEGER,
+  event_id        TEXT REFERENCES github_events(id),
+  committed_at    DATETIME NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_gh_commits_repo  ON github_commits(repo, committed_at DESC);
+CREATE INDEX IF NOT EXISTS idx_gh_commits_event ON github_commits(event_id);
+
+CREATE TABLE IF NOT EXISTS github_repos (
+  full_name       TEXT PRIMARY KEY,
+  display_name    TEXT,
+  tracked         BOOLEAN DEFAULT TRUE,
+  group_name      TEXT,
+  last_polled_at  DATETIME,
+  color           TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_gh_repos_group ON github_repos(group_name);
+
+CREATE TABLE IF NOT EXISTS github_prs (
+  repo            TEXT NOT NULL,
+  number          INTEGER NOT NULL,
+  title           TEXT NOT NULL,
+  body            TEXT,
+  state           TEXT NOT NULL,
+  author          TEXT NOT NULL,
+  url             TEXT,
+  additions       INTEGER,
+  deletions       INTEGER,
+  changed_files   INTEGER,
+  comment_count   INTEGER DEFAULT 0,
+  label_names     TEXT,
+  created_at      DATETIME NOT NULL,
+  updated_at      DATETIME,
+  merged_at       DATETIME,
+  closed_at       DATETIME,
+  PRIMARY KEY (repo, number)
+);
+
+CREATE INDEX IF NOT EXISTS idx_gh_prs_repo  ON github_prs(repo, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_gh_prs_state ON github_prs(state, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS github_issues (
+  repo            TEXT NOT NULL,
+  number          INTEGER NOT NULL,
+  title           TEXT NOT NULL,
+  body            TEXT,
+  state           TEXT NOT NULL,
+  author          TEXT NOT NULL,
+  url             TEXT,
+  comment_count   INTEGER DEFAULT 0,
+  label_names     TEXT,
+  created_at      DATETIME NOT NULL,
+  updated_at      DATETIME,
+  closed_at       DATETIME,
+  PRIMARY KEY (repo, number)
+);
+
+CREATE INDEX IF NOT EXISTS idx_gh_issues_repo  ON github_issues(repo, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_gh_issues_state ON github_issues(state, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS github_repo_poll_state (
+  repo                  TEXT PRIMARY KEY,
+  last_issue_updated_at  DATETIME,
+  last_pr_updated_at     DATETIME,
+  last_activity_at       DATETIME,
+  issue_etag            TEXT,
+  pr_etag               TEXT,
+  paused_until          DATETIME,
+  last_release_published_at DATETIME,
+  release_etag          TEXT
+);
+
+CREATE TABLE IF NOT EXISTS github_releases (
+  repo            TEXT NOT NULL,
+  tag_name        TEXT NOT NULL,
+  release_id      TEXT NOT NULL,
+  name            TEXT,
+  body            TEXT,
+  html_url        TEXT,
+  author_login    TEXT NOT NULL,
+  published_at    DATETIME NOT NULL,
+  created_at      DATETIME NOT NULL,
+  PRIMARY KEY (repo, tag_name)
+);
+CREATE INDEX IF NOT EXISTS idx_gh_releases_repo ON github_releases(repo, published_at DESC);
 
 CREATE TABLE IF NOT EXISTS substrate_issues (
   repo_slug      TEXT NOT NULL,
