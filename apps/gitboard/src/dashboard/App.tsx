@@ -135,8 +135,7 @@ function DashboardShell({ view }: { view: View }) {
           <div style={{ padding: 16 }}>
             <SourcesPanel />
           </div>
-        ) : (
-        )}
+        ) : null}
       </main>
     </div>
   );
