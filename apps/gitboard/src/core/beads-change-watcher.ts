@@ -1,11 +1,11 @@
 import { watch, type FSWatcher } from "node:fs";
 import { join } from "node:path";
-import type { ChannelRegistry } from "../../../gitboard/src/api/ws/channels.ts";
+import type { ChannelRegistry } from "../api/ws/channels.ts";
 import type { BeadDependency, BeadIssue, BeadsProject, Memory, Status } from "../types/beads.ts";
 import { ProjectScanner } from "./project-scanner.ts";
 import { DoltClient } from "./dolt-client.ts";
 import { BeadsReader } from "./beads-reader.ts";
-import { emit, makeLogEntry } from "../../../gitboard/src/core/logger.ts";
+import { emit, makeLogEntry } from "./logger.ts";
 
 // forge-h830: the 2s interval was hammering Dolt with getCommitHash + readSnapshot
 // for every tracked project (25 × every 2s = 12 qps just for this watcher),

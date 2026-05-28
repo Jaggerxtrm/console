@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { IssueFeed } from "./IssueFeed.tsx";
 import { IssueOverlay } from "./IssueOverlay.tsx";
-import { substrateApi } from "../../lib/substrate-api.ts";
+import { substrateApi } from "../../lib/beads.ts";
 import { logClientEvent } from "../../lib/client-log.ts";
 import { useWebSocket } from "../../hooks/useWebSocket.ts";
 import { useInFlightJobs } from "../../hooks/useInFlightJobs.ts";

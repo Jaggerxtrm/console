@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { XIcon } from "@primer/octicons-react";
 import type { BeadIssueDetail } from "../../../types/beads.ts";
 import { useBeadSideDrawer } from "../../hooks/useBeadSideDrawer.ts";
-import { substrateApi } from "../../lib/substrate-api.ts";
+import { substrateApi } from "../../lib/beads.ts";
 import { useShellStore } from "../../stores/shell.ts";
 import { useSpecialistOwnership } from "../../hooks/useSpecialistOwnership.ts";
 import { useSpecialistHistory } from "../../hooks/useSpecialistHistory.ts";

@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { LinkExternalIcon } from "@primer/octicons-react";
 import { GithubPanel } from "./components/github/GithubPanel.tsx";
 import { useRepoTree } from "./hooks/useRepoTree.ts";
 import { TopBar } from "./components/shell/TopBar.tsx";
@@ -20,8 +19,6 @@ const TABS: Array<{ id: Tab; label: string }> = [
   { id: "settings", label: "Settings" },
 ];
 
-// Beadboard is served from the same server at /beadboard
-const BEADBOARD_URL = import.meta.env.VITE_BEADBOARD_URL || "/beadboard";
 
 export function App() {
   const path = window.location.pathname;
@@ -124,26 +121,9 @@ function DashboardShell({ view }: { view: View }) {
         </nav>
         <div className="ww-action-cluster" style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
           <span className="ww-system-state"><i /> operational</span>
-          <a 
-            href="/beadboard" 
-            target="_blank" 
-            rel="noopener noreferrer"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 4,
-              fontSize: 'var(--text-sm)',
-              color: 'var(--text-muted)',
-              textDecoration: 'none',
-              padding: '4px 8px',
-              borderRadius: 0,
-              background: 'transparent',
-              border: '1px solid var(--border-subtle)',
-            }}
-          >
-            <LinkExternalIcon size={12} />
-            Beadboard
-          </a>
+          <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
+            Beadboard retired
+          </span>
         </div>
       </header>
       <main className="gitboard-main" style={{ flex: 1, minHeight: 0, minWidth: 0 }}>
@@ -152,20 +132,10 @@ function DashboardShell({ view }: { view: View }) {
         ) : activeTab === "github" ? (
           <GithubPanel />
         ) : activeTab === "console" ? (
-          <iframe 
-            src={BEADBOARD_URL}
-            style={{ 
-              width: '100%', 
-              height: '100%', 
-              border: 'none',
-              background: 'var(--surface-primary)',
-            }}
-            title="Beadboard"
-          />
-        ) : (
           <div style={{ padding: 16 }}>
             <SourcesPanel />
           </div>
+        ) : (
         )}
       </main>
     </div>

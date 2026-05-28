@@ -6,9 +6,9 @@ import { useMemo, useState } from "react";
 import type { Interaction, BeadIssue, BeadIssueDetail } from "../../../types/beads.ts";
 import { StatusColumn } from "./StatusColumn";
 import { IssueOverlay } from "./IssueOverlay.tsx";
-import { substrateApi as api } from "../../lib/substrate-api.ts";
+import { substrateApi as api } from "../../lib/beads.ts";
 
-import type { OpenPr } from "../../lib/substrate-api.ts";
+import type { OpenPr } from "../../lib/beads.ts";
 
 interface KanbanBoardProps {
   issues: BeadIssue[];
