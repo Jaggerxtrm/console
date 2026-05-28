@@ -127,8 +127,8 @@ Core runtime variables:
 | `GITBOARD_DATA_DIR` | `index.ts` | `./data` | Directory for `gitboard.sqlite` |
 | `PORT` | `index.ts` | `3030` | HTTP port |
 | `HOSTNAME` | `index.ts` | `0.0.0.0` | Bind host |
-| `GITBOARD_LOG_DIR` | `core/logger.ts` | `./logs` | JSONL app log directory |
-| `LOG_DIR` | `api/routes/internal-logs.ts` | `/data/logs` | Internal log-file listing directory |
+| `GITBOARD_LOG_DIR` | `core/logger.ts` | `~/.xtrm/logs` | JSONL app log directory |
+| `LOG_DIR` | `api/routes/internal-logs.ts` | `~/.xtrm/logs` | Internal log-file listing directory |
 | `XDG_PROJECTS_DIR` | scanners/Dolt host logic | scanner-specific | Root for project discovery; also changes Dolt host fallback in graph DAO |
 | `HOME` | graph scanner | `$HOME/projects` | Fallback search root for graph scanner |
 | `GITHUB_TOKEN` | GitHub poller/discovery/readme | none | Enables authenticated GitHub API calls |
@@ -285,7 +285,7 @@ export function emit(entry: LogEntry): void {
 The active log path is date based:
 
 ```ts
-const defaultLogDir = process.env.GITBOARD_LOG_DIR || join(process.cwd(), "logs");
+const defaultLogDir = process.env.LOG_DIR || process.env.GITBOARD_LOG_DIR || join(process.cwd(), "logs");
 return join(defaultLogDir, `${date}.jsonl`);
 ```
 
@@ -1170,7 +1170,7 @@ curl -s 'http://100.113.49.52:3030/api/specialists/jobs/in-flight?limit=100' \
 Default production logs in current session were under:
 
 ```text
-/home/dawid/.agent-forge/logs/YYYY-MM-DD.jsonl
+/home/dawid/.xtrm/logs/YYYY-MM-DD.jsonl
 apps/gitboard/logs/YYYY-MM-DD.jsonl
 logs/YYYY-MM-DD.jsonl
 ```
@@ -1178,7 +1178,7 @@ logs/YYYY-MM-DD.jsonl
 Useful grep patterns:
 
 ```bash
-grep -E 'graph\.|source.degraded|beads\.source|specialists\.in_flight|beads.feed.render_state' /home/dawid/.agent-forge/logs/$(date -u +%F).jsonl | tail -200
+grep -E 'graph\.|source.degraded|beads\.source|specialists\.in_flight|beads.feed.render_state' /home/dawid/.xtrm/logs/$(date -u +%F).jsonl | tail -200
 ```
 
 ### Specialist dispatch smoke

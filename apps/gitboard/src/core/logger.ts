@@ -1,4 +1,4 @@
-import { mkdirSync, readdirSync, statSync, unlinkSync } from "node:fs";
+import { mkdirSync, readdirSync, statSync, symlinkSync, unlinkSync, existsSync } from "node:fs";
 import { appendFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { LogComponent, LogEntry, LogLevel } from "../types/log.ts";
@@ -7,7 +7,10 @@ export type { EventType } from "./observability/event-types.ts";
 
 const LOG_RING_SIZE = 5000;
 const LOG_DEFAULT_LEVEL: LogLevel = "info";
-const LOG_DISK_DIR = process.env.LOG_DIR ?? "/data/logs";
+const HOME_DIR = process.env.HOME ?? ".";
+const LEGACY_LOG_DIR = join(HOME_DIR, ".agent-forge", "logs");
+const XTRM_LOG_DIR = join(HOME_DIR, ".xtrm", "logs");
+const LOG_DISK_DIR = process.env.LOG_DIR || process.env.GITBOARD_LOG_DIR || XTRM_LOG_DIR;
 const LOG_RETENTION_DAYS = Number(process.env.LOG_RETENTION_DAYS ?? 7);
 const LEVEL_ORDER: Record<LogLevel, number> = { debug: 10, info: 20, warn: 30, error: 40 };
 
@@ -19,6 +22,7 @@ let logLevel: LogLevel = LOG_DEFAULT_LEVEL;
 let registry: ChannelRegistry | null = null;
 let writeChain: Promise<void> = Promise.resolve();
 let lastCleanupDay = "";
+let logStorageReady = false;
 
 export function setRealtimePublisher(nextRegistry: ChannelRegistry | null): void {
   registry = nextRegistry;
@@ -44,6 +48,27 @@ export function subscribe(filter: Partial<Pick<LogEntry, "level" | "component" |
 
 export function setDiskEnabled(enabled: boolean): void { diskEnabled = enabled; }
 export function setLogLevel(level: LogLevel): void { logLevel = level; }
+export function ensureLogStorage(): string {
+  if (logStorageReady) return LOG_DISK_DIR;
+  mkdirSync(LOG_DISK_DIR, { recursive: true });
+  if (LOG_DISK_DIR === XTRM_LOG_DIR && existsSync(LEGACY_LOG_DIR)) {
+    mkdirSync(XTRM_LOG_DIR, { recursive: true });
+    const legacyLink = join(XTRM_LOG_DIR, "legacy");
+    if (!existsSync(legacyLink)) {
+      try {
+        symlinkSync(LEGACY_LOG_DIR, legacyLink, "dir");
+      } catch {}
+    }
+  }
+  logStorageReady = true;
+  return LOG_DISK_DIR;
+}
+
+export function emitLogPath(): void {
+  emit(makeLogEntry("logger", "log.path", "info", undefined, { path: ensureLogStorage() }));
+}
+
+export function getLogDiskDir(): string { return LOG_DISK_DIR; }
 
 const listeners = new Set<{ filter?: Partial<Pick<LogEntry, "level" | "component" | "event">>; fn: (entry: LogEntry) => void }>();
 
@@ -83,8 +108,7 @@ function currentLogPath(): string { return join(activeLogDir(), `${new Date().to
 
 function activeLogDir(): string {
   try {
-    mkdirSync(LOG_DISK_DIR, { recursive: true });
-    return LOG_DISK_DIR;
+    return ensureLogStorage();
   } catch {
     return "./logs";
   }

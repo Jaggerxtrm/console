@@ -33,7 +33,7 @@ Environment=HOST=100.113.49.52
 Environment=PORT=3030
 Environment=XDG_PROJECTS_DIR=%h/projects
 Environment=DOLT_HOST=127.0.0.1
-Environment=LOG_DIR=%h/.agent-forge/logs
+Environment=LOG_DIR=%h/.xtrm/logs
 ExecStart=bun run src/index.ts
 Restart=always
 RestartSec=2
@@ -67,7 +67,7 @@ Adjust paths / tailnet IP for your host.
 ```bash
 systemctl --user restart gitboard
 journalctl --user -u gitboard -f
-tail -F ~/.agent-forge/logs/$(date +%F).jsonl
+tail -F ~/.xtrm/logs/$(date +%F).jsonl
 ```
 
 ## Tailscale-only access
@@ -88,7 +88,7 @@ No NAT, no public exposure, no extra firewall work for app port even if ufw stay
 | `AGENT_FORGE_DB` | `~/.agent-forge/state.db` | SQLite state DB path | Move DB or isolate per host |
 | `XDG_PROJECTS_DIR` | `~/projects` fallback | Scanner root for repo discovery | Point at alternate repo tree, e.g. nested `~/dev` + `~/projects` layouts |
 | `DOLT_HOST` | `127.0.0.1` on native, `host.docker.internal` when `XDG_PROJECTS_DIR` is set | Dolt SQL host | Override when container / host routing differs |
-| `LOG_DIR` | `/data/logs` | JSONL log directory | Override for native host logs |
+| `LOG_DIR` | `~/.xtrm/logs` | JSONL log directory | Override for native host logs |
 | `GITHUB_TOKEN` | `gh auth token` fallback where available | GitHub API auth | Set explicit token for headless service |
 | `SKIP_GITHUB_POLLER` | unset | Disables GitHub poller | Use for manual-only / debugging runs |
 | `LOG_LEVEL` | `info` | Logger verbosity | Raise to `debug` during incident work |

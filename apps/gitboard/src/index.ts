@@ -5,7 +5,7 @@ import { createXtrmDatabase } from "./core/xtrm-store.ts";
 import { GithubPoller, getGithubToken, getAuthenticatedUsername } from "./core/github-poller.ts";
 import { discoverAndInsert } from "./core/github-discover.ts";
 import { startServer, getCurrentRegistry } from "./api/server.ts";
-import { emit, makeLogEntry, setLogLevel } from "./core/logger.ts";
+import { emit, emitLogPath, makeLogEntry, setLogLevel } from "./core/logger.ts";
 
 const DATA_DIR = process.env.GITBOARD_DATA_DIR ?? `${process.env.HOME}/.agent-forge`;
 const GITBOARD_DB_PATH = join(DATA_DIR, "gitboard.sqlite");
@@ -13,6 +13,7 @@ const XTRM_DB_PATH = join(DATA_DIR, "xtrm.sqlite");
 mkdirSync(DATA_DIR, { recursive: true });
 const PORT = Number(process.env.PORT ?? 3000);
 setLogLevel((process.env.LOG_LEVEL as "debug" | "info" | "warn" | "error" | undefined) ?? "info");
+emitLogPath();
 
 const xtrmDb = createXtrmDatabase(XTRM_DB_PATH);
 emit(makeLogEntry("store", "db.path", "info", undefined, { path: XTRM_DB_PATH }));

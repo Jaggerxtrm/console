@@ -1,7 +1,7 @@
 import { readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { Hono } from "hono";
-import { emit, getRing, makeLogEntry } from "../../core/logger.ts";
+import { emit, getLogDiskDir, getRing, makeLogEntry } from "../../core/logger.ts";
 
 export function createInternalLogsRouter(): Hono {
   const app = new Hono();
@@ -20,7 +20,7 @@ export function createInternalLogsRouter(): Hono {
 
   app.get("/logs/files", (c) => {
     if (!isLocalhost(c.req.header("host") ?? "")) return c.json({ error: "forbidden" }, 403);
-    const dir = process.env.LOG_DIR ?? "/data/logs";
+    const dir = getLogDiskDir();
     const files = [] as Array<{ name: string; size: number; date: string }>;
     try {
       for (const name of readdirSync(dir)) {

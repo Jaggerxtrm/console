@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdir, rm, writeFile } from "node:fs/promises";
-import { existsSync, utimesSync } from "node:fs";
+import { existsSync, lstatSync, utimesSync } from "node:fs";
 import { join } from "node:path";
 import { ChannelRegistry } from "../../src/api/ws/channels.ts";
 
@@ -36,6 +36,21 @@ describe("logger", () => {
     logger.emit({ ts: "2", level: "warn", component: "system", event: "warn" });
     expect(sent).toHaveLength(1);
     expect((sent[0] as { event: string }).event).toBe("system:log");
+  });
+
+  it("uses env override before xtrm default and creates legacy symlink", async () => {
+    const home = join(process.cwd(), ".tmp-home");
+    const legacyDir = join(home, ".agent-forge", "logs");
+    const defaultDir = join(home, ".xtrm", "logs");
+    await rm(home, { recursive: true, force: true });
+    await mkdir(legacyDir, { recursive: true });
+    vi.stubEnv("HOME", home);
+    vi.stubEnv("LOG_DIR", "");
+    vi.stubEnv("GITBOARD_LOG_DIR", "");
+    const logger = await loadLogger();
+    expect(logger.getLogDiskDir()).toBe(defaultDir);
+    expect(logger.ensureLogStorage()).toBe(defaultDir);
+    expect(lstatSync(join(defaultDir, "legacy")).isSymbolicLink()).toBe(true);
   });
 
   it("writes disk and removes old files", async () => {
