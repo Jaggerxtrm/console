@@ -38,7 +38,7 @@ export function Graph() {
   const selection = useShellStore(selectSelection);
   const repos = useShellStore(selectRepos);
   const selectedRepo = selection.repo ? repos.find((repo) => repo.fullName === selection.repo) : null;
-  const projectId = selectedRepo?.beadsProjectName ?? (selection.repo ? selection.repo.split("/").pop() ?? null : null);
+  const projectId = selectedRepo?.beadsProjectId ?? null;
   const { loading, error, data, reload } = useGraphData(projectId);
   const [showParent, setShowParent] = useState(true);
   const [showRelated, setShowRelated] = useState(true);
