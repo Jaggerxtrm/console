@@ -3,7 +3,7 @@ import type { Database } from "bun:sqlite";
 import { emit, makeLogEntry } from "../../core/logger.ts";
 import { BeadsReader } from "../../core/beads-reader.ts";
 import { formatSourceDisplayPath } from "./sources-policy.ts";
-import type { BeadDependency, BeadIssue, BeadIssueDetail, BeadsProject, Memory, Interaction } from "../../../../beadboard/src/types/beads.ts";
+import type { BeadDependency, BeadIssue, BeadIssueDetail, BeadsProject, Memory, Interaction } from "../../types/beads.ts";
 
 let loggedSchemaColumns = false;
 const loggedProjectMemories = new Set<string>();

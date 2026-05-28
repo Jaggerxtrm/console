@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import type { ChannelRegistry } from "../../api/ws/channels.ts";
-import { BeadsChangeWatcher } from "../../../../beadboard/src/core/beads-change-watcher.ts";
-import { ProjectScanner } from "../../../../beadboard/src/core/project-scanner.ts";
+import { BeadsChangeWatcher } from "../../core/beads-change-watcher.ts";
+import { ProjectScanner } from "../../core/project-scanner.ts";
 import { BeadsAdapter } from "../../core/materializer/beads-adapter.ts";
 import type { Materializer } from "../../core/materializer/index.ts";
 

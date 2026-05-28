@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import type { BeadIssue } from "../../../../beadboard/src/types/beads.ts";
+import type { BeadIssue } from "../../types/beads.ts";
 import { emit, makeLogEntry } from "../logger.ts";
 import { BeadsSnapshotSource } from "./beads-snapshot-source.ts";
 import { snapshotDiff, snapshotHash } from "./snapshot-diff.ts";

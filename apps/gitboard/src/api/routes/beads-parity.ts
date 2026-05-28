@@ -1,9 +1,9 @@
 import { clearInterval, setInterval } from "node:timers";
 import type { Database } from "bun:sqlite";
-import { ProjectScanner } from "../../../../beadboard/src/core/project-scanner.ts";
-import { BeadsReader } from "../../../../beadboard/src/core/beads-reader.ts";
-import { DoltClient, doltPoolKey } from "../../../../beadboard/src/core/dolt-client.ts";
-import type { BeadIssue } from "../../../../beadboard/src/types/beads.ts";
+import { ProjectScanner } from "../../core/project-scanner.ts";
+import { BeadsReader } from "../../core/beads-reader.ts";
+import { DoltClient, doltPoolKey } from "../../core/dolt-client.ts";
+import type { BeadIssue } from "../../types/beads.ts";
 
 type ParityProject = {
   id: string;
