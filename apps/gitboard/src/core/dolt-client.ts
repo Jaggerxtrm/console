@@ -242,3 +242,6 @@ export class DoltClient {
     };
   }
 }
+export function doltPoolKey(config: DoltConfig): string {
+  return `${config.host}:${config.port}/${config.database ?? "dolt"}/${config.user ?? "root"}`;
+}
