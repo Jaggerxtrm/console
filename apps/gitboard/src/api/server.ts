@@ -197,7 +197,7 @@ export function startServer(xtrmDb: Database, options: ServerOptions = {}): void
   const port = options.port ?? 3000;
   const hostname = options.hostname ?? process.env.HOST ?? (process.env.NODE_ENV === "production" ? "0.0.0.0" : "127.0.0.1");
 
-  const { app, wsHandler } = createApp(xtrmDb);
+  const { app, wsHandler } = createApp(xtrmDb, xtrmDb);
   const terminalBridge = new TerminalBridge(createTerminalProviderRegistry(process.env));
 
   const server = Bun.serve({
