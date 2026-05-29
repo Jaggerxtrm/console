@@ -48,15 +48,23 @@ export function createObservabilityWatcher(entries: readonly RepoEntry[], option
 
   function watchRepo(entry: RepoEntry): void {
     const parentDir = dirname(entry.dbPath);
-    const watcher = watch(parentDir, { persistent: false }, (_eventType, filename) => {
-      if (filename !== basename(entry.dbPath)) return;
-      scheduleBump(entry);
-    });
-    const fileWatcher = watch(entry.dbPath, { persistent: false }, () => scheduleBump(entry));
+    const dbName = basename(entry.dbPath);
+    // SQLite WAL mode writes hit -wal first; main .db only updates on checkpoint (seconds-to-minutes lag).
+    // Watch the main file AND the WAL sidecar so sp's writes are visible without waiting for checkpoint.
+    const walName = `${dbName}-wal`;
+    const shmName = `${dbName}-shm`;
+    const watchers: FSWatcher[] = [];
+    watchers.push(watch(parentDir, { persistent: false }, (_eventType, filename) => {
+      if (filename === dbName || filename === walName || filename === shmName) scheduleBump(entry);
+    }));
+    // Direct file watches are best-effort — they may fail for sidecars that don't exist yet at boot.
+    for (const path of [entry.dbPath, `${entry.dbPath}-wal`, `${entry.dbPath}-shm`]) {
+      try { watchers.push(watch(path, { persistent: false }, () => scheduleBump(entry))); } catch { /* sidecar may not exist yet */ }
+    }
 
     watched.set(entry.repoSlug, {
       entry,
-      watchers: [watcher, fileWatcher],
+      watchers,
       timer: null,
       lastMtimeMs: entry.mtimeMs,
     });
@@ -76,14 +84,22 @@ export function createObservabilityWatcher(entries: readonly RepoEntry[], option
     repo.timer = null;
 
     try {
-      const stat = statSync(repo.entry.dbPath);
-      if (stat.mtimeMs <= repo.lastMtimeMs) return;
-      repo.lastMtimeMs = stat.mtimeMs;
+      // Use the max mtime across .db + .db-wal as the "has-changed" signal — WAL writes update the sidecar,
+      // not the main file, so checking .db alone misses every uncheckpointed write.
+      const mainMtime = statSync(repo.entry.dbPath).mtimeMs;
+      const walMtime = mtimeOrZero(`${repo.entry.dbPath}-wal`);
+      const observed = Math.max(mainMtime, walMtime);
+      if (observed <= repo.lastMtimeMs) return;
+      repo.lastMtimeMs = observed;
       const materializer = getCurrentMaterializer();
       materializer?.trigger(`obs:${repoSlug}`);
     } catch (error) {
       logger.debug?.(`[observability] db missing for ${repo.entry.dbPath}: ${stringifyError(error)}`);
     }
+  }
+
+  function mtimeOrZero(path: string): number {
+    try { return statSync(path).mtimeMs; } catch { return 0; }
   }
 
   return { start, stop };
