@@ -19,6 +19,27 @@ Three architectural commitments make this work:
 2. **Panels are owned primitives, not Grafana components.** We control look-and-feel end-to-end; this is what differentiates from a Grafana wrapper.
 3. **Multi-tenancy is a day-one shape, not a v2 retrofit.** Every dashboard, every variable, every query carries a tenant context — even when tenant_count = 1 (us).
 
+At a glance:
+
+```mermaid
+graph TB
+    Op["Operator · Agent"]
+    subgraph Console["xtrm console (this PRD)"]
+        Dash["Dashboard renderer"]
+        Panels["Panel primitives<br/>TimeSeries · Stat · Threshold · Heatmap"]
+        DS["Datasource interface"]
+    end
+    subgraph Pipeline["Metric pipeline (infra-xgx, out of scope)"]
+        Prom["Prometheus<br/>(impl #1)"]
+        Future["InfluxDB / OTel / vendor X<br/>(later impls)"]
+    end
+    Op -->|reads · drills down ·<br/>authors via agent| Dash
+    Dash -->|composes| Panels
+    Panels -->|typed query| DS
+    DS -->|wire protocol| Prom
+    DS -.->|same contract| Future
+```
+
 ---
 
 ## 2. Strategic context
@@ -91,6 +112,23 @@ interface Datasource {
 - **Auth is a datasource concern, not a panel concern.** Each `Datasource` carries its own auth strategy (basic, bearer, proxied-from-server, mTLS later).
 - **Tenant-scoped.** Every datasource instance belongs to exactly one tenant. Cross-tenant query is impossible by construction.
 
+```mermaid
+graph LR
+    P["Panel<br/>(TimeSeries · Stat · ...)"]
+    Q["QuerySpec<br/>(PromQL + range + opts)"]
+    subgraph Boundary["Datasource interface"]
+        I["query() · range() · series() · meta()"]
+    end
+    PI["PrometheusDatasource"]
+    SI["StaticFixtureDatasource<br/>(tests, previews)"]
+    Up["Upstream<br/>(scraped on VPS)"]
+    P -->|build| Q
+    Q --> I
+    I --> PI
+    I -.-> SI
+    PI -->|HTTP| Up
+```
+
 ### 5.2 Panel primitives
 
 Small set, deep quality.
@@ -140,6 +178,31 @@ Dashboards are **JSON specs**, rendered by a generic `<Dashboard spec={...} />` 
 - Loadable from disk (operator ships `*.dashboard.json` in a `dashboards/` dir) AND from the API (agent-authored, runtime-editable).
 - Exportable verbatim. Shipping dashboard packs to customers is a `cp` command.
 
+Render flow per dashboard view:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant U as Operator
+    participant D as Dashboard renderer
+    participant V as Variables
+    participant P as Panel
+    participant DS as Datasource
+
+    U->>D: select time range / variable values
+    D->>V: resolve variable list
+    V->>DS: series(matcher)
+    DS-->>V: label values
+    V-->>D: resolved variables
+    par per panel
+        D->>P: render(query, range, vars)
+        P->>DS: query(spec)
+        DS-->>P: matrix result
+        P-->>D: rendered panel
+    end
+    D-->>U: composed dashboard
+```
+
 ### 5.4 Time range and variables
 
 - Global time range picker in the dashboard header. Standard presets (last 5m / 1h / 24h / 7d) plus absolute range. Persisted per-dashboard.
@@ -163,6 +226,28 @@ The devops-agent specialist (a future `.specialist.json` role) is a first-class 
   - A "panel insert" — a single panel rendered inline in a bead's activity pane or in the operator's chat.
 - **Validation:** dashboard specs are schema-validated on ingest. The agent never writes raw SQL; it emits PromQL strings that the datasource accepts.
 - **Authoring loop:** the agent can iterate — emit a draft, the operator gives feedback ("zoom in on the leak window"), the agent revises. Same shape as executor → reviewer.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Op as Operator
+    participant Ag as Devops agent
+    participant Reg as Datasource registry
+    participant DS as Datasource
+    participant R as Dashboard renderer
+
+    Op->>Ag: "show me dolt over the leak window"
+    Ag->>Reg: list datasources + label sets
+    Reg-->>Ag: corpus metadata
+    Ag->>Ag: draft dashboard JSON
+    Ag->>R: render(spec)
+    R->>DS: queries
+    DS-->>R: results
+    R-->>Op: panel inline (sidebar · bead pane · chat)
+    Op-->>Ag: "zoom in on 14:00 – 14:30"
+    Ag->>R: render(revised spec)
+    R-->>Op: updated panel
+```
 
 ### 5.7 Multi-tenancy
 
@@ -205,6 +290,30 @@ The following decisions are binding for v1; revisiting them invalidates downstre
 ---
 
 ## 8. Phased delivery
+
+Sequencing at a glance (absolute dates set by planning; relative shape below):
+
+```mermaid
+gantt
+    title Phased delivery — milestones, not dates
+    dateFormat YYYY-MM-DD
+    section Phase 0 — MVP proof
+    Datasource interface + Prometheus impl     :p0a, 2026-06-01, 14d
+    Panel primitives (TS · Stat · Threshold)   :p0b, after p0a, 14d
+    Dolt-health dashboard ships                :milestone, after p0b, 0d
+    section Phase 1 — Internal product
+    Heatmap + static fixture datasource         :p1a, after p0b, 14d
+    Dashboard pack (gitboard health)            :p1b, after p1a, 14d
+    Bespoke health probes retired               :milestone, after p1b, 0d
+    section Phase 2 — Agent-authored
+    Devops-agent role + envelope contract       :p2a, after p1b, 21d
+    Inline panel in BeadActivityPane            :p2b, after p2a, 14d
+    Agent loop end-to-end                       :milestone, after p2b, 0d
+    section Phase 3 — Multi-tenant
+    tenants table + per-tenant theming          :p3a, after p2b, 21d
+    Customer onboarding flow                    :p3b, after p3a, 21d
+    Second tenant live                          :milestone, after p3b, 0d
+```
 
 ### Phase 0 — Datasource primitive + dolt-health dashboard (MVP proof)
 
@@ -270,6 +379,26 @@ These are the decisions OpenSpec planning should resolve before any executor bea
 ---
 
 ## 11. Reuse and cross-references
+
+```mermaid
+graph LR
+    subgraph Existing["forge-70el + forge-lqyc (already in flight / shipped)"]
+        BAP["BeadActivityPane (.6)<br/>composition pattern"]
+        SB["Right sidebar overlay (.7)"]
+        CK["Cockpit two-pane (.4)"]
+        TSP["TerminalStream provider (lqyc.8)<br/>one renderer · N mounts"]
+    end
+    subgraph New["This PRD"]
+        Dashboard["Dashboard<br/>variables + panel grid + alerts"]
+        Drilldown["Metric → log/alert drilldown"]
+        Tabs["Observe tab + panel layout"]
+        Panel["Panel<br/>(one renderer, N mount points)"]
+    end
+    BAP --> Dashboard
+    SB --> Drilldown
+    CK --> Tabs
+    TSP --> Panel
+```
 
 Patterns and code we will lean on, not re-invent:
 
