@@ -1,0 +1,40 @@
+{
+  "name": "@xtrm/html-preview",
+  "version": "0.1.0",
+  "description": "Private tailnet document viewer for local repository HTML and Markdown files",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./server": {
+      "import": "./dist/server.js",
+      "types": "./dist/server.d.ts"
+    }
+  },
+  "bin": {
+    "xtrm-html-preview": "./dist/cli.js"
+  },
+  "scripts": {
+    "dev": "bun run src/cli.ts",
+    "build": "tsc",
+    "start": "bun run src/cli.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@types/markdown-it": "^14.1.2",
+    "hono": "^4.12.5",
+    "markdown-it": "^14.2.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "playwright": "^1.60.0",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  }
+}
