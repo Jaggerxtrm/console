@@ -8,11 +8,18 @@ Small Bun/Hono server for browsing and rendering local repository documents insi
 bun run --filter @xtrm/html-preview start -- --root /home/dawid/dev,/home/dawid/projects --host 127.0.0.1 --port 8787
 ```
 
-Then expose it privately with Tailscale Serve:
+Then expose it privately with Tailscale Serve **on port 8443**:
 
 ```bash
-tailscale serve --bg 8787
+sudo tailscale serve --bg --https=8443 http://127.0.0.1:8787
 ```
+
+> Do **not** use the default form `tailscale serve --bg 8787` — it binds
+> Tailscale's HTTPS listener to host port `443`, which collides with
+> Mercury Traefik. See [`../../fix.md`](../../fix.md) for the full
+> history and verification commands.
+
+The tailnet URL becomes `https://<host>.<tailnet>.ts.net:8443`.
 
 ## Options
 
