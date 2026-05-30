@@ -1,67 +1,98 @@
-import { useMemo, useState, type ReactNode } from "react";
-import { useAllSpecialistJobs } from "../../hooks/useAllSpecialistJobs.ts";
+import { useEffect, useMemo, useRef } from "react";
+import { useInFlightJobs } from "../../hooks/useInFlightJobs.ts";
+import { beadSideDrawer } from "../../hooks/useBeadSideDrawer.ts";
+import { useShellStore, selectDrawerSpecialistsScope, selectSelection } from "../../stores/shell.ts";
+import { logClientEvent } from "../../lib/client-log.ts";
 import type { SpecialistJob } from "../../../server/observability/types.ts";
 
 const LIVE_STATUSES = new Set(["starting", "running", "waiting"]);
-const HISTORY_STATUSES = new Set(["done", "error", "cancelled"]);
 
 export function SpecialistsTabPanel() {
-  const { inFlight, history, loading, error } = useAllSpecialistJobs(50);
-  const [showMore, setShowMore] = useState(false);
+  const { jobs, sourceEpoch, loading, error } = useInFlightJobs();
+  const selection = useShellStore(selectSelection);
+  const scope = useShellStore(selectDrawerSpecialistsScope);
+  const setScope = useShellStore((s) => s.setDrawerSpecialistsScope);
+  const selectedRepo = selection.repo;
+  const visibleJobs = useMemo(() => (scope === "all-hosts" || !selectedRepo ? jobs : jobs.filter((job) => job.repoSlug === selectedRepo)), [jobs, scope, selectedRepo]);
+  const openedRef = useRef(false);
+  const renderedRef = useRef<string>("");
 
-  const recentHistory = useMemo(() => {
-    const sorted = [...history].sort((a, b) => Number(new Date(b.updatedAt)) - Number(new Date(a.updatedAt)));
-    return showMore ? sorted : sorted.slice(0, 50);
-  }, [history, showMore]);
+  useEffect(() => {
+    if (openedRef.current) return;
+    openedRef.current = true;
+    logClientEvent("drawer.specialists.tab.opened", { rowCount: visibleJobs.length, scope });
+  }, [scope, visibleJobs.length]);
 
-  const liveRows = useMemo(() => inFlight.filter((job) => LIVE_STATUSES.has(job.status)), [inFlight]);
-  const historyRows = useMemo(() => recentHistory.filter((job) => HISTORY_STATUSES.has(job.status) || !LIVE_STATUSES.has(job.status)), [recentHistory]);
+  useEffect(() => {
+    if (renderedRef.current) return;
+    renderedRef.current = "sampled";
+    logClientEvent("drawer.specialists.row.rendered", { rowCount: visibleJobs.length, sourceEpoch });
+  }, [sourceEpoch, visibleJobs.length]);
+
+  const handleScopeToggle = () => {
+    const next = scope === "all-hosts" ? "repo" : "all-hosts";
+    logClientEvent("drawer.specialists.repo_scope.toggled", { from: scope, to: next, rowCountAfter: next === "all-hosts" || !selectedRepo ? jobs.length : jobs.filter((job) => job.repoSlug === selectedRepo).length });
+    setScope(next);
+  };
+
+  const handleRowOpen = (job: SpecialistJob) => {
+    logClientEvent("drawer.specialists.chip.clicked", { jobId: job.jobId, beadId: job.beadId, target: "sidebar" });
+    const shell = useShellStore.getState();
+    shell.setSurface("console");
+    shell.setTab("specialists");
+    shell.setRepo(job.repoSlug);
+    if (job.beadId) beadSideDrawer.open(job.beadId);
+  };
 
   if (error) return <div className="drawer-panel-message">{error}</div>;
-  if (loading && liveRows.length === 0 && historyRows.length === 0) return <div className="drawer-panel-message">Loading specialists…</div>;
+  if (loading && visibleJobs.length === 0) return <div className="drawer-panel-message">Loading specialists…</div>;
 
   return (
     <div className="drawer-specialists">
-      <Section title={`in_progress (${liveRows.length})`} emptyText="no live specialists" rows={liveRows} />
-      <Section
-        title={`history (${historyRows.length})`}
-        emptyText="no recent runs"
-        rows={historyRows}
-        footer={history.length > 50 ? (
-          <button type="button" className="drawer-show-more" onClick={() => setShowMore((value) => !value)}>
-            {showMore ? "show less" : "show more"}
-          </button>
-        ) : null}
-      />
-    </div>
-  );
-}
-
-function Section({ title, rows, emptyText, footer }: { title: string; rows: SpecialistJob[]; emptyText: string; footer?: ReactNode; }) {
-  return (
-    <section className="drawer-specialists-section">
-      <div className="drawer-specialists-header">{title}</div>
-      <div className="drawer-specialists-rows">
-        {rows.length === 0 ? <div className="drawer-specialists-empty">{emptyText}</div> : rows.map((job) => <JobRow key={`${job.repoSlug}:${job.jobId ?? job.beadId}:${job.updatedAt}`} job={job} />)}
+      <div className="drawer-specialists-toolbar">
+        <div className="drawer-specialists-scope">{scope === "all-hosts" ? "all hosts" : selectedRepo ?? "current repo"}</div>
+        <button type="button" className={scope === "all-hosts" ? "drawer-specialists-scope-toggle is-active" : "drawer-specialists-scope-toggle"} onClick={handleScopeToggle}>
+          all hosts
+        </button>
       </div>
-      {footer}
-    </section>
+      <div className="drawer-specialists-empty">{visibleJobs.length === 0 ? "no specialist jobs" : `${visibleJobs.length} jobs`}</div>
+      <div className="drawer-specialists-rows">
+        {visibleJobs.map((job) => <SpPsRow key={`${job.repoSlug}:${job.jobId ?? job.beadId}:${job.updatedAt}`} job={job} onOpen={handleRowOpen} />)}
+      </div>
+    </div>
   );
 }
 
-function JobRow({ job }: { job: SpecialistJob }) {
+function SpPsRow({ job, onOpen }: { job: SpecialistJob; onOpen: (job: SpecialistJob) => void; }) {
+  const specialistLabel = formatSpecialist(job);
+  const jobIdLabel = formatJobId(job);
+  const previewLabel = formatPreview(job.lastOutput);
+
   return (
-    <div className="drawer-specialists-row">
-      <span>{shortId(job.jobId)}</span>
-      <span>{job.specialist ?? "—"}</span>
-      <span>{job.status}</span>
-      <span>{job.beadId}</span>
-      <span>{job.chainId ?? "—"}</span>
-      <span>{job.epicId ?? "—"}</span>
-      <span>{job.repoSlug}</span>
-      <span>{formatElapsed(job.updatedAt)}</span>
+    <div className={LIVE_STATUSES.has(job.status) ? "drawer-specialists-row is-live" : "drawer-specialists-row"}>
+      <button type="button" className="drawer-specialists-chip drawer-specialists-chip-role" onClick={() => onOpen(job)} title={specialistLabel}>
+        {specialistLabel}
+      </button>
+      <button type="button" className="drawer-specialists-chip drawer-specialists-chip-id" onClick={() => onOpen(job)} title={jobIdLabel}>
+        {jobIdLabel}
+      </button>
+      <span className="drawer-specialists-status">{job.status}</span>
+      <span className="drawer-specialists-elapsed">{formatElapsed(job.updatedAt)}</span>
+      <span className="drawer-specialists-preview" title={previewLabel}>{previewLabel}</span>
     </div>
   );
+}
+
+function formatSpecialist(job: SpecialistJob): string {
+  return job.specialist ?? job.chainKind ?? "unknown";
+}
+
+function formatJobId(job: SpecialistJob): string {
+  return shortId(job.jobId ?? job.beadId);
+}
+
+function formatPreview(lastOutput: string | null): string {
+  return lastOutput?.split("\n").at(-1) ?? "—";
 }
 
 function shortId(id: string | null): string {

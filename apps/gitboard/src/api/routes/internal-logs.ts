@@ -50,7 +50,7 @@ export function createInternalLogsRouter(): Hono {
       ? payload.data as Record<string, unknown>
       : {};
 
-    emit(makeLogEntry("ui", event, "info", undefined, {
+    emit(makeLogEntry("drawer", event, "info", undefined, {
       ...data,
       source: "dashboard-client",
     }));

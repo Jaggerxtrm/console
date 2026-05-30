@@ -7,6 +7,7 @@ import type {
   DrawerTab,
   RepoNode,
   SidebarSelection,
+  SpecialistsScope,
   Surface,
   TabId,
   ThemeMode,
@@ -20,6 +21,7 @@ const LS = {
   drawerOpen: "forge-gud9:drawerOpen",
   drawerHeight: "forge-gud9:drawerHeight",
   drawerTab: "forge-gud9:drawerTab",
+  drawerSpecialistsScope: "forge-gud9:drawerSpecialistsScope",
 };
 
 function readJSON<T>(key: string, fallback: T): T {
@@ -52,6 +54,7 @@ function defaultDrawerHeight() {
 }
 const initialDrawerHeight = readJSON<number | null>(LS.drawerHeight, null) ?? defaultDrawerHeight();
 const initialDrawerTab = readJSON<DrawerTab>(LS.drawerTab, "logs");
+const initialDrawerSpecialistsScope = readJSON<SpecialistsScope>(LS.drawerSpecialistsScope, "repo");
 const initialTerminalSessionId: string | null = null;
 const initialTerminalReattachToken: string | null = null;
 const initialTerminalOutput: string[] = [];
@@ -64,6 +67,7 @@ export interface ShellState {
   drawerOpen: boolean;
   drawerHeight: number;
   drawerTab: DrawerTab;
+  drawerSpecialistsScope: SpecialistsScope;
   terminalSessionId: string | null;
   terminalReattachToken: string | null;
   terminalOutput: string[];
@@ -77,6 +81,7 @@ export interface ShellState {
   setDrawerOpen: (open: boolean) => void;
   setDrawerHeight: (height: number) => void;
   setDrawerTab: (tab: DrawerTab) => void;
+  setDrawerSpecialistsScope: (scope: SpecialistsScope) => void;
   setTerminalSessionId: (sessionId: string | null) => void;
   setTerminalReattachToken: (token: string | null) => void;
   appendTerminalOutput: (chunk: string) => void;
@@ -91,6 +96,7 @@ export const useShellStore = create<ShellState>((set) => ({
   drawerOpen: initialDrawerOpen,
   drawerHeight: initialDrawerHeight,
   drawerTab: initialDrawerTab,
+  drawerSpecialistsScope: initialDrawerSpecialistsScope,
   terminalSessionId: initialTerminalSessionId,
   terminalReattachToken: initialTerminalReattachToken,
   terminalOutput: initialTerminalOutput,
@@ -159,6 +165,12 @@ export const useShellStore = create<ShellState>((set) => ({
       return { drawerTab: tab };
     }),
 
+  setDrawerSpecialistsScope: (scope) =>
+    set(() => {
+      writeJSON(LS.drawerSpecialistsScope, scope);
+      return { drawerSpecialistsScope: scope };
+    }),
+
   setTerminalSessionId: (sessionId) =>
     set(() => ({ terminalSessionId: sessionId })),
 
@@ -176,3 +188,4 @@ export const selectSelection = (s: ShellState) => s.selection;
 export const selectRepos = (s: ShellState) => s.repos;
 export const selectSidebarCollapsed = (s: ShellState) => s.sidebarCollapsed;
 export const selectTheme = (s: ShellState) => s.theme;
+export const selectDrawerSpecialistsScope = (s: ShellState) => s.drawerSpecialistsScope;

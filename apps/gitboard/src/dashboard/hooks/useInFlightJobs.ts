@@ -23,6 +23,7 @@ export interface InFlightGroup {
 export interface UseInFlightJobsState {
   jobs: LiveJob[];
   groups: InFlightGroup[];
+  sourceEpoch: Record<string, number>;
   loading: boolean;
   error: string | null;
 }
@@ -31,6 +32,7 @@ export function useInFlightJobs(): UseInFlightJobsState {
   const [jobs, setJobs] = useState<LiveJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [sourceEpoch, setSourceEpoch] = useState<Record<string, number>>({});
   const timerRef = useRef<number | null>(null);
   const aliveRef = useRef(true);
   const epochRef = useRef<Record<string, number>>({});
@@ -70,6 +72,7 @@ export function useInFlightJobs(): UseInFlightJobsState {
       }
       epochRef.current = nextEpoch;
       jobsRef.current = nextJobs;
+      setSourceEpoch(nextEpoch);
       setJobs(nextJobs);
       setError(null);
       setLoading(false);
@@ -97,7 +100,7 @@ export function useInFlightJobs(): UseInFlightJobsState {
   }, [load]);
 
   const groups = useMemo(() => groupJobsByRepo(jobs), [jobs]);
-  return { jobs, groups, loading, error };
+  return { jobs, groups, sourceEpoch, loading, error };
 }
 
 function schedule(load: () => Promise<void>, timerRef: MutableRefObject<number | null>, delayMs: number): void {
