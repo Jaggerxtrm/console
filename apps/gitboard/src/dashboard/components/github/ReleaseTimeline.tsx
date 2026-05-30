@@ -7,7 +7,7 @@ import {
   formatRelativeTime,
   type DateGroupItem,
 } from "../../lib/timeline-utils.ts";
-import { renderPrBodyText } from "./PrTimeline.tsx";
+import { renderPrBodyText } from "../../lib/markdown.tsx";
 
 type ReleaseItem = DateGroupItem<GithubRelease>;
 

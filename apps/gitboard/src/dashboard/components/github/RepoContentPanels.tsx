@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { apiClient } from "../../lib/client.ts";
-import { renderPrBodyText } from "./PrTimeline.tsx";
+import { renderPrBodyText } from "../../lib/markdown.tsx";
 
 type AsyncContent = string | null | "loading" | "error";
 
