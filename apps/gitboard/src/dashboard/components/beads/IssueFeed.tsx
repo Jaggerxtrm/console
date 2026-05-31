@@ -12,6 +12,8 @@ import { SpecialistOwnerBadge } from "./SpecialistOwnerBadge.tsx";
 import { BeadHeader } from "../specialists/BeadHeader.tsx";
 import { useSpecialistHistory } from "../../hooks/useSpecialistHistory.ts";
 import type { SpecialistOwnershipJob } from "../../hooks/useSpecialistOwnership.ts";
+import { logClientEvent } from "../../lib/client-log.ts";
+import { useShellStore } from "../../stores/shell.ts";
 
 export interface IssuePrLink {
   number: number;
@@ -52,6 +54,12 @@ export type FeedItem =
   | { kind: "issue"; issue: BeadIssue; depth: number; childCount: number; relation: "parent" | "epic" | "blocked" };
 
 export function IssueFeed({ issues, closedIssues = [], selectedIssueId, selectedIssueDetail, loadingDetailId, onIssueSelect, onIssueOpen, getAgent, projectId, prByIssueId, specialistByIssueId }: IssueFeedProps) {
+  const openSidebar = useShellStore((state) => state.openSidebar);
+  const handleSpecialistOpen = (beadId: string, specialistJob: SpecialistOwnershipJob | null) => {
+    if (!specialistJob) return;
+    logClientEvent("chip.click", { source: "feed_chip", beadId, jobId: specialistJob.jobId ?? null });
+    openSidebar({ beadId, jobId: specialistJob.jobId ?? undefined });
+  };
   const parentRef = useRef<HTMLDivElement>(null);
   const [showOpen, setShowOpen] = useState(true);
   const [showClosed, setShowClosed] = useState(false);
@@ -140,6 +148,7 @@ export function IssueFeed({ issues, closedIssues = [], selectedIssueId, selected
                   childCount={item.childCount}
                   onClick={() => onIssueSelect(item.issue)}
                   onOpen={() => onIssueOpen?.(item.issue)}
+                  onSpecialistOpen={() => handleSpecialistOpen(item.issue.id, specialistByIssueId?.get(item.issue.id) ?? null)}
                   depth={item.depth}
                   relation={item.relation}
                   projectId={projectId}
@@ -162,7 +171,7 @@ export function getFeedItemKey(item: FeedItem): string {
   return item.kind;
 }
 
-export function IssueRow({ issue, detail, isExpanded, isLoadingDetail, agent, dependencyCount, childCount, onClick, onOpen, depth = 0, relation = "parent", projectId, issueById, prLink = null, specialistJob = null }: { issue: BeadIssue; detail: BeadIssueDetail | null; isExpanded: boolean; isLoadingDetail: boolean; agent: string | null; dependencyCount: number; childCount: number; onClick: () => void; onOpen: () => void; depth?: number; relation?: "parent" | "epic" | "blocked"; projectId: string | null; issueById: Map<string, BeadIssue>; prLink?: IssuePrLink | null; specialistJob?: SpecialistOwnershipJob | null; }) {
+export function IssueRow({ issue, detail, isExpanded, isLoadingDetail, agent, dependencyCount, childCount, onClick, onOpen, onSpecialistOpen, depth = 0, relation = "parent", projectId, issueById, prLink = null, specialistJob = null }: { issue: BeadIssue; detail: BeadIssueDetail | null; isExpanded: boolean; isLoadingDetail: boolean; agent: string | null; dependencyCount: number; childCount: number; onClick: () => void; onOpen: () => void; onSpecialistOpen: () => void; depth?: number; relation?: "parent" | "epic" | "blocked"; projectId: string | null; issueById: Map<string, BeadIssue>; prLink?: IssuePrLink | null; specialistJob?: SpecialistOwnershipJob | null; }) {
   const isEpic = issue.issue_type === "epic";
   const displayStatus = getDisplayStatus(issue);
   const type = TYPE_CONFIG[String(issue.issue_type)] ?? { label: String(issue.issue_type), icon: IssueOpenedIcon, color: "var(--text-muted)" };
@@ -196,7 +205,7 @@ export function IssueRow({ issue, detail, isExpanded, isLoadingDetail, agent, de
           )}
           {agent && <><span className="identity-separator">/</span><span className="agent-badge"><DependabotIcon size={10} /> {agent}</span></>}
           <SpecialistHistoryChip beadId={issue.id} />
-          {specialistJob && <SpecialistOwnerBadge job={specialistJob} />}
+          {specialistJob && <SpecialistOwnerBadge job={specialistJob} onClick={onSpecialistOpen} />}
         </span>
       </button>
       <button type="button" className="chev" onClick={onOpen} aria-label={`open ${issue.id} side drawer`}>{isExpanded ? <ChevronDownIcon size={12} /> : <ChevronRightIcon size={12} />}</button>

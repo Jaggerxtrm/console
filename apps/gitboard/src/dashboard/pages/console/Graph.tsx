@@ -11,7 +11,7 @@
 //   Buckets row — <details> blocks
 //   Foot — keyboard hints
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
 import { ProjectIcon } from "@primer/octicons-react";
 import {
   ReactFlow,
@@ -22,6 +22,7 @@ import {
 import "@xyflow/react/dist/style.css";
 
 import { useShellStore, selectRepos, selectSelection } from "../../stores/shell.ts";
+import { logClientEvent } from "../../lib/client-log.ts";
 import { useGraphData } from "../../hooks/useGraphData.ts";
 import { partitionGraph, type BucketGroup, type ClusterGroup } from "./graph/clusters.ts";
 import { categoryFor, shortJobId, type AgentCategory } from "./graph/agent-roles.ts";
@@ -279,14 +280,26 @@ const STATUS_TEXT: Record<string, string> = {
 };
 
 function NodeChip({ node, specialist, wide }: { node: GraphNode; specialist: GraphSpecialist | null; wide?: boolean }) {
+  const openSidebar = useShellStore((state) => state.openSidebar);
   const isRunning = specialist?.status === "running";
   const typeColor = TYPE_COLOR[node.type] ?? "var(--text-muted)";
   const typeLabel = TYPE_LABEL[node.type] ?? node.type;
   const statusLabel = node.superseded_by ? "superseded" : STATUS_TEXT[node.status] ?? node.status;
   const agentCat: AgentCategory = categoryFor(specialist?.role);
   const classes = ["g-node", "g-node-inline", wide ? "g-node-wide" : "", isRunning ? "act" : ""].filter(Boolean).join(" ");
+  const handleClick = () => {
+    if (!specialist) return;
+    logClientEvent("chip.click", { source: "graph_node", beadId: node.id, jobId: specialist.job_id ?? null });
+    openSidebar({ beadId: node.id, jobId: specialist.job_id ?? undefined });
+  };
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      handleClick();
+    }
+  };
   return (
-    <div className={classes} data-p={node.priority}>
+    <div className={classes} data-p={node.priority} onClick={handleClick} onKeyDown={handleKeyDown} role="button" tabIndex={0}>
       <div className="g-node-identity">
         <span className="g-id">{node.id}</span>
         <span className="g-sep">/</span>

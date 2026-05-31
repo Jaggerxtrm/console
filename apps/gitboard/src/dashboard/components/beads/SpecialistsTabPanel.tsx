@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useInFlightJobs } from "../../hooks/useInFlightJobs.ts";
-import { beadSideDrawer } from "../../hooks/useBeadSideDrawer.ts";
 import { useShellStore, selectDrawerSpecialistsScope, selectSelection } from "../../stores/shell.ts";
 import { logClientEvent } from "../../lib/client-log.ts";
 import type { SpecialistJob } from "../../../server/observability/types.ts";
@@ -37,11 +36,7 @@ export function SpecialistsTabPanel() {
 
   const handleRowOpen = (job: SpecialistJob) => {
     logClientEvent("drawer.specialists.chip.clicked", { jobId: job.jobId, beadId: job.beadId, target: "sidebar" });
-    const shell = useShellStore.getState();
-    shell.setSurface("console");
-    shell.setTab("specialists");
-    shell.setRepo(job.repoSlug);
-    if (job.beadId) beadSideDrawer.open(job.beadId);
+    useShellStore.getState().openSidebar({ beadId: job.beadId, jobId: job.jobId ?? undefined });
   };
 
   if (error) return <div className="drawer-panel-message">{error}</div>;
