@@ -1,7 +1,7 @@
 /** @vitest-environment node */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import * as logger from "../../../core/logger.ts";
+import * as clientLog from "../client-log.ts";
 
 vi.mock("react/jsx-runtime", () => {
   const makeElement = (type: unknown, props: Record<string, unknown> | null, key: string | null) => ({
@@ -34,7 +34,7 @@ vi.mock("react/jsx-dev-runtime", () => ({
   }),
 }));
 
-const emitSpy = vi.spyOn(logger, "emit");
+const logClientEventSpy = vi.spyOn(clientLog, "logClientEvent");
 const markdown = await import("../markdown.tsx");
 const { renderPrBodyText } = markdown;
 
@@ -56,11 +56,11 @@ function descendants(node: unknown): unknown[] {
 }
 
 beforeEach(() => {
-  emitSpy.mockClear();
+  logClientEventSpy.mockClear();
 });
 
 afterEach(() => {
-  emitSpy.mockClear();
+  logClientEventSpy.mockClear();
 });
 
 describe("ResultMarkdown", () => {
@@ -91,8 +91,8 @@ describe("ResultMarkdown", () => {
     expect(paragraphJson).toContain('"type":"em"');
     expect(paragraphJson).toContain('"type":"code"');
     expect(JSON.stringify(nodes[3])).toContain("const value = 1;");
-    expect(emitSpy.mock.calls.some(([entry]) => entry.event === "markdown.rendered")).toBe(true);
-    expect(emitSpy.mock.calls.some(([entry]) => entry.event === "markdown.rejected")).toBe(false);
+    expect(logClientEventSpy.mock.calls.some(([event]) => event === "dashboard.markdown.rendered")).toBe(true);
+    expect(logClientEventSpy.mock.calls.some(([event]) => event === "dashboard.markdown.rejected")).toBe(false);
   });
 
   it("renders sp executor summary prose plus fenced json", () => {
@@ -108,8 +108,8 @@ describe("ResultMarkdown", () => {
 
     expect(nodes.some((node) => elementType(node) === "ul")).toBe(true);
     expect(nodes.some((node) => elementType(node) === "pre")).toBe(true);
-    expect(emitSpy.mock.calls.some(([entry]) => entry.event === "markdown.rendered")).toBe(true);
-    expect(emitSpy.mock.calls.some(([entry]) => entry.event === "markdown.rejected")).toBe(false);
+    expect(logClientEventSpy.mock.calls.some(([event]) => event === "dashboard.markdown.rendered")).toBe(true);
+    expect(logClientEventSpy.mock.calls.some(([event]) => event === "dashboard.markdown.rejected")).toBe(false);
   });
 
   it("renders reviewer verdict table and only safe links", () => {
@@ -128,8 +128,8 @@ describe("ResultMarkdown", () => {
     expect(childElements(table).some((section) => elementType(section) === "tbody")).toBe(true);
     const links = descendants(table).filter((child) => elementType(child) === "a").map((child) => elementProps(child).href as string);
     expect(links).toEqual(["https://example.org", "mailto:team@example.org"]);
-    expect(descendants(table).some((child) => elementType(child) === "a" && String(elementProps(child).href).startsWith("javascript:"))).toBe(false);
-    expect(emitSpy.mock.calls.some(([entry]) => entry.event === "markdown.rejected")).toBe(false);
+    expect(descendants(table).some((child) => elementType(child) === "a" && String(elementProps(child).href).startsWith("javascript:") )).toBe(false);
+    expect(logClientEventSpy.mock.calls.some(([event]) => event === "dashboard.markdown.rejected")).toBe(false);
   });
 
   it("renders code-sanity findings corpus and keeps inline code", () => {
@@ -161,13 +161,13 @@ describe("ResultMarkdown", () => {
     expect(nodes).toHaveLength(1);
     expect(JSON.stringify(nodes[0])).not.toContain('"type":"script"');
     expect(JSON.stringify(nodes[0])).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
-    expect(emitSpy.mock.calls.some(([entry]) => entry.event === "markdown.rejected")).toBe(false);
+    expect(logClientEventSpy.mock.calls.some(([event]) => event === "dashboard.markdown.rejected")).toBe(false);
   });
 
   it("emits telemetry for raw html stripping", () => {
     renderPrBodyText("<div>unsafe</div>");
 
-    expect(emitSpy.mock.calls.some(([entry]) => entry.event === "markdown.parse.warn" && entry.data?.hint === "raw html stripped")).toBe(true);
-    expect(emitSpy.mock.calls.some(([entry]) => entry.event === "markdown.rendered" && typeof entry.data?.durationMs === "number")).toBe(true);
+    expect(logClientEventSpy.mock.calls.some(([event, data]) => event === "dashboard.markdown.parse.warn" && data?.hint === "raw html stripped")).toBe(true);
+    expect(logClientEventSpy.mock.calls.some(([event, data]) => event === "dashboard.markdown.rendered" && typeof data?.durationMs === "number")).toBe(true);
   });
 });

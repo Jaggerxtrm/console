@@ -1,5 +1,5 @@
 import { createElement, useEffect } from "react";
-import { emit, makeLogEntry } from "../../../../core/logger.ts";
+import { logClientEvent } from "../../../lib/client-log.ts";
 import { TYPE_CONFIG } from "../../../lib/type-palette.ts";
 import type { ChainSummary } from "../../../hooks/useChains.ts";
 
@@ -17,7 +17,7 @@ export function ChainListRow({ chain }: { chain: ChainSummary }) {
 
   useEffect(() => {
     if (role in ROLE_PALETTE) return;
-    emit(makeLogEntry("cockpit", "row.palette.mismatch", "warn", undefined, { role, chainId: chain.chainId }));
+    logClientEvent("cockpit.row.palette.mismatch", { role, chainId: chain.chainId });
   }, [chain.chainId, role]);
   return createElement(
     "div",

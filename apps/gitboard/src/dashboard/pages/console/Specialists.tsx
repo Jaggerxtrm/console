@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertIcon, DotFillIcon } from "@primer/octicons-react";
-import { emit, makeLogEntry } from "../../../core/logger.ts";
+import { logClientEvent } from "../../lib/client-log.ts";
 import { useChains, type ChainStatus } from "../../hooks/useChains.ts";
 import { BeadActivityPane } from "../../components/specialists/BeadActivityPane.tsx";
 import { ChainCard } from "./specialists/ChainCard.tsx";
@@ -18,10 +18,10 @@ export function Specialists() {
   const typesByCount = useMemo(() => countByStatus(selection.visibleChains), [selection.visibleChains]);
 
   useEffect(() => {
-    emit(makeLogEntry("cockpit", "list.rendered", "info", undefined, buildListRenderedTelemetry(selection.visibleChains, typesByCount)));
+    logClientEvent("cockpit.list.rendered", buildListRenderedTelemetry(selection.visibleChains, typesByCount));
     if (!firstPaintLogged.current && !loading && !error) {
       firstPaintLogged.current = true;
-      emit(makeLogEntry("cockpit", "list.first_paint", "info", undefined, buildFirstPaintTelemetry(selection.visibleChains)));
+      logClientEvent("cockpit.list.first_paint", buildFirstPaintTelemetry(selection.visibleChains));
     }
   }, [error, loading, selection.visibleChains, typesByCount]);
 
@@ -33,12 +33,12 @@ export function Specialists() {
   useEffect(() => {
     if (!selection.selectedChainId || lastSelectedChainId.current === selection.selectedChainId) return;
     lastSelectedChainId.current = selection.selectedChainId;
-    emit(makeLogEntry("cockpit", "chain.selected", "info", undefined, buildChainSelectedTelemetry(selection.selectedChainId)));
+    logClientEvent("cockpit.chain.selected", buildChainSelectedTelemetry(selection.selectedChainId));
   }, [selection.selectedChainId]);
 
   useEffect(() => {
     if (!selection.selectedChain) return;
-    emit(makeLogEntry("cockpit", "bead_activity.swapped", "info", undefined, buildBeadActivitySwappedTelemetry(selection.selectedChain)));
+    logClientEvent("cockpit.bead_activity.swapped", buildBeadActivitySwappedTelemetry(selection.selectedChain));
   }, [selection.selectedChain]);
 
   const empty = !loading && !error && chains.length === 0;

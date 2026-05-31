@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { emit, makeLogEntry } from "../../core/logger.ts";
+import { logClientEvent } from "./client-log.ts";
 
 const HREF_PROTOCOL_RE = /^(https?:|mailto:)/i;
 const INLINE_RE = /(`[^`\n]+`)|(\*\*[^*\n]+\*\*)|(\*[^*\n]+\*)|(\[[^\]]+\]\((?:https?:\/\/|mailto:|forge-)[^\s)]+\))|(https?:\/\/[^\s<]+)|((?:https?:\/\/|mailto:)[^\s<]+)/g;
@@ -110,7 +110,7 @@ function renderMarkdownNodes(text: string): ReactNode[] {
         i += 1;
       }
       if (closed) i += 1;
-      else emit(makeLogEntry("dashboard", "markdown.parse.warn", "warn", undefined, { hint: "unclosed fence" }));
+      else logClientEvent("dashboard.markdown.parse.warn", { hint: "unclosed fence" });
       nodes.push(<pre key={`pre-${nodes.length}`} data-lang={fence[2] || undefined}><code>{code.join("\n")}</code></pre>);
       continue;
     }
@@ -172,9 +172,9 @@ function renderMarkdownNodes(text: string): ReactNode[] {
 
   flushParagraph();
   flushList();
-  if (htmlStripped) emit(makeLogEntry("dashboard", "markdown.parse.warn", "warn", undefined, { hint: "raw html stripped" }));
-  if (nodes.length === 0) emit(makeLogEntry("dashboard", "markdown.rejected", "warn", undefined, { reason: "empty", count: 1 }));
-  emit(makeLogEntry("dashboard", "markdown.rendered", "debug", undefined, { contentBytes: Buffer.byteLength(text), fenceCount, tableCount, headingMax, durationMs: Date.now() - startedAt }));
+  if (htmlStripped) logClientEvent("dashboard.markdown.parse.warn", { hint: "raw html stripped" });
+  if (nodes.length === 0) logClientEvent("dashboard.markdown.rejected", { reason: "empty", count: 1 });
+  logClientEvent("dashboard.markdown.rendered", { contentBytes: Buffer.byteLength(text), fenceCount, tableCount, headingMax, durationMs: Date.now() - startedAt });
   return nodes;
 }
 

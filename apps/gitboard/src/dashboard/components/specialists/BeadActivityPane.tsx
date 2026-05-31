@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDownIcon, ChevronRightIcon } from "@primer/octicons-react";
-import { emit, makeLogEntry } from "../../../core/logger.ts";
+import { logClientEvent } from "../../lib/client-log.ts";
 import type { SpecialistJob } from "../../../server/observability/types.ts";
 import type { BeadIssue } from "../../../types/beads.ts";
 import { TerminalStream } from "../terminal/TerminalStream.tsx";
@@ -26,8 +26,8 @@ export function BeadActivityPane({ beadId, jobIdHint }: BeadActivityPaneProps) {
   const loadedRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
-    emit(makeLogEntry("bead_activity", "mount", "info", undefined, { beadId, jobIdHint }));
-    return () => emit(makeLogEntry("bead_activity", "unmount", "info", undefined, { beadId, jobIdHint }));
+    logClientEvent("bead_activity.mount", { beadId, jobIdHint });
+    return () => logClientEvent("bead_activity.unmount", { beadId, jobIdHint });
   }, [beadId, jobIdHint]);
 
   useEffect(() => {
@@ -58,9 +58,9 @@ export function BeadActivityPane({ beadId, jobIdHint }: BeadActivityPaneProps) {
       loadedRef.current.add(key);
       void loadResult(job).then((payload) => {
         setResults((current) => ({ ...current, [key]: payload }));
-        emit(makeLogEntry("bead_activity", "result.rendered", "info", undefined, { beadId, jobId: key }));
+        logClientEvent("bead_activity.result.rendered", { beadId, jobId: key });
       }).catch((resultError) => {
-        emit(makeLogEntry("bead_activity", "result.fetch.error", "warn", undefined, { beadId, jobId: key, error: resultError instanceof Error ? resultError.message : String(resultError) }));
+        logClientEvent("bead_activity.result.fetch.error", { beadId, jobId: key, error: resultError instanceof Error ? resultError.message : String(resultError) });
       });
     }
   }, [beadId, jobs]);
@@ -83,7 +83,7 @@ export function BeadActivityPane({ beadId, jobIdHint }: BeadActivityPaneProps) {
                   const key = job.jobId ?? job.beadId;
                   const next = !(expanded[key] ?? false);
                   setExpanded((current) => ({ ...current, [key]: next }));
-                  emit(makeLogEntry("bead_activity", next ? "feed.expand" : "feed.collapse", "info", undefined, { beadId, jobId: key }));
+                  logClientEvent(next ? "bead_activity.feed.expand" : "bead_activity.feed.collapse", { beadId, jobId: key });
                 }}
                 result={results[job.jobId ?? job.beadId]}
               />
