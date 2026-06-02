@@ -622,6 +622,154 @@
       padding: 10px 12px;
     }
 
+    .drawer {
+      bottom: 0;
+      display: none;
+      grid-template-columns: minmax(0, 1fr) minmax(560px, min(56vw, 760px));
+      left: 0;
+      pointer-events: none;
+      position: fixed;
+      right: 0;
+      top: 38px;
+      z-index: 10;
+    }
+    .drawer.is-open { display: grid; }
+    .drawer-scrim {
+      background: rgba(253, 253, 253, 0.66);
+      pointer-events: auto;
+    }
+    .drawer-shell {
+      background: var(--surface-1);
+      border-left: 1px solid var(--line);
+      box-shadow: var(--shadow-drawer);
+      display: grid;
+      grid-template-rows: auto auto minmax(0, 1fr);
+      min-width: 0;
+      pointer-events: auto;
+    }
+    .drawer-header {
+      border-bottom: 1px solid var(--line-subtle);
+      display: grid;
+      gap: 8px;
+      padding: 12px 16px 10px;
+    }
+    .drawer-breadcrumb {
+      color: var(--text-muted);
+      display: flex;
+      gap: 7px;
+      font-size: 10.5px;
+    }
+    .drawer-title {
+      align-items: baseline;
+      display: flex;
+      gap: 8px;
+      min-width: 0;
+    }
+    .drawer-title h2 {
+      flex: 1;
+      font-size: 18px;
+      font-style: italic;
+      line-height: 1.15;
+      margin: 0;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .drawer-actions {
+      align-items: center;
+      display: flex;
+      gap: 6px;
+    }
+    .drawer-tabs {
+      border-bottom: 1px solid var(--line-subtle);
+      display: flex;
+      gap: 2px;
+      overflow-x: auto;
+      padding: 0 12px;
+    }
+    .drawer-tab {
+      border-bottom: 2px solid transparent;
+      color: var(--text-secondary);
+      height: 36px;
+      padding: 0 8px;
+      white-space: nowrap;
+    }
+    .drawer-tab.is-active {
+      border-bottom-color: var(--accent);
+      color: var(--text-primary);
+      font-weight: 650;
+    }
+    .drawer-body {
+      display: grid;
+      gap: 12px;
+      min-height: 0;
+      overflow: auto;
+      padding: 14px 16px 28px;
+    }
+    .info-rail {
+      border-left: 2px solid var(--accent);
+      display: grid;
+      gap: 7px;
+      padding-left: 10px;
+    }
+    .info-rail.warn { border-left-color: var(--blocked); }
+    .info-rail.ready { border-left-color: var(--ready); }
+    .info-rail.purple { border-left-color: var(--purple); }
+    .kv-grid {
+      display: grid;
+      gap: 8px 14px;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+    .kv {
+      display: grid;
+      gap: 2px;
+      min-width: 0;
+    }
+    .kv label {
+      color: var(--text-muted);
+      font-size: 10.5px;
+      font-weight: 720;
+      text-transform: uppercase;
+    }
+    .kv span {
+      color: var(--text-secondary);
+      font-family: var(--font-mono);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .trace-mini {
+      background:
+        linear-gradient(to right, rgba(15, 23, 42, 0.045) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(15, 23, 42, 0.045) 1px, transparent 1px);
+      background-size: 52px 34px;
+      border: 1px solid var(--line-subtle);
+      border-radius: 4px;
+      min-height: 116px;
+      position: relative;
+    }
+    .trace-mini svg {
+      display: block;
+      height: 116px;
+      width: 100%;
+    }
+    .entity-row {
+      background: transparent;
+      border: 0;
+      border-left: 2px solid var(--ready);
+      color: inherit;
+      display: grid;
+      gap: 4px;
+      min-width: 0;
+      padding: 7px 0 7px 10px;
+      text-align: left;
+      width: 100%;
+    }
+    .entity-row.warn { border-left-color: var(--blocked); }
+    .entity-row.purple { border-left-color: var(--purple); }
+    .entity-row:hover { background: rgba(15, 23, 42, 0.025); }
+
     @media (max-width: 1280px) {
       .app { grid-template-columns: 54px minmax(0, 1fr) 342px; }
       .brand { width: 54px; }
@@ -634,6 +782,8 @@
       .panel-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .span-2, .span-3, .span-4 { grid-column: span 2; }
       .pulse-strip { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .drawer { grid-template-columns: 0 minmax(420px, 100vw); }
+      .kv-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
   </style>
 </head>
@@ -770,10 +920,10 @@
             <table class="table">
               <thead><tr><th>Template</th><th class="num">Chains</th><th class="num">Done</th><th class="num">Esc.</th><th class="num">p50</th></tr></thead>
               <tbody>
-                <tr><td class="id">code-standard</td><td class="num">18</td><td class="num">16</td><td class="num">0</td><td class="num">4m12s</td></tr>
-                <tr><td class="id">debug</td><td class="num">5</td><td class="num">4</td><td class="num" style="color:var(--blocked);font-weight:720">1</td><td class="num">6m02s</td></tr>
-                <tr><td class="id">code-with-tests</td><td class="num">7</td><td class="num">6</td><td class="num">0</td><td class="num">7m38s</td></tr>
-                <tr><td class="id">security-deep</td><td class="num">1</td><td class="num">1</td><td class="num">0</td><td class="num">12m21s</td></tr>
+                <tr data-entity-kind="chain-template" data-entity-id="template:code-standard" data-entity-title="code-standard chain template"><td class="id">code-standard</td><td class="num">18</td><td class="num">16</td><td class="num">0</td><td class="num">4m12s</td></tr>
+                <tr data-entity-kind="chain-template" data-entity-id="template:debug" data-entity-title="debug chain template"><td class="id">debug</td><td class="num">5</td><td class="num">4</td><td class="num" style="color:var(--blocked);font-weight:720">1</td><td class="num">6m02s</td></tr>
+                <tr data-entity-kind="chain-template" data-entity-id="template:code-with-tests" data-entity-title="code-with-tests template"><td class="id">code-with-tests</td><td class="num">7</td><td class="num">6</td><td class="num">0</td><td class="num">7m38s</td></tr>
+                <tr data-entity-kind="chain-template" data-entity-id="template:security-deep" data-entity-title="security-deep template"><td class="id">security-deep</td><td class="num">1</td><td class="num">1</td><td class="num">0</td><td class="num">12m21s</td></tr>
               </tbody>
             </table>
           </div>
@@ -815,9 +965,9 @@
             <table class="table">
               <thead><tr><th>Pattern</th><th class="num">Instances</th><th>Last</th><th>Status</th></tr></thead>
               <tbody>
-                <tr><td>scope mixed auth and logging</td><td class="num">3</td><td class="mono">12h</td><td><span class="chip warn">watch</span></td></tr>
-                <tr><td>reviewer rejected acceptance criteria</td><td class="num">2</td><td class="mono">2d</td><td><span class="chip ready">mitigated</span></td></tr>
-                <tr><td>debugger could not isolate root cause</td><td class="num">1</td><td class="mono">3d</td><td><span class="chip fail">open</span></td></tr>
+                <tr data-entity-kind="memory" data-entity-id="mem:scope-mixed" data-entity-title="scope mixed auth and logging"><td>scope mixed auth and logging</td><td class="num">3</td><td class="mono">12h</td><td><span class="chip warn">watch</span></td></tr>
+                <tr data-entity-kind="memory" data-entity-id="mem:reviewer-rejected" data-entity-title="reviewer rejected acceptance criteria"><td>reviewer rejected acceptance criteria</td><td class="num">2</td><td class="mono">2d</td><td><span class="chip ready">mitigated</span></td></tr>
+                <tr data-entity-kind="memory" data-entity-id="mem:debugger-stuck" data-entity-title="debugger could not isolate root cause"><td>debugger could not isolate root cause</td><td class="num">1</td><td class="mono">3d</td><td><span class="chip fail">open</span></td></tr>
               </tbody>
             </table>
           </div>
@@ -927,11 +1077,85 @@
         <button class="button primary">Apply</button>
       </footer>
     </aside>
+
+    <aside class="drawer is-open" id="entityDrawer" aria-label="Entity drawer">
+      <button class="drawer-scrim" id="drawerScrim" aria-label="Close drawer"></button>
+      <section class="drawer-shell">
+        <header class="drawer-header">
+          <div class="drawer-breadcrumb"><span>xtrm</span><span>/</span><span id="drawerKind">chain-template</span><span>/</span><span id="drawerId">template:debug</span></div>
+          <div class="drawer-title">
+            <span class="id" id="drawerIdTitle">template:debug</span>
+            <span>/</span>
+            <h2 id="drawerTitle">debug chain template</h2>
+            <div class="drawer-actions">
+              <button class="button">Copy ID</button>
+              <button class="button">Open trace</button>
+              <button class="button primary">Create panel</button>
+            </div>
+          </div>
+          <div class="field-list">
+            <span class="chip active">kind:chain-template</span>
+            <span class="chip warn">esc:1</span>
+            <span class="chip mono">p50:6m02s</span>
+            <span class="chip mono">chains:5</span>
+          </div>
+        </header>
+
+        <nav class="drawer-tabs" aria-label="Drawer tabs">
+          <button class="drawer-tab is-active">Overview</button>
+          <button class="drawer-tab">Recent Activity</button>
+          <button class="drawer-tab">Query Usage</button>
+          <button class="drawer-tab">Evidence</button>
+          <button class="drawer-tab">Configuration</button>
+        </nav>
+
+        <div class="drawer-body">
+          <section class="info-rail warn">
+            <h3 style="margin:0;font-size:12.5px">Why this opened as a drawer</h3>
+            <p style="margin:0;color:var(--text-secondary)">The right query panel edits the selected chart. This overlay inspects the clicked entity, preserving the console drawer contract without squashing either the chart grid or query workbench.</p>
+          </section>
+
+          <div class="kv-grid">
+            <div class="kv"><label>kind</label><span>chain-template</span></div>
+            <div class="kv"><label>template</label><span>debug</span></div>
+            <div class="kv"><label>chains</label><span>5</span></div>
+            <div class="kv"><label>escalated</label><span>1</span></div>
+            <div class="kv"><label>success</label><span>80.0%</span></div>
+            <div class="kv"><label>p50</label><span>6m02s</span></div>
+            <div class="kv"><label>p95</label><span>12m44s</span></div>
+            <div class="kv"><label>cost</label><span>$0.93</span></div>
+          </div>
+
+          <section class="info-rail">
+            <h3 style="margin:0;font-size:12.5px">Mini trace and cost shape</h3>
+            <div class="trace-mini">
+              <svg viewBox="0 0 680 116" preserveAspectRatio="none" aria-label="Debug template mini trace">
+                <polyline points="16,78 70,72 124,76 178,61 232,68 286,50 340,56 394,42 448,47 502,32 556,39 664,35" fill="none" stroke="var(--accent)" stroke-width="2" vector-effect="non-scaling-stroke"/>
+                <polyline points="16,91 70,88 124,89 178,83 232,86 286,77 340,80 394,70 448,73 502,62 556,66 664,64" fill="none" stroke="var(--blocked)" stroke-width="1.6" vector-effect="non-scaling-stroke"/>
+              </svg>
+            </div>
+            <div class="legend"><span><i class="dot accent"></i>duration p95</span><span><i class="dot warn"></i>escalation pressure</span></div>
+          </section>
+
+          <section class="info-rail ready">
+            <h3 style="margin:0;font-size:12.5px">Recent instances</h3>
+            <button class="entity-row warn"><span class="id">chain:7f3a</span><span>hard_cap reached after 12 review iterations</span><span class="chip warn">operator pending</span></button>
+            <button class="entity-row"><span class="id">chain:9e2c</span><span>SRE-agent isolated stuck materializer backpressure</span><span class="chip ready">done</span></button>
+            <button class="entity-row purple"><span class="id">mem:debugger-stuck</span><span>failure cluster created from repeated debug dead-ends</span><span class="chip">memory</span></button>
+          </section>
+        </div>
+      </section>
+    </aside>
   </div>
 
   <script>
     const panels = Array.from(document.querySelectorAll(".panel[data-panel]"));
     const panelSelect = document.getElementById("panelSelect");
+    const drawer = document.getElementById("entityDrawer");
+    const drawerKind = document.getElementById("drawerKind");
+    const drawerId = document.getElementById("drawerId");
+    const drawerIdTitle = document.getElementById("drawerIdTitle");
+    const drawerTitle = document.getElementById("drawerTitle");
 
     panels.forEach((panel, index) => {
       panel.addEventListener("click", () => {
@@ -959,6 +1183,24 @@
         target.classList.add("is-selected");
         target.scrollIntoView({ block: "nearest", behavior: "smooth" });
       });
+    });
+
+    document.querySelectorAll("[data-entity-kind]").forEach((row) => {
+      row.addEventListener("click", (event) => {
+        event.stopPropagation();
+        const kind = row.dataset.entityKind || "entity";
+        const id = row.dataset.entityId || "entity:unknown";
+        const title = row.dataset.entityTitle || id;
+        drawerKind.textContent = kind;
+        drawerId.textContent = id;
+        drawerIdTitle.textContent = id;
+        drawerTitle.textContent = title;
+        drawer.classList.add("is-open");
+      });
+    });
+
+    document.getElementById("drawerScrim").addEventListener("click", () => {
+      drawer.classList.remove("is-open");
     });
   </script>
 </body>
