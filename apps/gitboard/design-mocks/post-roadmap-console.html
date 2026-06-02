@@ -314,6 +314,147 @@
     .evidence-row.partial { border-left-color: var(--blocked); }
     .evidence-row.fail { border-left-color: var(--danger); }
 
+    .evidence-summary {
+      display: grid;
+      gap: 8px;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      padding: 10px;
+    }
+    .verdict-card {
+      background: var(--surface-2);
+      border-left: 2px solid var(--ready);
+      display: grid;
+      gap: 4px;
+      min-width: 0;
+      padding: 8px 0 8px 10px;
+    }
+    .verdict-card.warn { border-left-color: var(--blocked); }
+    .verdict-card.fail { border-left-color: var(--danger); }
+    .verdict-card label {
+      color: var(--text-muted);
+      font-size: 10px;
+      font-weight: 720;
+      text-transform: uppercase;
+    }
+    .verdict-card strong {
+      color: var(--text-primary);
+      font-family: var(--font-mono);
+      font-size: 15px;
+      font-weight: 720;
+    }
+    .verdict-card span {
+      color: var(--text-secondary);
+      font-size: 10.5px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .proof-stack {
+      border-top: 1px solid var(--line-subtle);
+      display: grid;
+    }
+    .proof-row {
+      background: transparent;
+      border: 0;
+      border-left: 2px solid var(--ready);
+      border-bottom: 1px solid var(--line-subtle);
+      color: inherit;
+      display: grid;
+      gap: 8px;
+      grid-template-columns: minmax(150px, 0.62fr) minmax(0, 1.6fr) minmax(120px, 0.72fr);
+      min-width: 0;
+      padding: 10px;
+      text-align: left;
+      width: 100%;
+    }
+    .proof-row:last-child { border-bottom: 0; }
+    .proof-row:hover { background: rgba(58, 95, 206, 0.035); }
+    .proof-row.warn { border-left-color: var(--blocked); }
+    .proof-row.fail { border-left-color: var(--danger); }
+    .proof-kind {
+      display: grid;
+      gap: 4px;
+      min-width: 0;
+    }
+    .proof-kind strong {
+      color: var(--text-primary);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .proof-copy {
+      color: var(--text-secondary);
+      line-height: 1.45;
+      min-width: 0;
+    }
+    .proof-copy b {
+      color: var(--text-primary);
+      font-weight: 650;
+    }
+    .proof-evidence {
+      align-content: start;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      justify-content: flex-end;
+      min-width: 0;
+    }
+
+    .drawer-proof-grid {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: minmax(0, 1fr) minmax(180px, 0.62fr);
+    }
+    .proof-card {
+      border-left: 2px solid var(--ready);
+      display: grid;
+      gap: 8px;
+      min-width: 0;
+      padding-left: 10px;
+    }
+    .proof-card.warn { border-left-color: var(--blocked); }
+    .proof-card.purple { border-left-color: var(--purple); }
+    .proof-list {
+      display: grid;
+      gap: 6px;
+      margin: 0;
+      padding: 0;
+    }
+    .proof-list li {
+      color: var(--text-secondary);
+      display: grid;
+      gap: 3px;
+      grid-template-columns: 74px minmax(0, 1fr);
+      list-style: none;
+      min-width: 0;
+    }
+    .proof-list b {
+      color: var(--text-primary);
+      font-family: var(--font-mono);
+      font-size: 10.5px;
+      font-weight: 650;
+    }
+    .artifact-grid {
+      display: grid;
+      gap: 6px;
+    }
+    .artifact {
+      background: var(--surface-2);
+      border-left: 2px solid var(--accent);
+      display: grid;
+      gap: 3px;
+      padding: 7px 0 7px 9px;
+    }
+    .artifact strong {
+      color: var(--text-primary);
+      font-family: var(--font-mono);
+      font-size: 10.5px;
+      font-weight: 650;
+    }
+
     .identity {
       align-items: baseline;
       display: flex;
@@ -535,6 +676,11 @@
     .diff .add { color: var(--ready); }
     .diff .del { color: var(--danger); }
 
+    @media (max-width: 1320px) {
+      .proof-row { grid-template-columns: minmax(140px, 0.7fr) minmax(0, 1.3fr); }
+      .proof-evidence { grid-column: 1 / -1; justify-content: flex-start; }
+    }
+
     @media (max-width: 1180px) {
       .app { min-width: 0; grid-template-columns: 52px minmax(0, 1fr); }
       .brand { width: 34px; }
@@ -545,6 +691,8 @@
       .content { grid-template-columns: 1fr; }
       .pane + .pane { border-left: 0; border-top: 1px solid var(--line-subtle); }
       .drawer { grid-template-columns: 0 minmax(360px, 100vw); }
+      .evidence-summary,
+      .drawer-proof-grid { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -683,22 +831,59 @@
 
           <div class="surface">
             <div class="surface-head">
-              <h2>Recent verdicts and proofs</h2>
+              <h2>Proof ledger</h2>
               <div class="top-spacer"></div>
-              <button class="chip is-active">all evidence</button>
+              <button class="chip is-active">validated</button>
+              <button class="chip">needs review</button>
             </div>
-            <button class="evidence-row pass is-active" data-entity="evidence">
-              <span class="identity"><span class="id">evd:playwright-70el</span><span class="sep">/</span><span class="title">drawer + feed + result verified</span></span>
-              <span class="meta-line"><span class="chip state-ready">PASS</span><span class="mono">59 tests</span><span>screenshots attached</span><span>trace:tr-chain-70el</span></span>
-            </button>
-            <button class="evidence-row partial" data-entity="issue">
-              <span class="identity"><span class="id">iss:70el-review</span><span class="sep">/</span><span class="title">reviewer found visual drift in activity rail</span></span>
-              <span class="meta-line"><span class="chip state-warn">PARTIAL</span><span>2 findings</span><span>needs design contract check</span></span>
-            </button>
-            <button class="evidence-row fail" data-entity="memory">
-              <span class="identity"><span class="id">mem:run-result-regression</span><span class="sep">/</span><span class="title">terminal feed must not replace markdown result</span></span>
-              <span class="meta-line"><span class="chip state-fail">FAIL pattern</span><span>anti-regression rule saved</span></span>
-            </button>
+            <div class="evidence-summary">
+              <div class="verdict-card">
+                <label>verdict</label>
+                <strong>PASS</strong>
+                <span>reviewer accepted scope</span>
+              </div>
+              <div class="verdict-card">
+                <label>tests</label>
+                <strong>59</strong>
+                <span>dashboard + unit + e2e</span>
+              </div>
+              <div class="verdict-card warn">
+                <label>findings</label>
+                <strong>2 fixed</strong>
+                <span>activity rail and result markdown</span>
+              </div>
+              <div class="verdict-card">
+                <label>artifacts</label>
+                <strong>3</strong>
+                <span>screenshots and diff proof</span>
+              </div>
+            </div>
+            <div class="proof-stack">
+              <button class="proof-row" data-entity="evidence">
+                <span class="proof-kind">
+                  <strong>evd:playwright-70el</strong>
+                  <span class="meta-line"><span class="chip state-ready">PASS</span><span class="mono">12:41</span></span>
+                </span>
+                <span class="proof-copy"><b>Drawer + feed + result verified.</b> Entity switching, Evidence tab, Activity tab, terminal feed persistence, and markdown result rendering all passed without console errors.</span>
+                <span class="proof-evidence"><span class="chip">screenshot</span><span class="chip">console clean</span><span class="chip">trace:tr-chain-70el</span></span>
+              </button>
+              <button class="proof-row warn" data-entity="issue">
+                <span class="proof-kind">
+                  <strong>iss:70el-review</strong>
+                  <span class="meta-line"><span class="chip state-warn">PARTIAL</span><span class="mono">reviewer</span></span>
+                </span>
+                <span class="proof-copy"><b>Visual drift detected and repaired.</b> The completed job view had terminal feed visibility but lost the rendered run result and made the activity rail feel fragmented.</span>
+                <span class="proof-evidence"><span class="chip">2 findings</span><span class="chip">fixed in mock</span><span class="chip">contract checked</span></span>
+              </button>
+              <button class="proof-row fail" data-entity="memory">
+                <span class="proof-kind">
+                  <strong>mem:run-result-regression</strong>
+                  <span class="meta-line"><span class="chip state-fail">GUARD</span><span class="mono">saved</span></span>
+                </span>
+                <span class="proof-copy"><b>Anti-regression rule.</b> Specialist activity must persist terminal feed and rendered markdown result as sibling evidence, collapsed by default but always recoverable.</span>
+                <span class="proof-evidence"><span class="chip">memory</span><span class="chip">bead contract</span><span class="chip">future gate</span></span>
+              </button>
+            </div>
           </div>
 
           <div class="surface">
@@ -780,18 +965,31 @@
             </section>
 
             <section class="drawer-panel" id="panel-evidence">
-              <div class="info-rail ready">
-                <h2>Verdicts</h2>
-                <span class="meta-line"><span class="chip state-ready">scope PASS</span><span class="chip state-ready">quality PASS</span><span class="chip state-ready">tests PASS</span></span>
+              <div class="drawer-proof-grid">
+                <div class="proof-card">
+                  <h2>Verdict packet</h2>
+                  <span class="meta-line"><span class="chip state-ready">scope PASS</span><span class="chip state-ready">quality PASS</span><span class="chip state-ready">tests PASS</span></span>
+                  <ul class="proof-list">
+                    <li><b>scope</b><span>Activity restores terminal feed and rendered run result without replacing either surface.</span></li>
+                    <li><b>tests</b><span>59 tests passed across dashboard rendering, drawer interactions, and markdown constraints.</span></li>
+                    <li><b>visual</b><span>Evidence, Activity, Diff, and Lineage share the same rail-based contract.</span></li>
+                  </ul>
+                </div>
+                <div class="proof-card purple">
+                  <h2>Artifacts</h2>
+                  <div class="artifact-grid">
+                    <div class="artifact"><strong>shot:integrated-light</strong><span class="meta-line">drawer open, Evidence selected</span></div>
+                    <div class="artifact"><strong>trace:tr-chain-70el</strong><span class="meta-line">executor -> test -> reviewer</span></div>
+                    <div class="artifact"><strong>diff:activity-contract</strong><span class="meta-line">feed + result restored</span></div>
+                  </div>
+                </div>
               </div>
-              <button class="entity-row" data-entity="evidence">
-                <span class="identity"><span class="id">evd:playwright-70el</span><span class="sep">/</span><span class="title">integrated preview proof</span></span>
-                <span class="meta-line"><span>drawer visible</span><span>chain click works</span><span>zero console errors</span></span>
-              </button>
-              <button class="entity-row" data-entity="memory">
-                <span class="identity"><span class="id">mem:terminal-result-contract</span><span class="sep">/</span><span class="title">feed and result are mandatory siblings</span></span>
-                <span class="meta-line"><span class="chip state-fail">anti-regression</span><span>saved memory</span></span>
-              </button>
+              <div class="proof-card warn">
+                <h2>Regression contract</h2>
+                <div class="diff"><span class="del">- completed job shows only terminal feed</span>
+<span class="add">+ completed job keeps terminal feed and markdown run result as sibling evidence</span>
+<span class="add">+ evidence drawer links verdict, tests, artifacts, and exact diff proof</span></div>
+              </div>
             </section>
 
             <section class="drawer-panel" id="panel-diff">
