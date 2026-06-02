@@ -1,0 +1,913 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Gitboard post-roadmap console mock</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --surface-1: #fdfdfd;
+      --surface-2: #f7f8f9;
+      --surface-3: #f1f3f5;
+      --surface-4: #e9edf2;
+      --line-subtle: rgba(15, 23, 42, 0.07);
+      --line: rgba(15, 23, 42, 0.14);
+      --line-strong: rgba(15, 23, 42, 0.22);
+      --text-primary: #172033;
+      --text-secondary: #536071;
+      --text-muted: #87909e;
+      --text-disabled: #bbc1cb;
+      --accent: #3a5fce;
+      --ready: #2f8d5e;
+      --blocked: #8c4a1f;
+      --danger: #c84d3c;
+      --purple: #5a51b8;
+      --exec: #3a5fce;
+      --review: #8c4a1f;
+      --test: #2f8d5e;
+      --memory: #5a51b8;
+      --shadow-drawer: -16px 0 48px -16px rgba(15, 23, 42, 0.18);
+      --font-ui: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --font-mono: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      background: var(--surface-1);
+      color: var(--text-primary);
+      font-family: var(--font-ui);
+      font-size: 12.5px;
+      line-height: 1.45;
+      letter-spacing: 0;
+      overflow: hidden;
+    }
+
+    button, input { font: inherit; }
+    button { cursor: pointer; }
+    .mono, .id, code { font-family: var(--font-mono); }
+    .muted { color: var(--text-muted); }
+    .secondary { color: var(--text-secondary); }
+
+    .app {
+      display: grid;
+      grid-template-columns: 238px minmax(0, 1fr);
+      grid-template-rows: 42px minmax(0, 1fr);
+      height: 100vh;
+      min-width: 1120px;
+    }
+
+    .topbar {
+      align-items: center;
+      background: var(--surface-1);
+      border-bottom: 1px solid var(--line-subtle);
+      display: flex;
+      gap: 14px;
+      grid-column: 1 / -1;
+      padding: 0 12px;
+      min-width: 0;
+    }
+
+    .brand {
+      align-items: center;
+      display: inline-flex;
+      gap: 8px;
+      font-weight: 720;
+      width: 222px;
+    }
+
+    .brand-mark {
+      background: var(--accent);
+      border-radius: 2px;
+      height: 8px;
+      width: 8px;
+    }
+
+    .crumbs {
+      align-items: center;
+      color: var(--text-muted);
+      display: flex;
+      gap: 8px;
+      min-width: 0;
+      white-space: nowrap;
+    }
+    .crumbs b { color: var(--text-primary); font-weight: 680; }
+
+    .top-spacer { flex: 1 1 auto; min-width: 0; }
+    .top-stat {
+      align-items: center;
+      color: var(--text-secondary);
+      display: inline-flex;
+      gap: 6px;
+      white-space: nowrap;
+    }
+    .top-stat strong { color: var(--text-primary); font-weight: 640; }
+
+    .sidebar {
+      background: var(--surface-2);
+      border-right: 1px solid var(--line-subtle);
+      min-width: 0;
+      overflow: hidden;
+    }
+
+    .sidebar-section {
+      border-bottom: 1px solid var(--line-subtle);
+      padding: 10px 12px;
+    }
+
+    .search {
+      align-items: center;
+      background: var(--surface-1);
+      border: 1px solid var(--line-subtle);
+      border-radius: 4px;
+      color: var(--text-muted);
+      display: flex;
+      gap: 8px;
+      height: 30px;
+      padding: 0 8px;
+    }
+    .search input {
+      background: transparent;
+      border: 0;
+      color: var(--text-primary);
+      min-width: 0;
+      outline: 0;
+      width: 100%;
+    }
+
+    .repo-list { display: grid; }
+    .repo-row {
+      background: transparent;
+      border: 0;
+      border-left: 2px solid transparent;
+      color: var(--text-secondary);
+      display: grid;
+      gap: 3px;
+      min-height: 52px;
+      padding: 8px 12px 8px 10px;
+      text-align: left;
+      width: 100%;
+    }
+    .repo-row:hover { background: rgba(58, 95, 206, 0.045); }
+    .repo-row.is-active {
+      background: rgba(58, 95, 206, 0.07);
+      border-left-color: var(--accent);
+      color: var(--text-primary);
+    }
+    .repo-title { font-weight: 660; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .repo-meta { color: var(--text-muted); display: flex; gap: 8px; font-size: 10.5px; }
+
+    .main {
+      background: var(--surface-1);
+      min-width: 0;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .tabs {
+      align-items: stretch;
+      background: var(--surface-1);
+      border-bottom: 1px solid var(--line-subtle);
+      display: flex;
+      height: 38px;
+      padding: 0 14px;
+    }
+    .tab {
+      background: transparent;
+      border: 0;
+      border-bottom: 2px solid transparent;
+      color: var(--text-secondary);
+      padding: 0 10px;
+    }
+    .tab.is-active {
+      border-bottom-color: var(--accent);
+      color: var(--text-primary);
+      font-weight: 650;
+    }
+
+    .content {
+      display: grid;
+      grid-template-columns: minmax(520px, 0.92fr) minmax(440px, 0.78fr);
+      height: calc(100vh - 80px);
+      overflow: hidden;
+    }
+
+    .pane {
+      min-width: 0;
+      overflow: auto;
+      padding: 14px 16px 36px;
+    }
+    .pane + .pane { border-left: 1px solid var(--line-subtle); }
+
+    .section-head {
+      align-items: end;
+      display: flex;
+      gap: 14px;
+      margin-bottom: 12px;
+      min-width: 0;
+    }
+    .eyebrow {
+      color: var(--text-muted);
+      font-size: 10.5px;
+      font-weight: 720;
+      text-transform: uppercase;
+    }
+    h1, h2, h3 { margin: 0; }
+    h1 { font-size: 18px; line-height: 1.15; }
+    h2 { font-size: 14px; }
+    h3 { font-size: 12.5px; }
+
+    .metric-row {
+      display: grid;
+      gap: 8px;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      margin-bottom: 14px;
+    }
+    .metric {
+      background: var(--surface-2);
+      border: 1px solid var(--line-subtle);
+      border-radius: 4px;
+      display: grid;
+      gap: 4px;
+      padding: 9px 10px;
+    }
+    .metric span { color: var(--text-muted); font-size: 10.5px; font-weight: 680; }
+    .metric strong { font-size: 20px; line-height: 1; }
+    .metric em { color: var(--text-secondary); font-size: 11.5px; font-style: italic; }
+
+    .chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
+    .chip {
+      align-items: center;
+      background: transparent;
+      border: 1px solid var(--line-subtle);
+      border-radius: 3px;
+      color: var(--text-secondary);
+      display: inline-flex;
+      gap: 6px;
+      min-height: 22px;
+      padding: 1px 6px;
+      white-space: nowrap;
+    }
+    button.chip:hover { border-color: var(--line); color: var(--text-primary); }
+    .chip.is-active {
+      background: rgba(58, 95, 206, 0.08);
+      border-color: rgba(58, 95, 206, 0.24);
+      color: var(--accent);
+    }
+    .chip.state-ready { background: rgba(47, 141, 94, 0.08); color: var(--ready); }
+    .chip.state-warn { background: rgba(140, 74, 31, 0.08); color: var(--blocked); }
+    .chip.state-fail { background: rgba(200, 77, 60, 0.08); color: var(--danger); }
+    .dot {
+      border-radius: 50%;
+      display: inline-block;
+      height: 4px;
+      width: 4px;
+    }
+    .dot.accent { background: var(--accent); }
+    .dot.ready { background: var(--ready); }
+    .dot.warn { background: var(--blocked); }
+    .dot.fail { background: var(--danger); }
+    .dot.purple { background: var(--purple); }
+
+    .surface {
+      background: var(--surface-1);
+      border: 1px solid var(--line-subtle);
+      border-radius: 4px;
+      display: grid;
+      gap: 0;
+      margin-bottom: 12px;
+      min-width: 0;
+    }
+    .surface-head {
+      align-items: center;
+      border-bottom: 1px solid var(--line-subtle);
+      display: flex;
+      gap: 10px;
+      min-height: 34px;
+      padding: 0 10px;
+    }
+
+    .chain-row, .evidence-row, .entity-row {
+      background: transparent;
+      border: 0;
+      border-left: 2px solid transparent;
+      border-bottom: 1px solid var(--line-subtle);
+      color: inherit;
+      display: grid;
+      gap: 4px;
+      min-width: 0;
+      padding: 9px 10px 9px 10px;
+      text-align: left;
+      width: 100%;
+    }
+    .chain-row:last-child, .evidence-row:last-child, .entity-row:last-child { border-bottom: 0; }
+    .chain-row:hover, .evidence-row:hover, .entity-row:hover { background: rgba(58, 95, 206, 0.035); }
+    .chain-row.is-active, .evidence-row.is-active {
+      background: rgba(58, 95, 206, 0.065);
+      border-left-color: var(--accent);
+    }
+    .chain-row.ready { border-left-color: var(--ready); }
+    .chain-row.warn { border-left-color: var(--blocked); }
+    .evidence-row.pass { border-left-color: var(--ready); }
+    .evidence-row.partial { border-left-color: var(--blocked); }
+    .evidence-row.fail { border-left-color: var(--danger); }
+
+    .identity {
+      align-items: baseline;
+      display: flex;
+      gap: 7px;
+      min-width: 0;
+    }
+    .identity .id {
+      color: var(--text-primary);
+      font-size: 10.5px;
+      font-weight: 720;
+      white-space: nowrap;
+    }
+    .identity .sep { color: var(--text-muted); }
+    .identity .title {
+      color: var(--text-primary);
+      font-size: 13px;
+      font-style: italic;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .meta-line {
+      align-items: center;
+      color: var(--text-muted);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      font-size: 10.5px;
+      min-width: 0;
+    }
+
+    .ops-grid {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .role-row {
+      border-left: 2px solid var(--exec);
+      display: grid;
+      gap: 5px;
+      padding: 8px 0 8px 10px;
+    }
+    .role-row.review { border-left-color: var(--review); }
+    .role-row.test { border-left-color: var(--test); }
+    .role-row.memory { border-left-color: var(--memory); }
+
+    .mini-chart {
+      align-items: end;
+      display: grid;
+      gap: 3px;
+      grid-template-columns: repeat(16, 1fr);
+      height: 34px;
+      margin-top: 4px;
+    }
+    .mini-chart span {
+      background: var(--accent);
+      border-radius: 1px;
+      opacity: 0.55;
+    }
+
+    .session-line {
+      border-left: 2px solid var(--purple);
+      display: grid;
+      gap: 6px;
+      padding: 8px 0 8px 10px;
+    }
+
+    .drawer {
+      bottom: 0;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(520px, 56vw);
+      left: 0;
+      pointer-events: none;
+      position: absolute;
+      right: 0;
+      top: 38px;
+      z-index: 5;
+    }
+    .drawer-scrim {
+      background: rgba(253, 253, 253, 0.68);
+      pointer-events: none;
+    }
+    .drawer-shell {
+      background: var(--surface-1);
+      border-left: 1px solid var(--line);
+      box-shadow: var(--shadow-drawer);
+      display: grid;
+      grid-template-rows: auto auto minmax(0, 1fr);
+      min-width: 0;
+      pointer-events: auto;
+    }
+    .drawer-header {
+      border-bottom: 1px solid var(--line-subtle);
+      display: grid;
+      gap: 9px;
+      padding: 12px 16px 10px;
+    }
+    .drawer-breadcrumb {
+      color: var(--text-muted);
+      display: flex;
+      gap: 7px;
+      font-size: 10.5px;
+    }
+    .drawer-title-row {
+      align-items: center;
+      display: flex;
+      gap: 10px;
+      min-width: 0;
+    }
+    .drawer-title-row .title {
+      font-size: 18px;
+      font-style: italic;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .drawer-actions { display: flex; gap: 6px; margin-left: auto; }
+    .action-btn {
+      align-items: center;
+      background: var(--surface-2);
+      border: 1px solid var(--line-subtle);
+      border-radius: 3px;
+      color: var(--text-secondary);
+      display: inline-flex;
+      gap: 5px;
+      height: 26px;
+      padding: 0 8px;
+    }
+    .action-btn.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+
+    .drawer-tabs {
+      border-bottom: 1px solid var(--line-subtle);
+      display: flex;
+      gap: 2px;
+      overflow-x: auto;
+      padding: 0 12px;
+    }
+    .drawer-tab {
+      background: transparent;
+      border: 0;
+      border-bottom: 2px solid transparent;
+      color: var(--text-secondary);
+      height: 36px;
+      padding: 0 8px;
+      white-space: nowrap;
+    }
+    .drawer-tab.is-active {
+      border-bottom-color: var(--accent);
+      color: var(--text-primary);
+      font-weight: 650;
+    }
+
+    .drawer-body {
+      min-height: 0;
+      overflow: auto;
+      padding: 14px 16px 28px;
+    }
+    .drawer-panel { display: none; }
+    .drawer-panel.is-active { display: grid; gap: 12px; }
+
+    .info-rail {
+      border-left: 2px solid var(--accent);
+      display: grid;
+      gap: 7px;
+      padding-left: 10px;
+    }
+    .info-rail.ready { border-left-color: var(--ready); }
+    .info-rail.warn { border-left-color: var(--blocked); }
+    .info-rail.fail { border-left-color: var(--danger); }
+    .info-rail.purple { border-left-color: var(--purple); }
+
+    .kv-grid {
+      display: grid;
+      gap: 8px 14px;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+    .kv { display: grid; gap: 2px; min-width: 0; }
+    .kv label {
+      color: var(--text-muted);
+      font-size: 10.5px;
+      font-weight: 720;
+      text-transform: uppercase;
+    }
+    .kv span {
+      color: var(--text-secondary);
+      font-family: var(--font-mono);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .terminal, .markdown, .diff {
+      background: var(--surface-2);
+      border: 1px solid var(--line-subtle);
+      border-radius: 4px;
+      color: var(--text-secondary);
+      font-family: var(--font-mono);
+      font-size: 11.5px;
+      line-height: 1.55;
+      padding: 10px;
+      white-space: pre-wrap;
+    }
+    .markdown {
+      font-family: var(--font-ui);
+      white-space: normal;
+    }
+    .markdown code {
+      background: rgba(58, 95, 206, 0.08);
+      border-radius: 3px;
+      padding: 1px 3px;
+    }
+    .diff .add { color: var(--ready); }
+    .diff .del { color: var(--danger); }
+
+    @media (max-width: 1180px) {
+      .app { min-width: 0; grid-template-columns: 52px minmax(0, 1fr); }
+      .brand { width: 34px; }
+      .brand span:last-child,
+      .sidebar-section,
+      .repo-title,
+      .repo-meta { display: none; }
+      .content { grid-template-columns: 1fr; }
+      .pane + .pane { border-left: 0; border-top: 1px solid var(--line-subtle); }
+      .drawer { grid-template-columns: 0 minmax(360px, 100vw); }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand"><span class="brand-mark"></span><span>xtrm console</span></div>
+      <div class="crumbs"><b>gitboard</b><span>/</span><span>operations</span><span>/</span><b>evidence</b></div>
+      <div class="top-spacer"></div>
+      <div class="top-stat"><span>theme</span><strong>Console Quiet</strong></div>
+      <div class="top-stat"><span>runtime</span><strong>pre-substrate bridge</strong></div>
+    </header>
+
+    <aside class="sidebar">
+      <div class="sidebar-section">
+        <label class="search"><span>/</span><input aria-label="Search entities" placeholder="entity, chain, verdict" /></label>
+      </div>
+      <div class="repo-list">
+        <button class="repo-row is-active">
+          <span class="repo-title">Jaggerxtrm/gitboard</span>
+          <span class="repo-meta"><span>42 issues</span><span>14 chains</span><span>9 evidence</span></span>
+        </button>
+        <button class="repo-row">
+          <span class="repo-title">xtrm/specialists</span>
+          <span class="repo-meta"><span>31 issues</span><span>5 chains</span><span>3 escalations</span></span>
+        </button>
+        <button class="repo-row">
+          <span class="repo-title">xtrm/substrate</span>
+          <span class="repo-meta"><span>18 issues</span><span>2 sessions</span><span>6 open questions</span></span>
+        </button>
+      </div>
+    </aside>
+
+    <main class="main">
+      <nav class="tabs" aria-label="Console sections">
+        <button class="tab">Feed</button>
+        <button class="tab">Issues</button>
+        <button class="tab">Specialists</button>
+        <button class="tab is-active">Operations</button>
+        <button class="tab">Evidence</button>
+        <button class="tab">Graph</button>
+        <button class="tab">GitHub</button>
+        <button class="tab">Observability</button>
+        <button class="tab">Sessions</button>
+      </nav>
+
+      <section class="content">
+        <div class="pane">
+          <div class="section-head">
+            <div>
+              <div class="eyebrow">AgentOps console</div>
+              <h1>Operations cockpit</h1>
+            </div>
+            <div class="top-spacer"></div>
+            <div class="chip-row">
+              <button class="chip is-active"><span class="dot accent"></span>all roles</button>
+              <button class="chip"><span class="dot ready"></span>healthy 9</button>
+              <button class="chip state-warn"><span class="dot warn"></span>partial 2</button>
+              <button class="chip state-fail"><span class="dot fail"></span>failed 1</button>
+            </div>
+          </div>
+
+          <div class="metric-row">
+            <div class="metric"><span>chain throughput</span><strong>18</strong><em>last 24h</em></div>
+            <div class="metric"><span>gate pass rate</span><strong>91%</strong><em>scope + quality</em></div>
+            <div class="metric"><span>token economics</span><strong>$6.42</strong><em>median $0.24/run</em></div>
+            <div class="metric"><span>active escalations</span><strong>2</strong><em>one P0 candidate</em></div>
+          </div>
+
+          <div class="surface">
+            <div class="surface-head">
+              <h2>Chain throughput by template</h2>
+              <div class="top-spacer"></div>
+              <span class="chip"><span class="dot accent"></span><span class="mono">24h</span></span>
+            </div>
+            <button class="chain-row is-active" data-entity="chain">
+              <span class="identity"><span class="id">chain:forge-70el</span><span class="sep">/</span><span class="title">specialist live-feed integration</span></span>
+              <span class="meta-line"><span class="chip state-ready">code-standard</span><span>executor -> seconder -> test-runner -> reviewer</span><span class="mono">$0.81</span></span>
+            </button>
+            <button class="chain-row ready" data-entity="template">
+              <span class="identity"><span class="id">template:debug</span><span class="sep">/</span><span class="title">feed regression audit</span></span>
+              <span class="meta-line"><span class="chip state-ready">close ready</span><span>7 recent instances</span><span class="mono">p95 7m12s</span></span>
+            </button>
+            <button class="chain-row warn" data-entity="session">
+              <span class="identity"><span class="id">session:2026-06-02-a</span><span class="sep">/</span><span class="title">console contract refresh</span></span>
+              <span class="meta-line"><span class="chip state-warn">open</span><span>3 docs touched</span><span>2 followups</span></span>
+            </button>
+          </div>
+
+          <div class="ops-grid">
+            <div class="surface">
+              <div class="surface-head"><h2>Specialist health by role</h2></div>
+              <div class="role-row">
+                <span class="identity"><span class="id">role:executor</span><span class="sep">/</span><span class="title">implementation lane</span></span>
+                <span class="meta-line"><span class="chip state-ready">PASS 12</span><span class="mono">median 4m18s</span><span class="mono">$0.22</span></span>
+              </div>
+              <div class="role-row review" data-entity="role">
+                <span class="identity"><span class="id">role:reviewer</span><span class="sep">/</span><span class="title">quality gate</span></span>
+                <span class="meta-line"><span class="chip state-warn">PARTIAL 2</span><span>scope drift cluster</span></span>
+              </div>
+              <div class="role-row test">
+                <span class="identity"><span class="id">role:test-engineer</span><span class="sep">/</span><span class="title">proof lane</span></span>
+                <span class="meta-line"><span class="chip state-ready">PASS 9</span><span class="mono">59 tests</span></span>
+              </div>
+            </div>
+
+            <div class="surface">
+              <div class="surface-head"><h2>Failure pattern clustering</h2></div>
+              <button class="entity-row" data-entity="memory">
+                <span class="identity"><span class="id">mem:terminal-feed-regression</span><span class="sep">/</span><span class="title">feed replaced result</span></span>
+                <span class="meta-line"><span class="chip state-fail">regression</span><span>3 instances</span><span>mitigation saved</span></span>
+              </button>
+              <button class="entity-row">
+                <span class="identity"><span class="id">cluster:stale-history</span><span class="sep">/</span><span class="title">done filter missed past jobs</span></span>
+                <span class="meta-line"><span class="chip state-warn">sync risk</span><span>observability materializer</span></span>
+              </button>
+              <div class="mini-chart" aria-label="chain throughput micro chart">
+                <span style="height:42%"></span><span style="height:58%"></span><span style="height:46%"></span><span style="height:72%"></span>
+                <span style="height:64%"></span><span style="height:80%"></span><span style="height:51%"></span><span style="height:68%"></span>
+                <span style="height:82%"></span><span style="height:55%"></span><span style="height:44%"></span><span style="height:61%"></span>
+                <span style="height:76%"></span><span style="height:88%"></span><span style="height:63%"></span><span style="height:70%"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="pane">
+          <div class="section-head">
+            <div>
+              <div class="eyebrow">trust layer</div>
+              <h1>Evidence ledger</h1>
+            </div>
+            <div class="top-spacer"></div>
+            <span class="chip state-ready"><span class="dot ready"></span>proof complete</span>
+          </div>
+
+          <div class="surface">
+            <div class="surface-head">
+              <h2>Recent verdicts and proofs</h2>
+              <div class="top-spacer"></div>
+              <button class="chip is-active">all evidence</button>
+            </div>
+            <button class="evidence-row pass is-active" data-entity="evidence">
+              <span class="identity"><span class="id">evd:playwright-70el</span><span class="sep">/</span><span class="title">drawer + feed + result verified</span></span>
+              <span class="meta-line"><span class="chip state-ready">PASS</span><span class="mono">59 tests</span><span>screenshots attached</span><span>trace:tr-chain-70el</span></span>
+            </button>
+            <button class="evidence-row partial" data-entity="issue">
+              <span class="identity"><span class="id">iss:70el-review</span><span class="sep">/</span><span class="title">reviewer found visual drift in activity rail</span></span>
+              <span class="meta-line"><span class="chip state-warn">PARTIAL</span><span>2 findings</span><span>needs design contract check</span></span>
+            </button>
+            <button class="evidence-row fail" data-entity="memory">
+              <span class="identity"><span class="id">mem:run-result-regression</span><span class="sep">/</span><span class="title">terminal feed must not replace markdown result</span></span>
+              <span class="meta-line"><span class="chip state-fail">FAIL pattern</span><span>anti-regression rule saved</span></span>
+            </button>
+          </div>
+
+          <div class="surface">
+            <div class="surface-head">
+              <h2>Sessions</h2>
+              <div class="top-spacer"></div>
+              <button class="chip" data-entity="session"><span class="dot purple"></span>open drawer</button>
+            </div>
+            <div class="session-line">
+              <span class="identity"><span class="id">session:2026-06-02-a</span><span class="sep">/</span><span class="title">console product contract</span></span>
+              <span class="meta-line"><span>prompt -> docs -> mock -> build -> memory</span><span class="mono">2 followups</span><span class="mono">next: drawer system spec</span></span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <aside class="drawer" aria-label="Entity drawer">
+        <div class="drawer-scrim"></div>
+        <section class="drawer-shell">
+          <header class="drawer-header">
+            <div class="drawer-breadcrumb">
+              <span>xtrm</span><span>/</span><span id="drawer-kind">chain</span><span>/</span><span id="drawer-id">chain:forge-70el</span>
+            </div>
+            <div class="drawer-title-row">
+              <span class="id" id="drawer-id-title">chain:forge-70el</span>
+              <span class="sep">/</span>
+              <span class="title" id="drawer-title">specialist live-feed integration</span>
+              <div class="drawer-actions">
+                <button class="action-btn">Copy ID</button>
+                <button class="action-btn">Open trace</button>
+                <button class="action-btn primary">Review evidence</button>
+              </div>
+            </div>
+            <div class="chip-row" id="drawer-tags">
+              <span class="chip is-active"><span class="dot accent"></span>kind:chain</span>
+              <span class="chip state-ready">state:working</span>
+              <span class="chip">template:code-standard</span>
+              <span class="chip"><span class="mono">trace:tr-chain-70el</span></span>
+            </div>
+          </header>
+
+          <nav class="drawer-tabs" aria-label="Entity drawer tabs">
+            <button class="drawer-tab is-active" data-panel="overview">Overview</button>
+            <button class="drawer-tab" data-panel="activity">Activity</button>
+            <button class="drawer-tab" data-panel="evidence">Evidence</button>
+            <button class="drawer-tab" data-panel="diff">Diff</button>
+            <button class="drawer-tab" data-panel="lineage">Lineage</button>
+            <button class="drawer-tab" data-panel="memories">Memories</button>
+          </nav>
+
+          <div class="drawer-body">
+            <section class="drawer-panel is-active" id="panel-overview">
+              <div class="info-rail">
+                <h2>Decision context</h2>
+                <p class="secondary">This chain restores specialist terminal feed visibility while preserving markdown run results, evidence, and historical traceability.</p>
+              </div>
+              <div class="kv-grid">
+                <div class="kv"><label>status</label><span>working</span></div>
+                <div class="kv"><label>template</label><span>code-standard</span></div>
+                <div class="kv"><label>current gate</label><span>reviewer</span></div>
+                <div class="kv"><label>cost</label><span>$0.81</span></div>
+              </div>
+              <div class="markdown"><strong>Acceptance</strong><br />Terminal feed and run result both persist for completed jobs. Result markdown renders within the available width. Expanded sections reveal full content without mini-scroll traps.</div>
+            </section>
+
+            <section class="drawer-panel" id="panel-activity">
+              <div class="info-rail">
+                <h2>Specialist activity</h2>
+                <span class="meta-line"><span class="chip"><span class="dot accent"></span>executor</span><span class="chip state-ready">done</span><span class="mono">5m12s</span><span class="mono">$0.29</span></span>
+                <div class="terminal">12:16:05 [70el] TOKENS gpt-5.5 tokens=143117 cost=$0.291524
+12:16:05 [70el] DONE executor status=complete
+12:16:06 [70el] RESULT markdown attached
+12:16:06 [70el] EVIDENCE playwright screenshot captured</div>
+              </div>
+              <div class="info-rail ready">
+                <span class="meta-line"><span class="chip"><span class="dot ready"></span>test-engineer</span><span class="chip state-ready">pass</span><span class="mono">59 tests</span></span>
+                <div class="markdown">All drawer interactions passed: entity switch, evidence tab, activity tab, screenshot generation, and no console errors.</div>
+              </div>
+            </section>
+
+            <section class="drawer-panel" id="panel-evidence">
+              <div class="info-rail ready">
+                <h2>Verdicts</h2>
+                <span class="meta-line"><span class="chip state-ready">scope PASS</span><span class="chip state-ready">quality PASS</span><span class="chip state-ready">tests PASS</span></span>
+              </div>
+              <button class="entity-row" data-entity="evidence">
+                <span class="identity"><span class="id">evd:playwright-70el</span><span class="sep">/</span><span class="title">integrated preview proof</span></span>
+                <span class="meta-line"><span>drawer visible</span><span>chain click works</span><span>zero console errors</span></span>
+              </button>
+              <button class="entity-row" data-entity="memory">
+                <span class="identity"><span class="id">mem:terminal-result-contract</span><span class="sep">/</span><span class="title">feed and result are mandatory siblings</span></span>
+                <span class="meta-line"><span class="chip state-fail">anti-regression</span><span>saved memory</span></span>
+              </button>
+            </section>
+
+            <section class="drawer-panel" id="panel-diff">
+              <div class="info-rail purple">
+                <h2>Diff preview</h2>
+                <span class="meta-line"><span class="mono">apps/gitboard/src/dashboard/pages/console/Specialists.tsx</span><span>4 files</span></span>
+              </div>
+              <div class="diff"><span class="del">- terminal feed replaced run result in completed job activity</span>
+<span class="add">+ terminal feed renders collapsed by default beside markdown run result</span>
+<span class="add">+ evidence ledger links reviewer verdict, test proof, and screenshot artifact</span>
+<span class="add">+ expanded sections reveal full content without internal scroll trap</span></div>
+            </section>
+
+            <section class="drawer-panel" id="panel-lineage">
+              <div class="info-rail">
+                <h2>Lineage</h2>
+                <span class="meta-line"><span class="chip">parent:forge-70el</span><span class="chip">validates:evd:playwright-70el</span><span class="chip">discovered-from:activity-panel-regression</span></span>
+              </div>
+              <button class="entity-row" data-entity="session">
+                <span class="identity"><span class="id">session:2026-06-02-a</span><span class="sep">/</span><span class="title">console contract refresh</span></span>
+                <span class="meta-line"><span>prompt -> docs -> mock -> evidence</span></span>
+              </button>
+            </section>
+
+            <section class="drawer-panel" id="panel-memories">
+              <div class="info-rail purple">
+                <h2>Relevant memories</h2>
+                <p class="secondary">Completed specialist jobs must remain visible historically. Filters operate over complete corpus, not a partial live set.</p>
+              </div>
+              <div class="info-rail warn">
+                <p class="secondary">Agent palette is role identity only: dots and chip text. Never background, gradient, or decorative fill.</p>
+              </div>
+            </section>
+          </div>
+        </section>
+      </aside>
+    </main>
+  </div>
+
+  <script>
+    const entities = {
+      chain: {
+        kind: "chain",
+        id: "chain:forge-70el",
+        title: "specialist live-feed integration",
+        tags: ["kind:chain", "state:working", "template:code-standard", "trace:tr-chain-70el"]
+      },
+      issue: {
+        kind: "issue",
+        id: "iss:70el-review",
+        title: "reviewer found visual drift in activity rail",
+        tags: ["kind:issue", "class:gate", "state:partial", "scrutiny:high"]
+      },
+      evidence: {
+        kind: "evidence",
+        id: "evd:playwright-70el",
+        title: "drawer + feed + result verified",
+        tags: ["kind:evidence", "verdict:PASS", "tests:59", "artifact:screenshot"]
+      },
+      role: {
+        kind: "role",
+        id: "role:reviewer",
+        title: "quality gate classifier",
+        tags: ["kind:role", "agent:reviewer", "recent:partial", "cluster:scope-drift"]
+      },
+      template: {
+        kind: "chain-template",
+        id: "template:debug",
+        title: "debug chain template",
+        tags: ["kind:template", "instances:7", "p95:7m12s", "failure-patterns:2"]
+      },
+      memory: {
+        kind: "memory",
+        id: "mem:terminal-result-contract",
+        title: "terminal feed and run result are mandatory siblings",
+        tags: ["kind:memory", "pattern:regression", "severity:high", "mitigation:saved"]
+      },
+      session: {
+        kind: "session",
+        id: "session:2026-06-02-a",
+        title: "console product contract refresh",
+        tags: ["kind:session", "state:open", "followups:2", "next:drawer-system"]
+      }
+    };
+
+    function renderTags(tags) {
+      return tags.map((tag, index) => {
+        const stateClass = tag.includes("PASS") || tag.includes("working") ? " state-ready" : tag.includes("partial") ? " state-warn" : "";
+        const dotClass = index === 0 ? "<span class='dot accent'></span>" : "";
+        return `<span class="chip${index === 0 ? " is-active" : stateClass}">${dotClass}${tag}</span>`;
+      }).join("");
+    }
+
+    function selectEntity(kind) {
+      const entity = entities[kind] || entities.chain;
+      document.getElementById("drawer-kind").textContent = entity.kind;
+      document.getElementById("drawer-id").textContent = entity.id;
+      document.getElementById("drawer-id-title").textContent = entity.id;
+      document.getElementById("drawer-title").textContent = entity.title;
+      document.getElementById("drawer-tags").innerHTML = renderTags(entity.tags);
+      document.querySelectorAll("[data-entity]").forEach((item) => item.classList.remove("is-active"));
+      document.querySelectorAll(`[data-entity="${kind}"]`).forEach((item) => item.classList.add("is-active"));
+    }
+
+    document.querySelectorAll("[data-entity]").forEach((button) => {
+      button.addEventListener("click", () => selectEntity(button.dataset.entity));
+    });
+
+    document.querySelectorAll(".drawer-tab").forEach((tab) => {
+      tab.addEventListener("click", () => {
+        document.querySelectorAll(".drawer-tab").forEach((item) => item.classList.remove("is-active"));
+        document.querySelectorAll(".drawer-panel").forEach((item) => item.classList.remove("is-active"));
+        tab.classList.add("is-active");
+        document.getElementById(`panel-${tab.dataset.panel}`).classList.add("is-active");
+      });
+    });
+  </script>
+</body>
+</html>

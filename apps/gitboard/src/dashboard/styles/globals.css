@@ -64,15 +64,24 @@ body {
 
 /* Westworld-inspired design preview route: /gitboard/design-preview */
 .design-preview-container {
-  --surface-primary: #101010;
-  --surface-secondary: rgba(26, 26, 26, 0.82);
-  --surface-tertiary: rgba(34, 34, 34, 0.66);
-  --border-subtle: rgba(255, 255, 255, 0.12);
-  --accent-blue: #d0d0d0;
-  --accent-purple: #a8a8a8;
-  --text-primary: #e8e8e8;
-  --text-secondary: #b8b8b8;
-  --text-muted: #7a7a7a;
+  --surface-primary: #fdfdfd;
+  --surface-secondary: #f7f8f9;
+  --surface-tertiary: #f1f3f5;
+  --border-subtle: rgba(15, 23, 42, 0.1);
+  --accent-blue: #3a5fce;
+  --accent-purple: #5a51b8;
+  --text-primary: #172033;
+  --text-secondary: #536071;
+  --text-muted: #87909e;
+}
+
+.roadmap-mock-frame {
+  background: var(--surface-primary);
+  border: 0;
+  display: block;
+  height: 100%;
+  min-height: calc(100vh - var(--topbar-height));
+  width: 100%;
 }
 
 .fui-shell {
@@ -5746,3 +5755,19 @@ body:has(.ide-shell[data-theme="light"]) { background: #fff !important; }
 .g-hd-tog-dot.state-deferred { background: var(--graph-state-deferred); }
 .g-hd-tog-state { color: var(--text-muted); font-size: 9px; }
 .g-hd-tog.is-on .g-hd-tog-state { color: var(--graph-state-ready); }
+
+.westworld-app.design-preview-container .gitboard-main {
+  background: var(--surface-primary) !important;
+  isolation: isolate;
+}
+
+.westworld-app.design-preview-container .gitboard-main::before,
+.westworld-app.design-preview-container .gitboard-main::after {
+  display: none !important;
+}
+
+.westworld-app.design-preview-container .roadmap-mock-frame {
+  opacity: 1 !important;
+  position: relative;
+  z-index: 1;
+}

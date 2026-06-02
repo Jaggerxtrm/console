@@ -10,6 +10,7 @@ import { RightSidebar } from "./components/shell/RightSidebar.tsx";
 import { BeadSideDrawer } from "./pages/console/BeadSideDrawer.tsx";
 import { useGithubActivity } from "./hooks/useGithubActivity.ts";
 import { SourcesPanel } from "./components/settings/SourcesPanel.tsx";
+import postRoadmapConsoleHtml from "../../design-mocks/post-roadmap-console.html?raw";
 
 type Tab = "github" | "console" | "settings";
 type View = "dashboard" | "design-preview";
@@ -117,7 +118,7 @@ function DashboardShell({ view }: { view: View }) {
               transition: 'var(--transition)',
             }}
           >
-            Design Preview
+            Roadmap Mock
           </a>
         </nav>
         <div className="ww-action-cluster" style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -180,105 +181,11 @@ const FEED = [
 
 function DesignPreview() {
   return (
-    <section className="fui-shell fui-dense">
-      <div className="fui-atmosphere" />
-      <div className="fui-grid" />
-
-      <aside className="fui-panel fui-rail">
-        <PanelTitle kicker="Control" title="Perimeter" />
-        {['North Atlantic', 'EU West', 'Pacific Relay', 'Market Core', 'Autonomy Lab', 'SOC Sentinel'].map((region, index) => (
-          <button className={index === 1 ? 'fui-region is-active' : 'fui-region'} key={region}>
-            <span>{region}</span>
-            <small>{index === 2 ? 'Degraded' : index === 5 ? 'Armed' : 'Nominal'}</small>
-          </button>
-        ))}
-        <div className="fui-divider" />
-        <PanelTitle kicker="Health" title="State vector" compact />
-        <div className="fui-security-ring">
-          <span>0.982</span>
-          <small>trust index</small>
-        </div>
-        <div className="fui-mini-stack">
-          <span><b />Risk envelope <strong>Low</strong></span>
-          <span><b />Packet loss <strong>0.04%</strong></span>
-          <span><b />SOC state <strong>Clean</strong></span>
-        </div>
-      </aside>
-
-      <main className="fui-feed-column">
-        <div className="fui-command-bar">
-          <div>
-            <p className="fui-eyebrow">Autonomous systems operations</p>
-            <h1>Critical infrastructure command fabric</h1>
-          </div>
-          <div className="fui-status-cluster" aria-label="system status">
-            <span className="fui-pulse" />
-            <span>Live secure session</span>
-            <strong>22:51:14 UTC</strong>
-          </div>
-        </div>
-
-        <section className="fui-metrics">
-          {SYSTEMS.map(system => <MetricCard key={system.name} {...system} />)}
-        </section>
-
-        <section className="fui-panel fui-activity-panel">
-          <div className="fui-tabbar">
-            <button className="is-active">Operations</button>
-            <button>Deployments</button>
-            <button>Security</button>
-            <button>Telemetry</button>
-          </div>
-          <div className="fui-feed-list">
-            {FEED.map(item => (
-              <article className="fui-feed-item" key={item.title}>
-                <div className={`fui-event-dot ${item.status}`} />
-                <div>
-                  <strong>{item.title}</strong>
-                  <span>{item.repo}</span>
-                </div>
-                <em>{item.type}</em>
-                <time>{item.time}</time>
-              </article>
-            ))}
-          </div>
-        </section>
-      </main>
-
-      <aside className="fui-panel fui-detail-panel">
-        <div className="fui-panel-header">
-          <PanelTitle kicker="Topology" title="Orchestration map" />
-          <div className="fui-chip">Ring 2 · canary</div>
-        </div>
-        <div className="fui-topology" aria-label="procedural topology diagram">
-          <svg className="fui-lines" viewBox="0 0 100 100" preserveAspectRatio="none">
-            <path d="M14 24 L38 16 L58 34 L78 54 L60 76 L32 58 L14 24" />
-            <path d="M38 16 L32 58 L58 34 L60 76" />
-            <path d="M14 24 L58 34 L32 58" />
-          </svg>
-          {NODES.map(node => (
-            <div className={`fui-node ${node.tone}`} style={{ left: `${node.x}%`, top: `${node.y}%` }} key={node.label}>
-              <span />
-              {node.label}
-            </div>
-          ))}
-        </div>
-
-        <div className="fui-divider" />
-        <PanelTitle kicker="Diagnostics" title="Execution trace" />
-        <div className="fui-log-stream">
-          {TRACE_LINES.map(line => <code key={line}>{line}</code>)}
-        </div>
-        <div className="fui-pipeline">
-          {['Source', 'Verify', 'Stage', 'Canary', 'Promote'].map((step, index) => (
-            <div className={index < 3 ? 'is-complete' : index === 3 ? 'is-current' : ''} key={step}>
-              <span />
-              <small>{step}</small>
-            </div>
-          ))}
-        </div>
-      </aside>
-    </section>
+    <iframe
+      className="roadmap-mock-frame"
+      srcDoc={postRoadmapConsoleHtml}
+      title="Gitboard post-roadmap console mock"
+    />
   );
 }
 
