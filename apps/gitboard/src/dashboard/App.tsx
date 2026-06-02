@@ -11,6 +11,7 @@ import { BeadSideDrawer } from "./pages/console/BeadSideDrawer.tsx";
 import { useGithubActivity } from "./hooks/useGithubActivity.ts";
 import { SourcesPanel } from "./components/settings/SourcesPanel.tsx";
 import postRoadmapConsoleHtml from "../../design-mocks/post-roadmap-console.html?raw";
+import operationsQueryLabHtml from "../../design-mocks/operations-query-lab.html?raw";
 
 type Tab = "github" | "console" | "settings";
 type View = "dashboard" | "design-preview";
@@ -180,12 +181,31 @@ const FEED = [
 ];
 
 function DesignPreview() {
+  const [activeMock, setActiveMock] = useState<"console" | "operations">("console");
+  const mockHtml = activeMock === "console" ? postRoadmapConsoleHtml : operationsQueryLabHtml;
+
   return (
-    <iframe
-      className="roadmap-mock-frame"
-      srcDoc={postRoadmapConsoleHtml}
-      title="Gitboard post-roadmap console mock"
-    />
+    <div className="roadmap-mock-shell">
+      <div className="roadmap-mock-tabs" aria-label="Complete console mock views">
+        <button
+          className={activeMock === "console" ? "is-active" : ""}
+          onClick={() => setActiveMock("console")}
+        >
+          Console Reference
+        </button>
+        <button
+          className={activeMock === "operations" ? "is-active" : ""}
+          onClick={() => setActiveMock("operations")}
+        >
+          Operations Query Lab
+        </button>
+      </div>
+      <iframe
+        className="roadmap-mock-frame"
+        srcDoc={mockHtml}
+        title={activeMock === "console" ? "Gitboard complete console reference mock" : "Gitboard operations query lab mock"}
+      />
+    </div>
   );
 }
 
