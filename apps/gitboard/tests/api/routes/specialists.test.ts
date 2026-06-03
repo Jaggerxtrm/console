@@ -244,6 +244,16 @@ describe("GET /api/specialists/jobs/:job_id/result", () => {
   });
 });
 
+describe("GET /api/specialists/jobs/:job_id/feed-events", () => {
+  it("returns forensic events for admin", async () => {
+    const app = createResultApp(true);
+    const res = await app.fetch(new Request("http://localhost/api/specialists/jobs/job-1/feed-events", { headers: { "x-gitboard-shell-token": "test-admin-token" } }));
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ events: [{ schema_version: 1, event_family: "chain", event_name: "participant_joined", resource: { participant_kind: "agent", participant_role: "executor" }, correlation: { job_id: "job-1" }, redaction: { status: "redacted" } }] });
+  });
+});
+
 describe("GET /api/specialists/jobs/:job_id/feed", () => {
   it("returns 403 for non-admin", async () => {
     const app = createAppWithDao();
@@ -493,6 +503,7 @@ function createResultApp(_success = false): Hono {
     );
   `);
   xtrmDb.prepare("INSERT INTO specialist_job_events (repo_slug, job_id, event_type, payload, created_at) VALUES (?, ?, ?, ?, ?)").run("repo-a", "job-1", "result", "# done", "2026-01-01T00:00:00.000Z");
+  xtrmDb.prepare("INSERT INTO specialist_job_events (repo_slug, job_id, event_type, payload, created_at) VALUES (?, ?, ?, ?, ?)").run("repo-a", "job-1", "forensic_event", JSON.stringify({ schema_version: 1, event_family: "chain", event_name: "participant_joined", resource: { participant_kind: "agent", participant_role: "executor" }, correlation: { job_id: "job-1" }, redaction: { status: "redacted" } }), "2026-01-01T00:00:01.000Z");
   const app = new Hono();
   app.route("/api/specialists", createSpecialistsRouter({ jobsByBead: () => [], inFlightJobs: () => [], recentJobs: () => [], chainById: () => [] }, xtrmDb, { listRepos: () => [{ repoSlug: "repo-a", repoPath: join(dir, "repo-a"), dbPath: join(dir, "repo-a.db"), mtimeMs: 0 }], getEpoch: () => 0 }));
   return app;

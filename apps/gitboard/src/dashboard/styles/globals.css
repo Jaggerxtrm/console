@@ -5233,6 +5233,32 @@ body:has(.ide-shell[data-theme="light"]) { background: #fff !important; }
   padding: 3px 0 3px 17px;
 }
 
+.console-specialists-job-forensic {
+  border-left: 1px solid color-mix(in srgb, var(--rail-color, var(--accent)) 24%, transparent);
+  margin: 6px 0 0 10px;
+  padding: 0 0 0 10px;
+}
+.console-specialists-job-forensic-head {
+  color: var(--text-muted);
+  font-size: 10px;
+  letter-spacing: .04em;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+}
+.console-specialists-job-forensic-list { display: flex; flex-direction: column; gap: 4px; }
+.console-specialists-job-forensic-row {
+  align-items: baseline;
+  color: var(--text-muted);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  line-height: 1.35;
+  font-size: 11px;
+}
+.console-specialists-job-forensic-schema,
+.console-specialists-job-forensic-redaction { color: var(--text); opacity: .85; }
+.console-specialists-job-forensic-family { color: var(--text); }
+
 .console-specialists-job-output {
   white-space: pre-wrap;
   word-break: break-word;

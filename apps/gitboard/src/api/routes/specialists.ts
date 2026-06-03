@@ -129,6 +129,29 @@ export function createSpecialistsRouter(
     return c.json({ text: row.payload ?? "", content_type: "text/markdown" });
   });
 
+  router.get("/jobs/:job_id/feed-events", async (c) => {
+    if (!isSpecialistResultRequestAllowed(c.req.raw.headers)) return c.json({ error: "forbidden" }, 403);
+    const jobId = c.req.param("job_id");
+    const db = xtrmDatabase;
+    if (!db) return c.json({ error: "feed events unavailable" }, 404);
+    const rows = db.query(`
+      SELECT payload
+      FROM specialist_job_events
+      WHERE job_id = ? AND event_type = 'forensic_event'
+      ORDER BY created_at ASC
+    `).all(jobId) as Array<{ payload?: string }>;
+    const events = rows.flatMap((row) => {
+      if (!row.payload) return [];
+      try {
+        const parsed = JSON.parse(row.payload) as unknown;
+        return isFeedEventPayload(parsed) ? [parsed] : [];
+      } catch {
+        return [];
+      }
+    });
+    return c.json({ events });
+  });
+
   router.get("/jobs/:job_id/feed", async (c) => {
     if (!isSpecialistResultRequestAllowed(c.req.raw.headers)) return c.json({ error: "forbidden" }, 403);
     const jobId = c.req.param("job_id");
@@ -176,6 +199,20 @@ export function createSpecialistsRouter(
   });
 
   return router;
+}
+
+type FeedEventPayload = {
+  schema_version?: string | number;
+  event_family?: string;
+  event_name?: string;
+  resource?: { participant_kind?: string; participant_role?: string };
+  correlation?: { job_id?: string };
+  redaction?: { status?: string };
+};
+
+function isFeedEventPayload(value: unknown): value is FeedEventPayload {
+  if (!value || typeof value !== "object") return false;
+  return true;
 }
 
 function sourceHealthFromCoverage(coverage: ObservabilityCoverage | undefined, fallback: ReturnType<typeof makeSourceHealth>) {
