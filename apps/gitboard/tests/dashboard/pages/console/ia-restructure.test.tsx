@@ -1,7 +1,7 @@
 /** @vitest-environment happy-dom */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 
 vi.mock("../../../../src/dashboard/hooks/useRepoTree.ts", () => ({ useRepoTree: () => undefined }));
 vi.mock("../../../../src/dashboard/hooks/useGithubActivity.ts", () => ({ useGithubActivity: () => undefined }));
@@ -53,6 +53,16 @@ describe("Console IA restructure", () => {
     render(<App />);
     expect(useShellStore.getState().selection.surface).toBe("console");
     expect(useShellStore.getState().selection.tab).toBe("triage");
+  });
+
+  it("keeps GitHub selected after using the shell surface switch", () => {
+    useShellStore.setState({ selection: { surface: "console", tab: "specialists", repo: null } as never });
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("tab", { name: "GitHub" }));
+
+    expect(useShellStore.getState().selection.surface).toBe("github");
+    expect(useShellStore.getState().selection.tab).toBe("activity");
   });
 
   it("migrates persisted beads surface to console feed", async () => {

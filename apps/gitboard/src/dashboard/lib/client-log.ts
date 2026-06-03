@@ -1,7 +1,7 @@
 type ClientLogData = Record<string, unknown>;
 
 export function logClientEvent(event: string, data: ClientLogData = {}): void {
-  if (typeof window === "undefined") return;
+  if (typeof window === "undefined" || typeof navigator === "undefined") return;
 
   const payload = JSON.stringify({ event, data });
   const url = "/api/internal/logs/client";
@@ -14,6 +14,8 @@ export function logClientEvent(event: string, data: ClientLogData = {}): void {
   } catch {
     // Fall through to fetch. Client-side telemetry must never affect UX.
   }
+
+  if (typeof fetch === "undefined") return;
 
   void fetch(url, {
     method: "POST",

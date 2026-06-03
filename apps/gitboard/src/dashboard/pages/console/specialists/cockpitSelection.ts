@@ -28,11 +28,8 @@ export function deriveSelection(
 
 export function toggleFilter(current: CockpitFilters, status: ChainStatus | "all"): CockpitFilters {
   if (status === "all") return new Set(["all"]);
-  const next = new Set(current);
-  next.delete("all");
-  if (next.has(status)) next.delete(status);
-  else next.add(status);
-  return next.size === 0 ? new Set(["all"]) : next;
+  if (current.size === 1 && current.has(status)) return new Set(["all"]);
+  return new Set([status]);
 }
 
 export function buildListRenderedTelemetry(visibleChains: ChainSummary[], typesByCount: Record<string, number>): Record<string, unknown> {

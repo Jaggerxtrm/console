@@ -3,7 +3,34 @@
 **Status:** Draft / planning-ready (intended input to OpenSpec planning phase)
 **Owner:** dawid
 **Scope:** A native observability surface inside the xtrm console, built as a foundation we own — primitives that ship internally first, then become a sellable product. Datasource-agnostic by contract, Prometheus-first by impl.
-**Out of scope (this PRD):** the underlying metric pipeline on the VPS (Prometheus, exporters, retention, alert routing — those exist already on dawid's infra stack and are tracked in `infra-xgx`). Replacing the operator's existing Grafana dashboards.
+**Out of scope (this PRD):** the underlying metric pipeline on the VPS (Prometheus, exporters, retention, alert routing — those live in `~/projects/mercury/infra`, primarily `MONITORING.md`, `docs/AGENT_MONITORING.md`, `infra-bnh`, and `infra-xgx`). Specialist runtime metric semantics live in `~/dev/specialists/docs/observability-metrics.md` and `docs/design/substrate/devops-platform-engineering-prd.md`. This PRD owns the console/product surface only; it does not replace the operator's existing Grafana dashboards.
+
+---
+
+## 0. Cross-repo grounding
+
+Gitboard owns the xtrm operational console: panel primitives, dashboard layout,
+bead/job/repo context links, and agent-authored observability UX. It should sit
+on top of infra and specialists telemetry rather than redefine those contracts.
+
+Authoritative upstream docs:
+
+- `~/projects/mercury/infra/MONITORING.md` — live Prometheus/Grafana/Loki/Alertmanager stack, scrape jobs, exporters, access model.
+- `~/projects/mercury/infra/docs/AGENT_MONITORING.md` — incident-response runbook and stack health files.
+- `~/dev/specialists/docs/observability-metrics.md` — job/token/tool/model lifecycle metrics emitted by specialists.
+- `~/dev/specialists/docs/design/substrate/devops-platform-engineering-prd.md` — devops/platform specialist role that will author or operate dashboards.
+
+Research inputs in `~/second-mind/1-projects/xtrm/research/`:
+
+- `devops-specialists-research.md` for the AWS DevOps Agent reference model and operator/product split.
+- `sre-telemetry-patterns-for-mercury.md` for RED/USE/SLO and alert-design guidance.
+- `agentops-telemetry-for-specialists.md` for AgentOps-specific telemetry.
+- `devops-query-surfaces-mcp-architecture.md` for Grafana MCP, Prometheus MCP, and custom query-layer options.
+
+Console rule: gitboard may own reusable panel primitives and a datasource
+abstraction, but metric definitions, scrape targets, alert thresholds, and
+specialist runtime event semantics must remain in their owning repos. If a panel
+needs a missing signal, create/route that work to infra or specialists first.
 
 ---
 

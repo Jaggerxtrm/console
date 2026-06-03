@@ -10,6 +10,7 @@ import { RightSidebar } from "./components/shell/RightSidebar.tsx";
 import { BeadSideDrawer } from "./pages/console/BeadSideDrawer.tsx";
 import { useGithubActivity } from "./hooks/useGithubActivity.ts";
 import { SourcesPanel } from "./components/settings/SourcesPanel.tsx";
+import { useDocumentTitle } from "./hooks/useDocumentTitle.ts";
 import postRoadmapConsoleHtml from "../../design-mocks/post-roadmap-console.html?raw";
 import operationsQueryLabHtml from "../../design-mocks/operations-query-lab.html?raw";
 
@@ -27,6 +28,10 @@ export function App() {
   const path = window.location.pathname;
   useEffect(() => {
     const store = useShellStore.getState();
+    if (store.selection.surface !== "github" && store.selection.surface !== "console") {
+      store.setSurface("console");
+      return;
+    }
     if (path.includes("/gitboard/beads") || path.endsWith("/console") || path.includes("/gitboard/console/")) {
       if (store.selection.surface !== "console") store.setSurface("console");
       const tab = routeTab(path);
@@ -40,11 +45,7 @@ export function App() {
 
 function ShellApp() {
   const theme = useShellStore(selectTheme);
-  const selection = useShellStore((s) => s.selection);
-  const setSurface = useShellStore((s) => s.setSurface);
-  useEffect(() => {
-    if (selection.surface !== "console") setSurface("console");
-  }, [selection.surface, setSurface]);
+  useDocumentTitle();
   useGithubActivity({ includeLists: false });
   useRepoTree();
   return (

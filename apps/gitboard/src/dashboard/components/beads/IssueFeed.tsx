@@ -4,7 +4,7 @@
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { ChevronRightIcon, ChevronDownIcon, DependabotIcon, GitPullRequestIcon } from "@primer/octicons-react";
+import { ChevronDownIcon, ChevronRightIcon, DependabotIcon, GitPullRequestIcon, PulseIcon, SearchIcon, XIcon } from "@primer/octicons-react";
 import type { BeadDependency, BeadIssue, BeadIssueDetail, Interaction } from "../../../types/beads.ts";
 import { substrateApi as api } from "../../lib/beads.ts";
 import { TYPE_CONFIG } from "../../lib/type-palette.ts";
@@ -14,6 +14,7 @@ import { useSpecialistHistory } from "../../hooks/useSpecialistHistory.ts";
 import type { SpecialistOwnershipJob } from "../../hooks/useSpecialistOwnership.ts";
 import { logClientEvent } from "../../lib/client-log.ts";
 import { useShellStore } from "../../stores/shell.ts";
+import { filterIssuesForFeed } from "./feedSearch.ts";
 
 export interface IssuePrLink {
   number: number;
@@ -57,33 +58,93 @@ export function IssueFeed({ issues, closedIssues = [], selectedIssueId, selected
   const openSidebar = useShellStore((state) => state.openSidebar);
   const handleSpecialistOpen = (beadId: string, specialistJob: SpecialistOwnershipJob | null) => {
     if (!specialistJob) return;
+    const previous = useShellStore.getState().sidebar;
     logClientEvent("chip.click", { source: "feed_chip", beadId, jobId: specialistJob.jobId ?? null });
     openSidebar({ beadId, jobId: specialistJob.jobId ?? undefined });
+    logClientEvent("chip.sidebar.dispatched", {
+      source: "feed_chip",
+      beadId,
+      jobId: specialistJob.jobId ?? null,
+      swap: Boolean(previous.open && previous.beadId !== beadId),
+      prevSidebar: previous.open ? { beadId: previous.beadId, jobId: previous.jobId } : null,
+    });
   };
   const parentRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const nextFocusSource = useRef<"click" | "hotkey" | "tab">("tab");
   const [showOpen, setShowOpen] = useState(true);
   const [showClosed, setShowClosed] = useState(false);
+  const [query, setQuery] = useState("");
   const allIssues = useMemo(() => [...issues, ...closedIssues], [closedIssues, issues]);
   const issueById = useMemo(() => new Map(allIssues.map((issue) => [issue.id, issue])), [allIssues]);
-  const blockingChildren = useMemo(() => groupChildrenByBlocker(issues, issueById), [issueById, issues]);
-  const blockedChildIds = useMemo(() => getGroupedChildIds(blockingChildren), [blockingChildren]);
-  const activeChildren = useMemo(() => groupChildrenByParent(issues, issueById, blockedChildIds), [blockedChildIds, issueById, issues]);
-  const closedChildren = useMemo(() => groupChildrenByParent(closedIssues, issueById, new Set()), [closedIssues, issueById]);
-  const topLevelIssues = useMemo(() => issues.filter((issue) => !blockedChildIds.has(issue.id) && !getParentId(issue, issueById)), [blockedChildIds, issueById, issues]);
+  const searchOpen = useMemo(() => filterIssuesForFeed(issues, query), [issues, query]);
+  const searchClosed = useMemo(() => filterIssuesForFeed(closedIssues, query), [closedIssues, query]);
+  const visibleIssues = searchOpen.issues;
+  const visibleClosedIssues = searchClosed.issues;
+  const visibleIssueById = useMemo(() => new Map([...visibleIssues, ...visibleClosedIssues].map((issue) => [issue.id, issue])), [visibleClosedIssues, visibleIssues]);
+  const searchStats = useMemo(() => ({
+    prefixMatchCount: searchOpen.prefixMatchCount + searchClosed.prefixMatchCount,
+    titleMatchCount: searchOpen.titleMatchCount + searchClosed.titleMatchCount,
+    totalMatches: query.trim() ? searchOpen.totalMatches + searchClosed.totalMatches : allIssues.length,
+    durationMs: searchOpen.durationMs + searchClosed.durationMs,
+  }), [allIssues.length, query, searchClosed.durationMs, searchClosed.prefixMatchCount, searchClosed.titleMatchCount, searchClosed.totalMatches, searchOpen.durationMs, searchOpen.prefixMatchCount, searchOpen.titleMatchCount, searchOpen.totalMatches]);
   const inProgressIssues = useMemo(
-    () => issues.filter((issue) => issue.status === "in_progress").sort((a, b) => String(b.updated_at ?? b.created_at).localeCompare(String(a.updated_at ?? a.created_at))),
-    [issues],
+    () => visibleIssues.filter((issue) => issue.status === "in_progress").sort((a, b) => String(b.updated_at ?? b.created_at).localeCompare(String(a.updated_at ?? a.created_at))),
+    [visibleIssues],
   );
-  const readyCount = useMemo(() => issues.filter((issue) => getDisplayStatus(issue) === "open").length, [issues]);
+  const openIssues = useMemo(() => visibleIssues.filter((issue) => issue.status !== "in_progress"), [visibleIssues]);
+  const blockingChildren = useMemo(() => groupChildrenByBlocker(openIssues, visibleIssueById), [openIssues, visibleIssueById]);
+  const blockedChildIds = useMemo(() => getGroupedChildIds(blockingChildren), [blockingChildren]);
+  const activeChildren = useMemo(() => groupChildrenByParent(openIssues, visibleIssueById, blockedChildIds), [blockedChildIds, openIssues, visibleIssueById]);
+  const closedChildren = useMemo(() => groupChildrenByParent(visibleClosedIssues, visibleIssueById, new Set()), [visibleClosedIssues, visibleIssueById]);
+  const topLevelIssues = useMemo(() => openIssues.filter((issue) => !blockedChildIds.has(issue.id) && !getParentId(issue, visibleIssueById)), [blockedChildIds, openIssues, visibleIssueById]);
+  const readyCount = useMemo(() => openIssues.filter((issue) => getDisplayStatus(issue) === "open").length, [openIssues]);
   const completedIssues = useMemo(
-    () => closedIssues.filter((issue) => !getParentId(issue, issueById)).sort((a, b) => getCompletedAt(b).localeCompare(getCompletedAt(a))),
-    [closedIssues, issueById],
+    () => visibleClosedIssues.filter((issue) => !getParentId(issue, visibleIssueById)).sort((a, b) => getCompletedAt(b).localeCompare(getCompletedAt(a))),
+    [visibleClosedIssues, visibleIssueById],
   );
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        nextFocusSource.current = "hotkey";
+        searchRef.current?.focus();
+      }
+      if (event.key === "Escape" && document.activeElement === searchRef.current) {
+        event.preventDefault();
+        setQuery("");
+        searchRef.current?.blur();
+        logClientEvent("feed.search.cleared", { source: "esc" });
+      }
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  useEffect(() => {
+    const trimmed = query.trim();
+    logClientEvent("feed.search.query_changed", {
+      queryLength: trimmed.length,
+      prefixMatchCount: searchStats.prefixMatchCount,
+      titleMatchCount: searchStats.titleMatchCount,
+      totalMatches: searchStats.totalMatches,
+      durationMs: searchStats.durationMs,
+    });
+    if (trimmed && searchStats.totalMatches === 0) logClientEvent("feed.search.empty_result", { query: trimmed });
+  }, [query, searchStats.durationMs, searchStats.prefixMatchCount, searchStats.titleMatchCount, searchStats.totalMatches]);
+
+  useEffect(() => {
+    if (!query.trim() && searchOpen.issues === issues && searchClosed.issues === closedIssues) {
+      logClientEvent("feed.search.identity_preserved", { queryUnchanged: true, issuesIdentity: `${issues.length}:${closedIssues.length}` });
+    }
+  }, [closedIssues, issues, query, searchClosed.issues, searchOpen.issues]);
   const items = useMemo<FeedItem[]>(() => {
     const next: FeedItem[] = [{ kind: "in-progress-header", count: inProgressIssues.length }];
     if (inProgressIssues.length === 0) next.push({ kind: "in-progress-empty" });
     for (const issue of inProgressIssues) next.push({ kind: "issue", issue, depth: 0, relation: "parent", childCount: 0 });
-    next.push({ kind: "open-header", count: issues.length, readyCount });
+    next.push({ kind: "open-header", count: openIssues.length, readyCount });
     if (topLevelIssues.length === 0 && completedIssues.length === 0 && inProgressIssues.length === 0) return [...next, { kind: "empty" }];
     if (showOpen) {
       for (const issue of topLevelIssues) {
@@ -95,14 +156,15 @@ export function IssueFeed({ issues, closedIssues = [], selectedIssueId, selected
       for (const issue of completedIssues) appendIssueTree(next, issue, closedChildren, new Map(), 0, "parent");
     }
     return next;
-  }, [activeChildren, blockingChildren, closedChildren, closedIssues.length, completedIssues, inProgressIssues, issues.length, readyCount, showClosed, showOpen, topLevelIssues]);
+  }, [activeChildren, blockingChildren, closedChildren, closedIssues.length, completedIssues, inProgressIssues, openIssues.length, readyCount, showClosed, showOpen, topLevelIssues]);
 
   const rowVirtualizer = useVirtualizer({
     count: items.length,
     getScrollElement: () => parentRef.current,
-    getItemKey: (index) => getFeedItemKey(items[index]),
+    getItemKey: (index) => items[index] ? getFeedItemKey(items[index]) : `pending:${index}`,
     estimateSize: (index) => {
       const item = items[index];
+      if (!item) return 52;
       if (item.kind === "in-progress-header" || item.kind === "open-header" || item.kind === "closed-header") return 28;
       if (item.kind === "in-progress-empty" || item.kind === "empty") return 32;
       return item.issue.id === selectedIssueId ? 260 : 52;
@@ -113,6 +175,36 @@ export function IssueFeed({ issues, closedIssues = [], selectedIssueId, selected
 
   return (
     <div ref={parentRef} className="bead-feed" style={{ height: "100%", overflowY: "auto" }}>
+      <div className="feed-search" role="search" aria-label="Search beads in this project">
+        <SearchIcon size={13} aria-hidden="true" />
+        <input
+          ref={searchRef}
+          type="search"
+          value={query}
+          onChange={(event) => setQuery(event.currentTarget.value)}
+          onPointerDown={() => { nextFocusSource.current = "click"; }}
+          onFocus={() => {
+            logClientEvent("feed.search.focused", { source: nextFocusSource.current });
+            nextFocusSource.current = "tab";
+          }}
+          placeholder="forge-id or title"
+          aria-label="Search beads in this project"
+        />
+        {query ? (
+          <button
+            type="button"
+            className="feed-search-clear"
+            onClick={() => {
+              setQuery("");
+              searchRef.current?.focus();
+              logClientEvent("feed.search.cleared", { source: "x" });
+            }}
+            aria-label="Clear bead search"
+          >
+            <XIcon size={12} />
+          </button>
+        ) : null}
+      </div>
       <div className="module-list" style={{ height: rowVirtualizer.getTotalSize(), position: "relative" }}>
         {rowVirtualizer.getVirtualItems().map((vRow) => {
           const item = items[vRow.index];
@@ -126,16 +218,21 @@ export function IssueFeed({ issues, closedIssues = [], selectedIssueId, selected
               {item.kind === "empty" ? (
                 <EmptyFeed />
               ) : item.kind === "in-progress-empty" ? (
-                <div className="feed-section-empty">no in_progress issues...</div>
+                <div className="feed-section-empty">no in progress issues...</div>
               ) : item.kind === "in-progress-header" ? (
-                <div className="feed-section-title"><span>▸ in_progress:{item.count}</span></div>
+                <div className="feed-section-title">
+                  <ChevronRightIcon size={12} aria-hidden="true" />
+                  <span>in progress:{item.count}</span>
+                </div>
               ) : item.kind === "open-header" ? (
                 <button type="button" className="feed-section-title feed-section-toggle" onClick={() => setShowOpen((value) => !value)} aria-expanded={showOpen}>
-                  <span>{showOpen ? "▾" : "▸"} open:{item.count}, ready:{item.readyCount}</span>
+                  {showOpen ? <ChevronDownIcon size={12} aria-hidden="true" /> : <ChevronRightIcon size={12} aria-hidden="true" />}
+                  <span>open:{item.count}, ready:{item.readyCount}</span>
                 </button>
               ) : item.kind === "closed-header" ? (
                 <button type="button" className="feed-section-title feed-section-toggle" onClick={() => setShowClosed((value) => !value)} aria-expanded={showClosed}>
-                  <span>{showClosed ? "▾" : "▸"} closed:{item.count}</span>
+                  {showClosed ? <ChevronDownIcon size={12} aria-hidden="true" /> : <ChevronRightIcon size={12} aria-hidden="true" />}
+                  <span>closed:{item.count}</span>
                 </button>
               ) : (
                 <IssueRow
@@ -174,7 +271,7 @@ export function getFeedItemKey(item: FeedItem): string {
 export function IssueRow({ issue, detail, isExpanded, isLoadingDetail, agent, dependencyCount, childCount, onClick, onOpen, onSpecialistOpen, depth = 0, relation = "parent", projectId, issueById, prLink = null, specialistJob = null }: { issue: BeadIssue; detail: BeadIssueDetail | null; isExpanded: boolean; isLoadingDetail: boolean; agent: string | null; dependencyCount: number; childCount: number; onClick: () => void; onOpen: () => void; onSpecialistOpen: () => void; depth?: number; relation?: "parent" | "epic" | "blocked"; projectId: string | null; issueById: Map<string, BeadIssue>; prLink?: IssuePrLink | null; specialistJob?: SpecialistOwnershipJob | null; }) {
   const isEpic = issue.issue_type === "epic";
   const displayStatus = getDisplayStatus(issue);
-  const type = TYPE_CONFIG[String(issue.issue_type)] ?? { label: String(issue.issue_type), icon: IssueOpenedIcon, color: "var(--text-muted)" };
+  const type = getTypeConfig(issue.issue_type);
   const statusLabel = (STATUS_LABELS[displayStatus] ?? displayStatus).toLowerCase();
 
   return (
@@ -208,7 +305,9 @@ export function IssueRow({ issue, detail, isExpanded, isLoadingDetail, agent, de
           {specialistJob && <SpecialistOwnerBadge job={specialistJob} onClick={onSpecialistOpen} />}
         </span>
       </button>
-      <button type="button" className="chev" onClick={onOpen} aria-label={`open ${issue.id} side drawer`}>{isExpanded ? <ChevronDownIcon size={12} /> : <ChevronRightIcon size={12} />}</button>
+      <button type="button" className="activity-btn" onClick={onOpen} aria-label={`Open ${issue.id} activity inspector`} title="Open activity inspector">
+        <PulseIcon size={13} />
+      </button>
       {isExpanded && <IssueDossier id={`issue-dossier-${issue.id}`} detail={detail} issue={issue} loading={isLoadingDetail} projectId={projectId} issueById={issueById} />}
     </article>
   );
@@ -246,7 +345,7 @@ export function IssueDossier({ id, detail, issue, loading, projectId, issueById 
   return (
     <section id={id} className="bead-expanded-body">
       <div className="bead-expanded-stack">
-        <BeadHeader issue={issue} detail={detail} />
+        <BeadHeader issue={issue} detail={detail} showIdentity={false} />
         <DossierSection title="Description"><SafeMarkdown value={detail?.description ?? issue.description} empty="No description." /></DossierSection>
         {specialistHistory.count > 0 && (
           <DossierSection title="SPECIALIST ACTIVITY">
@@ -294,27 +393,27 @@ export function SpecialistHistoryChip({ beadId }: { beadId: string }) {
 function SpecialistHistoryRow({ job }: { job: import("../../hooks/useSpecialistHistory.ts").SpecialistHistoryJob }) {
   const [open, setOpen] = useState(false);
   const excerpt = truncateExcerpt(job.lastOutput);
+  const role = job.specialist ?? job.chainKind ?? "specialist";
   return (
     <details className="bead-specialist-activity-row" open={open} onToggle={(event) => setOpen(event.currentTarget.open)}>
       <summary>
-        <span>{statusIcon(job.status)}</span>
-        <span>{job.specialist ?? job.chainKind ?? "—"}</span>
-        <span>{job.status}</span>
-        <span>{shortId(job.jobId)}</span>
-        <span>{formatElapsed(job.updatedAt)}</span>
-        <span>{excerpt || job.status}</span>
+        <span className={`bead-specialist-status bead-specialist-status-${statusToken(job.status)}`}>{formatStatusLabel(job.status)}</span>
+        <span className="bead-specialist-role">{role}</span>
+        {job.jobId ? <span className="bead-specialist-job-id">{shortId(job.jobId)}</span> : null}
+        <span className="bead-specialist-elapsed">{formatElapsed(job.updatedAt)}</span>
+        <span className="bead-specialist-excerpt">{excerpt || formatStatusLabel(job.status)}</span>
       </summary>
       {job.lastOutput ? <div className="bead-specialist-activity-output">{job.lastOutput}</div> : null}
     </details>
   );
 }
 
-function statusIcon(status: string): string {
-  if (status === "done") return "✓";
-  if (status === "error") return "✕";
-  if (status === "cancelled") return "↯";
-  if (status === "running" || status === "starting" || status === "waiting") return "●";
-  return "·";
+function formatStatusLabel(status: string): string {
+  return status.replace(/[_-]+/g, " ").trim() || "unknown";
+}
+
+function statusToken(status: string): string {
+  return status.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "unknown";
 }
 
 function shortId(id: string | null): string { return id ? id.slice(0, 8) : "—"; }
@@ -630,7 +729,7 @@ function renderRelationshipGroups(issue: BeadIssue, fallbackCount: number, issue
     const relatedIssue = issueById.get(dependency.id);
     const title = relatedIssue?.title?.trim() || dependency.title?.trim();
     if (!title) return `${DEP_KIND_LABEL[dependency.dependency_type] ?? dependency.dependency_type}: ${dependency.id}`;
-    const relatedType = relatedIssue ? TYPE_CONFIG[String(relatedIssue.issue_type)] : null;
+    const relatedType = relatedIssue ? getTypeConfig(relatedIssue.issue_type) : null;
     const summary = relatedIssue && relatedType ? ` — P${relatedIssue.priority} ${relatedType.label.toLowerCase()}` : "";
     return `${DEP_KIND_LABEL[dependency.dependency_type] ?? dependency.dependency_type}: ${dependency.id} — ${title}${summary}`;
   };
@@ -651,6 +750,10 @@ function renderRelationshipGroups(issue: BeadIssue, fallbackCount: number, issue
       ))}
     </>
   );
+}
+
+function getTypeConfig(issueType: string): { label: string; color: string } {
+  return TYPE_CONFIG[issueType as keyof typeof TYPE_CONFIG] ?? { label: issueType, color: "var(--text-muted)" };
 }
 
 function DependencyTree({ issue, dependencies, childDeps, issueById }: { issue: BeadIssue; dependencies: BeadDependency[]; childDeps: BeadDependency[]; issueById: Map<string, BeadIssue>; }) {

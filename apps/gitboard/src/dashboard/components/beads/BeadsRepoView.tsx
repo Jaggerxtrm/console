@@ -18,6 +18,7 @@ import type {
   Memory,
 } from "../../../types/beads.ts";
 import type { RepoNode, BeadsTab } from "../../../types/shell.ts";
+import { useShellStore } from "../../stores/shell.ts";
 
 const REFETCH_COALESCE_MS = 1_500;
 const LIVE_SPECIALIST_STATES = new Set(["starting", "running", "waiting", "error", "cancelled"]);
@@ -143,6 +144,7 @@ function sameInteractions(next: Interaction[] | null, current: Interaction[]): b
 }
 
 export function BeadsRepoView({ repo, tab }: { repo: RepoNode; tab: BeadsTab }) {
+  const openSidebar = useShellStore((store) => store.openSidebar);
   const [state, setState] = useState<State>(INITIAL);
   const [reloadKey, setReloadKey] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -383,6 +385,11 @@ export function BeadsRepoView({ repo, tab }: { repo: RepoNode; tab: BeadsTab }) 
     });
   }, [state.closedIssues.length, state.error, state.issues.length, state.loading, state.project, tab]);
 
+  const onIssueOpen = useCallback((issue: BeadIssue) => {
+    logClientEvent("beads.feed.row_open", { projectId: state.project?.id ?? null, beadId: issue.id });
+    openSidebar({ beadId: issue.id });
+  }, [openSidebar, state.project?.id]);
+
   const onIssueSelect = useCallback(async (issue: BeadIssue) => {
     if (!state.project) return;
     if (selectedId === issue.id) {
@@ -426,6 +433,7 @@ export function BeadsRepoView({ repo, tab }: { repo: RepoNode; tab: BeadsTab }) 
           selectedIssueDetail={detail}
           loadingDetailId={loadingDetailId}
           onIssueSelect={onIssueSelect}
+          onIssueOpen={onIssueOpen}
           getAgent={() => null}
           projectId={state.project.id}
           specialistByIssueId={specialistByIssueId}
@@ -698,14 +706,19 @@ function StatGroup({ label, items }: { label: string; items: Record<string, numb
 
 function BeadsSkeleton() {
   return (
-    <div className="ide-skeleton">
-      {[0, 1, 2, 3].map((i) => (
-        <div key={i} className="ide-skeleton-col">
-          <div className="ide-skeleton-head" />
-          <div className="ide-skeleton-card" />
-          <div className="ide-skeleton-card" />
+    <section className="ide-skeleton ide-skeleton-feed" aria-label="Loading beads project" aria-busy="true">
+      <div className="ide-skeleton-toolbar">
+        <div className="ide-skeleton-head" />
+        <div className="ide-skeleton-pill" />
+        <div className="ide-skeleton-pill" />
+      </div>
+      {[0, 1, 2, 3, 4, 5].map((i) => (
+        <div key={i} className="ide-skeleton-row">
+          <div className="ide-skeleton-id" />
+          <div className="ide-skeleton-line" />
+          <div className="ide-skeleton-meta" />
         </div>
       ))}
-    </div>
+    </section>
   );
 }

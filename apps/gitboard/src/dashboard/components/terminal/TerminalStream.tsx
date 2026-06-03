@@ -37,7 +37,7 @@ export function TerminalStream({
   const hostRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
-  const seenOutputRef = useRef(0);
+  const writtenOutputRef = useRef<readonly TerminalStreamChunk[]>([]);
   const readonlyRef = useRef(readonly);
   const onInputRef = useRef(onInput);
   const onResizeRef = useRef(onResize);
@@ -123,6 +123,7 @@ export function TerminalStream({
       terminal.dispose();
       fitAddonRef.current = null;
       terminalRef.current = null;
+      writtenOutputRef.current = [];
     };
   }, []);
 
@@ -130,10 +131,15 @@ export function TerminalStream({
     const terminal = terminalRef.current;
     if (!terminal) return;
 
-    for (const chunk of output.slice(seenOutputRef.current)) {
+    const previous = writtenOutputRef.current;
+    const canAppend = output.length >= previous.length && previous.every((chunk, index) => chunksEqual(chunk, output[index]));
+    if (!canAppend) resetTerminal(terminal);
+
+    const chunks = canAppend ? output.slice(previous.length) : output;
+    for (const chunk of chunks) {
       terminal.write(chunk instanceof Uint8Array ? chunk : chunk);
     }
-    seenOutputRef.current = output.length;
+    writtenOutputRef.current = output.slice();
   }, [output]);
 
   useEffect(() => {
@@ -159,6 +165,22 @@ function safeFocus(terminal: Terminal | null): void {
   } catch {
     // xterm can briefly lack a renderer while React/Vite remounts; focus is best-effort.
   }
+}
+
+function resetTerminal(terminal: Terminal): void {
+  const maybeReset = terminal as Terminal & { reset?: () => void; clear?: () => void };
+  if (typeof maybeReset.reset === "function") {
+    maybeReset.reset();
+    return;
+  }
+  if (typeof maybeReset.clear === "function") maybeReset.clear();
+}
+
+function chunksEqual(left: TerminalStreamChunk, right: TerminalStreamChunk | undefined): boolean {
+  if (right === undefined) return false;
+  if (typeof left === "string" || typeof right === "string") return left === right;
+  if (left.byteLength !== right.byteLength) return false;
+  return left.every((value, index) => value === right[index]);
 }
 
 function scheduleFit(

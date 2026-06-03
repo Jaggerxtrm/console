@@ -1,0 +1,1376 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`ChainListRow > keeps graph-style issue chips stable across type and priority variants > bug-p0 1`] = `
+<span
+  class="spec-issue-chip g-node spec-issue-chip-blocks"
+  data-p="0"
+  title="bug-0 - Graph issue chip"
+>
+  <span
+    class="g-node-identity"
+  >
+    <span
+      class="g-id"
+    >
+      bug-0
+    </span>
+    <span
+      class="g-sep"
+    >
+      /
+    </span>
+    <span
+      class="g-tt"
+    >
+      Graph issue chip
+    </span>
+  </span>
+  <span
+    class="g-node-class"
+  >
+    <span
+      class="g-pri"
+      style="color: #ff4d5e;"
+    >
+      P
+      0
+    </span>
+    <span
+      class="g-type"
+      style="color: #ff4d5e;"
+    >
+      bug
+    </span>
+    <span
+      class="g-state"
+    >
+      open
+    </span>
+    <span
+      class="spec-issue-rel spec-issue-rel-blocks"
+    >
+      blocks
+    </span>
+  </span>
+</span>
+`;
+
+exports[`ChainListRow > keeps graph-style issue chips stable across type and priority variants > bug-p1 1`] = `
+<span
+  class="spec-issue-chip g-node spec-issue-chip-blocks"
+  data-p="1"
+  title="bug-1 - Graph issue chip"
+>
+  <span
+    class="g-node-identity"
+  >
+    <span
+      class="g-id"
+    >
+      bug-1
+    </span>
+    <span
+      class="g-sep"
+    >
+      /
+    </span>
+    <span
+      class="g-tt"
+    >
+      Graph issue chip
+    </span>
+  </span>
+  <span
+    class="g-node-class"
+  >
+    <span
+      class="g-pri"
+      style="color: #ff4d5e;"
+    >
+      P
+      1
+    </span>
+    <span
+      class="g-type"
+      style="color: #ff4d5e;"
+    >
+      bug
+    </span>
+    <span
+      class="g-state"
+    >
+      open
+    </span>
+    <span
+      class="spec-issue-rel spec-issue-rel-blocks"
+    >
+      blocks
+    </span>
+  </span>
+</span>
+`;
+
+exports[`ChainListRow > keeps graph-style issue chips stable across type and priority variants > bug-p2 1`] = `
+<span
+  class="spec-issue-chip g-node spec-issue-chip-blocks"
+  data-p="2"
+  title="bug-2 - Graph issue chip"
+>
+  <span
+    class="g-node-identity"
+  >
+    <span
+      class="g-id"
+    >
+      bug-2
+    </span>
+    <span
+      class="g-sep"
+    >
+      /
+    </span>
+    <span
+      class="g-tt"
+    >
+      Graph issue chip
+    </span>
+  </span>
+  <span
+    class="g-node-class"
+  >
+    <span
+      class="g-pri"
+      style="color: #ff4d5e;"
+    >
+      P
+      2
+    </span>
+    <span
+      class="g-type"
+      style="color: #ff4d5e;"
+    >
+      bug
+    </span>
+    <span
+      class="g-state"
+    >
+      open
+    </span>
+    <span
+      class="spec-issue-rel spec-issue-rel-blocks"
+    >
+      blocks
+    </span>
+  </span>
+</span>
+`;
+
+exports[`ChainListRow > keeps graph-style issue chips stable across type and priority variants > bug-p3 1`] = `
+<span
+  class="spec-issue-chip g-node spec-issue-chip-blocks"
+  data-p="3"
+  title="bug-3 - Graph issue chip"
+>
+  <span
+    class="g-node-identity"
+  >
+    <span
+      class="g-id"
+    >
+      bug-3
+    </span>
+    <span
+      class="g-sep"
+    >
+      /
+    </span>
+    <span
+      class="g-tt"
+    >
+      Graph issue chip
+    </span>
+  </span>
+  <span
+    class="g-node-class"
+  >
+    <span
+      class="g-pri"
+      style="color: #ff4d5e;"
+    >
+      P
+      3
+    </span>
+    <span
+      class="g-type"
+      style="color: #ff4d5e;"
+    >
+      bug
+    </span>
+    <span
+      class="g-state"
+    >
+      open
+    </span>
+    <span
+      class="spec-issue-rel spec-issue-rel-blocks"
+    >
+      blocks
+    </span>
+  </span>
+</span>
+`;
+
+exports[`ChainListRow > keeps graph-style issue chips stable across type and priority variants > bug-p4 1`] = `
+<span
+  class="spec-issue-chip g-node spec-issue-chip-blocks"
+  data-p="4"
+  title="bug-4 - Graph issue chip"
+>
+  <span
+    class="g-node-identity"
+  >
+    <span
+      class="g-id"
+    >
+      bug-4
+    </span>
+    <span
+      class="g-sep"
+    >
+      /
+    </span>
+    <span
+      class="g-tt"
+    >
+      Graph issue chip
+    </span>
+  </span>
+  <span
+    class="g-node-class"
+  >
+    <span
+      class="g-pri"
+      style="color: #ff4d5e;"
+    >
+      P
+      4
+    </span>
+    <span
+      class="g-type"
+      style="color: #ff4d5e;"
+    >
+      bug
+    </span>
+    <span
+      class="g-state"
+    >
+      open
+    </span>
+    <span
+      class="spec-issue-rel spec-issue-rel-blocks"
+    >
+      blocks
+    </span>
+  </span>
+</span>
+`;
+
+exports[`ChainListRow > keeps graph-style issue chips stable across type and priority variants > chore-p0 1`] = `
+<span
+  class="spec-issue-chip g-node spec-issue-chip-blocks"
+  data-p="0"
+  title="chore-0 - Graph issue chip"
+>
+  <span
+    class="g-node-identity"
+  >
+    <span
+      class="g-id"
+    >
+      chore-0
+    </span>
+    <span
+      class="g-sep"
+    >
+      /
+    </span>
+    <span
+      class="g-tt"
+    >
+      Graph issue chip
+    </span>
+  </span>
+  <span
+    class="g-node-class"
+  >
+    <span
+      class="g-pri"
+      style="color: var(--text-muted);"
+    >
+      P
+      0
+    </span>
+    <span
+      class="g-type"
+      style="color: var(--text-muted);"
+    >
+      chore
+    </span>
+    <span
+      class="g-state"
+    >
+      open
+    </span>
+    <span
+      class="spec-issue-rel spec-issue-rel-blocks"
+    >
+      blocks
+    </span>
+  </span>
+</span>
+`;
+
+exports[`ChainListRow > keeps graph-style issue chips stable across type and priority variants > chore-p1 1`] = `
+<span
+  class="spec-issue-chip g-node spec-issue-chip-blocks"
+  data-p="1"
+  title="chore-1 - Graph issue chip"
+>
+  <span
+    class="g-node-identity"
+  >
+    <span
+      class="g-id"
+    >
+      chore-1
+    </span>
+    <span
+      class="g-sep"
+    >
+      /
+    </span>
+    <span
+      class="g-tt"
+    >
+      Graph issue chip
+    </span>
+  </span>
+  <span
+    class="g-node-class"
+  >
+    <span
+      class="g-pri"
+      style="color: var(--text-muted);"
+    >
+      P
+      1
+    </span>
+    <span
+      class="g-type"
+      style="color: var(--text-muted);"
+    >
+      chore
+    </span>
+    <span
+      class="g-state"
+    >
+      open
+    </span>
+    <span
+      class="spec-issue-rel spec-issue-rel-blocks"
+    >
+      blocks
+    </span>
+  </span>
+</span>
+`;
+
+exports[`ChainListRow > keeps graph-style issue chips stable across type and priority variants > chore-p2 1`] = `
+<span
+  class="spec-issue-chip g-node spec-issue-chip-blocks"
+  data-p="2"
+  title="chore-2 - Graph issue chip"
+>
+  <span
+    class="g-node-identity"
+  >
+    <span
+      class="g-id"
+    >
+      chore-2
+    </span>
+    <span
+      class="g-sep"
+    >
+      /
+    </span>
+    <span
+      class="g-tt"
+    >
+      Graph issue chip
+    </span>
+  </span>
+  <span
+    class="g-node-class"
+  >
+    <span
+      class="g-pri"
+      style="color: var(--text-muted);"
+    >
+      P
+      2
+    </span>
+    <span
+      class="g-type"
+      style="color: var(--text-muted);"
+    >
+      chore
+    </span>
+    <span
+      class="g-state"
+    >
+      open
+    </span>
+    <span
+      class="spec-issue-rel spec-issue-rel-blocks"
+    >
+      blocks
+    </span>
+  </span>
+</span>
+`;
+
+exports[`ChainListRow > keeps graph-style issue chips stable across type and priority variants > chore-p3 1`] = `
+<span
+  class="spec-issue-chip g-node spec-issue-chip-blocks"
+  data-p="3"
+  title="chore-3 - Graph issue chip"
+>
+  <span
+    class="g-node-identity"
+  >
+    <span
+      class="g-id"
+    >
+      chore-3
+    </span>
+    <span
+      class="g-sep"
+    >
+      /
+    </span>
+    <span
+      class="g-tt"
+    >
+      Graph issue chip
+    </span>
+  </span>
+  <span
+    class="g-node-class"
+  >
+    <span
+      class="g-pri"
+      style="color: var(--text-muted);"
+    >
+      P
+      3
+    </span>
+    <span
+      class="g-type"
+      style="color: var(--text-muted);"
+    >
+      chore
+    </span>
+    <span
+      class="g-state"
+    >
+      open
+    </span>
+    <span
+      class="spec-issue-rel spec-issue-rel-blocks"
+    >
+      blocks
+    </span>
+  </span>
+</span>
+`;
+
+exports[`ChainListRow > keeps graph-style issue chips stable across type and priority variants > chore-p4 1`] = `
+<span
+  class="spec-issue-chip g-node spec-issue-chip-blocks"
+  data-p="4"
+  title="chore-4 - Graph issue chip"
+>
+  <span
+    class="g-node-identity"
+  >
+    <span
+      class="g-id"
+    >
+      chore-4
+    </span>
+    <span
+      class="g-sep"
+    >
+      /
+    </span>
+    <span
+      class="g-tt"
+    >
+      Graph issue chip
+    </span>
+  </span>
+  <span
+    class="g-node-class"
+  >
+    <span
+      class="g-pri"
+      style="color: var(--text-muted);"
+    >
+      P
+      4
+    </span>
+    <span
+      class="g-type"
+      style="color: var(--text-muted);"
+    >
+      chore
+    </span>
+    <span
+      class="g-state"
+    >
+      open
+    </span>
+    <span
+      class="spec-issue-rel spec-issue-rel-blocks"
+    >
+      blocks
+    </span>
+  </span>
+</span>
+`;
+
+exports[`ChainListRow > keeps graph-style issue chips stable across type and priority variants > epic-p0 1`] = `
+<span
+  class="spec-issue-chip g-node spec-issue-chip-blocks"
+  data-p="0"
+  title="epic-0 - Graph issue chip"
+>
+  <span
+    class="g-node-identity"
+  >
+    <span
+      class="g-id"
+    >
+      epic-0
+    </span>
+    <span
+      class="g-sep"
+    >
+      /
+    </span>
+    <span
+      class="g-tt"
+    >
+      Graph issue chip
+    </span>
+  </span>
+  <span
+    class="g-node-class"
+  >
+    <span
+      class="g-pri"
+      style="color: rgba(163, 113, 247, 0.95);"
+    >
+      P
+      0
+    </span>
+    <span
+      class="g-type"
+      style="color: rgba(163, 113, 247, 0.95);"
+    >
+      epic
+    </span>
+    <span
+      class="g-state"
+    >
+      open
+    </span>
+    <span
+      class="spec-issue-rel spec-issue-rel-blocks"
+    >
+      blocks
+    </span>
+  </span>
+</span>
+`;
+
+exports[`ChainListRow > keeps graph-style issue chips stable across type and priority variants > epic-p1 1`] = `
+<span
+  class="spec-issue-chip g-node spec-issue-chip-blocks"
+  data-p="1"
+  title="epic-1 - Graph issue chip"
+>
+  <span
+    class="g-node-identity"
+  >
+    <span
+      class="g-id"
+    >
+      epic-1
+    </span>
+    <span
+      class="g-sep"
+    >
+      /
+    </span>
+    <span
+      class="g-tt"
+    >
+      Graph issue chip
+    </span>
+  </span>
+  <span
+    class="g-node-class"
+  >
+    <span
+      class="g-pri"
+      style="color: rgba(163, 113, 247, 0.95);"
+    >
+      P
+      1
+    </span>
+    <span
+      class="g-type"
+      style="color: rgba(163, 113, 247, 0.95);"
+    >
+      epic
+    </span>
+    <span
+      class="g-state"
+    >
+      open
+    </span>
+    <span
+      class="spec-issue-rel spec-issue-rel-blocks"
+    >
+      blocks
+    </span>
+  </span>
+</span>
+`;
+
+exports[`ChainListRow > keeps graph-style issue chips stable across type and priority variants > epic-p2 1`] = `
+<span
+  class="spec-issue-chip g-node spec-issue-chip-blocks"
+  data-p="2"
+  title="epic-2 - Graph issue chip"
+>
+  <span
+    class="g-node-identity"
+  >
+    <span
+      class="g-id"
+    >
+      epic-2
+    </span>
+    <span
+      class="g-sep"
+    >
+      /
+    </span>
+    <span
+      class="g-tt"
+    >
+      Graph issue chip
+    </span>
+  </span>
+  <span
+    class="g-node-class"
+  >
+    <span
+      class="g-pri"
+      style="color: rgba(163, 113, 247, 0.95);"
+    >
+      P
+      2
+    </span>
+    <span
+      class="g-type"
+      style="color: rgba(163, 113, 247, 0.95);"
+    >
+      epic
+    </span>
+    <span
+      class="g-state"
+    >
+      open
+    </span>
+    <span
+      class="spec-issue-rel spec-issue-rel-blocks"
+    >
+      blocks
+    </span>
+  </span>
+</span>
+`;
+
+exports[`ChainListRow > keeps graph-style issue chips stable across type and priority variants > epic-p3 1`] = `
+<span
+  class="spec-issue-chip g-node spec-issue-chip-blocks"
+  data-p="3"
+  title="epic-3 - Graph issue chip"
+>
+  <span
+    class="g-node-identity"
+  >
+    <span
+      class="g-id"
+    >
+      epic-3
+    </span>
+    <span
+      class="g-sep"
+    >
+      /
+    </span>
+    <span
+      class="g-tt"
+    >
+      Graph issue chip
+    </span>
+  </span>
+  <span
+    class="g-node-class"
+  >
+    <span
+      class="g-pri"
+      style="color: rgba(163, 113, 247, 0.95);"
+    >
+      P
+      3
+    </span>
+    <span
+      class="g-type"
+      style="color: rgba(163, 113, 247, 0.95);"
+    >
+      epic
+    </span>
+    <span
+      class="g-state"
+    >
+      open
+    </span>
+    <span
+      class="spec-issue-rel spec-issue-rel-blocks"
+    >
+      blocks
+    </span>
+  </span>
+</span>
+`;
+
+exports[`ChainListRow > keeps graph-style issue chips stable across type and priority variants > epic-p4 1`] = `
+<span
+  class="spec-issue-chip g-node spec-issue-chip-blocks"
+  data-p="4"
+  title="epic-4 - Graph issue chip"
+>
+  <span
+    class="g-node-identity"
+  >
+    <span
+      class="g-id"
+    >
+      epic-4
+    </span>
+    <span
+      class="g-sep"
+    >
+      /
+    </span>
+    <span
+      class="g-tt"
+    >
+      Graph issue chip
+    </span>
+  </span>
+  <span
+    class="g-node-class"
+  >
+    <span
+      class="g-pri"
+      style="color: rgba(163, 113, 247, 0.95);"
+    >
+      P
+      4
+    </span>
+    <span
+      class="g-type"
+      style="color: rgba(163, 113, 247, 0.95);"
+    >
+      epic
+    </span>
+    <span
+      class="g-state"
+    >
+      open
+    </span>
+    <span
+      class="spec-issue-rel spec-issue-rel-blocks"
+    >
+      blocks
+    </span>
+  </span>
+</span>
+`;
+
+exports[`ChainListRow > keeps graph-style issue chips stable across type and priority variants > feature-p0 1`] = `
+<span
+  class="spec-issue-chip g-node spec-issue-chip-blocks"
+  data-p="0"
+  title="feature-0 - Graph issue chip"
+>
+  <span
+    class="g-node-identity"
+  >
+    <span
+      class="g-id"
+    >
+      feature-0
+    </span>
+    <span
+      class="g-sep"
+    >
+      /
+    </span>
+    <span
+      class="g-tt"
+    >
+      Graph issue chip
+    </span>
+  </span>
+  <span
+    class="g-node-class"
+  >
+    <span
+      class="g-pri"
+      style="color: #4169e1;"
+    >
+      P
+      0
+    </span>
+    <span
+      class="g-type"
+      style="color: #4169e1;"
+    >
+      feature
+    </span>
+    <span
+      class="g-state"
+    >
+      open
+    </span>
+    <span
+      class="spec-issue-rel spec-issue-rel-blocks"
+    >
+      blocks
+    </span>
+  </span>
+</span>
+`;
+
+exports[`ChainListRow > keeps graph-style issue chips stable across type and priority variants > feature-p1 1`] = `
+<span
+  class="spec-issue-chip g-node spec-issue-chip-blocks"
+  data-p="1"
+  title="feature-1 - Graph issue chip"
+>
+  <span
+    class="g-node-identity"
+  >
+    <span
+      class="g-id"
+    >
+      feature-1
+    </span>
+    <span
+      class="g-sep"
+    >
+      /
+    </span>
+    <span
+      class="g-tt"
+    >
+      Graph issue chip
+    </span>
+  </span>
+  <span
+    class="g-node-class"
+  >
+    <span
+      class="g-pri"
+      style="color: #4169e1;"
+    >
+      P
+      1
+    </span>
+    <span
+      class="g-type"
+      style="color: #4169e1;"
+    >
+      feature
+    </span>
+    <span
+      class="g-state"
+    >
+      open
+    </span>
+    <span
+      class="spec-issue-rel spec-issue-rel-blocks"
+    >
+      blocks
+    </span>
+  </span>
+</span>
+`;
+
+exports[`ChainListRow > keeps graph-style issue chips stable across type and priority variants > feature-p2 1`] = `
+<span
+  class="spec-issue-chip g-node spec-issue-chip-blocks"
+  data-p="2"
+  title="feature-2 - Graph issue chip"
+>
+  <span
+    class="g-node-identity"
+  >
+    <span
+      class="g-id"
+    >
+      feature-2
+    </span>
+    <span
+      class="g-sep"
+    >
+      /
+    </span>
+    <span
+      class="g-tt"
+    >
+      Graph issue chip
+    </span>
+  </span>
+  <span
+    class="g-node-class"
+  >
+    <span
+      class="g-pri"
+      style="color: #4169e1;"
+    >
+      P
+      2
+    </span>
+    <span
+      class="g-type"
+      style="color: #4169e1;"
+    >
+      feature
+    </span>
+    <span
+      class="g-state"
+    >
+      open
+    </span>
+    <span
+      class="spec-issue-rel spec-issue-rel-blocks"
+    >
+      blocks
+    </span>
+  </span>
+</span>
+`;
+
+exports[`ChainListRow > keeps graph-style issue chips stable across type and priority variants > feature-p3 1`] = `
+<span
+  class="spec-issue-chip g-node spec-issue-chip-blocks"
+  data-p="3"
+  title="feature-3 - Graph issue chip"
+>
+  <span
+    class="g-node-identity"
+  >
+    <span
+      class="g-id"
+    >
+      feature-3
+    </span>
+    <span
+      class="g-sep"
+    >
+      /
+    </span>
+    <span
+      class="g-tt"
+    >
+      Graph issue chip
+    </span>
+  </span>
+  <span
+    class="g-node-class"
+  >
+    <span
+      class="g-pri"
+      style="color: #4169e1;"
+    >
+      P
+      3
+    </span>
+    <span
+      class="g-type"
+      style="color: #4169e1;"
+    >
+      feature
+    </span>
+    <span
+      class="g-state"
+    >
+      open
+    </span>
+    <span
+      class="spec-issue-rel spec-issue-rel-blocks"
+    >
+      blocks
+    </span>
+  </span>
+</span>
+`;
+
+exports[`ChainListRow > keeps graph-style issue chips stable across type and priority variants > feature-p4 1`] = `
+<span
+  class="spec-issue-chip g-node spec-issue-chip-blocks"
+  data-p="4"
+  title="feature-4 - Graph issue chip"
+>
+  <span
+    class="g-node-identity"
+  >
+    <span
+      class="g-id"
+    >
+      feature-4
+    </span>
+    <span
+      class="g-sep"
+    >
+      /
+    </span>
+    <span
+      class="g-tt"
+    >
+      Graph issue chip
+    </span>
+  </span>
+  <span
+    class="g-node-class"
+  >
+    <span
+      class="g-pri"
+      style="color: #4169e1;"
+    >
+      P
+      4
+    </span>
+    <span
+      class="g-type"
+      style="color: #4169e1;"
+    >
+      feature
+    </span>
+    <span
+      class="g-state"
+    >
+      open
+    </span>
+    <span
+      class="spec-issue-rel spec-issue-rel-blocks"
+    >
+      blocks
+    </span>
+  </span>
+</span>
+`;
+
+exports[`ChainListRow > keeps graph-style issue chips stable across type and priority variants > task-p0 1`] = `
+<span
+  class="spec-issue-chip g-node spec-issue-chip-blocks"
+  data-p="0"
+  title="task-0 - Graph issue chip"
+>
+  <span
+    class="g-node-identity"
+  >
+    <span
+      class="g-id"
+    >
+      task-0
+    </span>
+    <span
+      class="g-sep"
+    >
+      /
+    </span>
+    <span
+      class="g-tt"
+    >
+      Graph issue chip
+    </span>
+  </span>
+  <span
+    class="g-node-class"
+  >
+    <span
+      class="g-pri"
+      style="color: var(--text-muted);"
+    >
+      P
+      0
+    </span>
+    <span
+      class="g-type"
+      style="color: var(--text-muted);"
+    >
+      task
+    </span>
+    <span
+      class="g-state"
+    >
+      open
+    </span>
+    <span
+      class="spec-issue-rel spec-issue-rel-blocks"
+    >
+      blocks
+    </span>
+  </span>
+</span>
+`;
+
+exports[`ChainListRow > keeps graph-style issue chips stable across type and priority variants > task-p1 1`] = `
+<span
+  class="spec-issue-chip g-node spec-issue-chip-blocks"
+  data-p="1"
+  title="task-1 - Graph issue chip"
+>
+  <span
+    class="g-node-identity"
+  >
+    <span
+      class="g-id"
+    >
+      task-1
+    </span>
+    <span
+      class="g-sep"
+    >
+      /
+    </span>
+    <span
+      class="g-tt"
+    >
+      Graph issue chip
+    </span>
+  </span>
+  <span
+    class="g-node-class"
+  >
+    <span
+      class="g-pri"
+      style="color: var(--text-muted);"
+    >
+      P
+      1
+    </span>
+    <span
+      class="g-type"
+      style="color: var(--text-muted);"
+    >
+      task
+    </span>
+    <span
+      class="g-state"
+    >
+      open
+    </span>
+    <span
+      class="spec-issue-rel spec-issue-rel-blocks"
+    >
+      blocks
+    </span>
+  </span>
+</span>
+`;
+
+exports[`ChainListRow > keeps graph-style issue chips stable across type and priority variants > task-p2 1`] = `
+<span
+  class="spec-issue-chip g-node spec-issue-chip-blocks"
+  data-p="2"
+  title="task-2 - Graph issue chip"
+>
+  <span
+    class="g-node-identity"
+  >
+    <span
+      class="g-id"
+    >
+      task-2
+    </span>
+    <span
+      class="g-sep"
+    >
+      /
+    </span>
+    <span
+      class="g-tt"
+    >
+      Graph issue chip
+    </span>
+  </span>
+  <span
+    class="g-node-class"
+  >
+    <span
+      class="g-pri"
+      style="color: var(--text-muted);"
+    >
+      P
+      2
+    </span>
+    <span
+      class="g-type"
+      style="color: var(--text-muted);"
+    >
+      task
+    </span>
+    <span
+      class="g-state"
+    >
+      open
+    </span>
+    <span
+      class="spec-issue-rel spec-issue-rel-blocks"
+    >
+      blocks
+    </span>
+  </span>
+</span>
+`;
+
+exports[`ChainListRow > keeps graph-style issue chips stable across type and priority variants > task-p3 1`] = `
+<span
+  class="spec-issue-chip g-node spec-issue-chip-blocks"
+  data-p="3"
+  title="task-3 - Graph issue chip"
+>
+  <span
+    class="g-node-identity"
+  >
+    <span
+      class="g-id"
+    >
+      task-3
+    </span>
+    <span
+      class="g-sep"
+    >
+      /
+    </span>
+    <span
+      class="g-tt"
+    >
+      Graph issue chip
+    </span>
+  </span>
+  <span
+    class="g-node-class"
+  >
+    <span
+      class="g-pri"
+      style="color: var(--text-muted);"
+    >
+      P
+      3
+    </span>
+    <span
+      class="g-type"
+      style="color: var(--text-muted);"
+    >
+      task
+    </span>
+    <span
+      class="g-state"
+    >
+      open
+    </span>
+    <span
+      class="spec-issue-rel spec-issue-rel-blocks"
+    >
+      blocks
+    </span>
+  </span>
+</span>
+`;
+
+exports[`ChainListRow > keeps graph-style issue chips stable across type and priority variants > task-p4 1`] = `
+<span
+  class="spec-issue-chip g-node spec-issue-chip-blocks"
+  data-p="4"
+  title="task-4 - Graph issue chip"
+>
+  <span
+    class="g-node-identity"
+  >
+    <span
+      class="g-id"
+    >
+      task-4
+    </span>
+    <span
+      class="g-sep"
+    >
+      /
+    </span>
+    <span
+      class="g-tt"
+    >
+      Graph issue chip
+    </span>
+  </span>
+  <span
+    class="g-node-class"
+  >
+    <span
+      class="g-pri"
+      style="color: var(--text-muted);"
+    >
+      P
+      4
+    </span>
+    <span
+      class="g-type"
+      style="color: var(--text-muted);"
+    >
+      task
+    </span>
+    <span
+      class="g-state"
+    >
+      open
+    </span>
+    <span
+      class="spec-issue-rel spec-issue-rel-blocks"
+    >
+      blocks
+    </span>
+  </span>
+</span>
+`;

@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("../../../src/dashboard/lib/client-log.ts", () => ({
+  logClientEvent: vi.fn(),
+}));
+
 function makeStorage() {
   const data = new Map<string, string>();
   return {

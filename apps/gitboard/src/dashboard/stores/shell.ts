@@ -3,6 +3,7 @@
 // Persists selection + sidebarCollapsed to localStorage.
 
 import { create } from "zustand";
+import { logClientEvent } from "../lib/client-log.ts";
 import type {
   DrawerTab,
   RepoNode,
@@ -88,7 +89,7 @@ export interface ShellState {
   setDrawerTab: (tab: DrawerTab) => void;
   setDrawerSpecialistsScope: (scope: SpecialistsScope) => void;
   openSidebar: (target: { beadId: string; jobId?: string } | null) => void;
-  closeSidebar: () => void;
+  closeSidebar: (reason?: "escape" | "x_button" | "click_out" | "store_clear") => void;
   setSidebarWidth: (width: number) => void;
   setTerminalSessionId: (sessionId: string | null) => void;
   setTerminalReattachToken: (token: string | null) => void;
@@ -185,13 +186,26 @@ export const useShellStore = create<ShellState>((set) => ({
       const next = target
         ? { open: true, beadId: target.beadId, jobId: target.jobId ?? null, width: state.sidebar.width }
         : { open: false, beadId: state.sidebar.beadId, jobId: state.sidebar.jobId, width: state.sidebar.width };
+      if (target) {
+        const isSwap = state.sidebar.open && (state.sidebar.beadId !== next.beadId || state.sidebar.jobId !== next.jobId);
+        logClientEvent(isSwap ? "right_sidebar.target_swap" : "right_sidebar.opened", {
+          beadId: next.beadId,
+          jobId: next.jobId,
+          width: next.width,
+          prevBeadId: isSwap ? state.sidebar.beadId : null,
+          prevJobId: isSwap ? state.sidebar.jobId : null,
+        });
+      } else if (state.sidebar.open) {
+        logClientEvent("right_sidebar.closed", { reason: "store_clear", beadId: state.sidebar.beadId, jobId: state.sidebar.jobId });
+      }
       writeJSON(LS.sidebarState, { open: next.open, beadId: next.beadId, jobId: next.jobId });
       return { sidebar: next };
     }),
 
-  closeSidebar: () =>
+  closeSidebar: (reason = "store_clear") =>
     set((state) => {
       const next = { ...state.sidebar, open: false };
+      if (state.sidebar.open) logClientEvent("right_sidebar.closed", { reason, beadId: state.sidebar.beadId, jobId: state.sidebar.jobId });
       writeJSON(LS.sidebarState, { open: false, beadId: next.beadId, jobId: next.jobId });
       return { sidebar: next };
     }),
@@ -199,8 +213,9 @@ export const useShellStore = create<ShellState>((set) => ({
   setSidebarWidth: (width) =>
     set((state) => {
       const viewportWidth = typeof window !== "undefined" && typeof window.innerWidth === "number" ? window.innerWidth : 768;
-      const maxWidth = Math.min(720, viewportWidth - 48);
+      const maxWidth = Math.min(740, viewportWidth - 56);
       const next = Math.max(320, Math.min(maxWidth, Math.round(width)));
+      if (next !== state.sidebar.width) logClientEvent("right_sidebar.resized", { from: state.sidebar.width, to: next });
       writeJSON(LS.sidebarWidth, next);
       return { sidebar: { ...state.sidebar, width: next } };
     }),

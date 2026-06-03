@@ -5,6 +5,7 @@ import { TerminalStream } from "../../../../src/dashboard/components/terminal/Te
 
 const terminalState = {
   write: vi.fn(),
+  reset: vi.fn(),
   open: vi.fn(),
   loadAddon: vi.fn(),
   dispose: vi.fn(),
@@ -43,6 +44,16 @@ describe("TerminalStream", () => {
     expect(screen.getByLabelText("terminal stream")).toBeTruthy();
     expect(screen.getByText("ready")).toBeTruthy();
     expect(terminalState.write).toHaveBeenCalledWith("\u001b[31mred\u001b[0m");
+  });
+
+  it("rewrites snapshot output when content changes without growing", () => {
+    const { rerender } = render(<TerminalStream output={["first snapshot"]} />);
+    expect(terminalState.write).toHaveBeenCalledWith("first snapshot");
+
+    rerender(<TerminalStream output={["second snapshot"]} />);
+
+    expect(terminalState.reset).toHaveBeenCalled();
+    expect(terminalState.write).toHaveBeenLastCalledWith("second snapshot");
   });
 
   it("blocks keyboard input in readonly mode", () => {

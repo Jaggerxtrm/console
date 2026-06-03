@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useInFlightJobs } from "../../hooks/useInFlightJobs.ts";
-import { useShellStore, selectDrawerSpecialistsScope, selectSelection } from "../../stores/shell.ts";
+import { useShellStore, selectDrawerSpecialistsScope, selectRepos, selectSelection } from "../../stores/shell.ts";
 import { logClientEvent } from "../../lib/client-log.ts";
+import { getSpecialistRepoScope, matchesSpecialistScope } from "../../lib/specialist-scope.ts";
 import type { SpecialistJob } from "../../../server/observability/types.ts";
 
 const LIVE_STATUSES = new Set(["starting", "running", "waiting"]);
@@ -9,10 +10,11 @@ const LIVE_STATUSES = new Set(["starting", "running", "waiting"]);
 export function SpecialistsTabPanel() {
   const { jobs, sourceEpoch, loading, error } = useInFlightJobs();
   const selection = useShellStore(selectSelection);
+  const repos = useShellStore(selectRepos);
   const scope = useShellStore(selectDrawerSpecialistsScope);
   const setScope = useShellStore((s) => s.setDrawerSpecialistsScope);
-  const selectedRepo = selection.repo;
-  const visibleJobs = useMemo(() => (scope === "all-hosts" || !selectedRepo ? jobs : jobs.filter((job) => job.repoSlug === selectedRepo)), [jobs, scope, selectedRepo]);
+  const repoScope = useMemo(() => getSpecialistRepoScope(selection, repos), [repos, selection]);
+  const visibleJobs = useMemo(() => (scope === "all-hosts" || repoScope.keys.length === 0 ? jobs : jobs.filter((job) => matchesSpecialistScope(job, repoScope.keys))), [jobs, repoScope.keys, scope]);
   const openedRef = useRef(false);
   const renderedRef = useRef<string>("");
 
@@ -30,13 +32,21 @@ export function SpecialistsTabPanel() {
 
   const handleScopeToggle = () => {
     const next = scope === "all-hosts" ? "repo" : "all-hosts";
-    logClientEvent("drawer.specialists.repo_scope.toggled", { from: scope, to: next, rowCountAfter: next === "all-hosts" || !selectedRepo ? jobs.length : jobs.filter((job) => job.repoSlug === selectedRepo).length });
+    logClientEvent("drawer.specialists.repo_scope.toggled", { from: scope, to: next, rowCountAfter: next === "all-hosts" || repoScope.keys.length === 0 ? jobs.length : jobs.filter((job) => matchesSpecialistScope(job, repoScope.keys)).length });
     setScope(next);
   };
 
   const handleRowOpen = (job: SpecialistJob) => {
+    const previous = useShellStore.getState().sidebar;
     logClientEvent("drawer.specialists.chip.clicked", { jobId: job.jobId, beadId: job.beadId, target: "sidebar" });
     useShellStore.getState().openSidebar({ beadId: job.beadId, jobId: job.jobId ?? undefined });
+    logClientEvent("chip.sidebar.dispatched", {
+      source: "drawer_row",
+      beadId: job.beadId,
+      jobId: job.jobId ?? null,
+      swap: Boolean(previous.open && previous.beadId !== job.beadId),
+      prevSidebar: previous.open ? { beadId: previous.beadId, jobId: previous.jobId } : null,
+    });
   };
 
   if (error) return <div className="drawer-panel-message">{error}</div>;
@@ -45,7 +55,7 @@ export function SpecialistsTabPanel() {
   return (
     <div className="drawer-specialists">
       <div className="drawer-specialists-toolbar">
-        <div className="drawer-specialists-scope">{scope === "all-hosts" ? "all hosts" : selectedRepo ?? "current repo"}</div>
+        <div className="drawer-specialists-scope">{scope === "all-hosts" ? "all hosts" : repoScope.label}</div>
         <button type="button" className={scope === "all-hosts" ? "drawer-specialists-scope-toggle is-active" : "drawer-specialists-scope-toggle"} onClick={handleScopeToggle}>
           all hosts
         </button>

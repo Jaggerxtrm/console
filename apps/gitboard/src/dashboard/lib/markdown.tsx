@@ -68,6 +68,10 @@ function isTableSeparator(row: string): boolean {
   return /^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(row);
 }
 
+function byteLength(text: string): number {
+  return new TextEncoder().encode(text).length;
+}
+
 function renderMarkdownNodes(text: string): ReactNode[] {
   const startedAt = Date.now();
   const { text: sanitised, htmlStripped } = sanitize(text);
@@ -75,6 +79,7 @@ function renderMarkdownNodes(text: string): ReactNode[] {
   const nodes: ReactNode[] = [];
   let paragraph: string[] = [];
   let listItems: ReactNode[] = [];
+  let listKind: "ul" | "ol" | null = null;
   let fenceCount = 0;
   let tableCount = 0;
   let headingMax = 0;
@@ -87,8 +92,10 @@ function renderMarkdownNodes(text: string): ReactNode[] {
 
   const flushList = (): void => {
     if (listItems.length === 0) return;
-    nodes.push(<ul key={`ul-${nodes.length}`}>{listItems}</ul>);
+    const Tag = listKind ?? "ul";
+    nodes.push(<Tag key={`${Tag}-${nodes.length}`}>{listItems}</Tag>);
     listItems = [];
+    listKind = null;
   };
 
   for (let i = 0; i < lines.length;) {
@@ -127,10 +134,22 @@ function renderMarkdownNodes(text: string): ReactNode[] {
       continue;
     }
 
-    const list = /^[-*]\s+(.+)$/.exec(trimmed);
+    const list = /^([-*]|\d+[.)])\s+(.+)$/.exec(trimmed);
     if (list) {
       flushParagraph();
-      listItems.push(<li key={`li-${nodes.length}-${listItems.length}`}>{renderInline(list[1], `li-${nodes.length}-${listItems.length}`)}</li>);
+      const nextKind = /^\d/.test(list[1]) ? "ol" : "ul";
+      if (listKind && listKind !== nextKind) flushList();
+      listKind = nextKind;
+      listItems.push(<li key={`li-${nodes.length}-${listItems.length}`}>{renderInline(list[2], `li-${nodes.length}-${listItems.length}`)}</li>);
+      i += 1;
+      continue;
+    }
+
+    const quote = /^>\s?(.*)$/.exec(trimmed);
+    if (quote) {
+      flushParagraph();
+      flushList();
+      nodes.push(<blockquote key={`bq-${nodes.length}`}>{renderInline(quote[1], `bq-${nodes.length}`)}</blockquote>);
       i += 1;
       continue;
     }
@@ -174,7 +193,7 @@ function renderMarkdownNodes(text: string): ReactNode[] {
   flushList();
   if (htmlStripped) logClientEvent("dashboard.markdown.parse.warn", { hint: "raw html stripped" });
   if (nodes.length === 0) logClientEvent("dashboard.markdown.rejected", { reason: "empty", count: 1 });
-  logClientEvent("dashboard.markdown.rendered", { contentBytes: Buffer.byteLength(text), fenceCount, tableCount, headingMax, durationMs: Date.now() - startedAt });
+  logClientEvent("dashboard.markdown.rendered", { contentBytes: byteLength(text), fenceCount, tableCount, headingMax, durationMs: Date.now() - startedAt });
   return nodes;
 }
 

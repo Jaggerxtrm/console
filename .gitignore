@@ -35,3 +35,16 @@ e4494c9598b9
 .tmp-*/
 
 logs/
+
+# Beads / Dolt files (added by bd init)
+.beads-credential-key
+
+# Local test/browser output
+apps/gitboard/test-results/
+apps/gitboard/design-mocks/debug-*.png
+apps/gitboard/design-mocks/live-design-preview.png
+apps/gitboard/design-mocks/static-complete-preview.png
+
+# Python caches from local skills
+__pycache__/
+*.py[cod]

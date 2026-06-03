@@ -19,40 +19,42 @@ const TYPE_CONFIG: Record<string, { label: string; icon: typeof IssueOpenedIcon;
   chore: { label: "Chore", icon: ToolsIcon, color: "var(--text-muted)" },
 };
 
-export function BeadHeader({ issue, detail }: { issue: BeadIssue; detail?: BeadIssueDetail | null }) {
+export function BeadHeader({ issue, detail, showIdentity = true }: { issue: BeadIssue; detail?: BeadIssueDetail | null; showIdentity?: boolean }) {
   const displayStatus = issue.status === "open" && hasUnresolvedBlocker(issue) ? "blocked" : issue.status;
   const type = TYPE_CONFIG[String(issue.issue_type)] ?? { label: String(issue.issue_type), icon: IssueOpenedIcon, color: "var(--text-muted)" };
+  const TypeIcon = type.icon;
   const depsSummary = renderDependenciesSummary(issue);
 
   return (
     <section className="bead-header">
-      <div className="bead-header-identity">
-        <span className="issue-identity"><span className="id">{issue.id}</span><span className="identity-separator">/</span><span className="title">{issue.title}</span></span>
-        <span className="issue-classification">
-          <span className="priority-mark" style={{ color: type.color }}>P{issue.priority}</span>
-          <span className="type-mark" style={{ color: type.color }}>{type.label}</span>
-          <span className="state">{(STATUS_LABELS[displayStatus] ?? displayStatus).toLowerCase()}</span>
-        </span>
-      </div>
+      {showIdentity && (
+        <div className="bead-header-identity">
+          <span className="issue-identity"><span className="id">{issue.id}</span><span className="identity-separator">/</span><span className="title">{issue.title}</span></span>
+          <span className="issue-classification">
+            <span className="priority-mark" style={{ color: type.color }}>P{issue.priority}</span>
+            <span className="type-mark" style={{ color: type.color }}>{type.label}</span>
+            <span className="state">{(STATUS_LABELS[displayStatus] ?? displayStatus).toLowerCase()}</span>
+          </span>
+        </div>
+      )}
       {depsSummary}
       <div className="bead-dossier-meta-strip">
-        <span><b>Type</b><strong>{type.label}</strong></span>
-        <span><b>Priority</b><strong>P{issue.priority}</strong></span>
-        <span><b>Status</b><strong>{STATUS_LABELS[displayStatus] ?? displayStatus}</strong></span>
-        {issue.owner && <span><b>Owner</b><strong>{issue.owner}</strong></span>}
-        <span><b>Created</b><strong>{formatCompactDate(issue.created_at)}</strong></span>
-        <span><b>Updated</b><strong>{formatCompactDate(issue.updated_at)}</strong></span>
-        {issue.closed_at && <span><b>Closed</b><strong>{formatCompactDate(issue.closed_at)}</strong></span>}
+        <span className="bead-meta-chip bead-meta-type"><b>Type</b><strong><TypeIcon size={12} />{type.label}</strong></span>
+        <span className="bead-meta-chip"><b>Priority</b><strong>P{issue.priority}</strong></span>
+        <span className={`bead-meta-chip bead-meta-status bead-status-${displayStatus}`}><b>Status</b><strong>{STATUS_LABELS[displayStatus] ?? displayStatus}</strong></span>
+        {issue.owner && <span className="bead-meta-chip"><b>Owner</b><strong>{issue.owner}</strong></span>}
+        <span className="bead-meta-chip bead-meta-date"><b>Created</b><strong>{formatCompactDate(issue.created_at)}</strong></span>
+        <span className="bead-meta-chip bead-meta-date"><b>Updated</b><strong>{formatCompactDate(issue.updated_at)}</strong></span>
+        {issue.closed_at && <span className="bead-meta-chip bead-meta-date"><b>Closed</b><strong>{formatCompactDate(issue.closed_at)}</strong></span>}
       </div>
-      <div className="bead-header-description">{detail?.description ?? issue.description ?? "No description."}</div>
     </section>
   );
 }
 
 function renderDependenciesSummary(issue: BeadIssue): ReactNode {
   const count = issue.dependencies.filter((dependency) => dependency.dependency_type !== "parent-child").length;
-  if (count === 0) return <div className="bead-row-dep-empty">—</div>;
-  return <div className="bead-header-deps">{count} deps</div>;
+  if (count === 0) return null;
+  return <div className="bead-header-deps">{count} dependenc{count === 1 ? "y" : "ies"}</div>;
 }
 
 function hasUnresolvedBlocker(issue: BeadIssue): boolean {

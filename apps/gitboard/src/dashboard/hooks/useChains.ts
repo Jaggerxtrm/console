@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import type { SpecialistJob } from "../../server/observability/types.ts";
 import { useDashboardResource, useDashboardResourceInvalidation } from "../lib/resource.ts";
+import { matchesSpecialistScope } from "../lib/specialist-scope.ts";
 
 interface ChainsResponse {
   in_flight?: Array<SpecialistJob & { lastOutput?: string | null; last_output?: string | null }>;
@@ -9,7 +10,7 @@ interface ChainsResponse {
 
 const POLL_MS = 5000;
 
-export type ChainStatus = "running" | "waiting" | "done" | "error" | "cancelled";
+export type ChainStatus = "starting" | "running" | "waiting" | "done" | "error" | "failed" | "cancelled";
 
 export interface ChainJob extends SpecialistJob {
   lastOutput: string | null;
@@ -36,21 +37,32 @@ export interface UseChainsState {
   error: string | null;
 }
 
-export function useChains(): UseChainsState {
+export interface UseChainsOptions {
+  repoKeys?: readonly string[];
+}
+
+export function useChains(options: UseChainsOptions = {}): UseChainsState {
+  const repoKeyPart = options.repoKeys?.length ? options.repoKeys.join("|") : "all";
+  const resourceKey = `specialists:chains:${repoKeyPart}`;
   const resource = useDashboardResource<ChainsResponse>({
-    key: "specialists:chains",
+    key: resourceKey,
     cacheTtlMs: POLL_MS,
     pollMs: POLL_MS,
     fetcher: async (_key, _options) => {
-      const res = await fetch("/api/specialists/jobs/in-flight?limit=200");
+      const repoQuery = options.repoKeys?.length ? `&repo_slug=${encodeURIComponent(options.repoKeys.join(","))}` : "";
+      const res = await fetch(`/api/specialists/jobs/in-flight?limit=1000${repoQuery}`);
       if (!res.ok) throw new Error(`API error ${res.status}: ${res.statusText}`);
       return res.json() as Promise<ChainsResponse>;
     },
   });
 
-  useDashboardResourceInvalidation("specialists:activity", "specialists:chains");
+  useDashboardResourceInvalidation("specialists:activity", resourceKey);
 
-  const jobs = useMemo(() => normalizeJobs([...(resource.data?.in_flight ?? []), ...(resource.data?.recent_history ?? [])]), [resource.data]);
+  const jobs = useMemo(() => {
+    const normalized = normalizeJobs([...(resource.data?.in_flight ?? []), ...(resource.data?.recent_history ?? [])]);
+    const repoKeys = options.repoKeys ?? [];
+    return repoKeys.length === 0 ? normalized : normalized.filter((job) => matchesSpecialistScope(job, repoKeys));
+  }, [options.repoKeys, resource.data]);
   const chains = useMemo(() => groupChains(jobs), [jobs]);
   return { chains, loading: resource.loading, error: resource.error };
 }
@@ -62,10 +74,10 @@ function normalizeJobs(jobs: Array<SpecialistJob & { lastOutput?: string | null;
 function groupChains(jobs: ChainJob[]): ChainSummary[] {
   const byChain = new Map<string, ChainJob[]>();
   for (const job of jobs) {
-    if (!job.chainId) continue;
-    const bucket = byChain.get(job.chainId);
+    const chainId = getChainId(job);
+    const bucket = byChain.get(chainId);
     if (bucket) bucket.push(job);
-    else byChain.set(job.chainId, [job]);
+    else byChain.set(chainId, [job]);
   }
 
   return [...byChain.entries()].map(([chainId, chainJobs]) => {
@@ -86,6 +98,10 @@ function groupChains(jobs: ChainJob[]): ChainSummary[] {
   }).sort((a, b) => Date.parse(b.lastUpdatedAt) - Date.parse(a.lastUpdatedAt));
 }
 
+function getChainId(job: ChainJob): string {
+  return job.chainId ?? job.jobId ?? job.beadId;
+}
+
 function buildRoles(jobs: ChainJob[]): Array<{ role: string; status: string }> {
   const seen = new Map<string, string>();
   for (const job of jobs) {
@@ -96,10 +112,10 @@ function buildRoles(jobs: ChainJob[]): Array<{ role: string; status: string }> {
 }
 
 function pickStatus(jobs: ChainJob[]): ChainStatus {
-  const active = [...jobs].reverse().find((job) => job.status === "running" || job.status === "waiting");
+  const active = [...jobs].reverse().find((job) => job.status === "starting" || job.status === "running" || job.status === "waiting");
   if (active) return active.status as ChainStatus;
   const latest = jobs[jobs.length - 1]?.status ?? "done";
-  if (latest === "error" || latest === "cancelled" || latest === "done") return latest;
+  if (latest === "error" || latest === "failed" || latest === "cancelled" || latest === "done") return latest;
   return "done";
 }
 

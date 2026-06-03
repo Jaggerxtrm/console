@@ -164,6 +164,19 @@ describe("ResultMarkdown", () => {
     expect(logClientEventSpy.mock.calls.some(([event]) => event === "dashboard.markdown.rejected")).toBe(false);
   });
 
+
+  it("renders in browser-like runtimes without Buffer", () => {
+    const originalBuffer = globalThis.Buffer;
+    try {
+      vi.stubGlobal("Buffer", undefined);
+      const nodes = renderPrBodyText("description **still renders**");
+      expect(nodes).toHaveLength(1);
+      expect(logClientEventSpy.mock.calls.some(([event, data]) => event === "dashboard.markdown.rendered" && data?.contentBytes === 29)).toBe(true);
+    } finally {
+      vi.stubGlobal("Buffer", originalBuffer);
+    }
+  });
+
   it("emits telemetry for raw html stripping", () => {
     renderPrBodyText("<div>unsafe</div>");
 

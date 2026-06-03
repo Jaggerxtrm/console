@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -104,7 +105,7 @@ describe("GET /api/specialists/jobs/in-flight", () => {
     const res = await app.fetch(new Request("http://localhost/api/specialists/jobs/in-flight"));
 
     expect(res.status).toBe(200);
-    const json = await res.json() as { jobs: Array<Record<string, unknown>>; epoch: Record<string, number> };
+    const json = await res.json() as { jobs: Array<Record<string, unknown>>; recent_history: Array<Record<string, unknown>>; epoch: Record<string, number> };
     expect(json.jobs.length).toBeGreaterThanOrEqual(3);
     const updates = json.jobs.map((job) => Date.parse(String(job.updatedAt)));
     for (let i = 1; i < updates.length; i += 1) {
@@ -112,6 +113,37 @@ describe("GET /api/specialists/jobs/in-flight", () => {
     }
     expect(json.jobs.every((job) => typeof job.repoSlug === "string" && job.repoSlug.length > 0)).toBe(true);
     expect(json.epoch).toEqual({ "repo-a": 0, "repo-b": 0 });
+  });
+
+  it("includes failed jobs in recent history for traceability", async () => {
+    const failedDb = seedRepo(join(dir, "repo-failed.db"), [
+      { beadId: "failed-bead", chainId: "chain-failed", epicId: "epic-failed", chainKind: "reviewer", status: "failed", updatedAtMs: 1700000010000 },
+    ], true);
+    openDbs.push(failedDb);
+    const app = createAppWithDao([
+      { repoSlug: "repo-failed", rows: [] },
+    ]);
+    const res = await app.fetch(new Request("http://localhost/api/specialists/jobs/in-flight?limit=52"));
+
+    expect(res.status).toBe(200);
+    const json = await res.json() as { recent_history: Array<Record<string, unknown>> };
+    expect(json.recent_history).toEqual([
+      expect.objectContaining({ beadId: "failed-bead", chainId: "chain-failed", status: "failed" }),
+    ]);
+  });
+
+  it("filters by repo before applying the history limit", async () => {
+    openDbs[0]!.prepare("INSERT INTO specialist_jobs (job_id, bead_id, chain_id, epic_id, chain_kind, status, updated_at_ms, specialist) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+      .run("job-history-a", "bead-history-a", "chain-history-a", null, "executor", "done", 1700000001000, "executor");
+    const app = createAppWithDao();
+    const res = await app.fetch(new Request("http://localhost/api/specialists/jobs/in-flight?limit=1&repo_slug=repo-a"));
+
+    expect(res.status).toBe(200);
+    const json = await res.json() as { jobs: Array<Record<string, unknown>>; recent_history: Array<Record<string, unknown>> };
+    expect(json.jobs.every((job) => job.repoSlug === "repo-a")).toBe(true);
+    expect(json.recent_history).toEqual([
+      expect.objectContaining({ repoSlug: "repo-a", jobId: "job-history-a", beadId: "bead-history-a", status: "done" }),
+    ]);
   });
 
   it("returns empty jobs with epoch summary when repos attached but none running", async () => {
@@ -203,6 +235,36 @@ describe("GET /api/specialists/jobs/:job_id/result", () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ text: "# done", content_type: "text/markdown" });
   });
+
+  it("returns markdown result for same-origin dashboard reads", async () => {
+    const app = createResultApp(true);
+    const res = await app.fetch(new Request("http://localhost/api/specialists/jobs/job-1/result", { headers: { "sec-fetch-site": "same-origin" } }));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ text: "# done", content_type: "text/markdown" });
+  });
+});
+
+describe("GET /api/specialists/jobs/:job_id/feed", () => {
+  it("returns 403 for non-admin", async () => {
+    const app = createAppWithDao();
+    const res = await app.fetch(new Request("http://localhost/api/specialists/jobs/job-1/feed"));
+    expect(res.status).toBe(403);
+  });
+
+  it("returns terminal feed for admin", async () => {
+    for (const repoSlug of ["repo-a", "repo-b"]) {
+      const repoDir = join(dir, repoSlug);
+      mkdirSync(repoDir, { recursive: true });
+      writeFileSync(join(repoDir, "feed"), `printf '%s\\n' "JOB:$1"`);
+      chmodSync(join(repoDir, "feed"), 0o755);
+    }
+    process.env.GITBOARD_SPECIALISTS_BIN = "/bin/sh";
+
+    const app = createAppWithDao();
+    const res = await app.fetch(new Request("http://localhost/api/specialists/jobs/job-1/feed", { headers: { "x-gitboard-shell-token": "test-admin-token" } }));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ text: "JOB:job-1\n", content_type: "text/plain; charset=utf-8" });
+  });
 });
 
 describe("GET /api/specialists/chains/:chain_id", () => {
@@ -227,6 +289,21 @@ describe("GET /api/specialists/chains/:chain_id", () => {
 
     expect(res.status).toBe(404);
     expect(await res.json()).toEqual({ error: "Chain not found" });
+  });
+
+  it("returns standalone job history by job id when chain_id is missing", async () => {
+    const standaloneDb = seedRepo(join(dir, "repo-standalone.db"), [
+      { beadId: "bead-standalone", chainId: null, epicId: null, chainKind: "executor", status: "done", updatedAtMs: 1700000020000 },
+    ], true);
+    openDbs.push(standaloneDb);
+    const app = createAppWithDao([{ repoSlug: "repo-standalone", rows: [] }]);
+    const res = await app.fetch(new Request("http://localhost/api/specialists/chains/job-1"));
+
+    expect(res.status).toBe(200);
+    const json = await res.json() as { chain: { jobs: Array<Record<string, unknown>> } };
+    expect(json.chain.jobs).toEqual([
+      expect.objectContaining({ jobId: "job-1", beadId: "bead-standalone", chainId: null, status: "done" }),
+    ]);
   });
 
   it("returns 200 with healthy chain data when one attached db is corrupt (skips bad repo)", async () => {
@@ -403,7 +480,7 @@ function createAppWithDao(reposOverride: Array<{ repoSlug: string; rows: SeedRow
   return app;
 }
 
-function createResultApp(): Hono {
+function createResultApp(_success = false): Hono {
   const xtrmDb = new Database(":memory:");
   xtrmDb.exec(`
     CREATE TABLE specialist_job_events (
@@ -442,4 +519,3 @@ function seedRepo(path: string, rows: SeedRow[], schemaOk: boolean): Database {
   }
   return db;
 }
-

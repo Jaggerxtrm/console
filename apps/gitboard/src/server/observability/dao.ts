@@ -5,10 +5,15 @@ type JobQuery = {
   whereSql: string;
   orderSql: string;
   params: readonly string[];
+  repoSlugs?: readonly string[];
+};
+
+type JobFilter = {
+  repoSlugs?: readonly string[];
 };
 
 const IN_FLIGHT_STATUSES = ["starting", "running", "waiting"] as const;
-const HISTORY_STATUSES = ["done", "error", "cancelled"] as const;
+const HISTORY_STATUSES = ["done", "error", "failed", "cancelled"] as const;
 const JOB_COLUMNS_BASE = "job_id, bead_id, chain_id, epic_id, chain_kind, status, updated_at_ms, specialist";
 // `last_output` is on every sp schema we ship, but historical observability dbs
 // in the wild may pre-date it. Probe per-repo once and cache; fall back to a
@@ -23,15 +28,15 @@ const slugHasMetrics = new Map<string, boolean>();
 
 export function createObservabilityDao(pool: AttachPoolLike) {
   return {
-    jobsByBead: (beadId: string) => sortDesc(readJobs(pool, { whereSql: `WHERE bead_id = ?`, orderSql: ``, params: [beadId] })),
-    inFlightJobs: () => sortDesc(readJobs(pool, { whereSql: `WHERE status IN (${IN_FLIGHT_STATUSES.map(() => "?").join(",")})`, orderSql: ``, params: [...IN_FLIGHT_STATUSES] })),
-    recentJobs: (limit: number) => sortDesc(readJobs(pool, { whereSql: `WHERE status IN (${HISTORY_STATUSES.map(() => "?").join(",")})`, orderSql: ``, params: [...HISTORY_STATUSES] })).slice(0, limit),
-    chainById: (chainId: string) => sortChain(readJobs(pool, { whereSql: `WHERE chain_id = ?`, orderSql: ``, params: [chainId] })) as SpecialistChain[],
+    jobsByBead: (beadId: string, filter?: JobFilter) => sortDesc(readJobs(pool, { whereSql: `WHERE bead_id = ?`, orderSql: ``, params: [beadId], repoSlugs: filter?.repoSlugs })),
+    inFlightJobs: (filter?: JobFilter) => sortDesc(readJobs(pool, { whereSql: `WHERE status IN (${IN_FLIGHT_STATUSES.map(() => "?").join(",")})`, orderSql: ``, params: [...IN_FLIGHT_STATUSES], repoSlugs: filter?.repoSlugs })),
+    recentJobs: (limit: number, filter?: JobFilter) => sortDesc(readJobs(pool, { whereSql: `WHERE status IN (${HISTORY_STATUSES.map(() => "?").join(",")})`, orderSql: ``, params: [...HISTORY_STATUSES], repoSlugs: filter?.repoSlugs })).slice(0, limit),
+    chainById: (chainId: string, filter?: JobFilter) => sortChain(readJobs(pool, { whereSql: `WHERE chain_id = ? OR (chain_id IS NULL AND job_id = ?)`, orderSql: ``, params: [chainId, chainId], repoSlugs: filter?.repoSlugs })) as SpecialistChain[],
     epicById: (epicId: string) => sortAsc(readJobs(pool, { whereSql: `WHERE epic_id = ?`, orderSql: ``, params: [epicId] })) as EpicRun[],
     coverage: () => pool.getCoverage(),
-    refreshInFlight: async (limit: number) => {
-      const inFlight = await readJobsChunked(pool, { whereSql: `WHERE status IN (${IN_FLIGHT_STATUSES.map(() => "?").join(",")})`, orderSql: ``, params: [...IN_FLIGHT_STATUSES] });
-      const recentHistory = (await readJobsChunked(pool, { whereSql: `WHERE status IN (${HISTORY_STATUSES.map(() => "?").join(",")})`, orderSql: ``, params: [...HISTORY_STATUSES] })).slice(0, limit);
+    refreshInFlight: async (limit: number, filter?: JobFilter) => {
+      const inFlight = await readJobsChunked(pool, { whereSql: `WHERE status IN (${IN_FLIGHT_STATUSES.map(() => "?").join(",")})`, orderSql: ``, params: [...IN_FLIGHT_STATUSES], repoSlugs: filter?.repoSlugs });
+      const recentHistory = (await readJobsChunked(pool, { whereSql: `WHERE status IN (${HISTORY_STATUSES.map(() => "?").join(",")})`, orderSql: ``, params: [...HISTORY_STATUSES], repoSlugs: filter?.repoSlugs })).slice(0, limit);
       return { in_flight: sortDesc(inFlight), recent_history: sortDesc(recentHistory), jobs: sortDesc(inFlight) };
     },
   };
@@ -63,11 +68,12 @@ function readJobs(pool: AttachPoolLike, query: JobQuery): SpecialistJob[] {
   return pool.withAttached((db, attached) => {
     if (attached.length === 0) return [];
 
-    const rows = attached.flatMap(({ alias, slug }) => {
+    const filteredAttached = attached.filter(({ slug }) => matchesRepoFilter(slug, query.repoSlugs));
+    const rows = filteredAttached.flatMap(({ alias, slug }) => {
       const lastOutputExpr = hasLastOutputColumn(db, alias, slug) ? "j.last_output" : "NULL AS last_output";
       const hasMetrics = hasMetricsTable(db, alias, slug);
       const hasEvents = hasEventsTable(db, alias, slug);
-      // metrics row only materializes on terminal status (done/error/cancelled),
+      // metrics row only materializes on terminal status (done/error/failed/cancelled),
       // so for in-flight jobs we fall back to counting events directly.
       const eventsJoin = hasEvents
         ? `LEFT JOIN (
@@ -117,8 +123,9 @@ async function readJobsChunked(pool: AttachPoolLike, query: JobQuery): Promise<S
   await pool.withAttached(async (db, attached) => {
     if (attached.length === 0) return;
 
+    const filteredAttached = attached.filter(({ slug }) => matchesRepoFilter(slug, query.repoSlugs));
     let processed = 0;
-    for (const { alias, slug } of attached) {
+    for (const { alias, slug } of filteredAttached) {
       const lastOutputExpr = hasLastOutputColumn(db, alias, slug) ? "j.last_output" : "NULL AS last_output";
       const hasMetrics = hasMetricsTable(db, alias, slug);
       const hasEvents = hasEventsTable(db, alias, slug);
@@ -217,6 +224,10 @@ function mapRow(row: Record<string, unknown>): SpecialistJob {
 
 function escapeSql(value: string): string {
   return value.replaceAll("'", "''");
+}
+
+function matchesRepoFilter(slug: string, repoSlugs: readonly string[] | undefined): boolean {
+  return !repoSlugs || repoSlugs.length === 0 || repoSlugs.includes(slug);
 }
 
 function yieldToEventLoop(): Promise<void> {

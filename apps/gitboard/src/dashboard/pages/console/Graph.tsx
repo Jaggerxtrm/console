@@ -279,7 +279,7 @@ const STATUS_TEXT: Record<string, string> = {
   open: "open", in_progress: "in progress", blocked: "blocked", closed: "closed", deferred: "deferred",
 };
 
-function NodeChip({ node, specialist, wide }: { node: GraphNode; specialist: GraphSpecialist | null; wide?: boolean }) {
+export function NodeChip({ node, specialist, wide }: { node: GraphNode; specialist: GraphSpecialist | null; wide?: boolean }) {
   const openSidebar = useShellStore((state) => state.openSidebar);
   const isRunning = specialist?.status === "running";
   const typeColor = TYPE_COLOR[node.type] ?? "var(--text-muted)";
@@ -289,8 +289,16 @@ function NodeChip({ node, specialist, wide }: { node: GraphNode; specialist: Gra
   const classes = ["g-node", "g-node-inline", wide ? "g-node-wide" : "", isRunning ? "act" : ""].filter(Boolean).join(" ");
   const handleClick = () => {
     if (!specialist) return;
+    const previous = useShellStore.getState().sidebar;
     logClientEvent("chip.click", { source: "graph_node", beadId: node.id, jobId: specialist.job_id ?? null });
     openSidebar({ beadId: node.id, jobId: specialist.job_id ?? undefined });
+    logClientEvent("chip.sidebar.dispatched", {
+      source: "graph_node",
+      beadId: node.id,
+      jobId: specialist.job_id ?? null,
+      swap: Boolean(previous.open && previous.beadId !== node.id),
+      prevSidebar: previous.open ? { beadId: previous.beadId, jobId: previous.jobId } : null,
+    });
   };
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key === "Enter" || event.key === " ") {
