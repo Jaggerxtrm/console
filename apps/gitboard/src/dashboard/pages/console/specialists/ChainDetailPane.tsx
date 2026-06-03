@@ -32,6 +32,22 @@ type FeedEventPayload = {
   redaction?: { status?: string };
 };
 
+function isFeedEventPayload(value: unknown): value is FeedEventPayload {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Record<string, unknown>;
+  const resource = candidate.resource;
+  const correlation = candidate.correlation;
+  const redaction = candidate.redaction;
+  return (
+    (candidate.schema_version === undefined || typeof candidate.schema_version === "string" || typeof candidate.schema_version === "number")
+    && (candidate.event_family === undefined || typeof candidate.event_family === "string")
+    && (candidate.event_name === undefined || typeof candidate.event_name === "string")
+    && (resource === undefined || (typeof resource === "object" && resource !== null && ((resource as Record<string, unknown>).participant_kind === undefined || typeof (resource as Record<string, unknown>).participant_kind === "string") && ((resource as Record<string, unknown>).participant_role === undefined || typeof (resource as Record<string, unknown>).participant_role === "string")))
+    && (correlation === undefined || (typeof correlation === "object" && correlation !== null && ((correlation as Record<string, unknown>).job_id === undefined || typeof (correlation as Record<string, unknown>).job_id === "string")))
+    && (redaction === undefined || (typeof redaction === "object" && redaction !== null && ((redaction as Record<string, unknown>).status === undefined || typeof (redaction as Record<string, unknown>).status === "string")))
+  );
+}
+
 // Borderless status palette — coloured chip + faint matching background fill,
 // so the role/jobId tag reads at a glance like the Feed status marks.
 const STATUS_COLOR: Record<string, { fg: string; bg: string }> = {
