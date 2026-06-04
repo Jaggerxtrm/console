@@ -1,0 +1,1042 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>xtrm console - object-first drawer mock</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #fbfcfd;
+      --surface: #ffffff;
+      --surface-soft: #f6f8fa;
+      --surface-subtle: #eef2f6;
+      --line-soft: rgba(17, 24, 39, 0.075);
+      --line: rgba(17, 24, 39, 0.14);
+      --line-strong: rgba(17, 24, 39, 0.22);
+      --text: #172033;
+      --text-2: #526071;
+      --muted: #87909e;
+      --accent: #345dca;
+      --ready: #2f8d5e;
+      --warn: #9a5a21;
+      --danger: #c44d3f;
+      --violet: #5a51b8;
+      --terminal: #111418;
+      --terminal-2: #191d22;
+      --terminal-text: #cbd2da;
+      --terminal-muted: #77818f;
+      --terminal-green: #58c3a5;
+      --font-ui: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --font-mono: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+      --shadow-drawer: -18px 0 50px -24px rgba(15, 23, 42, 0.26);
+    }
+
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-ui);
+      font-size: 12.5px;
+      letter-spacing: 0;
+      line-height: 1.45;
+      overflow: hidden;
+    }
+
+    button, input, select { font: inherit; }
+    button { cursor: pointer; }
+    .mono, code { font-family: var(--font-mono); }
+    .muted { color: var(--muted); }
+    .secondary { color: var(--text-2); }
+
+    .app {
+      display: grid;
+      grid-template-columns: 232px minmax(0, 1fr);
+      grid-template-rows: 42px minmax(0, 1fr);
+      height: 100vh;
+      min-width: 1160px;
+    }
+
+    .topbar {
+      align-items: center;
+      background: var(--surface);
+      border-bottom: 1px solid var(--line-soft);
+      display: flex;
+      gap: 14px;
+      grid-column: 1 / -1;
+      min-width: 0;
+      padding: 0 12px;
+    }
+
+    .brand {
+      align-items: center;
+      display: flex;
+      gap: 8px;
+      font-weight: 720;
+      width: 216px;
+    }
+    .brand-mark { background: var(--accent); border-radius: 2px; height: 8px; width: 8px; }
+    .top-path { align-items: center; color: var(--muted); display: flex; gap: 8px; min-width: 0; white-space: nowrap; }
+    .top-path b { color: var(--text); font-weight: 680; }
+    .top-spacer { flex: 1; }
+    .top-stat { align-items: center; color: var(--text-2); display: flex; gap: 6px; white-space: nowrap; }
+    .top-stat strong { color: var(--text); font-weight: 650; }
+
+    .sidebar {
+      background: var(--surface-soft);
+      border-right: 1px solid var(--line-soft);
+      min-width: 0;
+      overflow: hidden;
+    }
+    .side-block { border-bottom: 1px solid var(--line-soft); padding: 10px 12px; }
+    .search {
+      align-items: center;
+      background: var(--surface);
+      border: 1px solid var(--line-soft);
+      border-radius: 4px;
+      color: var(--muted);
+      display: flex;
+      gap: 7px;
+      height: 30px;
+      padding: 0 8px;
+    }
+    .search input { background: transparent; border: 0; color: var(--text); min-width: 0; outline: 0; width: 100%; }
+    .repo-row {
+      background: transparent;
+      border: 0;
+      border-left: 2px solid transparent;
+      color: var(--text-2);
+      display: grid;
+      gap: 3px;
+      min-height: 50px;
+      padding: 8px 12px 8px 10px;
+      text-align: left;
+      width: 100%;
+    }
+    .repo-row:hover { background: rgba(52, 93, 202, 0.045); }
+    .repo-row.is-active { background: rgba(52, 93, 202, 0.075); border-left-color: var(--accent); color: var(--text); }
+    .repo-title { font-weight: 660; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .repo-meta { color: var(--muted); display: flex; gap: 8px; font-size: 10.5px; }
+
+    .main {
+      min-width: 0;
+      overflow: hidden;
+      position: relative;
+    }
+    .tabs {
+      align-items: stretch;
+      background: var(--surface);
+      border-bottom: 1px solid var(--line-soft);
+      display: flex;
+      height: 38px;
+      padding: 0 14px;
+    }
+    .tab {
+      background: transparent;
+      border: 0;
+      border-bottom: 2px solid transparent;
+      color: var(--text-2);
+      padding: 0 10px;
+    }
+    .tab:hover { color: var(--text); }
+    .tab.is-active { border-bottom-color: var(--accent); color: var(--text); font-weight: 650; }
+
+    .view {
+      display: none;
+      height: calc(100vh - 80px);
+      overflow: hidden;
+    }
+    .view.is-active { display: grid; }
+    .view.two-col { grid-template-columns: minmax(580px, 1fr) minmax(440px, 0.78fr); }
+    .pane {
+      min-width: 0;
+      overflow: auto;
+      padding: 14px 16px 36px;
+    }
+    .pane + .pane { border-left: 1px solid var(--line-soft); }
+    .section-head {
+      align-items: end;
+      display: flex;
+      gap: 14px;
+      justify-content: space-between;
+      margin-bottom: 12px;
+      min-width: 0;
+    }
+    .section-copy { display: grid; gap: 2px; min-width: 0; }
+    .eyebrow {
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 720;
+      letter-spacing: 0;
+      text-transform: uppercase;
+    }
+    h1, h2, h3, p { margin: 0; }
+    h1 { font-size: 18px; line-height: 1.15; }
+    h2 { font-size: 14px; }
+    h3 { font-size: 12.5px; }
+
+    .button {
+      align-items: center;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      color: var(--text);
+      display: inline-flex;
+      gap: 6px;
+      height: 28px;
+      padding: 0 9px;
+    }
+    .button:hover { border-color: var(--line-strong); background: var(--surface-soft); }
+    .button.primary { background: var(--text); border-color: var(--text); color: #fff; }
+
+    .metric-grid {
+      display: grid;
+      gap: 1px;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      margin-bottom: 12px;
+    }
+    .metric {
+      background: var(--surface);
+      border: 1px solid var(--line-soft);
+      display: grid;
+      gap: 5px;
+      min-height: 72px;
+      padding: 9px 10px;
+    }
+    .metric b { font-size: 18px; line-height: 1; }
+    .metric span { color: var(--muted); font-size: 10.5px; }
+
+    .query-bar {
+      align-items: center;
+      background: var(--surface);
+      border: 1px solid var(--line-soft);
+      display: grid;
+      gap: 10px;
+      grid-template-columns: 1fr 120px 128px 92px;
+      margin-bottom: 12px;
+      padding: 8px;
+    }
+    .field {
+      align-items: center;
+      background: var(--surface-soft);
+      border: 1px solid var(--line-soft);
+      border-radius: 4px;
+      color: var(--text-2);
+      display: flex;
+      gap: 8px;
+      height: 30px;
+      min-width: 0;
+      padding: 0 8px;
+    }
+    .field input, .field select { background: transparent; border: 0; color: var(--text); min-width: 0; outline: 0; width: 100%; }
+
+    .chart-row { display: grid; gap: 10px; grid-template-columns: 1.15fr 0.85fr; margin-bottom: 12px; }
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--line-soft);
+      min-width: 0;
+    }
+    .panel-head {
+      align-items: center;
+      border-bottom: 1px solid var(--line-soft);
+      display: flex;
+      gap: 10px;
+      height: 34px;
+      padding: 0 10px;
+    }
+    .panel-head h2 { flex: 1; }
+    .panel-body { padding: 10px; }
+    .bars { align-items: end; display: grid; gap: 5px; grid-template-columns: repeat(18, 1fr); height: 134px; }
+    .bar { background: rgba(52, 93, 202, 0.15); border-top: 2px solid var(--accent); min-height: 14px; }
+    .bar.good { background: rgba(47, 141, 94, 0.13); border-color: var(--ready); }
+    .bar.warn { background: rgba(154, 90, 33, 0.13); border-color: var(--warn); }
+    .split-bars { display: grid; gap: 8px; }
+    .split-bar { display: grid; gap: 5px; grid-template-columns: 92px 1fr 34px; align-items: center; }
+    .track { background: var(--surface-subtle); height: 8px; position: relative; }
+    .fill { background: var(--accent); height: 100%; }
+    .fill.ready { background: var(--ready); }
+    .fill.warn { background: var(--warn); }
+
+    .table {
+      background: var(--surface);
+      border: 1px solid var(--line-soft);
+    }
+    .table-row {
+      align-items: center;
+      background: transparent;
+      border: 0;
+      border-bottom: 1px solid var(--line-soft);
+      color: inherit;
+      display: grid;
+      gap: 10px;
+      grid-template-columns: 2fr 0.8fr 0.9fr 0.9fr 1.1fr 28px;
+      min-height: 42px;
+      padding: 0 10px;
+      text-align: left;
+      width: 100%;
+    }
+    .table-row:hover { background: rgba(52, 93, 202, 0.035); }
+    .table-row:last-child { border-bottom: 0; }
+    .table-row.header {
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 700;
+      min-height: 30px;
+      text-transform: uppercase;
+    }
+    .table-row.header:hover { background: transparent; }
+
+    .status {
+      align-items: center;
+      display: inline-flex;
+      gap: 6px;
+      white-space: nowrap;
+    }
+    .dot { border-radius: 50%; height: 7px; width: 7px; }
+    .dot.ready { background: var(--ready); }
+    .dot.warn { background: var(--warn); }
+    .dot.danger { background: var(--danger); }
+    .dot.accent { background: var(--accent); }
+    .dot.violet { background: var(--violet); }
+    .chip {
+      align-items: center;
+      background: var(--surface-soft);
+      border: 1px solid var(--line-soft);
+      border-radius: 4px;
+      color: var(--text-2);
+      display: inline-flex;
+      gap: 6px;
+      min-height: 24px;
+      padding: 2px 7px;
+      white-space: nowrap;
+    }
+    button.chip:hover { border-color: var(--line); color: var(--text); }
+
+    .activity-shell {
+      display: grid;
+      gap: 12px;
+    }
+    .activity-card {
+      background: var(--surface);
+      border-left: 3px solid var(--accent);
+      box-shadow: inset 0 1px 0 var(--line-soft), inset 0 -1px 0 var(--line-soft);
+      display: grid;
+      gap: 8px;
+      padding: 10px 12px 12px;
+    }
+    .activity-card.security { border-left-color: var(--ready); }
+    .activity-head {
+      align-items: center;
+      display: flex;
+      gap: 10px;
+      justify-content: space-between;
+      min-width: 0;
+    }
+    .activity-title { align-items: center; display: flex; gap: 8px; min-width: 0; }
+    .activity-title b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .run-meta { color: var(--muted); display: flex; flex-wrap: wrap; gap: 8px; font-size: 10.5px; }
+
+    .toggle {
+      align-items: center;
+      background: transparent;
+      border: 0;
+      color: var(--text-2);
+      display: flex;
+      gap: 7px;
+      height: 26px;
+      justify-content: space-between;
+      padding: 0;
+      text-align: left;
+      width: 100%;
+    }
+    .toggle-main { align-items: center; display: inline-flex; gap: 6px; font-weight: 650; }
+    .caret { color: var(--muted); display: inline-block; width: 10px; }
+    .toggle[aria-expanded="true"] .caret { transform: rotate(90deg); }
+
+    .terminal {
+      background: var(--terminal);
+      color: var(--terminal-text);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      line-height: 1.55;
+      margin-left: 16px;
+      overflow: visible;
+    }
+    .terminal-head {
+      align-items: center;
+      background: var(--terminal-2);
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      color: var(--terminal-muted);
+      display: flex;
+      gap: 8px;
+      height: 26px;
+      padding: 0 10px;
+      text-transform: uppercase;
+    }
+    .terminal pre {
+      margin: 0;
+      overflow: visible;
+      padding: 10px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .term-green { color: var(--terminal-green); }
+    .term-muted { color: var(--terminal-muted); }
+
+    .forensics {
+      border-left: 1px solid rgba(52, 93, 202, 0.26);
+      display: grid;
+      gap: 7px;
+      margin-left: 16px;
+      padding-left: 10px;
+    }
+    .event-row {
+      align-items: start;
+      background: transparent;
+      border: 0;
+      color: inherit;
+      display: grid;
+      gap: 8px;
+      grid-template-columns: 78px 1fr 86px;
+      min-height: 30px;
+      padding: 2px 0;
+      text-align: left;
+      width: 100%;
+    }
+    .event-row:hover .event-name { color: var(--accent); }
+    .event-time { color: var(--muted); font-family: var(--font-mono); font-size: 10.5px; }
+    .event-name { font-family: var(--font-mono); font-weight: 650; }
+    .event-detail { color: var(--text-2); font-size: 11.5px; }
+    .event-badge { color: var(--muted); font-family: var(--font-mono); font-size: 10.5px; text-align: right; }
+
+    .result {
+      background: var(--surface-soft);
+      border-left: 1px solid var(--line);
+      display: none;
+      margin-left: 16px;
+      padding: 10px 12px;
+    }
+    .result.is-open { display: grid; gap: 8px; }
+    .result h3 { font-size: 13px; }
+    .result ul { margin: 0; padding-left: 18px; }
+    .result li { margin: 3px 0; }
+
+    .drawer {
+      display: grid;
+      grid-template-columns: 1fr minmax(520px, 42vw);
+      inset: 42px 0 0 0;
+      pointer-events: none;
+      position: fixed;
+      z-index: 10;
+    }
+    .drawer-scrim { background: transparent; border: 0; pointer-events: none; }
+    .drawer-shell {
+      background: var(--surface);
+      border-left: 1px solid var(--line);
+      box-shadow: var(--shadow-drawer);
+      display: grid;
+      grid-template-rows: auto auto minmax(0, 1fr);
+      min-width: 0;
+      pointer-events: auto;
+      transform: translateX(0);
+    }
+    .drawer-header {
+      border-bottom: 1px solid var(--line-soft);
+      display: grid;
+      gap: 8px;
+      padding: 12px 14px 10px;
+    }
+    .drawer-kicker { color: var(--muted); display: flex; font-family: var(--font-mono); font-size: 10.5px; gap: 6px; }
+    .drawer-title-row { align-items: start; display: flex; gap: 10px; }
+    .drawer-title { display: grid; flex: 1; gap: 3px; min-width: 0; }
+    .drawer-title h2 { font-size: 16px; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .drawer-close {
+      background: transparent;
+      border: 1px solid var(--line-soft);
+      border-radius: 4px;
+      color: var(--text-2);
+      height: 28px;
+      width: 30px;
+    }
+    .drawer-tabs {
+      border-bottom: 1px solid var(--line-soft);
+      display: flex;
+      gap: 2px;
+      padding: 0 14px;
+    }
+    .drawer-tab {
+      background: transparent;
+      border: 0;
+      border-bottom: 2px solid transparent;
+      color: var(--text-2);
+      height: 34px;
+      padding: 0 8px;
+    }
+    .drawer-tab.is-active { border-bottom-color: var(--accent); color: var(--text); font-weight: 650; }
+    .drawer-body {
+      display: grid;
+      gap: 12px;
+      min-height: 0;
+      overflow: auto;
+      padding: 12px 14px 28px;
+    }
+    .drawer-panel { display: none; gap: 12px; }
+    .drawer-panel.is-active { display: grid; }
+
+    .object-strip {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .info-grid {
+      display: grid;
+      gap: 1px;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+    .info {
+      background: var(--surface-soft);
+      min-height: 48px;
+      padding: 8px;
+    }
+    .info b { display: block; font-size: 10px; color: var(--muted); text-transform: uppercase; }
+    .info span { display: block; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .contract {
+      background: var(--surface-soft);
+      border-left: 2px solid var(--accent);
+      display: grid;
+      gap: 8px;
+      padding: 10px 12px;
+    }
+    .contract p { color: var(--text-2); }
+    .relation-list, .run-list, .evidence-list { display: grid; gap: 1px; }
+    .relation-row, .drawer-run, .evidence-row {
+      align-items: center;
+      background: var(--surface-soft);
+      border: 0;
+      color: inherit;
+      display: grid;
+      gap: 8px;
+      min-height: 42px;
+      padding: 8px 10px;
+      text-align: left;
+      width: 100%;
+    }
+    .relation-row { grid-template-columns: 76px 1fr 82px; }
+    .drawer-run { grid-template-columns: 94px 1fr 78px; }
+    .evidence-row { grid-template-columns: 98px 1fr 78px; }
+    .relation-row:hover, .drawer-run:hover, .evidence-row:hover { background: #eef3ff; }
+    .mini-title { display: grid; gap: 2px; min-width: 0; }
+    .mini-title b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .mini-title span { color: var(--muted); font-size: 10.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    .hidden { display: none !important; }
+
+    @media (max-width: 980px) {
+      .app { min-width: 0; grid-template-columns: 1fr; }
+      .sidebar { display: none; }
+      .brand { width: auto; }
+      .view.two-col { grid-template-columns: 1fr; overflow: auto; }
+      .pane { overflow: visible; }
+      .pane + .pane { border-left: 0; border-top: 1px solid var(--line-soft); }
+      .drawer { grid-template-columns: 0 minmax(360px, 100vw); }
+      .query-bar, .chart-row, .metric-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand"><span class="brand-mark"></span><span>xtrm console</span></div>
+      <div class="top-path"><span>workspace</span><span>/</span><b>gitboard</b><span>/</span><span id="topContext">operations</span></div>
+      <div class="top-spacer"></div>
+      <div class="top-stat"><span class="dot ready"></span><strong>17</strong><span>runs indexed</span></div>
+      <div class="top-stat"><span class="dot accent"></span><strong>42</strong><span>forensic events</span></div>
+      <button class="button" data-open="bead:forge-f3mx">Open active bead</button>
+    </header>
+
+    <aside class="sidebar">
+      <div class="side-block">
+        <label class="search"><span class="mono">/</span><input value="specialists forensic feed" aria-label="Search" /></label>
+      </div>
+      <button class="repo-row is-active">
+        <span class="repo-title">xtrm/gitboard</span>
+        <span class="repo-meta"><span>console</span><span>3 prs</span><span>12 chains</span></span>
+      </button>
+      <button class="repo-row">
+        <span class="repo-title">xtrm/specialists</span>
+        <span class="repo-meta"><span>runtime</span><span>108 prs</span><span>catalog</span></span>
+      </button>
+      <button class="repo-row">
+        <span class="repo-title">second-mind</span>
+        <span class="repo-meta"><span>contract</span><span>docs</span><span>source</span></span>
+      </button>
+    </aside>
+
+    <main class="main">
+      <nav class="tabs" aria-label="Console views">
+        <button class="tab is-active" data-view-button="operations">Operations</button>
+        <button class="tab" data-view-button="activity">Activity</button>
+        <button class="tab" data-view-button="evidence">Evidence</button>
+      </nav>
+
+      <section class="view two-col is-active" data-view="operations">
+        <div class="pane">
+          <div class="section-head">
+            <div class="section-copy">
+              <span class="eyebrow">Operations</span>
+              <h1>Workflow control surface</h1>
+              <p class="secondary">Chains are operational objects. Click a chain to inspect it, then jump into linked beads inside the drawer.</p>
+            </div>
+            <button class="button primary" data-view-button="activity">Open activity</button>
+          </div>
+
+          <div class="metric-grid">
+            <div class="metric"><span>active chains</span><b>8</b><span>3 waiting for input</span></div>
+            <div class="metric"><span>review verdicts</span><b>14</b><span>11 pass, 2 partial</span></div>
+            <div class="metric"><span>forensic coverage</span><b>72%</b><span>event catalog growing</span></div>
+            <div class="metric"><span>unlinked events</span><b>5</b><span>needs substrate mapping</span></div>
+          </div>
+
+          <div class="query-bar">
+            <label class="field"><span class="muted">query</span><input value="status in (running, waiting, done) role:any event:forensic" /></label>
+            <label class="field"><span class="muted">group</span><select><option>chain</option><option>bead</option><option>role</option></select></label>
+            <label class="field"><span class="muted">range</span><select><option>last 24h</option><option>7 days</option><option>all</option></select></label>
+            <button class="button primary">Run</button>
+          </div>
+
+          <div class="chart-row">
+            <section class="panel">
+              <div class="panel-head"><h2>Specialist event volume</h2><span class="muted mono">42 events</span></div>
+              <div class="panel-body">
+                <div class="bars" aria-label="Event volume chart">
+                  <span class="bar" style="height:32%"></span><span class="bar" style="height:48%"></span><span class="bar good" style="height:54%"></span><span class="bar" style="height:44%"></span><span class="bar warn" style="height:64%"></span><span class="bar" style="height:70%"></span><span class="bar good" style="height:58%"></span><span class="bar" style="height:82%"></span><span class="bar" style="height:61%"></span><span class="bar good" style="height:86%"></span><span class="bar warn" style="height:74%"></span><span class="bar" style="height:66%"></span><span class="bar good" style="height:92%"></span><span class="bar" style="height:79%"></span><span class="bar" style="height:88%"></span><span class="bar good" style="height:96%"></span><span class="bar" style="height:71%"></span><span class="bar good" style="height:84%"></span>
+                </div>
+              </div>
+            </section>
+            <section class="panel">
+              <div class="panel-head"><h2>Event families</h2><span class="muted">by latest run</span></div>
+              <div class="panel-body split-bars">
+                <div class="split-bar"><span>job.*</span><span class="track"><span class="fill ready" style="width:92%"></span></span><b>92</b></div>
+                <div class="split-bar"><span>tool.call.*</span><span class="track"><span class="fill" style="width:71%"></span></span><b>71</b></div>
+                <div class="split-bar"><span>review.*</span><span class="track"><span class="fill ready" style="width:63%"></span></span><b>63</b></div>
+                <div class="split-bar"><span>mcp.*</span><span class="track"><span class="fill warn" style="width:38%"></span></span><b>38</b></div>
+                <div class="split-bar"><span>pulse.*</span><span class="track"><span class="fill" style="width:27%"></span></span><b>27</b></div>
+              </div>
+            </section>
+          </div>
+
+          <div class="table" aria-label="Chains">
+            <div class="table-row header"><span>chain</span><span>status</span><span>root bead</span><span>runs</span><span>evidence</span><span></span></div>
+            <button class="table-row" data-open="chain:129e44">
+              <span><b class="mono">chain:129e44</b><br><span class="muted">structured forensic feed rendering</span></span>
+              <span class="status"><span class="dot ready"></span>done</span>
+              <span class="mono">forge-f3mx</span>
+              <span>executor, security, review</span>
+              <span class="status"><span class="dot ready"></span>PASS</span>
+              <span class="mono">&gt;</span>
+            </button>
+            <button class="table-row" data-open="chain:70el">
+              <span><b class="mono">chain:forge-70el</b><br><span class="muted">specialists cockpit detail pane</span></span>
+              <span class="status"><span class="dot warn"></span>blocked</span>
+              <span class="mono">forge-70el.4</span>
+              <span>debugger, reviewer</span>
+              <span class="status"><span class="dot warn"></span>PARTIAL</span>
+              <span class="mono">&gt;</span>
+            </button>
+            <button class="table-row" data-open="chain:ops">
+              <span><b class="mono">chain:ops-query</b><br><span class="muted">operations query lab composition</span></span>
+              <span class="status"><span class="dot accent"></span>running</span>
+              <span class="mono">forge-ds74</span>
+              <span>designer, executor</span>
+              <span class="status"><span class="dot accent"></span>collecting</span>
+              <span class="mono">&gt;</span>
+            </button>
+          </div>
+        </div>
+
+        <aside class="pane">
+          <div class="section-head">
+            <div class="section-copy">
+              <span class="eyebrow">Selection model</span>
+              <h1>Drawer owns deep detail</h1>
+              <p class="secondary">Activity previews objects. Drawer owns contract, relationships, runs, evidence, and events.</p>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><h2>Object-first routing</h2><span class="muted mono">click path</span></div>
+            <div class="panel-body relation-list">
+              <button class="relation-row" data-open="chain:129e44"><span class="mono">chain</span><span class="mini-title"><b>Operations row</b><span>opens chain inspector</span></span><span class="mono">open</span></button>
+              <button class="relation-row" data-open="bead:forge-f3mx"><span class="mono">bead</span><span class="mini-title"><b>Linked bead</b><span>contract + all historical runs</span></span><span class="mono">open</span></button>
+              <button class="relation-row" data-open="event:tool-call"><span class="mono">event</span><span class="mini-title"><b>Forensic event</b><span>payload projection + related run</span></span><span class="mono">open</span></button>
+            </div>
+          </div>
+        </aside>
+      </section>
+
+      <section class="view two-col" data-view="activity">
+        <div class="pane">
+          <div class="section-head">
+            <div class="section-copy">
+              <span class="eyebrow">Activity</span>
+              <h1>Run timeline with forensic events</h1>
+              <p class="secondary">The feed stays temporal. Beads and events are clickable previews that open the drawer.</p>
+            </div>
+            <button class="button" data-open="chain:129e44">Inspect chain</button>
+          </div>
+
+          <div class="activity-shell">
+            <article class="activity-card">
+              <div class="activity-head">
+                <div class="activity-title">
+                  <span class="chip"><span class="dot accent"></span><span class="mono">executor / 129e44</span></span>
+                  <button class="chip" data-open="bead:forge-f3mx"><span class="mono">forge-f3mx</span><span>done</span></button>
+                  <b>Render specialist feed from structured forensic events</b>
+                </div>
+                <span class="run-meta"><span>5m 12s</span><span>132 tools</span><span>$0.29</span></span>
+              </div>
+
+              <button class="toggle" data-toggle="terminal-1" aria-expanded="true">
+                <span class="toggle-main"><span class="caret">&gt;</span><span>terminal feed</span></span>
+                <span class="muted">expanded, full transcript</span>
+              </button>
+              <section class="terminal" id="terminal-1">
+                <div class="terminal-head"><span class="dot ready"></span><b>executor complete</b><span>sp feed</span></div>
+                <pre><span class="term-muted">19:16:05</span> <span class="term-green">[129e44]</span> START executor bead=forge-f3mx
+<span class="term-muted">19:16:19</span> <span class="term-green">[129e44]</span> TOOL bash: rg -n "feed-events|forensic" apps/gitboard/src
+<span class="term-muted">19:17:42</span> <span class="term-green">[129e44]</span> TOOL apply_patch ChainDetailPane.tsx specialists.ts tests
+<span class="term-muted">19:20:13</span> <span class="term-green">[129e44]</span> DONE status=COMPLETE elapsed=5m12s tokens=143117 in=3602 out=6907
+<span class="term-muted">19:20:13</span> <span class="term-green">[129e44]</span> AUTO- skipped reason=no_worktree_conflict</pre>
+              </section>
+
+              <div class="forensics" aria-label="full forensic events">
+                <button class="event-row" data-open="event:job-created"><span class="event-time">19:16:05</span><span><span class="event-name">job.created</span><br><span class="event-detail">executor claimed forge-f3mx in worktree feature/forge-f3mx-executor</span></span><span class="event-badge">v1 redacted</span></button>
+                <button class="event-row" data-open="event:tool-call"><span class="event-time">19:16:19</span><span><span class="event-name">tool.call.completed</span><br><span class="event-detail">bash search over ChainDetailPane and specialists route, 0 secrets exposed</span></span><span class="event-badge">tool:rg</span></button>
+                <button class="event-row" data-open="event:command"><span class="event-time">19:18:44</span><span><span class="event-name">command.completed</span><br><span class="event-detail">vitest focused run: ChainDetailPane + specialists API, 26 pass, 2 skipped</span></span><span class="event-badge">tests PASS</span></button>
+                <button class="event-row" data-open="event:review"><span class="event-time">19:21:02</span><span><span class="event-name">review.verdict.security</span><br><span class="event-detail">previous F1/F2 fixed: repo-scoped lookup and strict DTO projection</span></span><span class="event-badge">PASS</span></button>
+                <button class="event-row" data-open="event:mcp"><span class="event-time">19:21:36</span><span><span class="event-name">mcp.github.pr.created</span><br><span class="event-detail">PR #40 opened, stacked on PR #39, mergeable true</span></span><span class="event-badge">github</span></button>
+              </div>
+
+              <button class="toggle" data-toggle="result-1" aria-expanded="false">
+                <span class="toggle-main"><span class="caret">&gt;</span><span>run result</span></span>
+                <span class="muted">collapsed markdown</span>
+              </button>
+              <section class="result" id="result-1">
+                <h3>Result</h3>
+                <p>Structured forensic feed render added in Specialists detail pane. Legacy terminal feed and run result preserved.</p>
+                <ul>
+                  <li>Added `/api/specialists/jobs/:job_id/feed-events`.</li>
+                  <li>Rendered compact forensic timeline from allowlisted event fields.</li>
+                  <li>Added regression tests for duplicate job ids and stripped payload fields.</li>
+                </ul>
+              </section>
+            </article>
+
+            <article class="activity-card security">
+              <div class="activity-head">
+                <div class="activity-title">
+                  <span class="chip"><span class="dot ready"></span><span class="mono">security-auditor / f75433</span></span>
+                  <button class="chip" data-open="bead:forge-xnxg"><span class="mono">forge-xnxg</span><span>closed</span></button>
+                  <b>Security audit: structured forensic feed UI/backend</b>
+                </div>
+                <span class="run-meta"><span>PASS</span><span>2 findings fixed</span></span>
+              </div>
+              <div class="forensics">
+                <button class="event-row" data-open="event:review"><span class="event-time">19:59:30</span><span><span class="event-name">review.verdict.security</span><br><span class="event-detail">No new security issue found in reviewed route or timeline renderer</span></span><span class="event-badge">PASS</span></button>
+              </div>
+            </article>
+          </div>
+        </div>
+
+        <aside class="pane">
+          <div class="section-head">
+            <div class="section-copy">
+              <span class="eyebrow">Traceability</span>
+              <h1>Closed beads stay inspectable</h1>
+              <p class="secondary">Click related closed beads to inspect historical specialist runs and evidence.</p>
+            </div>
+          </div>
+          <div class="relation-list">
+            <button class="relation-row" data-open="bead:forge-f3mx"><span class="mono">root</span><span class="mini-title"><b>forge-f3mx</b><span>implementation bead, 3 runs</span></span><span>done</span></button>
+            <button class="relation-row" data-open="bead:forge-xnxg"><span class="mono">validates</span><span class="mini-title"><b>forge-xnxg</b><span>security audit, PASS</span></span><span>closed</span></button>
+            <button class="relation-row" data-open="bead:forge-a817"><span class="mono">review</span><span class="mini-title"><b>forge-a817</b><span>review gate, partial until merge</span></span><span>closed</span></button>
+          </div>
+        </aside>
+      </section>
+
+      <section class="view two-col" data-view="evidence">
+        <div class="pane">
+          <div class="section-head">
+            <div class="section-copy">
+              <span class="eyebrow">Evidence ledger</span>
+              <h1>Trust surface for operator decisions</h1>
+              <p class="secondary">Verdicts, tests, diffs, PRs, and forensic event proofs gathered by selected object.</p>
+            </div>
+          </div>
+          <div class="table">
+            <div class="table-row header"><span>proof</span><span>verdict</span><span>object</span><span>tests</span><span>source</span><span></span></div>
+            <button class="table-row" data-open="bead:forge-f3mx"><span><b>Structured feed render</b><br><span class="muted">terminal + result preserved</span></span><span class="status"><span class="dot ready"></span>PASS</span><span class="mono">forge-f3mx</span><span>26 pass</span><span>PR #40</span><span class="mono">&gt;</span></button>
+            <button class="table-row" data-open="bead:forge-xnxg"><span><b>Security review</b><br><span class="muted">F1/F2 fixed</span></span><span class="status"><span class="dot ready"></span>PASS</span><span class="mono">forge-xnxg</span><span>scoped</span><span>auditor</span><span class="mono">&gt;</span></button>
+            <button class="table-row" data-open="event:command"><span><b>Focused vitest</b><br><span class="muted">ChainDetailPane + API route</span></span><span class="status"><span class="dot ready"></span>PASS</span><span class="mono">129e44</span><span>26 pass</span><span>command</span><span class="mono">&gt;</span></button>
+          </div>
+        </div>
+        <aside class="pane">
+          <div class="panel">
+            <div class="panel-head"><h2>Evidence preview</h2><span class="muted">drawer owns detail</span></div>
+            <div class="panel-body evidence-list">
+              <button class="evidence-row" data-open="event:command"><span class="mono">command</span><span class="mini-title"><b>vitest focused run</b><span>2 files, 26 pass, 2 skipped</span></span><span>PASS</span></button>
+              <button class="evidence-row" data-open="event:review"><span class="mono">security</span><span class="mini-title"><b>payload projection</b><span>strict DTO, no raw payload</span></span><span>PASS</span></button>
+              <button class="evidence-row" data-open="chain:129e44"><span class="mono">chain</span><span class="mini-title"><b>merge path</b><span>sp merge then PR #40</span></span><span>done</span></button>
+            </div>
+          </div>
+        </aside>
+      </section>
+    </main>
+  </div>
+
+  <aside class="drawer" aria-label="Object drawer">
+    <button class="drawer-scrim" aria-label="Close drawer"></button>
+    <section class="drawer-shell">
+      <header class="drawer-header">
+        <div class="drawer-kicker"><span id="drawerKind">bead</span><span>/</span><span id="drawerId">forge-f3mx</span></div>
+        <div class="drawer-title-row">
+          <div class="drawer-title">
+            <h2 id="drawerTitle">Render specialist feed from structured forensic events</h2>
+            <span id="drawerSubtitle" class="secondary">object-first inspector: contract, relationships, runs, evidence, events</span>
+          </div>
+          <button class="drawer-close" id="drawerClose" aria-label="Close drawer">x</button>
+        </div>
+        <div class="object-strip" id="drawerChips"></div>
+      </header>
+      <nav class="drawer-tabs">
+        <button class="drawer-tab is-active" data-drawer-tab="overview">Overview</button>
+        <button class="drawer-tab" data-drawer-tab="relationships">Relationships</button>
+        <button class="drawer-tab" data-drawer-tab="runs">Runs</button>
+        <button class="drawer-tab" data-drawer-tab="evidence">Evidence</button>
+        <button class="drawer-tab" data-drawer-tab="events">Events</button>
+      </nav>
+      <div class="drawer-body">
+        <section class="drawer-panel is-active" data-drawer-panel="overview">
+          <div class="info-grid" id="drawerInfo"></div>
+          <div class="contract" id="drawerContract"></div>
+        </section>
+        <section class="drawer-panel" data-drawer-panel="relationships">
+          <div class="relation-list" id="drawerRelationships"></div>
+        </section>
+        <section class="drawer-panel" data-drawer-panel="runs">
+          <div class="run-list" id="drawerRuns"></div>
+        </section>
+        <section class="drawer-panel" data-drawer-panel="evidence">
+          <div class="evidence-list" id="drawerEvidence"></div>
+        </section>
+        <section class="drawer-panel" data-drawer-panel="events">
+          <div class="forensics" id="drawerEvents"></div>
+        </section>
+      </div>
+    </section>
+  </aside>
+
+  <script>
+    const objects = {
+      "chain:129e44": {
+        kind: "chain",
+        id: "129e44",
+        title: "Structured forensic feed rendering",
+        subtitle: "chain object opened from Operations. Beads are one click away.",
+        chips: ["done", "4 jobs", "3 beads", "security PASS", "PR #40"],
+        info: [["Status", "done"], ["Root bead", "forge-f3mx"], ["Duration", "5m 12s"], ["Worktree", "feature/forge-f3mx"]],
+        contract: ["Chain context", "Workflow that implemented structured forensic event rendering for the Specialists activity panel. The chain aggregates executor, security audit, review, tests, and PR publication."],
+        relationships: [
+          ["root", "forge-f3mx", "implementation bead", "done", "bead:forge-f3mx"],
+          ["validates", "forge-xnxg", "security audit", "closed", "bead:forge-xnxg"],
+          ["review", "forge-a817", "review gate", "closed", "bead:forge-a817"]
+        ],
+        runs: [
+          ["executor", "129e44", "implemented endpoint, UI, tests", "done"],
+          ["security", "f75433", "F1/F2 fixed, scoped pass", "PASS"],
+          ["explorer", "5db8e8", "contract pass, merge pending at review time", "PARTIAL"]
+        ],
+        evidence: [
+          ["tests", "Focused vitest", "26 pass, 2 skipped", "PASS"],
+          ["security", "Payload exposure", "strict DTO + repo-scoped lookup", "PASS"],
+          ["github", "Pull request", "PR #40 mergeable", "open"]
+        ],
+        events: ["job.created", "tool.call.completed", "command.completed", "review.verdict.security", "mcp.github.pr.created"]
+      },
+      "chain:70el": {
+        kind: "chain",
+        id: "forge-70el",
+        title: "Specialists cockpit detail pane",
+        subtitle: "blocked chain with historical context still visible",
+        chips: ["blocked", "13 chains", "0 pass", "needs restitch"],
+        info: [["Status", "blocked"], ["Root bead", "forge-70el.4"], ["Jobs", "13"], ["Risk", "layout regression"]],
+        contract: ["Chain context", "Older cockpit detail-pane chain. The drawer makes closed and blocked runs inspectable without crowding the Activity feed."],
+        relationships: [["step", "forge-70el.4", "detail pane hosting", "blocked", "bead:forge-70el.4"], ["related", "forge-f3mx", "structured forensic feed", "done", "bead:forge-f3mx"]],
+        runs: [["debugger", "9d3135", "error while checking cockpit layout", "error"]],
+        evidence: [["risk", "Layout consistency", "needs follow-up", "open"]],
+        events: ["chain.blocked", "job.error", "review.verdict.partial"]
+      },
+      "chain:ops": {
+        kind: "chain",
+        id: "ops-query",
+        title: "Operations query lab composition",
+        subtitle: "current design mock task",
+        chips: ["running", "designer", "drawer spec"],
+        info: [["Status", "running"], ["Root bead", "forge-ds74"], ["View", "Operations"], ["Mode", "mock"]],
+        contract: ["Chain context", "Mock that consolidates object-first drawer, Operations query surface, Activity forensic events, and expandable run results."],
+        relationships: [["root", "forge-ds74", "object-first drawer mock", "running", "bead:forge-ds74"]],
+        runs: [["designer", "mock-local", "HTML prototype mounted locally", "running"]],
+        evidence: [["preview", "static mock", "clickable HTML", "draft"]],
+        events: ["mock.created", "drawer.mode.chain", "drawer.mode.bead"]
+      },
+      "bead:forge-f3mx": {
+        kind: "bead",
+        id: "forge-f3mx",
+        title: "Gitboard: render specialist feed from structured forensic events",
+        subtitle: "bead inspector owns contract, linked beads, historical runs, evidence, events",
+        chips: ["done", "P2", "task", "3 runs", "security PASS"],
+        info: [["Status", "done"], ["Priority", "P2"], ["Type", "task"], ["Owner", "dawid"]],
+        contract: ["Bead contract", "Consume `/api/specialists/jobs/:job_id/feed-events` in the Specialists activity/detail panel. Render a compact structured forensic event timeline while preserving terminal feed and run result fallback."],
+        relationships: [["validates", "forge-xnxg", "Security audit: structured forensic feed UI/backend", "closed", "bead:forge-xnxg"], ["review", "forge-a817", "Review: structured forensic specialist feed rendering", "closed", "bead:forge-a817"], ["stacked", "PR #40", "Render structured specialist forensic feed events", "open", "chain:129e44"]],
+        runs: [["executor", "129e44", "endpoint, drawer-adjacent activity UI, tests", "done"], ["security", "f75433", "F1/F2 fixed", "PASS"], ["explorer", "5db8e8", "contract pass", "PARTIAL"]],
+        evidence: [["tests", "ChainDetailPane + API", "26 pass, 2 skipped", "PASS"], ["security", "Raw payload pass-through", "fixed by strict DTO", "PASS"], ["gitnexus", "central symbols", "HIGH risk mitigated", "reviewed"]],
+        events: ["job.created", "tool.call.completed", "command.completed", "review.verdict.security", "mcp.github.pr.created"]
+      },
+      "bead:forge-xnxg": {
+        kind: "bead",
+        id: "forge-xnxg",
+        title: "Security audit: structured forensic feed UI/backend",
+        subtitle: "closed validation bead, still inspectable from relationships",
+        chips: ["closed", "P2", "security", "PASS"],
+        info: [["Status", "closed"], ["Priority", "P2"], ["Type", "task"], ["Verdict", "PASS"]],
+        contract: ["Bead contract", "Validate route auth, repo scoping, payload redaction, and UI rendering safety for the structured forensic feed."],
+        relationships: [["validates", "forge-f3mx", "implementation bead", "done", "bead:forge-f3mx"]],
+        runs: [["security-auditor", "f75433", "rechecked F1/F2 after fixes", "PASS"]],
+        evidence: [["finding F1", "cross-repo event exposure", "fixed", "PASS"], ["finding F2", "raw payload exposure", "fixed", "PASS"]],
+        events: ["review.started", "review.finding.fixed", "review.verdict.security"]
+      },
+      "bead:forge-a817": {
+        kind: "bead",
+        id: "forge-a817",
+        title: "Review: structured forensic specialist feed rendering",
+        subtitle: "closed review bead with historical run details",
+        chips: ["closed", "P2", "review", "PARTIAL then satisfied"],
+        info: [["Status", "closed"], ["Priority", "P2"], ["Type", "task"], ["Verdict", "contract satisfied"]],
+        contract: ["Bead contract", "Validate that structured forensic feed timeline renders, terminal feed and run result remain intact, fallback behavior works, and UI remains compact."],
+        relationships: [["reviews", "forge-f3mx", "implementation bead", "done", "bead:forge-f3mx"]],
+        runs: [["reviewer", "7d013f", "runtime no-op, replaced by explorer", "ignored"], ["explorer", "5db8e8", "PASS except merge pending", "PARTIAL"]],
+        evidence: [["review", "object in worktree", "pass after merge", "resolved"]],
+        events: ["review.started", "review.verdict.partial", "chain.merged"]
+      },
+      "bead:forge-ds74": {
+        kind: "bead",
+        id: "forge-ds74",
+        title: "Mock object-first drawer for console operations",
+        subtitle: "current mock bead",
+        chips: ["in progress", "P2", "design", "mock"],
+        info: [["Status", "in progress"], ["Priority", "P2"], ["Type", "task"], ["Artifact", "HTML"]],
+        contract: ["Bead contract", "Create a clickable design mock that consolidates current console decisions: object-first drawer, Bead and Chain modes, Activity forensic events, terminal feed, and expandable result."],
+        relationships: [["relates", "forge-f3mx", "structured forensic feed", "done", "bead:forge-f3mx"]],
+        runs: [["codex", "local", "created HTML preview and mounted server", "running"]],
+        evidence: [["preview", "object-first-drawer-console.html", "mounted locally", "draft"]],
+        events: ["mock.created", "preview.mounted"]
+      },
+      "bead:forge-70el.4": {
+        kind: "bead",
+        id: "forge-70el.4",
+        title: "Cockpit detail pane: 2-pane layout hosting",
+        subtitle: "historical blocked bead, visible from chain relationships",
+        chips: ["blocked", "P2", "debugger error"],
+        info: [["Status", "blocked"], ["Priority", "P2"], ["Type", "task"], ["Runs", "1"]],
+        contract: ["Bead contract", "Resolve cockpit detail pane layout hosting. The object drawer allows historical debugging traces to remain inspectable even when the chain is blocked."],
+        relationships: [["related", "forge-f3mx", "activity detail improvements", "done", "bead:forge-f3mx"]],
+        runs: [["debugger", "9d3135", "layout analysis failed", "error"]],
+        evidence: [["runtime", "debugger job", "error", "open"]],
+        events: ["job.error", "chain.blocked"]
+      },
+      "event:job-created": eventObject("job.created", "Executor job created for forge-f3mx", "resource: agent/executor, correlation: job 129e44, redaction: redacted"),
+      "event:tool-call": eventObject("tool.call.completed", "Search command completed", "tool: rg, files: ChainDetailPane.tsx and specialists.ts, no raw payload returned"),
+      "event:command": eventObject("command.completed", "Focused vitest passed", "tests: ChainDetailPane + specialists route, 26 pass, 2 skipped"),
+      "event:review": eventObject("review.verdict.security", "Security verdict passed", "F1 repo scope fixed, F2 DTO projection fixed"),
+      "event:mcp": eventObject("mcp.github.pr.created", "GitHub PR created", "PR #40 opened and mergeable, stacked on PR #39")
+    };
+
+    function eventObject(id, title, detail) {
+      return {
+        kind: "event",
+        id,
+        title,
+        subtitle: "forensic event inspector",
+        chips: ["xtrm.forensic.v1", "redacted", "linked run"],
+        info: [["Family", id.split(".")[0]], ["Schema", "v1"], ["Job", "129e44"], ["Bead", "forge-f3mx"]],
+        contract: ["Event detail", detail],
+        relationships: [["job", "129e44", "executor run", "done", "chain:129e44"], ["bead", "forge-f3mx", "source bead", "done", "bead:forge-f3mx"]],
+        runs: [["executor", "129e44", "source run for this event", "done"]],
+        evidence: [["redaction", "payload projection", "allowlisted fields only", "safe"]],
+        events: [id]
+      };
+    }
+
+    const drawer = document.querySelector(".drawer");
+    const topContext = document.getElementById("topContext");
+
+    function openObject(key) {
+      const obj = objects[key] || objects["bead:forge-f3mx"];
+      topContext.textContent = `${obj.kind}:${obj.id}`;
+      document.getElementById("drawerKind").textContent = obj.kind;
+      document.getElementById("drawerId").textContent = obj.id;
+      document.getElementById("drawerTitle").textContent = obj.title;
+      document.getElementById("drawerSubtitle").textContent = obj.subtitle;
+      document.getElementById("drawerChips").innerHTML = obj.chips.map((chip) => `<span class="chip">${chip}</span>`).join("");
+      document.getElementById("drawerInfo").innerHTML = obj.info.map(([label, value]) => `<div class="info"><b>${label}</b><span>${value}</span></div>`).join("");
+      document.getElementById("drawerContract").innerHTML = `<h3>${obj.contract[0]}</h3><p>${obj.contract[1]}</p>`;
+      document.getElementById("drawerRelationships").innerHTML = obj.relationships.map(([rel, id, title, status, target]) => `<button class="relation-row" data-open="${target}"><span class="mono">${rel}</span><span class="mini-title"><b>${id}</b><span>${title}</span></span><span>${status}</span></button>`).join("");
+      document.getElementById("drawerRuns").innerHTML = obj.runs.map(([role, id, title, status]) => `<button class="drawer-run" data-open="chain:129e44"><span class="mono">${role}</span><span class="mini-title"><b>${id}</b><span>${title}</span></span><span>${status}</span></button>`).join("");
+      document.getElementById("drawerEvidence").innerHTML = obj.evidence.map(([kind, title, detail, status]) => `<button class="evidence-row" data-open="event:command"><span class="mono">${kind}</span><span class="mini-title"><b>${title}</b><span>${detail}</span></span><span>${status}</span></button>`).join("");
+      document.getElementById("drawerEvents").innerHTML = obj.events.map((name, index) => `<button class="event-row" data-open="event:${index === 0 ? "job-created" : index === 1 ? "tool-call" : index === 2 ? "command" : index === 3 ? "review" : "mcp"}"><span class="event-time">+${index + 1}m</span><span><span class="event-name">${name}</span><br><span class="event-detail">${obj.kind} scoped event linked to ${obj.id}</span></span><span class="event-badge">open</span></button>`).join("");
+      bindOpenButtons();
+    }
+
+    function bindOpenButtons() {
+      document.querySelectorAll("[data-open]").forEach((button) => {
+        button.onclick = (event) => {
+          event.preventDefault();
+          openObject(button.getAttribute("data-open"));
+        };
+      });
+    }
+
+    document.querySelectorAll("[data-view-button]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const view = button.getAttribute("data-view-button");
+        document.querySelectorAll("[data-view-button]").forEach((item) => item.classList.toggle("is-active", item.getAttribute("data-view-button") === view));
+        document.querySelectorAll("[data-view]").forEach((item) => item.classList.toggle("is-active", item.getAttribute("data-view") === view));
+        topContext.textContent = view;
+      });
+    });
+
+    document.querySelectorAll("[data-drawer-tab]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const tab = button.getAttribute("data-drawer-tab");
+        document.querySelectorAll("[data-drawer-tab]").forEach((item) => item.classList.toggle("is-active", item === button));
+        document.querySelectorAll("[data-drawer-panel]").forEach((item) => item.classList.toggle("is-active", item.getAttribute("data-drawer-panel") === tab));
+      });
+    });
+
+    document.querySelectorAll("[data-toggle]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const target = document.getElementById(button.getAttribute("data-toggle"));
+        const expanded = button.getAttribute("aria-expanded") === "true";
+        button.setAttribute("aria-expanded", String(!expanded));
+        if (target.classList.contains("result")) target.classList.toggle("is-open", !expanded);
+        else target.classList.toggle("hidden", expanded);
+      });
+    });
+
+    document.getElementById("drawerClose").addEventListener("click", () => openObject("bead:forge-f3mx"));
+    bindOpenButtons();
+    openObject("bead:forge-f3mx");
+  </script>
+</body>
+</html>
