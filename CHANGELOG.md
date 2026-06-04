@@ -10,6 +10,9 @@ session reports under `.xtrm/reports/`.
 
 ## [Unreleased]
 
+### Changed
+- **Console graph dependency loading** — Graph requests now include historical bead relationships (`include_closed=true`) and the Beads feed preloads a larger closed-history window while `forge-lqgo` tracks the remaining live `specialists` dependency rendering discrepancy.
+
 ### Fixed
 - **Substrate router** — `/api/substrate/projects/<id>/issues` returned `{"issues":[]}` for every project after the `gitboard.sqlite → xtrm.sqlite` fold (forge-eorh.15). Root cause: single-arg `startServer(xtrmDb)` left the second `createApp(db, xtrmDb?)` parameter `undefined`, silently null-ing the substrate router. Now passes `xtrmDb` in both positional arguments (`forge-bi35`).
 - **Console graph** — every project graph returned `missing-project:<name>` after the move to xtrm-backed `graph-dao` (forge-eorh.11). `Graph.tsx` was passing the human project name; the new `resolveXtrmSource` resolver matches only on UUID. Fixed by passing `beadsProjectId` (`forge-tyzt`).
