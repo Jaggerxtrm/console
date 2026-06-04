@@ -184,15 +184,26 @@ function parseJsonArray(value: unknown): string[] {
 
 function queryDependents(db: Database | null | undefined, projectId: string, issueId: string): BeadDependency[] {
   if (!db) return [];
-  const target = db.query("SELECT issue_id, title, state, issue_type FROM substrate_issues WHERE repo_slug = ? AND issue_id = ? LIMIT 1").get(projectId, issueId) as { issue_id: string; title: string | null; state: string | null; issue_type: string | null } | undefined;
   const rows = db.query("SELECT issue_id, relation FROM substrate_dependencies WHERE repo_slug = ? AND dep_issue_id = ? ORDER BY issue_id ASC").all(projectId, issueId) as Array<{ issue_id: string; relation: string }>;
-  return rows.map((row) => ({
-    id: row.issue_id,
-    title: target == null ? "" : String(target.title ?? ""),
-    status: target == null ? "open" : String(target.state ?? "open"),
-    issue_type: target == null ? undefined : String(target.issue_type ?? "task"),
-    dependency_type: row.relation,
-  }));
+  if (rows.length === 0) return [];
+  const dependentIds = [...new Set(rows.map((row) => row.issue_id))];
+  const dependentRows = db.query(
+    `SELECT issue_id, title, state, issue_type
+     FROM substrate_issues
+     WHERE repo_slug = ? AND (deleted_at IS NULL OR deleted_at = '') AND issue_id IN (${dependentIds.map(() => "?").join(",")})`,
+  ).all(projectId, ...dependentIds) as Array<{ issue_id: string; title: string | null; state: string | null; issue_type: string | null }>;
+  const dependentById = new Map(dependentRows.map((row) => [row.issue_id, row] as const));
+
+  return rows.map((row) => {
+    const dependent = dependentById.get(row.issue_id);
+    return {
+      id: row.issue_id,
+      title: dependent == null ? "" : String(dependent.title ?? ""),
+      status: dependent == null ? "open" : String(dependent.state ?? "open"),
+      issue_type: dependent == null ? undefined : String(dependent.issue_type ?? "task"),
+      dependency_type: row.relation,
+    };
+  });
 }
 
 function countIssues(db: Database, projectId: string): number {

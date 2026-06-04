@@ -54,4 +54,30 @@ describe("substrate projects", () => {
 
     db.close();
   });
+  it("hydrates each dependent from its own issue row", async () => {
+    const db = createXtrmDatabase(dbPath);
+    db.exec(`
+      INSERT INTO substrate_issues (repo_slug, issue_id, title, state, issue_type, priority, created_at, updated_at)
+      VALUES
+        ('demo', 'root-1', 'Root issue', 'open', 'task', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+        ('demo', 'dep-1', 'First dependent', 'closed', 'bug', 2, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+        ('demo', 'dep-2', 'Second dependent', 'open', 'feature', 2, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+      INSERT INTO substrate_dependencies (repo_slug, issue_id, dep_issue_id, relation, created_at)
+      VALUES
+        ('demo', 'root-1', 'dep-1', 'blocks', CURRENT_TIMESTAMP),
+        ('demo', 'root-1', 'dep-2', 'blocks', CURRENT_TIMESTAMP);
+    `);
+    const app = createSubstrateRouter(db);
+
+    const response = await app.fetch(new Request("http://localhost/projects/demo/issues/root-1", { headers: { host: "localhost" } }));
+    expect(response.status).toBe(200);
+    const body = await response.json() as { issue: { dependencies: Array<{ id: string; title: string; status: string; issue_type?: string }> } };
+
+    expect(body.issue.dependencies).toEqual([
+      expect.objectContaining({ id: 'dep-1', title: 'First dependent', status: 'closed', issue_type: 'bug' }),
+      expect.objectContaining({ id: 'dep-2', title: 'Second dependent', status: 'open', issue_type: 'feature' }),
+    ]);
+
+    db.close();
+  });
 });
