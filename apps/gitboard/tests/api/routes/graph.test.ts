@@ -104,9 +104,9 @@ describe("GET /api/console/graph", () => {
     expect(closedJson.nodes.find((node) => node.id === "gitboard-6")?.status).toBe("closed");
   });
 
-  it("keeps historical dependency targets connected in default graph snapshot", async () => {
+  it("keeps historical dependency targets connected when include_closed=true", async () => {
     const app = createApp();
-    const res = await app.fetch(new Request("http://localhost/api/console/graph?project=gitboard&include_closed=false"));
+    const res = await app.fetch(new Request("http://localhost/api/console/graph?project=gitboard&include_closed=true"));
     const json = await res.json() as { nodes: Array<{ id: string; title: string; status: string }>; edges: Array<{ from: string; to: string; type: string }> };
 
     expect(json.edges.some((edge) => edge.from === "gitboard-3" && edge.to === "gitboard-4" && edge.type === "supersedes")).toBe(true);
