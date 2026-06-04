@@ -129,6 +129,31 @@ export function createSpecialistsRouter(
     return c.json({ text: row.payload ?? "", content_type: "text/markdown" });
   });
 
+  router.get("/jobs/:job_id/feed-events", async (c) => {
+    if (!isSpecialistResultRequestAllowed(c.req.raw.headers)) return c.json({ error: "forbidden" }, 403);
+    const jobId = c.req.param("job_id");
+    const db = xtrmDatabase;
+    if (!db) return c.json({ error: "feed events unavailable" }, 404);
+    const job = resolveJobForEventLookup(resolve(), jobId);
+    if (!job) return c.json({ error: "feed events not found" }, 404);
+    const rows = db.query(`
+      SELECT payload
+      FROM specialist_job_events
+      WHERE repo_slug = ? AND job_id = ? AND event_type = 'forensic_event'
+      ORDER BY created_at ASC
+    `).all(job.repoSlug, jobId) as Array<{ payload?: string }>;
+    const events = rows.flatMap((row) => {
+      if (!row.payload) return [];
+      try {
+        const parsed = JSON.parse(row.payload) as unknown;
+        return isFeedEventPayload(parsed) ? [sanitizeFeedEventPayload(parsed)] : [];
+      } catch {
+        return [];
+      }
+    });
+    return c.json({ events });
+  });
+
   router.get("/jobs/:job_id/feed", async (c) => {
     if (!isSpecialistResultRequestAllowed(c.req.raw.headers)) return c.json({ error: "forbidden" }, 403);
     const jobId = c.req.param("job_id");
@@ -176,6 +201,40 @@ export function createSpecialistsRouter(
   });
 
   return router;
+}
+
+type FeedEventPayload = {
+  schema_version?: string | number;
+  event_family?: string;
+  event_name?: string;
+  resource?: { participant_kind?: string; participant_role?: string };
+  correlation?: { job_id?: string };
+  redaction?: { status?: string };
+};
+
+function isFeedEventPayload(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object");
+}
+
+function sanitizeFeedEventPayload(value: Record<string, unknown>): FeedEventPayload {
+  const resource = isRecord(value.resource) ? value.resource : undefined;
+  const correlation = isRecord(value.correlation) ? value.correlation : undefined;
+  const redaction = isRecord(value.redaction) ? value.redaction : undefined;
+  return {
+    schema_version: typeof value.schema_version === "string" || typeof value.schema_version === "number" ? value.schema_version : undefined,
+    event_family: typeof value.event_family === "string" ? value.event_family : undefined,
+    event_name: typeof value.event_name === "string" ? value.event_name : undefined,
+    resource: resource ? {
+      participant_kind: typeof resource.participant_kind === "string" ? resource.participant_kind : undefined,
+      participant_role: typeof resource.participant_role === "string" ? resource.participant_role : undefined,
+    } : undefined,
+    correlation: correlation ? { job_id: typeof correlation.job_id === "string" ? correlation.job_id : undefined } : undefined,
+    redaction: redaction ? { status: typeof redaction.status === "string" ? redaction.status : undefined } : undefined,
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object");
 }
 
 function sourceHealthFromCoverage(coverage: ObservabilityCoverage | undefined, fallback: ReturnType<typeof makeSourceHealth>) {
@@ -435,6 +494,13 @@ function isDashboardReadRequest(headers: Headers): boolean {
 
 function findJobById(dao: SpecialistsDao, jobId: string): SpecialistJob | undefined {
   return [...dao.inFlightJobs(), ...dao.recentJobs(500)].find((job) => job.jobId === jobId || job.beadId === jobId);
+}
+
+function resolveJobForEventLookup(current: { dao: SpecialistsDao; repos: SpecialistRepoSummary }, jobId: string): SpecialistJob | undefined {
+  const job = findJobById(current.dao, jobId);
+  if (!job) return undefined;
+  if (!current.repos.some((repo) => repo.repoSlug === job.repoSlug)) return undefined;
+  return job;
 }
 
 const SPECIALIST_JOB_ID_RE = /^[A-Za-z0-9._:-]{3,128}$/;

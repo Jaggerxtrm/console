@@ -11,7 +11,22 @@ vi.mock("../../../../src/dashboard/lib/client-log.ts", () => ({
 import { ChainDetailPane } from "../../../../src/dashboard/pages/console/specialists/ChainDetailPane.tsx";
 
 beforeEach(() => {
-  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ text: "DONE\nAUTO+\ncomplete" }), { status: 200 })));
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.includes("/feed-events")) {
+      return new Response(JSON.stringify({ events: [
+        {
+          schema_version: 1,
+          event_family: "chain",
+          event_name: "participant_joined",
+          resource: { participant_kind: "agent", participant_role: "executor" },
+          correlation: { job_id: "job-done" },
+          redaction: { status: "redacted" },
+        },
+      ] }), { status: 200 });
+    }
+    return new Response(JSON.stringify({ text: "DONE\nAUTO+\ncomplete" }), { status: 200 });
+  }));
 });
 
 afterEach(() => {
@@ -47,8 +62,33 @@ describe("ChainDetailPane", () => {
     render(<ChainDetailPane chain={chain("running")} />);
 
     const toggle = await screen.findByRole("button", { name: /terminal feed/i });
-    expect(toggle).toHaveAttribute("aria-expanded", "true");
-    expect(await screen.findByLabelText("terminal stream")).toHaveTextContent("AUTO+");
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(await screen.findByLabelText("terminal stream").then((node) => node.textContent)).toContain("AUTO+");
+  });
+
+  it("renders forensic feed events and keeps result fallback", async () => {
+    render(<ChainDetailPane chain={chain("done")} />);
+
+    await waitFor(() => expect(screen.getByText("forensic events")).toBeTruthy());
+    expect(screen.getByText("v1").textContent).toBe("v1");
+    expect(screen.getByText("chain/participant_joined").textContent).toBe("chain/participant_joined");
+    expect(screen.getByText("agent/executor").textContent).toBe("agent/executor");
+    expect(screen.getByText("job:job-done").textContent).toBe("job:job-done");
+    expect(screen.getByText("redacted").textContent).toBe("redacted");
+    expect(screen.getByRole("button", { name: /run result/i })).toBeTruthy();
+  });
+
+  it("falls back when forensic feed endpoint fails", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/feed-events")) return new Response("nope", { status: 404 });
+      return new Response(JSON.stringify({ text: "DONE\nAUTO+\ncomplete" }), { status: 200 });
+    }));
+
+    render(<ChainDetailPane chain={chain("done")} />);
+
+    expect(await screen.findByRole("button", { name: /run result/i })).toBeTruthy();
+    expect(screen.queryByText("forensic events")).toBeNull();
   });
 });
 

@@ -244,6 +244,31 @@ describe("GET /api/specialists/jobs/:job_id/result", () => {
   });
 });
 
+describe("GET /api/specialists/jobs/:job_id/feed-events", () => {
+  it("returns forensic events for resolved repo only", async () => {
+    const app = createResultApp(true);
+    const res = await app.fetch(new Request("http://localhost/api/specialists/jobs/job-1/feed-events", { headers: { "x-gitboard-shell-token": "test-admin-token" } }));
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ events: [{ schema_version: 1, event_family: "chain", event_name: "participant_joined", resource: { participant_kind: "agent", participant_role: "executor" }, correlation: { job_id: "job-1" }, redaction: { status: "redacted" } }] });
+  });
+
+  it("returns 404 when job cannot be resolved to a repo", async () => {
+    const app = createUnresolvedFeedEventsApp();
+    const res = await app.fetch(new Request("http://localhost/api/specialists/jobs/job-missing/feed-events", { headers: { "x-gitboard-shell-token": "test-admin-token" } }));
+
+    expect(res.status).toBe(404);
+  });
+
+  it("strips extra keys from forensic payload", async () => {
+    const app = createResultApp(true, { extraPayload: true });
+    const res = await app.fetch(new Request("http://localhost/api/specialists/jobs/job-1/feed-events", { headers: { "x-gitboard-shell-token": "test-admin-token" } }));
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ events: [{ schema_version: 1, event_family: "chain", event_name: "participant_joined", resource: { participant_kind: "agent", participant_role: "executor" }, correlation: { job_id: "job-1" }, redaction: { status: "redacted" } }] });
+  });
+});
+
 describe("GET /api/specialists/jobs/:job_id/feed", () => {
   it("returns 403 for non-admin", async () => {
     const app = createAppWithDao();
@@ -480,7 +505,7 @@ function createAppWithDao(reposOverride: Array<{ repoSlug: string; rows: SeedRow
   return app;
 }
 
-function createResultApp(_success = false): Hono {
+function createResultApp(_success = false, options: { extraPayload?: boolean } = {}): Hono {
   const xtrmDb = new Database(":memory:");
   xtrmDb.exec(`
     CREATE TABLE specialist_job_events (
@@ -493,9 +518,41 @@ function createResultApp(_success = false): Hono {
     );
   `);
   xtrmDb.prepare("INSERT INTO specialist_job_events (repo_slug, job_id, event_type, payload, created_at) VALUES (?, ?, ?, ?, ?)").run("repo-a", "job-1", "result", "# done", "2026-01-01T00:00:00.000Z");
+  xtrmDb.prepare("INSERT INTO specialist_job_events (repo_slug, job_id, event_type, payload, created_at) VALUES (?, ?, ?, ?, ?)").run("repo-a", "job-1", "forensic_event", JSON.stringify(eventPayload(options.extraPayload)), "2026-01-01T00:00:01.000Z");
+  xtrmDb.prepare("INSERT INTO specialist_job_events (repo_slug, job_id, event_type, payload, created_at) VALUES (?, ?, ?, ?, ?)").run("repo-b", "job-1", "forensic_event", JSON.stringify({ schema_version: 9, event_family: "mix", event_name: "other" }), "2026-01-01T00:00:02.000Z");
+  const app = new Hono();
+  app.route("/api/specialists", createSpecialistsRouter({
+    jobsByBead: () => [],
+    inFlightJobs: () => [resolvedJob()],
+    recentJobs: () => [resolvedJob()],
+    chainById: () => [],
+  }, xtrmDb, { listRepos: () => [{ repoSlug: "repo-a", repoPath: join(dir, "repo-a"), dbPath: join(dir, "repo-a.db"), mtimeMs: 0 }, { repoSlug: "repo-b", repoPath: join(dir, "repo-b"), dbPath: join(dir, "repo-b.db"), mtimeMs: 0 }], getEpoch: () => 0 }));
+  return app;
+}
+
+function createUnresolvedFeedEventsApp(): Hono {
+  const xtrmDb = new Database(":memory:");
+  xtrmDb.exec(`
+    CREATE TABLE specialist_job_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      repo_slug TEXT NOT NULL,
+      job_id TEXT NOT NULL,
+      event_type TEXT NOT NULL,
+      payload TEXT,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
   const app = new Hono();
   app.route("/api/specialists", createSpecialistsRouter({ jobsByBead: () => [], inFlightJobs: () => [], recentJobs: () => [], chainById: () => [] }, xtrmDb, { listRepos: () => [{ repoSlug: "repo-a", repoPath: join(dir, "repo-a"), dbPath: join(dir, "repo-a.db"), mtimeMs: 0 }], getEpoch: () => 0 }));
   return app;
+}
+
+function resolvedJob(): Record<string, unknown> {
+  return { repoSlug: "repo-a", jobId: "job-1", beadId: "bead-1" };
+}
+
+function eventPayload(extraPayload = false): Record<string, unknown> {
+  return extraPayload ? { schema_version: 1, event_family: "chain", event_name: "participant_joined", resource: { participant_kind: "agent", participant_role: "executor", secret: "hide" }, correlation: { job_id: "job-1", body: "nope", path: "/tmp/secret" }, redaction: { status: "redacted" }, secret: "top-secret" } : { schema_version: 1, event_family: "chain", event_name: "participant_joined", resource: { participant_kind: "agent", participant_role: "executor" }, correlation: { job_id: "job-1" }, redaction: { status: "redacted" } };
 }
 
 function seedRepo(path: string, rows: SeedRow[], schemaOk: boolean): Database {

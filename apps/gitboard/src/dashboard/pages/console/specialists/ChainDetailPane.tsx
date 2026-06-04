@@ -23,6 +23,30 @@ const STATUS_ICON = {
 
 type StatusKey = keyof typeof STATUS_ICON;
 type ResultPayload = { text: string; content_type?: string };
+type FeedEventPayload = {
+  schema_version?: string | number;
+  event_family?: string;
+  event_name?: string;
+  resource?: { participant_kind?: string; participant_role?: string };
+  correlation?: { job_id?: string };
+  redaction?: { status?: string };
+};
+
+function isFeedEventPayload(value: unknown): value is FeedEventPayload {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Record<string, unknown>;
+  const resource = candidate.resource;
+  const correlation = candidate.correlation;
+  const redaction = candidate.redaction;
+  return (
+    (candidate.schema_version === undefined || typeof candidate.schema_version === "string" || typeof candidate.schema_version === "number")
+    && (candidate.event_family === undefined || typeof candidate.event_family === "string")
+    && (candidate.event_name === undefined || typeof candidate.event_name === "string")
+    && (resource === undefined || (typeof resource === "object" && resource !== null && ((resource as Record<string, unknown>).participant_kind === undefined || typeof (resource as Record<string, unknown>).participant_kind === "string") && ((resource as Record<string, unknown>).participant_role === undefined || typeof (resource as Record<string, unknown>).participant_role === "string")))
+    && (correlation === undefined || (typeof correlation === "object" && correlation !== null && ((correlation as Record<string, unknown>).job_id === undefined || typeof (correlation as Record<string, unknown>).job_id === "string")))
+    && (redaction === undefined || (typeof redaction === "object" && redaction !== null && ((redaction as Record<string, unknown>).status === undefined || typeof (redaction as Record<string, unknown>).status === "string")))
+  );
+}
 
 // Borderless status palette — coloured chip + faint matching background fill,
 // so the role/jobId tag reads at a glance like the Feed status marks.
@@ -179,6 +203,7 @@ function JobBlock({ job }: { job: ChainJob }) {
   const [result, setResult] = useState<ResultPayload | null>(null);
   const [resultError, setResultError] = useState<string | null>(null);
   const [resultLoading, setResultLoading] = useState(false);
+  const [feedEvents, setFeedEvents] = useState<FeedEventPayload[] | null>(null);
   const feedJobId = job.jobId ?? null;
   const terminalText = (feedText?.trim() || job.lastOutput?.trim() || "").trim();
   const resultText = (result?.text?.trim() || job.lastOutput?.trim() || "").trim();
@@ -273,6 +298,35 @@ function JobBlock({ job }: { job: ChainJob }) {
     };
   }, [feedJobId]);
 
+  useEffect(() => {
+    if (!feedJobId) {
+      setFeedEvents(null);
+      return;
+    }
+
+    let cancelled = false;
+    const controller = new AbortController();
+
+    void fetch(`/api/specialists/jobs/${encodeURIComponent(feedJobId)}/feed-events`, { signal: controller.signal })
+      .then(async (res) => {
+        if (!res.ok) return null;
+        const payload = await res.json() as { events?: unknown };
+        return Array.isArray(payload.events) ? payload.events.filter(isFeedEventPayload) : null;
+      })
+      .then((events) => {
+        if (cancelled) return;
+        setFeedEvents(events);
+      })
+      .catch(() => {
+        if (!cancelled) setFeedEvents(null);
+      });
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [feedJobId]);
+
   return (
     <article
       className={`console-specialists-job-block status-${statusKey}${isLive ? " is-live" : ""}`}
@@ -333,6 +387,7 @@ function JobBlock({ job }: { job: ChainJob }) {
       ) : !terminalText ? (
         <div className="console-specialists-job-output console-specialists-job-output-empty">— no terminal feed —</div>
       ) : null}
+      <ForensicFeedTimeline events={feedEvents} />
       <RunResultPanel text={resultText} loading={resultLoading && !resultText} error={resultError} />
     </article>
   );
@@ -388,6 +443,32 @@ function TerminalStatus({ role, status, source, live }: { role: string; status: 
       <em>{source}</em>
     </span>
   );
+}
+
+function ForensicFeedTimeline({ events }: { events: FeedEventPayload[] | null }) {
+  if (!events || events.length === 0) return null;
+
+  return (
+    <section className="console-specialists-job-forensic" aria-label="forensic events">
+      <div className="console-specialists-job-forensic-head">forensic events</div>
+      <div className="console-specialists-job-forensic-list">
+        {events.map((event, index) => (
+          <div key={`${event.schema_version ?? "v"}:${event.event_family ?? "family"}:${event.event_name ?? "event"}:${index}`} className="console-specialists-job-forensic-row">
+            <span className="console-specialists-job-forensic-schema">v{String(event.schema_version ?? "?")}</span>
+            <span className="console-specialists-job-forensic-family">{event.event_family ?? "unknown"}/{event.event_name ?? "unknown"}</span>
+            <span className="console-specialists-job-forensic-meta">{formatForensicParticipant(event.resource?.participant_kind, event.resource?.participant_role)}</span>
+            <span className="console-specialists-job-forensic-meta">job:{event.correlation?.job_id ?? "—"}</span>
+            <span className="console-specialists-job-forensic-redaction">{event.redaction?.status ?? "unredacted"}</span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function formatForensicParticipant(kind?: string, role?: string): string {
+  if (kind && role) return `${kind}/${role}`;
+  return kind ?? role ?? "—";
 }
 
 function useBeadContract(projectId: string | null, beadId: string | null): { issue: BeadIssueDetail | null; loading: boolean; error: string | null } {
