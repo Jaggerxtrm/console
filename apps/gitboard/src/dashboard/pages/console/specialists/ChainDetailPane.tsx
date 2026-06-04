@@ -221,6 +221,7 @@ function JobBlock({ job }: { job: ChainJob }) {
       return;
     }
 
+    const jobId = feedJobId;
     let cancelled = false;
     let timer: number | null = null;
     let controller = new AbortController();
@@ -230,7 +231,7 @@ function JobBlock({ job }: { job: ChainJob }) {
       controller = new AbortController();
       setFeedLoading(true);
       try {
-        const res = await fetch(`/api/specialists/jobs/${encodeURIComponent(feedJobId)}/feed`, { signal: controller.signal });
+        const res = await fetch(`/api/specialists/jobs/${encodeURIComponent(jobId)}/feed`, { signal: controller.signal });
         if (!res.ok) throw new Error(`feed ${res.status}`);
         const data = (await res.json()) as { text?: string };
         if (cancelled) return;

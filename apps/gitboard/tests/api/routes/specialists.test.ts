@@ -11,6 +11,7 @@ import { jobFeedState } from "../../../src/dashboard/components/specialists/bead
 import { __resetObservabilityRegistryForTests } from "../../../src/server/observability/registry.ts";
 import { createAttachPool } from "../../../src/server/observability/attach-pool.ts";
 import { createObservabilityDao } from "../../../src/server/observability/dao.ts";
+import type { SpecialistJob } from "../../../src/server/observability/types.ts";
 
 type SeedRow = {
   beadId: string;
@@ -547,8 +548,22 @@ function createUnresolvedFeedEventsApp(): Hono {
   return app;
 }
 
-function resolvedJob(): Record<string, unknown> {
-  return { repoSlug: "repo-a", jobId: "job-1", beadId: "bead-1" };
+function resolvedJob(): SpecialistJob {
+  return {
+    repoSlug: "repo-a",
+    jobId: "job-1",
+    beadId: "bead-1",
+    chainId: null,
+    epicId: null,
+    chainKind: "executor",
+    status: "done",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+    specialist: "executor",
+    lastOutput: null,
+    turns: null,
+    tools: null,
+    model: null,
+  };
 }
 
 function eventPayload(extraPayload = false): Record<string, unknown> {
