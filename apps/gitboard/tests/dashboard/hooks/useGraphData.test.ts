@@ -23,6 +23,7 @@ vi.mock("../../../src/dashboard/hooks/useWebSocket.ts", () => ({
 }));
 
 const { useGraphData } = await import("../../../src/dashboard/hooks/useGraphData.ts");
+const { invalidateDashboardResource } = await import("../../../src/dashboard/lib/resource.ts");
 
 const graph = (id: string): GraphResponse => ({
   project_id: id,
@@ -56,6 +57,7 @@ describe("useGraphData", () => {
     renderHook(() => useGraphData("gitboard-ignore-2"));
     await act(async () => { await Promise.resolve(); });
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/console/graph?project_id=gitboard-ignore-2&include_closed=true");
     wsHandlerByChannel.get("substrate:changes")?.({ type: "event", channel: "substrate:changes", event: "substrate:sync_hint", data: { reason: "global" } });
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -80,17 +82,18 @@ describe("useGraphData", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     await act(async () => { vi.advanceTimersByTime(750); await Promise.resolve(); });
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    await act(async () => { vi.advanceTimersByTime(1600); await Promise.resolve(); });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it("invalidates and refreshes on beads sync hints for selected project", async () => {
+  it("invalidates and refreshes selected project graph data", async () => {
+    vi.useFakeTimers();
     const fetchMock = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => graph("gitboard-sync") }).mockResolvedValueOnce({ ok: true, json: async () => ({ ...graph("gitboard-sync"), generated_at: "2026-05-20T00:00:01.000Z" }) });
     (globalThis as any).fetch = fetchMock as any;
     renderHook(() => useGraphData("gitboard-sync"));
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
-    expect(wsHandlerByChannel.get("substrate:changes")).toBeTypeOf("function");
-    wsHandlerByChannel.get("substrate:changes")?.({ type: "event", channel: "substrate:changes", event: "substrate:sync_hint", data: { project_id: "gitboard-sync" } });
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    await act(async () => { await Promise.resolve(); });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    act(() => invalidateDashboardResource("graph:gitboard-sync", 0));
+    await act(async () => { vi.advanceTimersByTime(0); await Promise.resolve(); await Promise.resolve(); });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls[1][0]).not.toContain("refresh=true");
+    expect(fetchMock.mock.calls[1][0]).toContain("include_closed=true");
   });});

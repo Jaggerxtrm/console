@@ -21,6 +21,7 @@ import type { RepoNode, BeadsTab } from "../../../types/shell.ts";
 import { useShellStore } from "../../stores/shell.ts";
 
 const REFETCH_COALESCE_MS = 1_500;
+const CLOSED_HISTORY_LIMIT = 3000;
 const LIVE_SPECIALIST_STATES = new Set(["starting", "running", "waiting", "error", "cancelled"]);
 
 interface State {
@@ -235,7 +236,7 @@ export function BeadsRepoView({ repo, tab }: { repo: RepoNode; tab: BeadsTab }) 
               : interactionsResult,
         }));
 
-        void substrateApi.listClosedIssues(project.id, 50)
+        void substrateApi.listClosedIssues(project.id, CLOSED_HISTORY_LIMIT)
           .then((closedIssues) => {
             if (!cancelled) setState((current) => current.project?.id === project.id ? { ...current, closedIssues } : current);
           })

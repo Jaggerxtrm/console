@@ -5,6 +5,7 @@ import { useDashboardResource, useDashboardResourceInvalidation } from "../lib/r
 
 const CACHE_TTL_MS = 60_000;
 const STALE_RETRY_DELAY_MS = 750;
+const GRAPH_QUERY_MODE = "include_closed=true";
 
 export function useGraphData(projectId: string | null) {
   const key = useMemo(() => projectId ? `graph:${projectId}` : null, [projectId]);
@@ -16,7 +17,7 @@ export function useGraphData(projectId: string | null) {
     fetcher: async (resourceKey, options) => {
       const projectKey = resourceKey.replace(/^graph:/, "");
       const refresh = options.refresh ? "&refresh=true" : "";
-      const response = await fetch(`/api/console/graph?project_id=${encodeURIComponent(projectKey)}${refresh}`);
+      const response = await fetch(`/api/console/graph?project_id=${encodeURIComponent(projectKey)}&${GRAPH_QUERY_MODE}${refresh}`);
       if (!response.ok) throw new Error(`Graph fetch failed (${response.status})`);
       return response.json() as Promise<GraphResponse>;
     },

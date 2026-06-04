@@ -95,7 +95,7 @@ describe("BeadsRepoView realtime updates", () => {
 
     expect(await screen.findByText("Initial issue")).toBeInTheDocument();
     expect(substrateApi.listIssues).toHaveBeenCalledWith(project.id, { status: ["open", "in_progress", "blocked", "in_review"], limit: 100 });
-    expect(substrateApi.listClosedIssues).toHaveBeenCalledWith(project.id, 50);
+    expect(substrateApi.listClosedIssues).toHaveBeenCalledWith(project.id, 3000);
 
     act(() => resolveClosed([{ ...issue, id: "GB-closed", title: "Closed issue", status: "closed" }]));
     expect(await screen.findByText("Closed issue")).toBeInTheDocument();
