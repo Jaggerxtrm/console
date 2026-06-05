@@ -9,6 +9,35 @@ import type {
 } from "../../types/observability.ts";
 
 const FIXTURE_NOW = Date.UTC(2026, 5, 6, 12, 0, 0);
+const MAX_FIXTURE_RANGE_MS = 24 * 60 * 60 * 1000;
+const REQUIRED_LIMITS = ["maxBytes", "maxRows", "timeoutMs"] as const;
+const FORBIDDEN_PROMETHEUS_LABELS = new Set([
+  "job_id",
+  "bead_id",
+  "issue_id",
+  "participant_id",
+  "chain_id",
+  "container_id",
+  "trace_id",
+  "span_id",
+  "session_id",
+  "conversation_id",
+  "tool_call_id",
+  "mcp_session_id",
+  "jsonrpc_request_id",
+  "eval_id",
+  "policy_decision_id",
+]);
+
+export interface ObserveDatasourceGuardResult {
+  ok: boolean;
+  errors: string[];
+}
+
+export interface ObserveAgentAuthoredWritePolicy {
+  agentAuthored: boolean;
+  operatorApproved: boolean;
+}
 
 export const observeFixtureTenant: ObserveTenantContext = {
   tenantId: "self",
@@ -65,6 +94,21 @@ export function createObserveFixtureRequest(signalKind: ObserveSignalKind): Obse
 }
 
 export function queryStaticObserveDatasource(request: ObserveQueryRequest): ObserveQueryResponse {
+  const guard = validateObserveQueryRequest(request, observeStaticFixtureDatasource);
+
+  if (!guard.ok) {
+    return {
+      datasourceId: request.datasourceId,
+      signalKind: request.signalKind,
+      status: "error",
+      range: request.range,
+      freshness: observeStaticFixtureDatasource.freshness,
+      data: { kind: "runbook", ref: "observe.datasource.guard", title: "Datasource guard rejected request" },
+      evidence: [],
+      diagnostics: { owner: "gitboard", warnings: guard.errors },
+    };
+  }
+
   const evidence = evidenceFor(request);
   const base = {
     datasourceId: request.datasourceId,
@@ -200,6 +244,109 @@ export function queryStaticObserveDatasource(request: ObserveQueryRequest): Obse
   }
 }
 
+export function validateObserveQueryRequest(
+  request: ObserveQueryRequest,
+  datasource = observeStaticFixtureDatasource,
+): ObserveDatasourceGuardResult {
+  const errors: string[] = [];
+
+  if (request.datasourceId !== datasource.id) {
+    errors.push("datasource_id_mismatch");
+  }
+
+  if (!datasource.capabilities.includes(request.signalKind)) {
+    errors.push("missing_signal");
+  }
+
+  if (!request.range || !Number.isFinite(request.range.fromUnixMs) || !Number.isFinite(request.range.toUnixMs)) {
+    errors.push("range_required");
+  } else {
+    const durationMs = request.range.toUnixMs - request.range.fromUnixMs;
+
+    if (durationMs <= 0) {
+      errors.push("range_must_be_forward");
+    }
+
+    if (durationMs > MAX_FIXTURE_RANGE_MS) {
+      errors.push("range_too_large");
+    }
+  }
+
+  for (const limit of REQUIRED_LIMITS) {
+    if (!Number.isFinite(request.limits?.[limit]) || Number(request.limits[limit]) <= 0) {
+      errors.push(`${limit}_required`);
+    }
+  }
+
+  if ((request.query.kind === "promql" || request.query.kind === "logql") && hasForbiddenPrometheusLabel(request.query.expr)) {
+    errors.push("forbidden_high_cardinality_label");
+  }
+
+  return { ok: errors.length === 0, errors };
+}
+
+export function validateObserveDatasourceDescriptor(
+  datasource: ObserveDatasourceDescriptor,
+): ObserveDatasourceGuardResult {
+  const errors: string[] = [];
+
+  if (datasource.authMode !== "server_proxy" && datasource.authMode !== "internal_socket" && datasource.authMode !== "none") {
+    errors.push("invalid_auth_mode");
+  }
+
+  if (datasource.kind !== "static_fixture" && datasource.authMode === "none") {
+    errors.push("networked_datasource_requires_proxy_or_socket");
+  }
+
+  if (datasource.writePolicy !== "read_only" && datasource.writePolicy !== "draft_requires_approval") {
+    errors.push("invalid_write_policy");
+  }
+
+  return { ok: errors.length === 0, errors };
+}
+
+export function validateObserveAgentAuthoredWrite(
+  datasource: ObserveDatasourceDescriptor,
+  policy: ObserveAgentAuthoredWritePolicy,
+): ObserveDatasourceGuardResult {
+  const errors: string[] = [];
+
+  if (policy.agentAuthored && datasource.writePolicy !== "draft_requires_approval") {
+    errors.push("agent_authored_write_requires_draft_policy");
+  }
+
+  if (policy.agentAuthored && !policy.operatorApproved) {
+    errors.push("agent_authored_write_requires_operator_approval");
+  }
+
+  return { ok: errors.length === 0, errors };
+}
+
+export function createMissingSignalResponse(
+  request: ObserveQueryRequest,
+  owner: string,
+): ObserveQueryResponse {
+  return {
+    datasourceId: request.datasourceId,
+    signalKind: request.signalKind,
+    status: "missing_signal",
+    range: request.range,
+    freshness: { cacheStatus: "unknown" },
+    data: { kind: "runbook", ref: `missing-signal:${request.signalKind}`, title: `${request.signalKind} signal missing upstream` },
+    evidence: [
+      {
+        id: `${request.signalKind}-missing-signal`,
+        kind: "runbook",
+        source: owner,
+        title: `${owner} must provide ${request.signalKind}`,
+        timeRange: request.range,
+        redaction: { status: "unknown" },
+      },
+    ],
+    diagnostics: { owner, message: "Console must route missing signals to the owning upstream system." },
+  };
+}
+
 function defaultQueryForSignal(signalKind: ObserveSignalKind): ObserveQueryRequest["query"] {
   switch (signalKind) {
     case "metric":
@@ -222,6 +369,10 @@ function defaultQueryForSignal(signalKind: ObserveSignalKind): ObserveQueryReque
     case "forensic_event":
       return { kind: "forensic_events", jobId: "job-fixture-001" };
   }
+}
+
+function hasForbiddenPrometheusLabel(expr: string): boolean {
+  return [...FORBIDDEN_PROMETHEUS_LABELS].some((label) => new RegExp(`(^|[^a-zA-Z0-9_])${label}\\s*(=|!=|=~|!~)`).test(expr));
 }
 
 function evidenceFor(request: ObserveQueryRequest): ObserveEvidenceRef[] {
