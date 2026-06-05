@@ -68,6 +68,23 @@ describe("createDatabase", () => {
     db.close();
   });
 
+  it("keeps specialist telemetry token-first with USD provenance deferred", () => {
+    const db = createDatabase(dbPath);
+    const columns = db
+      .query<{ name: string; type: string }, []>("PRAGMA table_info(specialist_events)")
+      .all();
+    const columnType = new Map(columns.map((column) => [column.name, column.type]));
+
+    for (const column of ["tokens_in", "tokens_out", "token_cache_read", "token_cache_creation", "token_reasoning", "token_tool"]) {
+      expect(columnType.get(column)).toBe("INTEGER");
+    }
+    expect(columnType.get("usage_source")).toBe("TEXT");
+    expect(columnType.get("cost_usd")).toBe("REAL");
+    expect(columnType.get("cost_usd_provenance")).toBe("TEXT");
+
+    db.close();
+  });
+
   it("TABLES constant lists all table names", () => {
     expect(TABLES).toContain("sessions");
     expect(TABLES).toContain("messages");
