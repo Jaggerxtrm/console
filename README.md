@@ -39,6 +39,8 @@ The API defaults to `:3030`; the Vite dashboard dev server proxies `/api` and
 ## Docs
 
 - `docs/deployment.md` — native systemd + Tailscale runbook
+- `docs/architecture/post-bridge-dormant-tooling-classification.md` — supported
+  auxiliary tooling vs dormant reproduction tooling
 - `apps/gitboard/CLAUDE.md` — app-specific notes
 - `apps/gitboard/testing.md` — test guidance
 

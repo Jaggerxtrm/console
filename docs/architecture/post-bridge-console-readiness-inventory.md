@@ -38,8 +38,8 @@ the running Gitboard service on Tailscale remains stable.
 | `packages/core` | Shared package | Workspace package with `tsc` build and UI utilities | Keep; validate before scaffold copies more code |
 | `packages/ui` | Shared package | Workspace package with React components/styles and Console token memories | Keep; future Console scaffold should reuse, not fork |
 | `packages/api-client` | Shared package | Workspace package with API client build/test scripts | Keep; review usage during scaffold |
-| `packages/html-preview` | Dormant/tooling | Has CLI package and README; `.worktrees/forge-a3m2-html-preview` exists but is ignored | Investigate before removal; likely tooling, not runtime |
-| Dockerfile / Compose | Dormant reproduction path | README and `docs/deployment.md` mark Docker experimental/not primary | Keep dormant unless a follow-up decides to remove or refresh |
+| `packages/html-preview` | Supported auxiliary tooling | Has CLI package, README, tests and tailnet document-preview workflow | Keep supported as workspace operator tooling; see `post-bridge-dormant-tooling-classification.md` |
+| Dockerfile / Compose | Dormant reproduction path | README and `docs/deployment.md` mark Docker experimental/not primary; envs now align with `GITBOARD_DATA_DIR` and `XDG_PROJECTS_DIR` | Keep dormant local reproduction tooling; see `post-bridge-dormant-tooling-classification.md` |
 | `/beadboard` route/docs | Retired legacy surface | Smoke coverage expects `/beadboard` to return 404; docs still cite removed `apps/beadboard` paths | Keep retired unless a deliberate compatibility bead reopens it |
 | `/api/beads` route file | Legacy unmounted code | `src/api/routes/beads.ts` exists, but `src/api/server.ts` does not mount `/api/beads`; `forge-benk.10` updates the old cache test to assert retirement and `/api/substrate` as the supported read surface | Do not treat as running bridge; keep retired unless a deliberate compatibility bead reopens it |
 | `apps/console` | Future migration target | `forge-9xet.2` exists but package is not present yet | Do not create in this inventory task |
@@ -119,8 +119,8 @@ the running Gitboard service on Tailscale remains stable.
   historical backend-redesign sections as superseded by the current bridge.
 - Remove tracked runtime artifacts: untrack SQLite/log files and add a focused
   guard so generated runtime outputs do not re-enter source control.
-- Classify dormant tooling: decide whether `packages/html-preview` and Docker
-  stay as supported tooling, dormant tooling, or removal candidates.
+- Classify dormant tooling: resolved by `forge-benk.9`; see
+  `post-bridge-dormant-tooling-classification.md`.
 
 ## Next Execution Order
 
