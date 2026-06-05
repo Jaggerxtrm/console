@@ -109,6 +109,9 @@ Docker/Compose intentionally keep `PORT=3000` and map runtime state through
 `GITBOARD_DATA_DIR=/data`. Native systemd remains the primary deployment path
 and uses `PORT=3030` on the tailnet host.
 
+Classification details live in
+`docs/architecture/post-bridge-dormant-tooling-classification.md`.
+
 Known issues:
 - Vite v7 `outDir` resolves under repo root in this setup
 - `host.docker.internal` needs `DOLT_HOST` override in some runtimes
