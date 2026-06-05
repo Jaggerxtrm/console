@@ -3,7 +3,7 @@
 **Status:** Draft / planning-ready (intended input to OpenSpec planning phase)
 **Owner:** dawid
 **Scope:** A native observability surface inside the xtrm console, built as a foundation we own — primitives that ship internally first, then become a sellable product. Datasource-agnostic by contract, Prometheus-first by impl.
-**Out of scope (this PRD):** the underlying metric pipeline on the VPS (Prometheus, exporters, retention, alert routing — those live in `~/projects/mercury/infra`, primarily `MONITORING.md`, `docs/AGENT_MONITORING.md`, `infra-bnh`, and `infra-xgx`). Specialist runtime metric semantics live in `~/dev/specialists/docs/observability-metrics.md` and `docs/design/substrate/devops-platform-engineering-prd.md`. This PRD owns the console/product surface only; it does not replace the operator's existing Grafana dashboards.
+**Out of scope (this PRD):** the underlying metric pipeline on the VPS (Prometheus, exporters, retention, alert routing — those live in `~/projects/mercury/infra`, primarily `MONITORING.md`, `docs/AGENT_MONITORING.md`, `infra-bnh`, and `infra-xgx`). Specialist runtime telemetry semantics live in `~/dev/specialists/docs/telemetry/{forensic-event-contract,agentops-event-catalog,prometheus-projection-contract,prometheus-infra-console-handoff}.md` and `docs/design/substrate/devops-platform-engineering-prd.md`. This PRD owns the console/product surface only; it does not replace the operator's existing Grafana dashboards.
 
 ---
 
@@ -17,7 +17,11 @@ Authoritative upstream docs:
 
 - `~/projects/mercury/infra/MONITORING.md` — live Prometheus/Grafana/Loki/Alertmanager stack, scrape jobs, exporters, access model.
 - `~/projects/mercury/infra/docs/AGENT_MONITORING.md` — incident-response runbook and stack health files.
-- `~/dev/specialists/docs/observability-metrics.md` — job/token/tool/model lifecycle metrics emitted by specialists.
+- `~/dev/specialists/docs/telemetry/forensic-event-contract.md` — canonical `xtrm.forensic.v1` envelope, redaction, correlation, identity layers, and per-job feed-event surfaces.
+- `~/dev/specialists/docs/telemetry/agentops-event-catalog.md` — bounded AgentOps event families/names and projection eligibility.
+- `~/dev/specialists/docs/telemetry/prometheus-projection-contract.md` — low-cardinality Prometheus metric names, labels, token directions, and forbidden labels.
+- `~/dev/specialists/docs/telemetry/prometheus-infra-console-handoff.md` — ownership split between specialists, mercury/infra, and Console.
+- `~/dev/specialists/docs/observability-metrics.md` — legacy sibling/reference for job/token/tool/model lifecycle metrics; not the primary contract when it conflicts with `docs/telemetry/*`.
 - `~/dev/specialists/docs/design/substrate/devops-platform-engineering-prd.md` — devops/platform specialist role that will author or operate dashboards.
 
 Research inputs in `~/second-mind/1-projects/xtrm/research/`:
@@ -31,6 +35,27 @@ Console rule: gitboard may own reusable panel primitives and a datasource
 abstraction, but metric definitions, scrape targets, alert thresholds, and
 specialist runtime event semantics must remain in their owning repos. If a panel
 needs a missing signal, create/route that work to infra or specialists first.
+
+Telemetry bridge rule: Console reads specialists through the shipped bridge
+surfaces: `sp forensic <job-id> --json`, `sp feed/log --json` forensic events,
+read-only `sp serve` job feed-event endpoints, and `sp metrics --prometheus` /
+`sp serve` `/metrics`. The canonical rich record is `xtrm.forensic.v1`; the
+canonical aggregate projection is Prometheus with low-cardinality labels only.
+Opaque IDs such as `job_id`, `bead_id`, `trace_id`, `span_id`,
+`tool_call_id`, `mcp_session_id`, and `jsonrpc_request_id` stay in forensic
+correlation/evidence, never Prometheus labels.
+
+Usage and cost rule: specialist usage is token-first. Console may display split
+token directions (`input`, `output`, `cache_read`, `cache_creation`,
+`reasoning`, `tool`) and a `usage_source`; USD is deferred/non-authoritative
+unless a row carries direct billing or explicit versioned pricing provenance.
+Existing `cost_usd` fields are legacy nullable compatibility data, not a budget
+source of truth.
+
+MCP rule: specialists currently ships MCP normalization/projection pre-wiring,
+not a live MCP runtime emitter. Console may render MCP signals supplied through
+forensic events or projected metrics, but it must label missing live MCP
+session/duration data as upstream-not-live rather than inventing local values.
 
 ---
 

@@ -73,7 +73,13 @@ CREATE TABLE IF NOT EXISTS specialist_events (
   duration_ms     INTEGER,
   tokens_in       INTEGER,
   tokens_out      INTEGER,
+  token_cache_read INTEGER,
+  token_cache_creation INTEGER,
+  token_reasoning INTEGER,
+  token_tool      INTEGER,
+  usage_source    TEXT,
   cost_usd        REAL,
+  cost_usd_provenance TEXT,
   status          TEXT,
   error_type      TEXT
 );
@@ -214,6 +220,14 @@ export function createDatabase(path: string): Database {
     // forge-nwdr: release polling watermark + ETag per repo
     "ALTER TABLE github_repo_poll_state ADD COLUMN last_release_published_at DATETIME",
     "ALTER TABLE github_repo_poll_state ADD COLUMN release_etag TEXT",
+    // forge-szc0: legacy specialist_events is token-first. cost_usd remains
+    // nullable/deferred and is authoritative only with explicit provenance.
+    "ALTER TABLE specialist_events ADD COLUMN token_cache_read INTEGER",
+    "ALTER TABLE specialist_events ADD COLUMN token_cache_creation INTEGER",
+    "ALTER TABLE specialist_events ADD COLUMN token_reasoning INTEGER",
+    "ALTER TABLE specialist_events ADD COLUMN token_tool INTEGER",
+    "ALTER TABLE specialist_events ADD COLUMN usage_source TEXT",
+    "ALTER TABLE specialist_events ADD COLUMN cost_usd_provenance TEXT",
   ];
   for (const sql of migrations) {
     try { db.exec(sql); } catch { /* column already exists */ }
