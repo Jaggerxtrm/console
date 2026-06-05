@@ -148,8 +148,8 @@ for those guards.
   instead of the retired Beadboard split.
 - `forge-benk.8`: remove tracked runtime artifacts without touching bridge
   schema or source ownership.
-- `forge-benk.10`: decide whether legacy `/api/beads` cache coverage is retired
-  or reintroduced as explicit compatibility.
+- `forge-benk.10`: legacy `/api/beads` cache coverage is retired; project reads
+  stay on `/api/substrate/*`.
 - `forge-szc0`: keep telemetry schema/docs aligned with upstream Specialists
   contracts; this boundary should remain stable while field-level schema docs
   evolve.

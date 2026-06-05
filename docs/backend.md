@@ -438,8 +438,8 @@ conditional guard matrix.
 1. `apps/gitboard` remains the service/package name until the Console migration
    track performs a deliberate rename.
 2. `substrate_*` tables are bridge/projection tables, not native Substrate.
-3. `/api/beads` is legacy unmounted code. Do not add it back accidentally while
-   fixing stale tests; `forge-benk.10` owns the decision.
+3. `/api/beads` is legacy unmounted code. `forge-benk.10` retired the stale
+   cache coverage in favor of `/api/substrate/*`.
 4. `/beadboard` is retired. Do not describe it as a current compatibility app
    unless a future compatibility bead reopens it.
 5. GitHub is a durable external adapter and should not be deleted with temporary
