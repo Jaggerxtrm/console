@@ -13,7 +13,7 @@ interface InFlightJobsResponse {
 const POLL_FAST_MS = 0;
 const POLL_SLOW_MS = 5000;
 
-export type LiveJob = SpecialistJob & { lastOutput?: string | null };
+export type LiveJob = SpecialistJob & { lastOutput?: string | null; lastEventAt?: string | null };
 
 export interface InFlightGroup {
   repoSlug: string;

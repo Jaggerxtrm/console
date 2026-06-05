@@ -57,13 +57,10 @@ export function summarize(entries: readonly Record<string, unknown>[], threshold
   for (const entry of entries) {
     const component = typeof entry.component === "string" ? entry.component : "unknown";
     const event = typeof entry.event === "string" ? entry.event : "unknown";
-    const duration = typeof entry.data === "object" && entry.data && typeof (entry.data as Record<string, unknown>).duration_ms === "number"
-      ? (entry.data as Record<string, unknown>).duration_ms
-      : undefined;
+    const data = typeof entry.data === "object" && entry.data ? entry.data as Record<string, unknown> : {};
+    const duration = typeof data.duration_ms === "number" ? data.duration_ms : undefined;
     const level = typeof entry.level === "string" ? entry.level : "info";
-    const outcome = typeof entry.data === "object" && entry.data && typeof (entry.data as Record<string, unknown>).outcome === "string"
-      ? (entry.data as Record<string, unknown>).outcome
-      : undefined;
+    const outcome = typeof data.outcome === "string" ? data.outcome : undefined;
     const isError = level === "error" || outcome === "error";
 
     bump(by_component, component, duration, isError);

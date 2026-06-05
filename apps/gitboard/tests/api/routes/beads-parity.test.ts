@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { BeadIssue } from "../../../../beadboard/src/types/beads.ts";
+import type { BeadIssue } from "../../../src/types/beads.ts";
 
 const setIntervalMock = vi.hoisted(() => vi.fn(() => ({ unref: vi.fn() })));
 const clearIntervalMock = vi.hoisted(() => vi.fn());
@@ -16,13 +16,13 @@ vi.mock("node:timers", () => ({
   clearInterval: clearIntervalMock,
 }));
 vi.mock("mysql2/promise", () => ({ default: {} }));
-vi.mock("../../../../beadboard/src/core/project-scanner.ts", () => ({
+vi.mock("../../../src/core/project-scanner.ts", () => ({
   ProjectScanner: class {
     scanDirectory = scanDirectoryMock;
     constructor() {}
   },
 }));
-vi.mock("../../../../beadboard/src/core/dolt-client.ts", () => ({
+vi.mock("../../../src/core/dolt-client.ts", () => ({
   DoltClient: class {
     getIssues = getIssuesMock;
     disconnect = disconnectMock;
@@ -45,6 +45,7 @@ beforeEach(async () => {
   setIntervalMock.mockReset();
   clearIntervalMock.mockReset();
   scanDirectoryMock.mockReset();
+  scanDirectoryMock.mockResolvedValue([]);
   getIssuesMock.mockReset();
   disconnectMock.mockReset();
   doltClientInstances.length = 0;
@@ -99,7 +100,7 @@ describe("createBeadsParityHarness", () => {
     expect(getIssuesMock).not.toHaveBeenCalled();
 
     const getIssuesSpy = vi.fn();
-    (firstClient as { getIssues: typeof getIssuesSpy }).getIssues = getIssuesSpy;
+    (firstClient as unknown as { getIssues: typeof getIssuesSpy }).getIssues = getIssuesSpy;
     await firstClient.getIssues({ limit: 50 });
     expect(getIssuesSpy).toHaveBeenCalledWith({ limit: 50 });
   });

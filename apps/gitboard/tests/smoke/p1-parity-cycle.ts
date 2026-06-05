@@ -1,6 +1,6 @@
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { Database } from "bun:sqlite";
+import { Database, type SQLQueryBindings } from "bun:sqlite";
 import { getRing, setDiskEnabled } from "../../src/core/logger.ts";
 import { createObservabilityParityHarness } from "../../src/server/observability/parity.ts";
 
@@ -87,7 +87,7 @@ async function main(): Promise<void> {
   console.log(log);
 }
 
-function readJobs(db: Database, whereSql: string, params: readonly unknown[] = []): Array<{ jobId: string | null; repoSlug: string; beadId: string; chainId: string | null; epicId: string | null; chainKind: string | null; status: string; updatedAt: string; specialist: string | null; lastOutput: string | null; turns: null; tools: null; model: null }> {
+function readJobs(db: Database, whereSql: string, params: SQLQueryBindings[] = []): Array<{ jobId: string | null; repoSlug: string; beadId: string; chainId: string | null; epicId: string | null; chainKind: string | null; status: string; updatedAt: string; specialist: string | null; lastOutput: string | null; turns: null; tools: null; model: null }> {
   const rows = db.prepare(`SELECT repo_slug, job_id, bead_id, chain_id, epic_id, chain_kind, status, updated_at, specialist, last_output FROM specialist_jobs ${whereSql}`).all(...params) as Array<Record<string, unknown>>;
   return rows.map((row) => ({
     jobId: row.job_id == null ? null : String(row.job_id),

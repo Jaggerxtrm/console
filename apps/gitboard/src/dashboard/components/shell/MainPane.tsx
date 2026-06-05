@@ -255,7 +255,7 @@ function GithubTabView({ repo, tab }: { repo: RepoNode; tab: GithubTab }) {
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!["activity", "prs", "issues", "releases"].includes(tab)) return;
+    if (!isGithubDataTab(tab)) return;
     if (data.loading || data.loadingTabs[tab]) return;
     const startMark = `tab_switch:${tab}:start`;
     const renderedMark = `tab_switch:${tab}:rendered`;
@@ -287,6 +287,10 @@ function NoSide({ side, repo }: { side: "github" | "beads"; repo: string }) {
 }
 
 function Empty({ children }: { children: ReactNode }) { return <p className="ide-empty-msg">{children}</p>; }
+
+function isGithubDataTab(tab: GithubTab): tab is GithubDataTab {
+  return tab === "activity" || tab === "prs" || tab === "issues" || tab === "releases";
+}
 
 function EmptyState({ repos, onPick, surface }: { repos: RepoNode[]; onPick: (r: string) => void; surface: "github" | "beads"; }) {
   const recent = useMemo(() => [...repos].filter((r) => (surface === "github" ? r.hasGithub : r.hasBeads)).filter((r) => r.lastActivityAt).sort((a, b) => (b.lastActivityAt ?? "").localeCompare(a.lastActivityAt ?? "")).slice(0, 5), [repos, surface]);

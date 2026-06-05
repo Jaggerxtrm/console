@@ -22,6 +22,7 @@ const MAX_BATCH = 50;
 
 type Snapshot = { issues: BeadIssue[]; deps: BeadDependency[]; memories: Memory[]; kv: Array<{ key: string; value: unknown; project_id: string }> };
 type PendingEvent = { projectId: string; source: "dolt" | "jsonl" | "sqlite"; version: string; event: string; data: Record<string, unknown> };
+type OptionalDoltHealth = { isBreakerOpen?: () => boolean; getCommitHash?: () => Promise<string | null> };
 
 export class BeadsChangeWatcher {
   private timer: ReturnType<typeof setTimeout> | null = null;
@@ -235,7 +236,7 @@ export class BeadsChangeWatcher {
 
   private async readIssues(project: BeadsProject): Promise<BeadIssue[]> {
     const client = project.doltPort ? new DoltClient({ host: "127.0.0.1", port: project.doltPort, database: project.doltDatabase }) : null;
-    if (client && !client.isBreakerOpen()) {
+    if (client && !((client as OptionalDoltHealth).isBreakerOpen?.() ?? false)) {
       try {
         return await client.getIssues({ limit: 1000 });
       } catch {
@@ -256,10 +257,10 @@ export class BeadsChangeWatcher {
     // before connecting so we don't pile pressure on an already-failing Dolt,
     // and (2) disconnects in a finally so each poll closes its own connection.
     const client = new DoltClient({ host: "127.0.0.1", port: project.doltPort, database: project.doltDatabase });
-    if (client.isBreakerOpen()) return null;
+    if ((client as OptionalDoltHealth).isBreakerOpen?.() ?? false) return null;
     try {
       await client.connect();
-      return await client.getCommitHash();
+      return await ((client as OptionalDoltHealth).getCommitHash?.() ?? Promise.resolve(null));
     } catch {
       return null;
     } finally {

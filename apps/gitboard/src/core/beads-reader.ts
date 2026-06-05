@@ -6,6 +6,25 @@ import { readFile } from "fs/promises";
 import type { Database } from "bun:sqlite";
 import type { BeadIssue, BeadDependency, Memory, Interaction, IssueFilters } from "../types/beads.ts";
 
+function parseJsonLine(line: string): Record<string, unknown> | null {
+  const trimmed = line.trim();
+  if (!trimmed) return null;
+  try {
+    const value = JSON.parse(trimmed);
+    return value && typeof value === "object" ? value as Record<string, unknown> : null;
+  } catch {
+    return null;
+  }
+}
+
+function stringOrNull(value: unknown): string | null {
+  return value == null ? null : String(value);
+}
+
+function stringOrUndefined(value: unknown): string | undefined {
+  return value == null ? undefined : String(value);
+}
+
 export class BeadsReader {
   constructor(private db: Database) {}
 
@@ -243,5 +262,66 @@ export class BeadsReader {
     if (lower.includes("gemini")) return "gemini";
     if (lower.includes("gpt")) return "other";
     return "other";
+  }
+
+  static parseIssueLine(line: string): BeadIssue[] {
+    const data = parseJsonLine(line);
+    if (!data || data._type === "memory" || data._type === "kv") return [];
+    const id = stringOrUndefined(data.id);
+    if (!id) return [];
+    const dependencies = Array.isArray(data.dependencies)
+      ? data.dependencies.flatMap((dep): BeadDependency[] => {
+        if (!dep || typeof dep !== "object") return [];
+        const row = dep as Record<string, unknown>;
+        const depId = stringOrUndefined(row.id ?? row.to_issue ?? row.depends_on_issue_id ?? row.depends_on_id);
+        if (!depId) return [];
+        return [{
+          id: depId,
+          title: String(row.title ?? ""),
+          status: String(row.status ?? "open") as BeadDependency["status"],
+          dependency_type: String(row.dependency_type ?? row.type ?? "blocks") as BeadDependency["dependency_type"],
+        }];
+      })
+      : [];
+    return [{
+      id,
+      title: String(data.title ?? id),
+      description: stringOrNull(data.description),
+      notes: stringOrNull(data.notes),
+      status: String(data.status ?? "open") as BeadIssue["status"],
+      priority: typeof data.priority === "number" ? data.priority as BeadIssue["priority"] : 2,
+      issue_type: String(data.issue_type ?? data.type ?? "task") as BeadIssue["issue_type"],
+      owner: stringOrNull(data.owner),
+      assignee: stringOrUndefined(data.assignee),
+      created_at: String(data.created_at ?? new Date(0).toISOString()),
+      created_by: stringOrNull(data.created_by),
+      updated_at: String(data.updated_at ?? data.created_at ?? new Date(0).toISOString()),
+      closed_at: stringOrUndefined(data.closed_at),
+      close_reason: stringOrUndefined(data.close_reason),
+      project_id: String(data.project_id ?? ""),
+      dependencies,
+      parent_id: stringOrUndefined(data.parent_id),
+      related_ids: Array.isArray(data.related_ids) ? data.related_ids.map(String) : [],
+      labels: Array.isArray(data.labels) ? data.labels.map(String) : [],
+      metadata: data.metadata,
+      formula_name: stringOrUndefined(data.formula_name),
+      template_name: stringOrUndefined(data.template_name),
+    }];
+  }
+
+  static parseMemoryLine(line: string): Memory[] {
+    const data = parseJsonLine(line);
+    if (!data) return [];
+    const id = stringOrUndefined(data.id);
+    if (!id) return [];
+    return [{
+      id,
+      content: String(data.content ?? ""),
+      type: String(data.type ?? "learned") as Memory["type"],
+      tags: Array.isArray(data.tags) ? data.tags.map(String) : [],
+      created_at: String(data.created_at ?? new Date(0).toISOString()),
+      issue_id: stringOrUndefined(data.issue_id),
+      project_id: String(data.project_id ?? ""),
+    }];
   }
 }
