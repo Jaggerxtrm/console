@@ -1,10 +1,27 @@
 # xtrm — Realtime Materialization Refactor
 
-**Status:** Draft / spec-ready
+**Status:** Historical redesign spec. Superseded in part by the implemented
+post-bridge architecture.
 **Scope:** Backend + client realtime spine. Restructures how `xtrm` ingests and serves Beads (issues) and Specialists (agent jobs) data.
 **Out of scope:** native substrate engine, issue authoring/write-back, multi-user.
 
 ---
+
+> Current-state reference: `docs/backend.md`.
+>
+> Operational ownership reference:
+> `docs/architecture/console-app-materializer-api-boundaries.md`.
+>
+> Telemetry/materialization SSOT:
+> `docs/architecture/console-telemetry-materialization.md`.
+>
+> This document is preserved because it records the reasoning that led to the
+> materializer bridge. Sections that say "current" were written before the
+> bridge landed and must be read as historical unless they match the current
+> references above. In particular, the current tree no longer has a load-bearing
+> top-level `apps/beadboard`, `/api/beads` is not mounted by
+> `apps/gitboard/src/api/server.ts`, `/beadboard` is retired/404 by smoke
+> contract, and `xtrm.sqlite` plus `materialization_state` now exist.
 
 ## 1. TL;DR
 
