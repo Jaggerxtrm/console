@@ -15,4 +15,5 @@ export type {
   ProjectSourceState,
   Status,
 } from "../../types/beads.ts";
+export type { OpenPr } from "./substrate-api.ts";
 export { substrateApi } from "./substrate-api.ts";

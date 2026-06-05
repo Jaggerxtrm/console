@@ -2,7 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import { emit, makeLogEntry } from "../logger.ts";
 import type { EventType } from "./event-types.ts";
-import type { LogComponent } from "../types/log.ts";
+import type { LogComponent } from "../../types/log.ts";
 
 type CorrelationContext = { correlation_id: string };
 
@@ -16,7 +16,7 @@ export async function correlate<T>(correlation_id: string, fn: () => T | Promise
   return await correlationStore.run({ correlation_id }, async () => await fn());
 }
 
-export async function withSpan<T>(component: string, event: EventType, attrs: SpanAttributes, fn: () => T | Promise<T>): Promise<T> {
+export async function withSpan<T>(component: LogComponent, event: EventType, attrs: SpanAttributes, fn: () => T | Promise<T>): Promise<T> {
   const startedAt = new Date().toISOString();
   const start = performance.now();
   const spanId = randomUUID();

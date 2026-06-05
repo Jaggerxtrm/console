@@ -1,5 +1,5 @@
 import { clearInterval, setInterval } from "node:timers";
-import { Database } from "bun:sqlite";
+import { Database, type SQLQueryBindings } from "bun:sqlite";
 import { createAttachPool } from "../../server/observability/attach-pool.ts";
 import { createObservabilityDao } from "../../server/observability/dao.ts";
 import { listRepos } from "../../server/observability/registry.ts";
@@ -141,7 +141,7 @@ function createShadowDao(db: Database) {
   };
 }
 
-function readJobs(db: Database, whereSql: string, params: readonly unknown[], alreadyOrdered: boolean): SpecialistJob[] {
+function readJobs(db: Database, whereSql: string, params: SQLQueryBindings[], alreadyOrdered: boolean): SpecialistJob[] {
   const rows = db.prepare(`SELECT repo_slug, job_id, bead_id, chain_id, epic_id, chain_kind, status, updated_at, specialist, last_output FROM specialist_jobs ${whereSql}`).all(...params) as Array<Record<string, unknown>>;
   const jobs = rows.map(mapRow);
   return alreadyOrdered ? jobs : jobs.slice().sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt));
@@ -209,7 +209,7 @@ function compareJobLists(
       continue;
     }
     const delta = diffJob(liveJob, shadowJob);
-    if (delta) pushDiff(diffs, checks, check, scope, "field_delta", "warn", key, delta.live, delta.shadow, delta.path);
+    if (delta) pushDiff(diffs, checks, check, scope, "field_delta", "warn", `${key}.${delta.path}`, delta.live, delta.shadow);
   }
 
   for (const [key, shadowJob] of shadowMap) {

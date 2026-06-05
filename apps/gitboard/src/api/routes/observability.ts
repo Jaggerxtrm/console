@@ -23,7 +23,14 @@ function getDefaultDao() {
 }
 
 function singleDbPool(db: Database) {
-  return { withAttached<T>(fn: (db: Database, attached: ReadonlyArray<{ alias: string; slug: string }>) => T): T { return fn(db, [{ alias: "xtrm", slug: "xtrm" }]); } };
+  return {
+    withAttached<T>(fn: (db: Database, attached: ReadonlyArray<{ alias: string; slug: string }>) => T): T {
+      return fn(db, [{ alias: "xtrm", slug: "xtrm" }]);
+    },
+    getCoverage() {
+      return { attached: ["xtrm"], skipped: [], totalDiscovered: 1 };
+    },
+  };
 }
 
 function parseRange(value: string | undefined): TimeRange {

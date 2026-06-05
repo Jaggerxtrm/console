@@ -1,8 +1,10 @@
 import { Hono } from "hono";
 import type { ParityHarness } from "../../server/observability/parity.ts";
 
-export function createInternalParityRouter(): Hono {
-  const app = new Hono();
+type InternalParityVariables = { parityHarness: ParityHarness | null };
+
+export function createInternalParityRouter(): Hono<{ Variables: InternalParityVariables }> {
+  const app = new Hono<{ Variables: InternalParityVariables }>();
 
   app.get("/parity/observability", (c) => {
     if (!isLocalhost(c.req.header("host") ?? "")) return c.json({ error: "forbidden" }, 403);

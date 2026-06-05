@@ -5,7 +5,6 @@ import { SpecialistOwnerBadge } from "../../../../src/dashboard/components/beads
 import type { SpecialistOwnershipJob } from "../../../../src/dashboard/hooks/useSpecialistOwnership.ts";
 
 const job: SpecialistOwnershipJob = {
-  beadId: "B-123",
   jobId: "job-abcdef123456",
   role: "executor",
   state: "running",
