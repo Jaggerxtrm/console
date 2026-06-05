@@ -28,7 +28,7 @@ the running Gitboard service on Tailscale remains stable.
 |---|---|---|---|
 | `apps/gitboard` | Running | `package.json` has `dev`, `start`, `build:dashboard`; `src/index.ts` starts Bun server and GitHub poller | Keep as production/reference app until `apps/console` scaffold proves parity |
 | Native systemd deploy | Running | `docs/deployment.md` documents `gitboard.service` with `HOST` and `PORT=3030` | Keep; this is the primary deploy path |
-| Tailscale `:3030` URL | Running | `README.md`, `docs/deployment.md`, `docs/backend.md` describe tailnet access | Keep; use for live verification |
+| Tailscale `:3030` URL | Running | `README.md` and `docs/deployment.md` describe tailnet access; `docs/backend.md` is stale architecture evidence only | Keep; use for live verification |
 | GitHub poller/store | Running adapter | `src/index.ts` starts `GithubPoller` unless `SKIP_GITHUB_POLLER=1`; `src/api/routes/github.ts` mounted | Keep; durable external adapter, not temporary Beads bridge |
 | Materializer core | Running bridge | `src/api/server.ts` creates `Materializer`, registers observability adapters, and starts trigger watchers | Keep; temporary bridge for Beads/specialists, durable shape only where upstream is external |
 | Beads bridge tables/API | Running bridge | `/api/substrate`, `/api/feed`, `/api/console/graph`, `substrate_*` tables and materializer adapters | Keep but document as bridge/projection legacy until Substrate native state arrives |
@@ -38,7 +38,8 @@ the running Gitboard service on Tailscale remains stable.
 | `packages/api-client` | Shared package | Workspace package with API client build/test scripts | Keep; review usage during scaffold |
 | `packages/html-preview` | Dormant/tooling | Has CLI package and README; `.worktrees/forge-a3m2-html-preview` exists but is ignored | Investigate before removal; likely tooling, not runtime |
 | Dockerfile / Compose | Dormant reproduction path | README and `docs/deployment.md` mark Docker experimental/not primary | Keep dormant unless a follow-up decides to remove or refresh |
-| `/beadboard` route/docs | Legacy compatibility | `server.ts` says frontend deprecated and `/beadboard` redirects to `/gitboard`; docs still cite removed `apps/beadboard` paths | Update docs; remove only after consumer count is zero |
+| `/beadboard` route/docs | Retired legacy surface | Smoke coverage expects `/beadboard` to return 404; docs still cite removed `apps/beadboard` paths | Keep retired unless a deliberate compatibility bead reopens it |
+| `/api/beads` route file | Legacy unmounted code | `src/api/routes/beads.ts` exists, but `src/api/server.ts` does not mount `/api/beads`; stale tests still reference the old API | Do not treat as running bridge; resolve under the legacy cache follow-up before adding guards |
 | `apps/console` | Future migration target | `forge-9xet.2` exists but package is not present yet | Do not create in this inventory task |
 | Tracked runtime artifacts | Cleanup candidate | `git ls-files` shows `apps/gitboard/data/audit.sqlite` and `apps/gitboard/logs/2026-05-19.jsonl` tracked despite ignore rules | Remove in a dedicated cleanup bead with rollback-safe validation |
 
@@ -59,6 +60,8 @@ the running Gitboard service on Tailscale remains stable.
     observability watcher, and optional parity harnesses.
   - Serves production dashboard assets under `/gitboard` and redirects `/` to
     `/gitboard`.
+  - Does not mount the legacy `beadsRoutes` router; `/api/beads/*` should stay
+    retired unless a follow-up explicitly reinstates compatibility.
 
 ## Drift And Cleanup Candidates
 
@@ -79,6 +82,8 @@ the running Gitboard service on Tailscale remains stable.
    - `docs/backend.md` still says Gitboard imports Beadboard control-plane code
      from `apps/beadboard`, but the current source tree has no top-level
      `apps/beadboard`.
+   - Treat `docs/backend.md` as drift evidence until refreshed, not as a
+     runtime source of truth for `/api/beads` or Beadboard routing.
    - `docs/backend-redesign.md` remains useful as historical redesign context,
      but several "current code" statements are now obsolete after the
      materializer/substrate bridge landed.
@@ -86,6 +91,8 @@ the running Gitboard service on Tailscale remains stable.
 4. Tracked runtime artifacts should be removed carefully.
    - `apps/gitboard/data/audit.sqlite` is tracked.
    - `apps/gitboard/logs/2026-05-19.jsonl` is tracked.
+   - `apps/gitboard/logs/2026-05-24.jsonl` may exist locally, but is not
+     tracked as of the review verification.
    - `.gitignore` already ignores broad `data/`, `logs/`, `*.db`, and
      `*.log`, so this is likely historical residue.
 

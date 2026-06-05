@@ -66,6 +66,59 @@ Assertions protected:
 - malformed rows are redacted/materializer-owned;
 - graph/substrate reads stay state-backed and repo-scoped.
 
+## Conditional API-Adjacent Guards
+
+Run these only when the touched code can affect the named mounted surface. They
+are not part of the required baseline because they are broader than the core
+materializer/feed contract.
+
+WebSocket routing or realtime delivery:
+
+```bash
+bun run --cwd apps/gitboard test -- \
+  tests/api/ws/channels.test.ts \
+  tests/api/ws/handler.test.ts \
+  tests/api/ws/realtime-contract.test.ts
+```
+
+GitHub adapter, poller, or route behavior:
+
+```bash
+bun run --cwd apps/gitboard test -- \
+  tests/api/routes/github.test.ts \
+  tests/api/routes/github-detail-cache.test.ts \
+  tests/api/routes/github-releases.test.ts \
+  tests/core/github-poller.test.ts \
+  tests/core/github-poller-loop.test.ts \
+  tests/core/github-store.test.ts \
+  tests/core/github-discover.test.ts
+```
+
+Console shell, terminal, or local provider policy:
+
+```bash
+bun run --cwd apps/gitboard test -- \
+  tests/api/routes/shell.test.ts \
+  tests/api/routes/terminal.test.ts \
+  tests/api/terminal/provider-registry.test.ts \
+  tests/core/shell-provider-policy.test.ts \
+  tests/core/local-pty-provider.test.ts
+```
+
+Sources, scanner, or fold migration:
+
+```bash
+bun run --cwd apps/gitboard test -- \
+  tests/api/routes/sources.test.ts \
+  tests/api/routes/sources-policy.test.ts \
+  tests/core/unified-scanner.test.ts \
+  tests/core/fold-gitboard-sqlite.test.ts
+```
+
+Keep stale `/api/beads` cache coverage out of this guard until `forge-benk.10`
+decides whether the legacy route stays retired or gets an explicit compatibility
+adapter.
+
 ## Prometheus And Operations Cardinality
 
 Run when touching operations metrics, telemetry docs, fixtures, labels, or any
