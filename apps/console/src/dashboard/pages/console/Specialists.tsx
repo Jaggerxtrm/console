@@ -16,7 +16,7 @@ export function Specialists() {
   const repos = useShellStore(selectRepos);
   const repoScope = useMemo(() => getSpecialistRepoScope(selectionState, repos), [repos, selectionState]);
   const chainRepoKeys = repoScope.repo ? repoScope.keys : ["__no_selected_project__"];
-  const graphProjectId = repoScope.repo?.beadsProjectId ?? repoScope.repo?.beadsProjectName ?? null;
+  const graphProjectId = repoScope.repo?.beadsProjectId ?? null;
   const { chains, loading, error } = useChains({ repoKeys: chainRepoKeys });
   const graph = useGraphData(graphProjectId);
   const [selectedChainId, setSelectedChainId] = useState<string | null>(null);

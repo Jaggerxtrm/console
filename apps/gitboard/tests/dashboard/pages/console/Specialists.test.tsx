@@ -10,13 +10,16 @@ const useChainsMock = vi.fn((_options?: UseChainsOptions) => ({ chains: [
   chain({ chainId: "chain-b", rootBeadId: "forge-2", title: "chain-b", status: "done" }),
   chain({ chainId: "chain-c", rootBeadId: "forge-3", title: "chain-c", status: "waiting" }),
 ], loading: false, error: null }));
+const useGraphDataMock = vi.fn();
 
 vi.mock("../../../../src/dashboard/hooks/useChains.ts", () => ({
   useChains: (options?: UseChainsOptions) => useChainsMock(options),
 }));
 
 vi.mock("../../../../src/dashboard/hooks/useGraphData.ts", () => ({
-  useGraphData: () => ({
+  useGraphData: (projectId: string | null) => {
+    useGraphDataMock(projectId);
+    return {
     data: {
       project_id: "project-a",
       repo_slug: "repo-a",
@@ -31,7 +34,8 @@ vi.mock("../../../../src/dashboard/hooks/useGraphData.ts", () => ({
     loading: false,
     error: null,
     reload: vi.fn(),
-  }),
+    };
+  },
 }));
 
 vi.mock("../../../../src/dashboard/lib/client-log.ts", () => ({
@@ -45,6 +49,7 @@ vi.mock("../../../../src/dashboard/pages/console/specialists/ChainDetailPane.tsx
 describe("Specialists page", () => {
   beforeEach(async () => {
     useChainsMock.mockClear();
+    useGraphDataMock.mockClear();
     const { useShellStore } = await import("../../../../src/dashboard/stores/shell.ts");
     act(() => {
       useShellStore.getState().setRepos([
@@ -74,6 +79,8 @@ describe("Specialists page", () => {
     render(<Specialists />);
 
     expect(useChainsMock).toHaveBeenCalledWith(expect.objectContaining({ repoKeys: expect.arrayContaining(["repo-a", "project-a"]) }));
+    expect(useGraphDataMock).toHaveBeenCalledWith("project-a");
+    expect(useGraphDataMock).not.toHaveBeenCalledWith("repo-a");
     expect(screen.getByText("repo-a")).toBeInTheDocument();
     expect(screen.getByTestId("chain-detail")).toHaveTextContent("chain-a");
     await waitFor(() => expect(logClientEvent).toHaveBeenCalledWith("cockpit.list.first_paint", expect.objectContaining({ rowCount: 3 })));
