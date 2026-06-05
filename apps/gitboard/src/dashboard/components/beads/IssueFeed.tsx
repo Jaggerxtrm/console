@@ -72,6 +72,7 @@ export function IssueFeed({ issues, closedIssues = [], selectedIssueId, selected
   const parentRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const nextFocusSource = useRef<"click" | "hotkey" | "tab">("tab");
+  const closedToggleTouchedRef = useRef(false);
   const [showOpen, setShowOpen] = useState(true);
   const [showClosed, setShowClosed] = useState(false);
   const [query, setQuery] = useState("");
@@ -102,6 +103,8 @@ export function IssueFeed({ issues, closedIssues = [], selectedIssueId, selected
     () => visibleClosedIssues.filter((issue) => !getParentId(issue, issueById)).sort((a, b) => getCompletedAt(b).localeCompare(getCompletedAt(a))),
     [issueById, visibleClosedIssues],
   );
+  const openDependencyCount = useMemo(() => visibleIssues.reduce((count, issue) => count + countDependencies(issue), 0), [visibleIssues]);
+  const closedDependencyCount = useMemo(() => visibleClosedIssues.reduce((count, issue) => count + countDependencies(issue), 0), [visibleClosedIssues]);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -139,6 +142,13 @@ export function IssueFeed({ issues, closedIssues = [], selectedIssueId, selected
       logClientEvent("feed.search.identity_preserved", { queryUnchanged: true, issuesIdentity: `${issues.length}:${closedIssues.length}` });
     }
   }, [closedIssues, issues, query, searchClosed.issues, searchOpen.issues]);
+
+  useEffect(() => {
+    if (closedToggleTouchedRef.current || showClosed || openDependencyCount > 0 || closedDependencyCount === 0) return;
+    setShowClosed(true);
+    logClientEvent("feed.closed_history.auto_expanded", { closedIssues: visibleClosedIssues.length, dependencyCount: closedDependencyCount });
+  }, [closedDependencyCount, openDependencyCount, showClosed, visibleClosedIssues.length]);
+
   const items = useMemo<FeedItem[]>(() => {
     const next: FeedItem[] = [{ kind: "in-progress-header", count: inProgressIssues.length }];
     if (inProgressIssues.length === 0) next.push({ kind: "in-progress-empty" });
@@ -229,7 +239,7 @@ export function IssueFeed({ issues, closedIssues = [], selectedIssueId, selected
                   <span>open:{item.count}, ready:{item.readyCount}</span>
                 </button>
               ) : item.kind === "closed-header" ? (
-                <button type="button" className="feed-section-title feed-section-toggle" onClick={() => setShowClosed((value) => !value)} aria-expanded={showClosed}>
+                <button type="button" className="feed-section-title feed-section-toggle" onClick={() => { closedToggleTouchedRef.current = true; setShowClosed((value) => !value); }} aria-expanded={showClosed}>
                   {showClosed ? <ChevronDownIcon size={12} aria-hidden="true" /> : <ChevronRightIcon size={12} aria-hidden="true" />}
                   <span>closed:{item.count}</span>
                 </button>

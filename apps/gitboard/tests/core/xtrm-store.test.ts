@@ -72,4 +72,25 @@ describe("createXtrmDatabase", () => {
 
     db.close();
   });
+
+  it("creates telemetry bridge tables and specialist metric columns", () => {
+    const db = createXtrmDatabase(dbPath);
+
+    const jobColumns = db.query<{ name: string }, []>("PRAGMA table_info('specialist_jobs')").all().map((row) => row.name);
+    for (const column of ["turns", "tools", "model", "token_input", "token_output", "token_cache_read", "token_cache_creation", "token_reasoning", "token_tool", "usage_source"]) {
+      expect(jobColumns).toContain(column);
+    }
+
+    const eventColumns = db.query<{ name: string }, []>("PRAGMA table_info('xtrm_forensic_events')").all().map((row) => row.name);
+    for (const column of ["source_key", "source_event_id", "repo_slug", "job_id", "seq", "t_unix_ms", "schema_version", "resource_json", "correlation_json", "body_json", "redaction_json", "envelope_json"]) {
+      expect(eventColumns).toContain(column);
+    }
+
+    const evidenceColumns = db.query<{ name: string }, []>("PRAGMA table_info('xtrm_evidence_refs')").all().map((row) => row.name);
+    for (const column of ["source_key", "repo_slug", "evidence_id", "evidence_kind", "job_id", "issue_id", "ref_json"]) {
+      expect(evidenceColumns).toContain(column);
+    }
+
+    db.close();
+  });
 });

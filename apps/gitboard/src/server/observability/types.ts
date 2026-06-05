@@ -17,6 +17,15 @@ export interface SpecialistJob {
   /** Model string from specialist_job_metrics.model (e.g.
    *  "openai-codex/gpt-5.4-mini"). */
   model: string | null;
+  tokenUsage?: {
+    input: number;
+    output: number;
+    cacheRead: number;
+    cacheCreation: number;
+    reasoning: number;
+    tool: number;
+    source: string | null;
+  } | null;
 }
 
 export interface SpecialistChain extends SpecialistJob {

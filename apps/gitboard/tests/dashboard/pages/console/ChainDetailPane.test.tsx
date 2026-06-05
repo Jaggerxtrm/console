@@ -21,7 +21,10 @@ beforeEach(() => {
           event_name: "participant_joined",
           resource: { participant_kind: "agent", participant_role: "executor" },
           correlation: { job_id: "job-done" },
+          body: { evidence_refs: [{ kind: "commit", id: "commit-1", sha: "abc123" }, { kind: "pr", id: "pr-4", number: 4 }] },
           redaction: { status: "redacted" },
+          trace: { trace_id: "trace-1", span_id: "span-1" },
+          links: [{ kind: "dashboard", href: "/dash/job-done" }],
         },
       ] }), { status: 200 });
     }
@@ -75,6 +78,9 @@ describe("ChainDetailPane", () => {
     expect(screen.getByText("agent/executor").textContent).toBe("agent/executor");
     expect(screen.getByText("job:job-done").textContent).toBe("job:job-done");
     expect(screen.getByText("redacted").textContent).toBe("redacted");
+    expect(screen.getByText("evidence: commit:commit-1, pr:pr-4")).toBeInTheDocument();
+    expect(screen.getByText("trace")).toBeInTheDocument();
+    expect(screen.getByText("links:1")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /run result/i })).toBeTruthy();
   });
 

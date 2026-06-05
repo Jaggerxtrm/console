@@ -136,10 +136,22 @@ function parseLiveIssueLine(line: string): BeadIssue[] {
       labels: Array.isArray(data.labels) ? data.labels.filter((label): label is string => typeof label === "string") : [],
       related_ids: Array.isArray(data.related_ids) ? data.related_ids.filter((id): id is string => typeof id === "string") : [],
       parent_id: data.parent_id == null ? undefined : String(data.parent_id),
+      metadata: data.metadata,
+      formula_name: pickName(data.formula_name ?? data.formula),
+      template_name: pickName(data.template_name ?? data.template),
     }];
   } catch {
     return [];
   }
+}
+
+function pickName(value: unknown): string | undefined {
+  if (typeof value === "string") return value;
+  if (value && typeof value === "object") {
+    const name = (value as Record<string, unknown>).name;
+    if (typeof name === "string") return name;
+  }
+  return undefined;
 }
 
 function parseLiveDependency(value: unknown, issueId: string): BeadDependency[] {

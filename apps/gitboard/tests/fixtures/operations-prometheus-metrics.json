@@ -1,0 +1,41 @@
+{
+  "description": "Console Operations Prometheus fixtures. These are low-cardinality projections only; drilldown IDs live in state.db forensic/evidence rows.",
+  "metrics": [
+    {
+      "name": "xtrm_jobs_total",
+      "labels": ["repo", "specialist", "status", "source"]
+    },
+    {
+      "name": "xtrm_job_duration_seconds",
+      "labels": ["repo", "specialist", "status", "source"]
+    },
+    {
+      "name": "xtrm_job_wait_seconds",
+      "labels": ["repo", "specialist", "status", "source"]
+    },
+    {
+      "name": "xtrm_job_state",
+      "labels": ["repo", "specialist", "state", "source"]
+    },
+    {
+      "name": "xtrm_llm_tokens_total",
+      "labels": ["repo", "specialist", "model", "token_kind", "source"]
+    },
+    {
+      "name": "xtrm_chains_total",
+      "labels": ["repo", "chain_kind", "status", "source"]
+    },
+    {
+      "name": "xtrm_chain_duration_seconds",
+      "labels": ["repo", "chain_kind", "status", "source"]
+    },
+    {
+      "name": "xtrm_gate_verdicts_total",
+      "labels": ["repo", "gate_kind", "verdict", "source"]
+    },
+    {
+      "name": "xtrm_evidence_refs_total",
+      "labels": ["repo", "evidence_kind", "source"]
+    }
+  ]
+}

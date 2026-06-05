@@ -62,6 +62,32 @@ describe("IssueFeed specialist chip wiring", () => {
   });
 });
 
+describe("IssueFeed dependency history", () => {
+  it("auto-expands closed history when only closed issues have dependency metadata", async () => {
+    render(
+      <IssueFeed
+        issues={[issue("unitAI-open")]}
+        closedIssues={[{
+          ...issue("unitAI-closed"),
+          title: "Closed source",
+          status: "closed",
+          dependencies: [{ id: "unitAI-target", title: "Closed target", status: "closed", dependency_type: "blocks" }],
+        }]}
+        selectedIssueId={null}
+        selectedIssueDetail={null}
+        loadingDetailId={null}
+        onIssueSelect={vi.fn()}
+        onIssueOpen={vi.fn()}
+        projectId="specialists"
+      />,
+    );
+
+    expect(await screen.findByText("Closed source")).toBeInTheDocument();
+    expect(screen.getByText("unitAI-target")).toBeInTheDocument();
+    expect(logClientEvent).toHaveBeenCalledWith("feed.closed_history.auto_expanded", expect.objectContaining({ dependencyCount: 1 }));
+  });
+});
+
 function issue(id: string): BeadIssue {
   return {
     id,

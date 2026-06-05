@@ -251,7 +251,10 @@ describe("GET /api/specialists/jobs/:job_id/feed-events", () => {
     const res = await app.fetch(new Request("http://localhost/api/specialists/jobs/job-1/feed-events", { headers: { "x-gitboard-shell-token": "test-admin-token" } }));
 
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ events: [{ schema_version: 1, event_family: "chain", event_name: "participant_joined", resource: { participant_kind: "agent", participant_role: "executor" }, correlation: { job_id: "job-1" }, redaction: { status: "redacted" } }] });
+    expect(await res.json()).toEqual({ events: [
+      expect.objectContaining({ schema_version: "xtrm.forensic.v1", event_family: "job", event_name: "job.started", seq: 1, body: { mode: "test" } }),
+      expect.objectContaining({ schema_version: "xtrm.forensic.v1", event_family: "job", event_name: "job.completed", seq: 2, body: { elapsed_ms: 15 } }),
+    ] });
   });
 
   it("returns 404 when job cannot be resolved to a repo", async () => {
@@ -261,12 +264,14 @@ describe("GET /api/specialists/jobs/:job_id/feed-events", () => {
     expect(res.status).toBe(404);
   });
 
-  it("strips extra keys from forensic payload", async () => {
+  it("preserves canonical envelope fields while dropping unknown top-level keys", async () => {
     const app = createResultApp(true, { extraPayload: true });
     const res = await app.fetch(new Request("http://localhost/api/specialists/jobs/job-1/feed-events", { headers: { "x-gitboard-shell-token": "test-admin-token" } }));
 
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ events: [{ schema_version: 1, event_family: "chain", event_name: "participant_joined", resource: { participant_kind: "agent", participant_role: "executor" }, correlation: { job_id: "job-1" }, redaction: { status: "redacted" } }] });
+    const json = await res.json() as { events: Array<Record<string, unknown>> };
+    expect(json.events[0]).toMatchObject({ event_name: "job.started", body: { mode: "test" }, trace: { trace_id: "trace-1" }, links: { dashboard: "/console" } });
+    expect(json.events[0]).not.toHaveProperty("secret");
   });
 });
 
@@ -517,10 +522,21 @@ function createResultApp(_success = false, options: { extraPayload?: boolean } =
       payload TEXT,
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
+    CREATE TABLE xtrm_forensic_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      repo_slug TEXT NOT NULL,
+      job_id TEXT,
+      t_unix_ms INTEGER,
+      seq INTEGER,
+      envelope_json TEXT
+    );
   `);
   xtrmDb.prepare("INSERT INTO specialist_job_events (repo_slug, job_id, event_type, payload, created_at) VALUES (?, ?, ?, ?, ?)").run("repo-a", "job-1", "result", "# done", "2026-01-01T00:00:00.000Z");
   xtrmDb.prepare("INSERT INTO specialist_job_events (repo_slug, job_id, event_type, payload, created_at) VALUES (?, ?, ?, ?, ?)").run("repo-a", "job-1", "forensic_event", JSON.stringify(eventPayload(options.extraPayload)), "2026-01-01T00:00:01.000Z");
   xtrmDb.prepare("INSERT INTO specialist_job_events (repo_slug, job_id, event_type, payload, created_at) VALUES (?, ?, ?, ?, ?)").run("repo-b", "job-1", "forensic_event", JSON.stringify({ schema_version: 9, event_family: "mix", event_name: "other" }), "2026-01-01T00:00:02.000Z");
+  xtrmDb.prepare("INSERT INTO xtrm_forensic_events (repo_slug, job_id, t_unix_ms, seq, envelope_json) VALUES (?, ?, ?, ?, ?)").run("repo-a", "job-1", 20, 2, JSON.stringify(forensicEnvelope("job.completed", 2, { elapsed_ms: 15 }, options.extraPayload)));
+  xtrmDb.prepare("INSERT INTO xtrm_forensic_events (repo_slug, job_id, t_unix_ms, seq, envelope_json) VALUES (?, ?, ?, ?, ?)").run("repo-a", "job-1", 10, 1, JSON.stringify(forensicEnvelope("job.started", 1, { mode: "test" }, options.extraPayload)));
+  xtrmDb.prepare("INSERT INTO xtrm_forensic_events (repo_slug, job_id, t_unix_ms, seq, envelope_json) VALUES (?, ?, ?, ?, ?)").run("repo-b", "job-1", 5, 1, JSON.stringify(forensicEnvelope("job.started", 1, { mode: "wrong-repo" })));
   const app = new Hono();
   app.route("/api/specialists", createSpecialistsRouter({
     jobsByBead: () => [],
@@ -529,6 +545,26 @@ function createResultApp(_success = false, options: { extraPayload?: boolean } =
     chainById: () => [],
   }, xtrmDb, { listRepos: () => [{ repoSlug: "repo-a", repoPath: join(dir, "repo-a"), dbPath: join(dir, "repo-a.db"), mtimeMs: 0 }, { repoSlug: "repo-b", repoPath: join(dir, "repo-b"), dbPath: join(dir, "repo-b.db"), mtimeMs: 0 }], getEpoch: () => 0 }));
   return app;
+}
+
+function forensicEnvelope(eventName: string, seq: number, body: Record<string, unknown>, extraPayload = false): Record<string, unknown> {
+  return {
+    schema_version: "xtrm.forensic.v1",
+    timestamp: `2026-01-01T00:00:0${seq}.000Z`,
+    t_unix_ms: seq * 10,
+    seq,
+    severity: "info",
+    event_family: eventName.split(".")[0],
+    event_name: eventName,
+    event_version: 1,
+    resource: { participant_kind: "specialist", participant_role: "executor" },
+    correlation: { job_id: "job-1", trace_id: "trace-1" },
+    body,
+    redaction: { status: "clean" },
+    trace: extraPayload ? { trace_id: "trace-1" } : undefined,
+    links: extraPayload ? { dashboard: "/console" } : undefined,
+    secret: extraPayload ? "top-secret" : undefined,
+  };
 }
 
 function createUnresolvedFeedEventsApp(): Hono {
@@ -582,7 +618,24 @@ function seedRepo(path: string, rows: SeedRow[], schemaOk: boolean): Database {
         chain_kind TEXT,
         status TEXT NOT NULL,
         updated_at_ms INTEGER NOT NULL,
-        specialist TEXT
+        specialist TEXT,
+        last_output TEXT
+      );
+      CREATE TABLE specialist_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        job_id TEXT,
+        seq INTEGER,
+        specialist TEXT,
+        bead_id TEXT,
+        t INTEGER,
+        type TEXT,
+        event_json TEXT
+      );
+      CREATE TABLE specialist_job_metrics (
+        job_id TEXT PRIMARY KEY,
+        total_turns INTEGER,
+        total_tools INTEGER,
+        model TEXT
       );
     `);
     const insert = db.prepare("INSERT INTO specialist_jobs (job_id, bead_id, chain_id, epic_id, chain_kind, status, updated_at_ms, specialist) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");

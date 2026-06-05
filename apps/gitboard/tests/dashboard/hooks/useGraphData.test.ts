@@ -29,6 +29,7 @@ const graph = (id: string): GraphResponse => ({
   project_id: id,
   repo_slug: id,
   generated_at: "2026-05-20T00:00:00.000Z",
+  freshness: "fresh",
   nodes: [],
   edges: [],
   specialists: [],
@@ -44,7 +45,11 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
-  vi.clearAllTimers();
+  try {
+    vi.clearAllTimers();
+  } catch {
+    // Some tests never switch to fake timers.
+  }
   vi.useRealTimers();
   (globalThis as any).fetch = originalFetch as any;
 });
@@ -96,4 +101,32 @@ describe("useGraphData", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls[1][0]).not.toContain("refresh=true");
     expect(fetchMock.mock.calls[1][0]).toContain("include_closed=true");
-  });});
+  });
+
+  it("refreshes when materializer sync hint names the selected project", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => graph("gitboard-materialized") })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ ...graph("gitboard-materialized"), generated_at: "2026-05-20T00:00:01.000Z" }) });
+    (globalThis as any).fetch = fetchMock as any;
+    renderHook(() => useGraphData("gitboard-materialized"));
+    await act(async () => { await Promise.resolve(); });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      wsHandlerByChannel.get("substrate:changes")?.({
+        type: "event",
+        channel: "substrate:changes",
+        event: "substrate:sync_hint",
+        data: { source_key: "beads:gitboard-materialized", projectId: "gitboard-materialized", project_id: "gitboard-materialized" },
+      });
+      vi.advanceTimersByTime(1500);
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1][0]).toContain("project_id=gitboard-materialized");
+  });
+});

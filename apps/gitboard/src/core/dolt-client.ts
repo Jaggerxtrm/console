@@ -16,6 +16,7 @@ export interface DoltConfig {
 export class DoltClient {
   private connection: Connection | null = null;
   private config: DoltConfig;
+  private dependencyColumns: Set<string> | null = null;
 
   constructor(config: DoltConfig) {
     this.config = {
@@ -132,11 +133,12 @@ export class DoltClient {
 
   private async getDependenciesBatch(issueIds: string[]): Promise<Map<string, BeadDependency[]>> {
     const placeholders = issueIds.map(() => "?").join(", ");
+    const { issueColumn, targetColumn, typeColumn } = dependencyColumnMapping(await this.getDependencyColumns());
     const [rows] = await this.connection!.execute<RowDataPacket[]>(
-      `SELECT d.issue_id, d.depends_on_id as id, d.type as dependency_type, i.title, i.status
+      `SELECT d.${issueColumn} AS issue_id, d.${targetColumn} as id, d.${typeColumn} as dependency_type, i.title, i.status
        FROM dependencies d
-       JOIN issues i ON d.depends_on_id = i.id
-       WHERE d.issue_id IN (${placeholders})`,
+       JOIN issues i ON d.${targetColumn} = i.id
+       WHERE d.${issueColumn} IN (${placeholders})`,
       issueIds,
     );
     const byIssue = new Map<string, BeadDependency[]>();
@@ -151,6 +153,13 @@ export class DoltClient {
       byIssue.set(row.issue_id, list);
     }
     return byIssue;
+  }
+
+  private async getDependencyColumns(): Promise<Set<string>> {
+    if (this.dependencyColumns) return this.dependencyColumns;
+    const [rows] = await this.connection!.execute<RowDataPacket[]>("SHOW COLUMNS FROM dependencies");
+    this.dependencyColumns = new Set(rows.map((row) => String(row.Field)));
+    return this.dependencyColumns;
   }
 
   private async getLabelsBatch(issueIds: string[]): Promise<Map<string, string[]>> {
@@ -242,6 +251,19 @@ export class DoltClient {
     };
   }
 }
+
+export function dependencyColumnMapping(schema: Set<string>): { issueColumn: string; targetColumn: string; typeColumn: string } {
+  return {
+    issueColumn: schema.has("issue_id") ? "issue_id" : "from_issue",
+    targetColumn: schema.has("depends_on_issue_id")
+      ? "depends_on_issue_id"
+      : schema.has("depends_on_id")
+        ? "depends_on_id"
+        : "to_issue",
+    typeColumn: schema.has("type") ? "type" : "dependency_type",
+  };
+}
+
 export function doltPoolKey(config: DoltConfig): string {
   return `${config.host}:${config.port}/${config.database ?? "dolt"}/${config.user ?? "root"}`;
 }

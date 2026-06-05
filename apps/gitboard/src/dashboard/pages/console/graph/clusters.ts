@@ -1,5 +1,5 @@
 // Structural pass over the raw graph data per operator spec:
-//   1. Filter into buckets (closed / superseded / deferred-P3+).
+//   1. Filter into buckets (closed orphans / superseded / deferred-P3+).
 //   2. Compute connected components on the remaining active set (any edge type).
 //   3. Sort components by P0-presence, then node count, then edge count.
 //   4. 1-node components → orphan list.
@@ -29,7 +29,7 @@ export interface PartitionedGraph {
   wip: GraphNode[];          // in_progress AND any node with a running specialist
   clusters: ClusterGroup[];  // ≥2-node connected components, sorted by importance
   orphans: GraphNode[];      // 1-node components (no edges), sorted by priority+age
-  buckets: BucketGroup;      // closed / superseded / deferred-P3+ (hidden by default)
+  buckets: BucketGroup;      // closed orphans / superseded / deferred-P3+ (hidden by default)
 }
 
 /** Which edge types contribute to component connectivity & visible drawing. */
@@ -65,12 +65,20 @@ export function partitionGraph(
     revealDeferred = false,
   } = options;
 
+  const edgesByType = data.edges.filter((e) => {
+    if (STRUCTURAL_EDGE_TYPES.has(e.type)) return true;
+    if (e.type === "parent-child") return includeParentChild;
+    if (e.type === "related") return includeRelated;
+    return false;
+  });
+  const linkedNodeIds = new Set(edgesByType.flatMap((edge) => [edge.from, edge.to]));
+
   // ---- step 1: filter into buckets ----
   const buckets: BucketGroup = { closed: [], superseded: [], deferred: [] };
   const active: GraphNode[] = [];
   for (const node of data.nodes) {
     if (node.superseded_by) { buckets.superseded.push(node); continue; }
-    if (node.status === "closed") { buckets.closed.push(node); continue; }
+    if (node.status === "closed" && !linkedNodeIds.has(node.id)) { buckets.closed.push(node); continue; }
     // P3+ deferred → bucket unless operator explicitly reveals
     if (!revealDeferred && (node.status === "deferred" || node.priority >= 3)) {
       buckets.deferred.push(node);
@@ -81,12 +89,6 @@ export function partitionGraph(
 
   // ---- step 2: connected components on active set ----
   const activeIds = new Set(active.map((n) => n.id));
-  const edgesByType = data.edges.filter((e) => {
-    if (STRUCTURAL_EDGE_TYPES.has(e.type)) return true;
-    if (e.type === "parent-child") return includeParentChild;
-    if (e.type === "related") return includeRelated;
-    return false;
-  });
   const activeEdges = edgesByType.filter((e) => activeIds.has(e.from) && activeIds.has(e.to));
 
   // Union-Find

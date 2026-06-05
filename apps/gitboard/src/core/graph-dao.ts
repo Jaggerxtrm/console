@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { basename, dirname } from "node:path";
 import { createAttachPool } from "../server/observability/attach-pool.ts";
 import { emit, makeLogEntry } from "./logger.ts";
 import { createObservabilityDao } from "../server/observability/dao.ts";
@@ -372,12 +373,26 @@ async function readIssues(project: BeadsProject, includeClosed: boolean): Promis
 
 function resolveXtrmSource(db: Database, projectId: string | null | undefined): { sourceKey: string; projectId: string; path: string } | null {
   const normalizedProjectId = projectId?.trim();
-  const row = normalizedProjectId
-    ? db.query("SELECT source_key, path FROM sources WHERE kind = 'beads' AND source_key = ? LIMIT 1").get(`beads:${normalizedProjectId}`) as { source_key: string; path: string } | undefined
-    : db.query("SELECT source_key, path FROM sources WHERE kind = 'beads' AND status IN ('active', 'missing') ORDER BY source_key ASC LIMIT 1").get() as { source_key: string; path: string } | undefined;
+  let row: { source_key: string; path: string } | undefined;
+  if (normalizedProjectId) {
+    row = db.query("SELECT source_key, path FROM sources WHERE kind = 'beads' AND source_key = ? LIMIT 1").get(`beads:${normalizedProjectId}`) as { source_key: string; path: string } | undefined;
+    if (!row) {
+      const candidates = db.query("SELECT source_key, path FROM sources WHERE kind = 'beads' AND status IN ('active', 'missing') ORDER BY source_key ASC").all() as Array<{ source_key: string; path: string }>;
+      row = candidates.find((candidate) => {
+        const sourceProjectId = candidate.source_key.replace(/^beads:/, "");
+        return sourceProjectId === normalizedProjectId || projectNameFromBeadsPath(candidate.path) === normalizedProjectId;
+      });
+    }
+  } else {
+    row = db.query("SELECT source_key, path FROM sources WHERE kind = 'beads' AND status IN ('active', 'missing') ORDER BY source_key ASC LIMIT 1").get() as { source_key: string; path: string } | undefined;
+  }
   if (!row) return null;
   const sourceProjectId = row.source_key.replace(/^beads:/, "");
   return { sourceKey: row.source_key, projectId: sourceProjectId, path: row.path };
+}
+
+function projectNameFromBeadsPath(path: string): string {
+  return basename(path) === ".beads" ? basename(dirname(path)) : basename(path);
 }
 
 function readXtrmIssues(db: Database, projectId: string, includeClosed: boolean): BeadIssue[] {

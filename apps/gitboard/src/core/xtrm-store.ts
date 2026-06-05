@@ -10,8 +10,11 @@ export const XTRM_TABLES = [
   "github_repo_poll_state",
   "substrate_issues",
   "substrate_dependencies",
+  "substrate_issue_edges",
   "specialist_jobs",
   "specialist_job_events",
+  "xtrm_forensic_events",
+  "xtrm_evidence_refs",
   "substrate_job_link",
   "sources",
   "materialization_state",
@@ -154,6 +157,12 @@ CREATE TABLE IF NOT EXISTS substrate_issues (
   labels         TEXT,
   related_ids    TEXT,
   parent_id      TEXT,
+  runtime_kind   TEXT,
+  formula_name   TEXT,
+  template_name  TEXT,
+  contract_kind  TEXT,
+  contract_xml   TEXT,
+  metadata_json  TEXT CHECK(metadata_json IS NULL OR json_valid(metadata_json)),
   deleted_at     DATETIME,
   closed_at      DATETIME,
   close_reason   TEXT,
@@ -172,6 +181,15 @@ CREATE TABLE IF NOT EXISTS substrate_dependencies (
   PRIMARY KEY (repo_slug, issue_id, dep_issue_id)
 );
 
+CREATE TABLE IF NOT EXISTS substrate_issue_edges (
+  repo_slug      TEXT NOT NULL,
+  from_issue_id  TEXT NOT NULL,
+  to_issue_id    TEXT NOT NULL,
+  relation       TEXT NOT NULL,
+  created_at     DATETIME,
+  PRIMARY KEY (repo_slug, from_issue_id, to_issue_id, relation)
+);
+
 CREATE TABLE IF NOT EXISTS specialist_jobs (
   repo_slug      TEXT NOT NULL,
   job_id         TEXT NOT NULL,
@@ -183,6 +201,16 @@ CREATE TABLE IF NOT EXISTS specialist_jobs (
   chain_kind     TEXT,
   worktree       TEXT,
   last_output    TEXT,
+  turns          INTEGER,
+  tools          INTEGER,
+  model          TEXT,
+  token_input    INTEGER,
+  token_output   INTEGER,
+  token_cache_read INTEGER,
+  token_cache_creation INTEGER,
+  token_reasoning INTEGER,
+  token_tool     INTEGER,
+  usage_source   TEXT,
   created_at     DATETIME,
   updated_at     DATETIME,
   updated_at_ms  INTEGER,
@@ -196,6 +224,47 @@ CREATE TABLE IF NOT EXISTS specialist_job_events (
   event_type     TEXT NOT NULL,
   payload        TEXT,
   created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS xtrm_forensic_events (
+  id               INTEGER PRIMARY KEY AUTOINCREMENT,
+  source_key       TEXT NOT NULL,
+  source_event_id  TEXT NOT NULL,
+  repo_slug        TEXT NOT NULL,
+  job_id           TEXT,
+  seq              INTEGER,
+  t_unix_ms        INTEGER,
+  timestamp        DATETIME,
+  schema_version   TEXT NOT NULL,
+  severity         TEXT,
+  event_family     TEXT,
+  event_name       TEXT,
+  event_version    INTEGER,
+  resource_json    TEXT NOT NULL CHECK(json_valid(resource_json)),
+  correlation_json TEXT NOT NULL CHECK(json_valid(correlation_json)),
+  body_json        TEXT NOT NULL CHECK(json_valid(body_json)),
+  redaction_json   TEXT NOT NULL CHECK(json_valid(redaction_json)),
+  trace_json       TEXT CHECK(trace_json IS NULL OR json_valid(trace_json)),
+  links_json       TEXT CHECK(links_json IS NULL OR json_valid(links_json)),
+  diagnostics_json TEXT CHECK(diagnostics_json IS NULL OR json_valid(diagnostics_json)),
+  envelope_json    TEXT NOT NULL CHECK(json_valid(envelope_json)),
+  ingested_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(source_key, source_event_id)
+);
+
+CREATE TABLE IF NOT EXISTS xtrm_evidence_refs (
+  id               INTEGER PRIMARY KEY AUTOINCREMENT,
+  source_key       TEXT NOT NULL,
+  repo_slug        TEXT NOT NULL,
+  evidence_id      TEXT NOT NULL,
+  evidence_kind    TEXT NOT NULL,
+  job_id           TEXT,
+  issue_id         TEXT,
+  event_source_id  TEXT,
+  ref_json         TEXT NOT NULL CHECK(json_valid(ref_json)),
+  created_at       DATETIME,
+  ingested_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(source_key, evidence_id)
 );
 
 CREATE TABLE IF NOT EXISTS substrate_job_link (
@@ -232,10 +301,16 @@ const MIGRATIONS = [
   "CREATE INDEX IF NOT EXISTS idx_substrate_issues_repo_state ON substrate_issues(repo_slug, state)",
   "CREATE INDEX IF NOT EXISTS idx_substrate_issues_repo_priority ON substrate_issues(repo_slug, priority)",
   "CREATE INDEX IF NOT EXISTS idx_substrate_issues_repo_type ON substrate_issues(repo_slug, issue_type)",
+  "CREATE INDEX IF NOT EXISTS idx_substrate_issues_repo_runtime_kind ON substrate_issues(repo_slug, runtime_kind)",
   "CREATE INDEX IF NOT EXISTS idx_substrate_dependencies_repo_issue ON substrate_dependencies(repo_slug, issue_id)",
+  "CREATE INDEX IF NOT EXISTS idx_substrate_issue_edges_repo_from ON substrate_issue_edges(repo_slug, from_issue_id)",
+  "CREATE INDEX IF NOT EXISTS idx_substrate_issue_edges_repo_to ON substrate_issue_edges(repo_slug, to_issue_id)",
   "CREATE INDEX IF NOT EXISTS idx_specialist_jobs_repo_status ON specialist_jobs(repo_slug, status)",
   "CREATE INDEX IF NOT EXISTS idx_specialist_jobs_repo_bead ON specialist_jobs(repo_slug, bead_id)",
   "CREATE INDEX IF NOT EXISTS idx_specialist_job_events_repo_job ON specialist_job_events(repo_slug, job_id, created_at)",
+  "CREATE INDEX IF NOT EXISTS idx_xtrm_forensic_repo_job_time ON xtrm_forensic_events(repo_slug, job_id, t_unix_ms, seq)",
+  "CREATE INDEX IF NOT EXISTS idx_xtrm_forensic_event_name ON xtrm_forensic_events(event_family, event_name, t_unix_ms)",
+  "CREATE INDEX IF NOT EXISTS idx_xtrm_evidence_repo_kind ON xtrm_evidence_refs(repo_slug, evidence_kind, created_at)",
   "CREATE INDEX IF NOT EXISTS idx_substrate_job_link_repo_substrate ON substrate_job_link(repo_slug, substrate_type, substrate_id)",
   "CREATE INDEX IF NOT EXISTS idx_sources_kind_status ON sources(kind, status)",
 ];
@@ -257,6 +332,16 @@ function ensureSpecialistJobsColumns(db: Database): void {
   for (const column of [
     ["bead_id", "TEXT"],
     ["updated_at_ms", "INTEGER"],
+    ["turns", "INTEGER"],
+    ["tools", "INTEGER"],
+    ["model", "TEXT"],
+    ["token_input", "INTEGER"],
+    ["token_output", "INTEGER"],
+    ["token_cache_read", "INTEGER"],
+    ["token_cache_creation", "INTEGER"],
+    ["token_reasoning", "INTEGER"],
+    ["token_tool", "INTEGER"],
+    ["usage_source", "TEXT"],
   ] as const) {
     if (columns.has(column[0])) {
       console.log(`xtrm-store: ALTER specialist_jobs ADD COLUMN ${column[0]} ${column[1]} [already-present]`);
@@ -276,6 +361,12 @@ function ensureSubstrateIssuesColumns(db: Database): void {
     ["labels", "TEXT"],
     ["related_ids", "TEXT"],
     ["parent_id", "TEXT"],
+    ["runtime_kind", "TEXT"],
+    ["formula_name", "TEXT"],
+    ["template_name", "TEXT"],
+    ["contract_kind", "TEXT"],
+    ["contract_xml", "TEXT"],
+    ["metadata_json", "TEXT"],
     ["closed_at", "DATETIME"],
     ["close_reason", "TEXT"],
     ["notes", "TEXT"],

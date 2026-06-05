@@ -21,6 +21,7 @@ export function createSubstrateRouter(xtrmDb?: Database | null): Hono {
   });
   router.get("/projects/:projectId/memories", async (c) => c.json({ memories: await readMemories(xtrmDb, c.req.param("projectId")) }));
   router.get("/projects/:projectId/interactions", async (c) => c.json({ interactions: await readInteractions(xtrmDb, c.req.param("projectId"), c.req.query("issue_id") ?? undefined) }));
+  router.get("/projects/:projectId/runtime-graph", (c) => c.json(readRuntimeGraph(xtrmDb, c.req.param("projectId"))));
   router.get("/projects/:projectId/stats", (c) => c.json({ stats: readStats(xtrmDb, c.req.param("projectId")) }));
   router.get("/projects/:projectId/connection", (c) => c.json(readConnection(xtrmDb, c.req.param("projectId"))));
 
@@ -39,7 +40,7 @@ function readProjects(db?: Database | null): BeadsProject[] {
     status: "active",
     lastScanned: row.last_seen_at ?? new Date(0).toISOString(),
     issueCount: countIssues(db, row.source_key.replace(/^beads:/, "")),
-    sourceHealth: [{ kind: "unknown", state: "available" }],
+    sourceHealth: [{ kind: "unknown", state: "fresh" }],
   }));
 }
 
@@ -56,7 +57,7 @@ function readIssueDetail(db: Database | null | undefined, projectId: string, iss
   const issue = queryIssues(db, projectId).find((row) => row.id === issueId);
   if (!issue) return null;
   const dependents = queryDependents(db, projectId, issueId);
-  return { ...issue, dependents, children: dependents.filter((dep) => dep.dependency_type === "parent-child"), source: "unknown", sourceHealth: [{ kind: "unknown", state: "available" }] };
+  return { ...issue, dependents, children: dependents.filter((dep) => dep.dependency_type === "parent-child"), source: "unknown", sourceHealth: [{ kind: "unknown", state: "fresh" }] };
 }
 
 async function readMemories(db: Database | null | undefined, projectId: string): Promise<Memory[]> {
@@ -94,6 +95,45 @@ function readStats(db: Database | null | undefined, projectId: string) {
 }
 
 function readConnection(_db: Database | null | undefined, _projectId: string) { return { source: "sqlite", status: "substrate_connected", degraded: false, message: "xtrm.sqlite connected" }; }
+
+function readRuntimeGraph(db: Database | null | undefined, projectId: string) {
+  if (!db) return { nodes: [], edges: [] };
+  const rows = db.query(`
+    SELECT issue_id, title, state, priority, issue_type, labels, parent_id, runtime_kind,
+           formula_name, template_name, contract_kind, contract_xml, metadata_json,
+           created_at, updated_at
+    FROM substrate_issues
+    WHERE repo_slug = ? AND (deleted_at IS NULL OR deleted_at = '')
+    ORDER BY issue_id ASC
+  `).all(projectId) as Array<Record<string, unknown>>;
+  const edges = db.query(`
+    SELECT from_issue_id, to_issue_id, relation
+    FROM substrate_issue_edges
+    WHERE repo_slug = ?
+    ORDER BY from_issue_id ASC, to_issue_id ASC, relation ASC
+  `).all(projectId) as Array<{ from_issue_id: string; to_issue_id: string; relation: string }>;
+
+  return {
+    nodes: rows.map((row) => ({
+      id: String(row.issue_id),
+      title: String(row.title ?? ""),
+      state: String(row.state ?? "open"),
+      priority: Number(row.priority ?? 2),
+      issue_type: String(row.issue_type ?? "task"),
+      labels: parseJsonArray(row.labels),
+      parent_id: row.parent_id == null ? null : String(row.parent_id),
+      runtime_kind: String(row.runtime_kind ?? deriveRuntimeKindFromRow(row)),
+      formula_name: row.formula_name == null ? null : String(row.formula_name),
+      template_name: row.template_name == null ? null : String(row.template_name),
+      contract_kind: row.contract_kind == null ? null : String(row.contract_kind),
+      contract_xml: row.contract_xml == null ? null : String(row.contract_xml),
+      metadata: parseJsonObject(row.metadata_json),
+      created_at: row.created_at == null ? null : String(row.created_at),
+      updated_at: row.updated_at == null ? null : String(row.updated_at),
+    })),
+    edges: edges.map((edge) => ({ from: edge.from_issue_id, to: edge.to_issue_id, relation: edge.relation })),
+  };
+}
 
 function getBeadsPath(db: Database | null | undefined, projectId: string): string | null {
   if (!db) return null;
@@ -180,6 +220,26 @@ function parseJsonArray(value: unknown): string[] {
   } catch {
     return [];
   }
+}
+
+function parseJsonObject(value: unknown): Record<string, unknown> | null {
+  if (value == null || value === "") return null;
+  if (typeof value !== "string") return null;
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : null;
+  } catch {
+    return null;
+  }
+}
+
+function deriveRuntimeKindFromRow(row: Record<string, unknown>): string {
+  const labels = parseJsonArray(row.labels);
+  const issueType = String(row.issue_type ?? "task");
+  if (issueType === "molecule" || labels.includes("kind:molecule")) return "chain_molecule";
+  if (labels.includes("kind:step")) return "step";
+  if (issueType === "epic") return "organizational_epic";
+  return "root";
 }
 
 function queryDependents(db: Database | null | undefined, projectId: string, issueId: string): BeadDependency[] {

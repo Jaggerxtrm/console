@@ -13,6 +13,7 @@ import { createSubstrateRouter } from "./routes/substrate.ts";
 import { createSpecialistsRouter } from "./routes/specialists.ts";
 import { createObservabilityRouter } from "./routes/observability.ts";
 import { createGraphRouter } from "./routes/graph.ts";
+import { createFeedRouter } from "./routes/feed.ts";
 import { createGraphDao } from "../core/graph-dao.ts";
 import { createShellRouter } from "./routes/shell.ts";
 import { createSourcesRouter } from "./routes/sources.ts";
@@ -153,6 +154,7 @@ export function createApp(db: Database, xtrmDb?: Database): {
       materializer?.trigger(`beads:${projectId}`);
     },
   }) : undefined));
+  app.route("/api/feed", createFeedRouter(xtrmDb ?? null));
   app.route("/api/sources", createSourcesRouter(xtrmDb ?? null, currentUnifiedScanner));
   app.route("/api/console/shell", createShellRouter());
   app.route("/api/console/terminal", createTerminalRouter());

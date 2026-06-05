@@ -80,4 +80,38 @@ describe("substrate projects", () => {
 
     db.close();
   });
+
+  it("serves a typed Beads runtime graph for chain molecules and steps", async () => {
+    const db = createXtrmDatabase(dbPath);
+    db.exec(`
+      INSERT INTO substrate_issues (repo_slug, issue_id, title, body, state, issue_type, priority, labels, parent_id, runtime_kind, formula_name, contract_kind, contract_xml, metadata_json, created_at, updated_at)
+      VALUES
+        ('demo', 'epic-1', 'Org epic', 'north star', 'open', 'epic', 1, '[]', NULL, 'organizational_epic', NULL, NULL, NULL, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+        ('demo', 'chain-1', 'Review chain', '<change-contract><goal>Ship telemetry</goal></change-contract>', 'open', 'molecule', 1, '["formula:review-fix","kind:molecule"]', NULL, 'chain_molecule', 'review-fix', 'change-contract', '<change-contract><goal>Ship telemetry</goal></change-contract>', '{"metadata":{"recommended_template":"review-fix"}}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+        ('demo', 'chain-1.1', 'Reviewer', '<step-contract><role>reviewer</role></step-contract>', 'open', 'task', 2, '["kind:step","role:reviewer"]', 'chain-1', 'step', NULL, 'step-contract', '<step-contract><role>reviewer</role></step-contract>', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+      INSERT INTO substrate_issue_edges (repo_slug, from_issue_id, to_issue_id, relation, created_at)
+      VALUES
+        ('demo', 'chain-1', 'epic-1', 'parent-child', CURRENT_TIMESTAMP),
+        ('demo', 'chain-1.1', 'chain-1', 'parent-child', CURRENT_TIMESTAMP),
+        ('demo', 'chain-1.1', 'chain-1', 'validates', CURRENT_TIMESTAMP);
+    `);
+    const app = createSubstrateRouter(db);
+
+    const response = await app.fetch(new Request("http://localhost/projects/demo/runtime-graph", { headers: { host: "localhost" } }));
+    expect(response.status).toBe(200);
+    const body = await response.json() as { nodes: Array<{ id: string; runtime_kind: string; formula_name?: string | null; contract_kind?: string | null; metadata?: unknown }>; edges: Array<{ from: string; to: string; relation: string }> };
+
+    expect(body.nodes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "epic-1", runtime_kind: "organizational_epic" }),
+      expect.objectContaining({ id: "chain-1", runtime_kind: "chain_molecule", formula_name: "review-fix", contract_kind: "change-contract" }),
+      expect.objectContaining({ id: "chain-1.1", runtime_kind: "step", contract_kind: "step-contract" }),
+    ]));
+    expect(body.edges).toEqual([
+      { from: "chain-1", to: "epic-1", relation: "parent-child" },
+      { from: "chain-1.1", to: "chain-1", relation: "parent-child" },
+      { from: "chain-1.1", to: "chain-1", relation: "validates" },
+    ]);
+
+    db.close();
+  });
 });

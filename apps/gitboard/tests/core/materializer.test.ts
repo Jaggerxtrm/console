@@ -120,7 +120,7 @@ describe("materializer", () => {
 
     expect(db.query("SELECT title FROM substrate_issues WHERE repo_slug = 'repo/a' AND issue_id = '1'").get() as { title: string }).toEqual({ title: "one" });
     expect(db.query("SELECT cursor FROM materialization_state WHERE source_key = 'a'").get() as { cursor: string }).toEqual({ cursor: '{"cursor":1}' });
-    expect(db.query("SELECT cursor FROM materialization_state WHERE source_key = 'b'").get()).toBeNull();
+    expect(db.query("SELECT cursor FROM materialization_state WHERE source_key = 'b'").get()).toBeFalsy();
     expect(hints).toHaveLength(1);
     expect(errors).toHaveLength(1);
     expect((errors[0] as { data?: { source_key?: string; error?: string } }).data).toEqual({ source_key: "b", error: "boom" });
@@ -183,6 +183,30 @@ describe("materializer", () => {
     db.close();
   });
 
+  it("publishes bead sync hints with project ids for dashboard invalidation", async () => {
+    const db = await createDb();
+    const registry = new ChannelRegistry();
+    const hints: unknown[] = [];
+    registry.subscribe("substrate:changes", { id: "s1", send: (msg) => hints.push(msg) });
+    const materializer = new Materializer(db, registry);
+    const adapter = createAdapter([[{ issue_id: "1", title: "one" }]]);
+    materializer.register("beads:repo/a", adapter);
+
+    await materializer.runOnce("beads:repo/a");
+
+    expect(hints).toHaveLength(1);
+    expect(hints[0]).toMatchObject({
+      channel: "substrate:changes",
+      event: "substrate:sync_hint",
+      data: {
+        source_key: "beads:repo/a",
+        projectId: "repo/a",
+        project_id: "repo/a",
+      },
+    });
+    db.close();
+  });
+
   it("returns null cursor and warns on corrupt materialization cursor row", async () => {
     const db = await createDb();
     setDiskEnabled(false);
@@ -211,12 +235,12 @@ describe("materializer", () => {
 
     const adapter = createObservabilityAdapter(join(process.cwd(), ".tmp-materializer", "observability.sqlite"), "repo/a");
     const first = await adapter.changesSince({ updated_at_ms: 0, event_rowid: 0 });
-    expect(first.cursor).toEqual({ updated_at_ms: 2000, event_rowid: 1 });
+    expect(first.cursor).toEqual({ updated_at_ms: 2000, event_rowid: 1, forensic_rowid: 0 });
     expect(first.rows.map((row) => row.job_id)).toEqual(["job-1", "job-2"]);
 
     obsDb.query("INSERT INTO specialist_events (job_id, seq, specialist, bead_id, t, type, event_json) VALUES (?, ?, ?, ?, ?, ?, ?)").run("job-1", 2, "sp1", null, 2, "turn", "{\"x\":1}");
     const second = await adapter.changesSince(first.cursor);
-    expect(second.cursor).toEqual({ updated_at_ms: 2000, event_rowid: 2 });
+    expect(second.cursor).toEqual({ updated_at_ms: 2000, event_rowid: 2, forensic_rowid: 0 });
     expect(second.rows.map((row) => row.job_id).sort()).toEqual(["job-1", "job-2"]);
     obsDb.close();
     xtrmDb.close();

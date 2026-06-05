@@ -44,6 +44,13 @@ export class Materializer {
     try {
       adapter.write(this.db, next);
       this.upsertMaterializationState(sourceKey, JSON.stringify(next.cursor));
+      this.writeMaterializerForensicEvent(sourceKey, "materializer.run.completed", "info", {
+        rows_written: next.rows.length,
+        dependencies_written: next.dependencies?.length ?? 0,
+        forensic_events_written: next.forensicEvents?.length ?? 0,
+        evidence_refs_written: next.evidenceRefs?.length ?? 0,
+        cursor: next.cursor,
+      }, startedAt);
       this.hooks.afterWritesBeforeCursorAdvance?.(sourceKey);
       this.db.exec("COMMIT");
       if (sourceKey.startsWith("obs:")) bumpEpoch(sourceKey.slice(4));
@@ -51,6 +58,7 @@ export class Materializer {
     } catch (error) {
       this.db.exec("ROLLBACK");
       await this.markFailure(sourceKey, error);
+      this.writeMaterializerFailureEvent(sourceKey, error, startedAt);
       throw error;
     }
 
@@ -85,6 +93,7 @@ export class Materializer {
       ws_registry_set: this.wsRegistry != null,
       ...(kind ? { kind } : {}),
     }));
+    const data = { source_key: sourceKey, ...hint.data, ...(kind ? { kind } : {}) };
     for (const channel of hint.channels) {
       emit(makeLogEntry("ws", "channel.publish", "debug", undefined, {
         component: "ws",
@@ -94,18 +103,18 @@ export class Materializer {
         realtime_event: hint.event,
         ...(kind ? { kind } : {}),
       }));
-      this.wsRegistry?.publish(channel as Parameters<ChannelRegistry["publish"]>[0], hint.event, { source_key: sourceKey, ...(kind ? { kind } : {}) }, String(Date.now()));
+      this.wsRegistry?.publish(channel as Parameters<ChannelRegistry["publish"]>[0], hint.event, data, String(Date.now()));
     }
   }
 
-  private realtimeHintFor(sourceKey: string): { channels: string[]; event: string } | null {
+  private realtimeHintFor(sourceKey: string): { channels: string[]; event: string; data?: Record<string, unknown> } | null {
     if (sourceKey.startsWith("obs:")) {
       const repoSlug = sourceKey.slice(4);
-      return { channels: ["specialists:activity", `specialists:repo:${repoSlug}`], event: "specialists:sync_hint" };
+      return { channels: ["specialists:activity", `specialists:repo:${repoSlug}`], event: "specialists:sync_hint", data: { repoSlug, repo_slug: repoSlug } };
     }
     if (sourceKey.startsWith("beads:")) {
       const projectId = sourceKey.slice(6);
-      return { channels: ["substrate:changes", `substrate:project:${projectId}`], event: "substrate:sync_hint" };
+      return { channels: ["substrate:changes", `substrate:project:${projectId}`], event: "substrate:sync_hint", data: { projectId, project_id: projectId } };
     }
     return { channels: ["system"], event: "materializer:hint" };
   }
@@ -137,5 +146,68 @@ export class Materializer {
 
   private async markFailure(sourceKey: string, error: unknown): Promise<void> {
     this.db.query("INSERT INTO materialization_state (source_key, last_run_at, last_status, last_error) VALUES (?, CURRENT_TIMESTAMP, 'error', ?) ON CONFLICT(source_key) DO UPDATE SET last_run_at=excluded.last_run_at, last_status=excluded.last_status, last_error=excluded.last_error").run(sourceKey, error instanceof Error ? error.message : String(error));
+  }
+
+  private writeMaterializerForensicEvent(sourceKey: string, eventName: string, severity: "info" | "warn" | "error", body: Record<string, unknown>, startedAt: number): void {
+    const tUnixMs = Date.now();
+    const envelope = {
+      schema_version: "xtrm.forensic.v1",
+      timestamp: new Date(tUnixMs).toISOString(),
+      t_unix_ms: tUnixMs,
+      severity,
+      event_family: "materializer",
+      event_name: eventName,
+      event_version: 1,
+      resource: {
+        service_namespace: "xtrm",
+        service_name: "gitboard",
+        service_component: "materializer",
+        deployment_environment: process.env.NODE_ENV ?? "local",
+        repo: this.repoSlugFor(sourceKey),
+        participant_kind: "adapter",
+        participant_role: "materializer",
+      },
+      correlation: { source_key: sourceKey },
+      body: { ...body, duration_ms: tUnixMs - startedAt },
+      redaction: { status: "clean" },
+    };
+    this.db.query(`
+      INSERT INTO xtrm_forensic_events (
+        source_key, source_event_id, repo_slug, job_id, seq, t_unix_ms, timestamp, schema_version, severity,
+        event_family, event_name, event_version, resource_json, correlation_json, body_json, redaction_json, envelope_json
+      ) VALUES (?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(source_key, source_event_id) DO NOTHING
+    `).run(
+      `materializer:${sourceKey}`,
+      `${eventName}:${startedAt}:${tUnixMs}`,
+      this.repoSlugFor(sourceKey),
+      tUnixMs,
+      envelope.timestamp,
+      envelope.schema_version,
+      envelope.severity,
+      envelope.event_family,
+      envelope.event_name,
+      envelope.event_version,
+      JSON.stringify(envelope.resource),
+      JSON.stringify(envelope.correlation),
+      JSON.stringify(envelope.body),
+      JSON.stringify(envelope.redaction),
+      JSON.stringify(envelope),
+    );
+  }
+
+  private writeMaterializerFailureEvent(sourceKey: string, error: unknown, startedAt: number): void {
+    try {
+      this.writeMaterializerForensicEvent(sourceKey, "materializer.run.failed", "error", {
+        error_type: error instanceof Error ? error.name : "Error",
+        message_redacted: error instanceof Error ? error.message : String(error),
+      }, startedAt);
+    } catch {
+      // Failure telemetry is best-effort; materialization failure handling must not fail recursively.
+    }
+  }
+
+  private repoSlugFor(sourceKey: string): string {
+    return sourceKey.replace(/^(obs|beads):/, "") || "unknown";
   }
 }

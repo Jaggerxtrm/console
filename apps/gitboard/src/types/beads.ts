@@ -39,6 +39,7 @@ export interface BeadIssue {
   priority: Priority;
   issue_type: IssueType;
   owner: string | null;
+  assignee?: string;
   created_at: string;
   created_by: string | null;
   updated_at: string;
@@ -49,6 +50,9 @@ export interface BeadIssue {
   parent_id?: string;
   related_ids: string[];
   labels: string[];
+  metadata?: unknown;
+  formula_name?: string;
+  template_name?: string;
 }
 
 export interface BeadIssueDetail extends BeadIssue {

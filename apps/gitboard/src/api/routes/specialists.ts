@@ -136,21 +136,7 @@ export function createSpecialistsRouter(
     if (!db) return c.json({ error: "feed events unavailable" }, 404);
     const job = resolveJobForEventLookup(resolve(), jobId);
     if (!job) return c.json({ error: "feed events not found" }, 404);
-    const rows = db.query(`
-      SELECT payload
-      FROM specialist_job_events
-      WHERE repo_slug = ? AND job_id = ? AND event_type = 'forensic_event'
-      ORDER BY created_at ASC
-    `).all(job.repoSlug, jobId) as Array<{ payload?: string }>;
-    const events = rows.flatMap((row) => {
-      if (!row.payload) return [];
-      try {
-        const parsed = JSON.parse(row.payload) as unknown;
-        return isFeedEventPayload(parsed) ? [sanitizeFeedEventPayload(parsed)] : [];
-      } catch {
-        return [];
-      }
-    });
+    const events = readFeedEvents(db, job.repoSlug, jobId);
     return c.json({ events });
   });
 
@@ -205,11 +191,20 @@ export function createSpecialistsRouter(
 
 type FeedEventPayload = {
   schema_version?: string | number;
+  timestamp?: string;
+  t_unix_ms?: number;
+  seq?: number;
+  severity?: string;
   event_family?: string;
   event_name?: string;
-  resource?: { participant_kind?: string; participant_role?: string };
-  correlation?: { job_id?: string };
-  redaction?: { status?: string };
+  event_version?: number;
+  resource?: Record<string, unknown>;
+  correlation?: Record<string, unknown>;
+  body?: Record<string, unknown>;
+  redaction?: Record<string, unknown>;
+  trace?: Record<string, unknown>;
+  links?: Record<string, unknown>;
+  diagnostics?: Record<string, unknown>;
 };
 
 function isFeedEventPayload(value: unknown): value is Record<string, unknown> {
@@ -217,19 +212,22 @@ function isFeedEventPayload(value: unknown): value is Record<string, unknown> {
 }
 
 function sanitizeFeedEventPayload(value: Record<string, unknown>): FeedEventPayload {
-  const resource = isRecord(value.resource) ? value.resource : undefined;
-  const correlation = isRecord(value.correlation) ? value.correlation : undefined;
-  const redaction = isRecord(value.redaction) ? value.redaction : undefined;
   return {
     schema_version: typeof value.schema_version === "string" || typeof value.schema_version === "number" ? value.schema_version : undefined,
+    timestamp: typeof value.timestamp === "string" ? value.timestamp : undefined,
+    t_unix_ms: typeof value.t_unix_ms === "number" ? value.t_unix_ms : undefined,
+    seq: typeof value.seq === "number" ? value.seq : undefined,
+    severity: typeof value.severity === "string" ? value.severity : undefined,
     event_family: typeof value.event_family === "string" ? value.event_family : undefined,
     event_name: typeof value.event_name === "string" ? value.event_name : undefined,
-    resource: resource ? {
-      participant_kind: typeof resource.participant_kind === "string" ? resource.participant_kind : undefined,
-      participant_role: typeof resource.participant_role === "string" ? resource.participant_role : undefined,
-    } : undefined,
-    correlation: correlation ? { job_id: typeof correlation.job_id === "string" ? correlation.job_id : undefined } : undefined,
-    redaction: redaction ? { status: typeof redaction.status === "string" ? redaction.status : undefined } : undefined,
+    event_version: typeof value.event_version === "number" ? value.event_version : undefined,
+    resource: isRecord(value.resource) ? value.resource : undefined,
+    correlation: isRecord(value.correlation) ? value.correlation : undefined,
+    body: isRecord(value.body) ? value.body : undefined,
+    redaction: isRecord(value.redaction) ? value.redaction : undefined,
+    trace: isRecord(value.trace) ? value.trace : undefined,
+    links: isRecord(value.links) ? value.links : undefined,
+    diagnostics: isRecord(value.diagnostics) ? value.diagnostics : undefined,
   };
 }
 
@@ -296,10 +294,15 @@ function createXtrmSpecialistsDao(db: import("bun:sqlite").Database, repoLister:
 }
 
 function loadJobs(db: import("bun:sqlite").Database, whereSql: string, params: readonly string[], beadIdExpr = "COALESCE(l.issue_id, j.bead_id, j.job_id)"): SpecialistJob[] {
+  const metricExpr = (column: string) => hasMainTableColumn(db, "specialist_jobs", column) ? `j.${column}` : "NULL";
   const rows = db.query(`
     SELECT j.repo_slug, j.job_id, ${beadIdExpr} AS bead_id, j.chain_id, j.epic_id, j.chain_kind, j.status, j.updated_at, j.specialist, j.last_output,
       COALESCE((SELECT COUNT(*) FROM specialist_job_events e WHERE e.repo_slug = j.repo_slug AND e.job_id = j.job_id), 0) AS event_count,
-      NULL AS turns, NULL AS tools, NULL AS model
+      ${metricExpr("turns")} AS turns, ${metricExpr("tools")} AS tools, ${metricExpr("model")} AS model,
+      ${metricExpr("token_input")} AS token_input, ${metricExpr("token_output")} AS token_output,
+      ${metricExpr("token_cache_read")} AS token_cache_read, ${metricExpr("token_cache_creation")} AS token_cache_creation,
+      ${metricExpr("token_reasoning")} AS token_reasoning, ${metricExpr("token_tool")} AS token_tool,
+      ${metricExpr("usage_source")} AS usage_source
     FROM specialist_jobs AS j
     LEFT JOIN substrate_job_link AS l ON l.repo_slug = j.repo_slug AND l.job_id = j.job_id
     ${whereSql}
@@ -332,7 +335,45 @@ function mapJobRow(row: Record<string, unknown>): SpecialistJob {
     turns: row.turns == null ? null : Number(row.turns),
     tools: row.tools == null ? null : Number(row.tools),
     model: row.model == null ? null : String(row.model),
+    tokenUsage: {
+      input: Number(row.token_input ?? 0),
+      output: Number(row.token_output ?? 0),
+      cacheRead: Number(row.token_cache_read ?? 0),
+      cacheCreation: Number(row.token_cache_creation ?? 0),
+      reasoning: Number(row.token_reasoning ?? 0),
+      tool: Number(row.token_tool ?? 0),
+      source: row.usage_source == null ? null : String(row.usage_source),
+    },
   };
+}
+
+function readFeedEvents(db: import("bun:sqlite").Database, repoSlug: string, jobId: string): FeedEventPayload[] {
+  if (hasMainTableColumn(db, "xtrm_forensic_events", "envelope_json")) {
+    const rows = db.query(`
+      SELECT envelope_json
+      FROM xtrm_forensic_events
+      WHERE repo_slug = ? AND job_id = ?
+      ORDER BY COALESCE(t_unix_ms, 0) ASC, COALESCE(seq, 0) ASC, id ASC
+    `).all(repoSlug, jobId) as Array<{ envelope_json?: string }>;
+    return rows.flatMap((row) => parseFeedEvent(row.envelope_json));
+  }
+  const rows = db.query(`
+    SELECT payload
+    FROM specialist_job_events
+    WHERE repo_slug = ? AND job_id = ? AND event_type = 'forensic_event'
+    ORDER BY created_at ASC
+  `).all(repoSlug, jobId) as Array<{ payload?: string }>;
+  return rows.flatMap((row) => parseFeedEvent(row.payload));
+}
+
+function parseFeedEvent(payload: string | undefined): FeedEventPayload[] {
+  if (!payload) return [];
+  try {
+    const parsed = JSON.parse(payload) as unknown;
+    return isFeedEventPayload(parsed) ? [sanitizeFeedEventPayload(parsed)] : [];
+  } catch {
+    return [];
+  }
 }
 
 function logJobsByBeadResponse(beadId: string, jobs: SpecialistJob[], freshness: string, startedAt: number): void {

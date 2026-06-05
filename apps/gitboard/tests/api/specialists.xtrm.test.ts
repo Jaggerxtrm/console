@@ -52,6 +52,29 @@ describe("specialists router xtrm path", () => {
     expect(project(await chainRes.json(), ["chain", "freshness"]))
       .toEqual(project(await legacyChainRes.json(), ["chain", "freshness"]));
   });
+
+  it("returns materialized specialist metrics and token split from xtrm state", async () => {
+    const app = appWithXtrm(xtrmDb);
+    const res = await app.request("/api/specialists/jobs/in-flight");
+
+    expect(res.status).toBe(200);
+    const json = await res.json() as { in_flight: Array<Record<string, unknown>> };
+    expect(json.in_flight[0]).toMatchObject({
+      jobId: "job-1",
+      turns: 4,
+      tools: 3,
+      model: "model-x",
+      tokenUsage: {
+        input: 10,
+        output: 12,
+        cacheRead: 2,
+        cacheCreation: 1,
+        reasoning: 5,
+        tool: 7,
+        source: "specialist_job_metrics",
+      },
+    });
+  });
 });
 
 function appWithXtrm(db: Database): Hono {
@@ -89,6 +112,16 @@ function seedXtrm(db: Database): void {
       chain_kind TEXT,
       worktree TEXT,
       last_output TEXT,
+      turns INTEGER,
+      tools INTEGER,
+      model TEXT,
+      token_input INTEGER,
+      token_output INTEGER,
+      token_cache_read INTEGER,
+      token_cache_creation INTEGER,
+      token_reasoning INTEGER,
+      token_tool INTEGER,
+      usage_source TEXT,
       created_at DATETIME,
       updated_at DATETIME,
       updated_at_ms INTEGER,
@@ -113,8 +146,8 @@ function seedXtrm(db: Database): void {
   `);
   db.prepare("INSERT INTO substrate_job_link (repo_slug, job_id, issue_id, substrate_type, substrate_id, created_at) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)").run("repo-a", "job-1", "bead-1", "bead", "bead-1");
   db.prepare("INSERT INTO substrate_job_link (repo_slug, job_id, issue_id, substrate_type, substrate_id, created_at) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)").run("repo-a", "job-2", "bead-2", "bead", "bead-2");
-  db.prepare("INSERT INTO specialist_jobs (repo_slug, job_id, specialist, status, chain_id, epic_id, chain_kind, worktree, last_output, created_at, updated_at, updated_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run("repo-a", "job-1", "executor", "running", "chain-1", "epic-1", "executor", null, "xtrm running", "2026-01-01 00:00:00", "2026-01-01 00:00:00", 1000);
-  db.prepare("INSERT INTO specialist_jobs (repo_slug, job_id, specialist, status, chain_id, epic_id, chain_kind, worktree, last_output, created_at, updated_at, updated_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run("repo-a", "job-2", "reviewer", "done", "chain-1", "epic-1", "reviewer", null, "xtrm done", "2026-01-01 00:00:01", "2026-01-01 00:00:01", 2000);
+  db.prepare("INSERT INTO specialist_jobs (repo_slug, job_id, specialist, status, chain_id, epic_id, chain_kind, worktree, last_output, turns, tools, model, token_input, token_output, token_cache_read, token_cache_creation, token_reasoning, token_tool, usage_source, created_at, updated_at, updated_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run("repo-a", "job-1", "executor", "running", "chain-1", "epic-1", "executor", null, "xtrm running", 4, 3, "model-x", 10, 12, 2, 1, 5, 7, "specialist_job_metrics", "2026-01-01 00:00:00", "2026-01-01 00:00:00", 1000);
+  db.prepare("INSERT INTO specialist_jobs (repo_slug, job_id, specialist, status, chain_id, epic_id, chain_kind, worktree, last_output, turns, tools, model, token_input, token_output, token_cache_read, token_cache_creation, token_reasoning, token_tool, usage_source, created_at, updated_at, updated_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run("repo-a", "job-2", "reviewer", "done", "chain-1", "epic-1", "reviewer", null, "xtrm done", 2, 1, "model-y", 1, 2, 0, 0, 0, 0, "specialist_job_metrics", "2026-01-01 00:00:01", "2026-01-01 00:00:01", 2000);
   db.prepare("INSERT INTO specialist_job_events (repo_slug, job_id, event_type, payload) VALUES (?, ?, ?, ?)").run("repo-a", "job-1", "turn", "{}");
   db.prepare("INSERT INTO specialist_job_events (repo_slug, job_id, event_type, payload) VALUES (?, ?, ?, ?)").run("repo-a", "job-2", "turn", "{}");
   db.prepare("INSERT INTO materialization_state (source_key, cursor, last_run_at, last_success_at, last_status) VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'success')").run("obs:repo-a", JSON.stringify({ updated_at_ms: 2000, event_rowid: 2 }));

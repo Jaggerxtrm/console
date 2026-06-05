@@ -23,13 +23,17 @@ const STATUS_ICON = {
 
 type StatusKey = keyof typeof STATUS_ICON;
 type ResultPayload = { text: string; content_type?: string };
+type FeedEvidenceRef = { kind?: string; id?: string; evidence_id?: string; sha?: string; number?: number };
 type FeedEventPayload = {
   schema_version?: string | number;
   event_family?: string;
   event_name?: string;
   resource?: { participant_kind?: string; participant_role?: string };
   correlation?: { job_id?: string };
+  body?: { evidence_refs?: FeedEvidenceRef[] };
   redaction?: { status?: string };
+  trace?: { trace_id?: string; span_id?: string; parent_span_id?: string };
+  links?: unknown[];
 };
 
 function isFeedEventPayload(value: unknown): value is FeedEventPayload {
@@ -37,14 +41,20 @@ function isFeedEventPayload(value: unknown): value is FeedEventPayload {
   const candidate = value as Record<string, unknown>;
   const resource = candidate.resource;
   const correlation = candidate.correlation;
+  const body = candidate.body;
   const redaction = candidate.redaction;
+  const trace = candidate.trace;
+  const links = candidate.links;
   return (
     (candidate.schema_version === undefined || typeof candidate.schema_version === "string" || typeof candidate.schema_version === "number")
     && (candidate.event_family === undefined || typeof candidate.event_family === "string")
     && (candidate.event_name === undefined || typeof candidate.event_name === "string")
     && (resource === undefined || (typeof resource === "object" && resource !== null && ((resource as Record<string, unknown>).participant_kind === undefined || typeof (resource as Record<string, unknown>).participant_kind === "string") && ((resource as Record<string, unknown>).participant_role === undefined || typeof (resource as Record<string, unknown>).participant_role === "string")))
     && (correlation === undefined || (typeof correlation === "object" && correlation !== null && ((correlation as Record<string, unknown>).job_id === undefined || typeof (correlation as Record<string, unknown>).job_id === "string")))
+    && (body === undefined || (typeof body === "object" && body !== null))
     && (redaction === undefined || (typeof redaction === "object" && redaction !== null && ((redaction as Record<string, unknown>).status === undefined || typeof (redaction as Record<string, unknown>).status === "string")))
+    && (trace === undefined || (typeof trace === "object" && trace !== null))
+    && (links === undefined || Array.isArray(links))
   );
 }
 
@@ -460,11 +470,19 @@ function ForensicFeedTimeline({ events }: { events: FeedEventPayload[] | null })
             <span className="console-specialists-job-forensic-meta">{formatForensicParticipant(event.resource?.participant_kind, event.resource?.participant_role)}</span>
             <span className="console-specialists-job-forensic-meta">job:{event.correlation?.job_id ?? "—"}</span>
             <span className="console-specialists-job-forensic-redaction">{event.redaction?.status ?? "unredacted"}</span>
+            <span className="console-specialists-job-forensic-meta">{formatEvidenceRefs(event.body?.evidence_refs)}</span>
+            {event.trace?.trace_id || event.trace?.span_id ? <span className="console-specialists-job-forensic-meta">trace</span> : null}
+            {event.links?.length ? <span className="console-specialists-job-forensic-meta">links:{event.links.length}</span> : null}
           </div>
         ))}
       </div>
     </section>
   );
+}
+
+function formatEvidenceRefs(refs?: FeedEvidenceRef[]): string {
+  if (!refs || refs.length === 0) return "evidence: —";
+  return `evidence: ${refs.map((ref) => `${ref.kind ?? "ref"}:${ref.id ?? ref.evidence_id ?? ref.sha ?? ref.number ?? "unknown"}`).join(", ")}`;
 }
 
 function formatForensicParticipant(kind?: string, role?: string): string {
