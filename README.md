@@ -1,6 +1,7 @@
 # Omniforge
 
-Agent orchestration + issue tracking monorepo. Primary app: `apps/gitboard`.
+Agent orchestration + issue tracking monorepo. Primary runtime app:
+`apps/gitboard`. Gradual Console scaffold: `apps/console`.
 
 ## Current run modes
 
@@ -51,7 +52,8 @@ The API defaults to `:3030`; the Vite dashboard dev server proxies `/api` and
 ```
 omniforge/
 ├── apps/
-│   └── gitboard/          # GitHub Activity Dashboard
+│   ├── gitboard/          # Running Gitboard service and API
+│   └── console/           # Gradual xtrm Console frontend scaffold
 ├── packages/
 │   ├── core/              # @omniforge/core - shared utilities and types
 │   ├── ui/                # @omniforge/ui - design system components

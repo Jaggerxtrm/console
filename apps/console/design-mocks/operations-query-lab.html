@@ -1,0 +1,1207 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>xtrm console - Operations query lab mock</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --surface-1: #fdfdfd;
+      --surface-2: #f7f8f9;
+      --surface-3: #f1f3f5;
+      --surface-4: #e9edf2;
+      --line-subtle: rgba(15, 23, 42, 0.07);
+      --line: rgba(15, 23, 42, 0.14);
+      --line-strong: rgba(15, 23, 42, 0.22);
+      --text-primary: #172033;
+      --text-secondary: #536071;
+      --text-muted: #87909e;
+      --text-disabled: #bbc1cb;
+      --accent: #3a5fce;
+      --ready: #2f8d5e;
+      --blocked: #8c4a1f;
+      --danger: #c84d3c;
+      --purple: #5a51b8;
+      --agent-executor: #b8542e;
+      --agent-reviewer: #b34168;
+      --agent-debugger: #9b4870;
+      --agent-sanity: #3d7a52;
+      --agent-seconder: #5a51b8;
+      --agent-test: #1f7c75;
+      --bg-info: rgba(58, 95, 206, 0.08);
+      --bg-ready: rgba(47, 141, 94, 0.08);
+      --bg-warn: rgba(140, 74, 31, 0.10);
+      --bg-fail: rgba(200, 77, 60, 0.08);
+      --shadow-drawer: -16px 0 48px -16px rgba(15, 23, 42, 0.18);
+      --font-ui: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --font-mono: "JetBrains Mono", "SFMono-Regular", Consolas, ui-monospace, monospace;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      background: var(--surface-2);
+      color: var(--text-primary);
+      font-family: var(--font-ui);
+      font-size: 12.5px;
+      line-height: 1.45;
+      overflow: hidden;
+    }
+    button, input, select, textarea { color: inherit; font: inherit; }
+    button { background: transparent; border: 0; cursor: pointer; padding: 0; }
+    .mono, code, textarea { font-family: var(--font-mono); }
+
+    .app {
+      display: grid;
+      grid-template-columns: 226px minmax(0, 1fr) 362px;
+      grid-template-rows: 38px 48px minmax(0, 1fr);
+      height: 100vh;
+      min-width: 1200px;
+    }
+
+    .topbar {
+      align-items: stretch;
+      background: var(--surface-1);
+      border-bottom: 1px solid var(--line-subtle);
+      display: flex;
+      grid-column: 1 / -1;
+      min-width: 0;
+    }
+    .brand {
+      align-items: center;
+      border-right: 1px solid var(--line-subtle);
+      display: flex;
+      gap: 8px;
+      font-weight: 720;
+      padding: 0 14px;
+      width: 226px;
+    }
+    .brand-mark {
+      background: var(--accent);
+      border-radius: 2px;
+      height: 8px;
+      width: 8px;
+    }
+    .tabs { display: flex; min-width: 0; overflow: hidden; }
+    .tabs button {
+      align-items: center;
+      border-bottom: 2px solid transparent;
+      color: var(--text-muted);
+      display: inline-flex;
+      padding: 0 11px;
+      white-space: nowrap;
+    }
+    .tabs button.is-active {
+      border-bottom-color: var(--accent);
+      color: var(--text-primary);
+      font-weight: 650;
+    }
+    .top-spacer { flex: 1 1 auto; min-width: 0; }
+    .top-meta {
+      align-items: center;
+      border-left: 1px solid var(--line-subtle);
+      color: var(--text-muted);
+      display: flex;
+      gap: 12px;
+      padding: 0 14px;
+      white-space: nowrap;
+    }
+    .top-meta b { color: var(--text-primary); font-weight: 650; }
+
+    .pulse-strip {
+      background: var(--surface-1);
+      border-bottom: 1px solid var(--line-subtle);
+      display: grid;
+      grid-column: 2 / 3;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      min-width: 0;
+    }
+    .pulse-cell {
+      border-right: 1px solid var(--line-subtle);
+      display: grid;
+      gap: 1px;
+      min-width: 0;
+      padding: 7px 12px;
+    }
+    .pulse-cell:hover { background: rgba(58, 95, 206, 0.035); }
+    .pulse-label {
+      color: var(--text-muted);
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    .pulse-value {
+      color: var(--text-primary);
+      font-family: var(--font-mono);
+      font-size: 15px;
+      font-weight: 720;
+      line-height: 1.1;
+    }
+    .pulse-note {
+      color: var(--text-secondary);
+      font-size: 10px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .pulse-cell.warn { border-left: 2px solid var(--blocked); }
+
+    .sidebar {
+      background: var(--surface-2);
+      border-right: 1px solid var(--line-subtle);
+      display: grid;
+      grid-row: 2 / -1;
+      grid-template-rows: auto minmax(0, 1fr);
+      min-width: 0;
+    }
+    .scope-head {
+      border-bottom: 1px solid var(--line-subtle);
+      display: grid;
+      gap: 8px;
+      padding: 10px 12px;
+    }
+    .search {
+      align-items: center;
+      background: var(--surface-1);
+      border: 1px solid var(--line-subtle);
+      border-radius: 4px;
+      color: var(--text-muted);
+      display: flex;
+      gap: 7px;
+      height: 28px;
+      padding: 0 8px;
+    }
+    .search input {
+      background: transparent;
+      border: 0;
+      min-width: 0;
+      outline: 0;
+      width: 100%;
+    }
+    .scope-scroll { min-height: 0; overflow: auto; padding: 8px 0 12px; }
+    .eyebrow {
+      color: var(--text-muted);
+      font-size: 9.5px;
+      font-weight: 750;
+      letter-spacing: 0.1em;
+      padding: 8px 12px 5px;
+      text-transform: uppercase;
+    }
+    .scope-row {
+      align-items: center;
+      border-left: 2px solid transparent;
+      color: var(--text-secondary);
+      display: flex;
+      gap: 7px;
+      min-height: 25px;
+      padding: 0 12px;
+      text-align: left;
+      width: 100%;
+    }
+    .scope-row.is-active {
+      background: rgba(58, 95, 206, 0.06);
+      border-left-color: var(--accent);
+      color: var(--text-primary);
+      font-weight: 650;
+    }
+    .scope-row:hover { background: rgba(15, 23, 42, 0.025); }
+    .scope-row .label {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .scope-row .count {
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      font-size: 10px;
+    }
+
+    .main {
+      background: var(--surface-1);
+      display: grid;
+      grid-column: 2 / 3;
+      grid-row: 3 / -1;
+      grid-template-rows: auto minmax(0, 1fr) auto;
+      min-width: 0;
+      overflow: hidden;
+    }
+    .main-head {
+      align-items: center;
+      border-bottom: 1px solid var(--line-subtle);
+      display: flex;
+      gap: 12px;
+      min-width: 0;
+      padding: 12px 14px;
+    }
+    .title-block { min-width: 0; }
+    .title-block h1 {
+      font-size: 18px;
+      font-style: italic;
+      line-height: 1.15;
+      margin: 0;
+    }
+    .title-block p {
+      color: var(--text-muted);
+      margin: 3px 0 0;
+    }
+    .toolbar {
+      align-items: center;
+      display: flex;
+      gap: 6px;
+      margin-left: auto;
+    }
+    .button, .chip, .select {
+      align-items: center;
+      border: 1px solid var(--line-subtle);
+      border-radius: 3px;
+      display: inline-flex;
+      gap: 6px;
+      min-height: 24px;
+      padding: 1px 7px;
+      white-space: nowrap;
+    }
+    .button {
+      background: var(--surface-2);
+      color: var(--text-secondary);
+    }
+    .button.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+    .chip {
+      background: transparent;
+      color: var(--text-secondary);
+      font-size: 10.5px;
+    }
+    .chip.active {
+      background: var(--bg-info);
+      border-color: rgba(58, 95, 206, 0.24);
+      color: var(--accent);
+    }
+    .chip.ready { background: var(--bg-ready); color: var(--ready); }
+    .chip.warn { background: var(--bg-warn); color: var(--blocked); }
+    .chip.fail { background: var(--bg-fail); color: var(--danger); }
+    .select {
+      background: var(--surface-1);
+      color: var(--text-secondary);
+      height: 26px;
+    }
+    .dot {
+      border-radius: 50%;
+      display: inline-block;
+      height: 4px;
+      width: 4px;
+    }
+    .dot.ready { background: var(--ready); }
+    .dot.warn { background: var(--blocked); }
+    .dot.fail { background: var(--danger); }
+    .dot.accent { background: var(--accent); }
+    .dot.executor { background: var(--agent-executor); }
+    .dot.reviewer { background: var(--agent-reviewer); }
+    .dot.debugger { background: var(--agent-debugger); }
+    .dot.test { background: var(--agent-test); }
+
+    .panel-grid {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      min-height: 0;
+      overflow: auto;
+      padding: 12px;
+    }
+    .panel {
+      background: var(--surface-1);
+      border: 1px solid var(--line-subtle);
+      border-radius: 4px;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      min-height: 0;
+      min-width: 0;
+    }
+    .span-2 { grid-column: span 2; }
+    .span-3 { grid-column: span 3; }
+    .span-4 { grid-column: span 4; }
+    .panel.is-selected {
+      border-color: rgba(58, 95, 206, 0.28);
+      box-shadow: inset 2px 0 0 var(--accent);
+    }
+    .panel-head {
+      align-items: center;
+      border-bottom: 1px solid var(--line-subtle);
+      display: flex;
+      gap: 10px;
+      min-height: 35px;
+      padding: 0 10px;
+    }
+    .panel-head h2 {
+      font-size: 12.5px;
+      font-weight: 720;
+      margin: 0;
+    }
+    .panel-head .subtitle {
+      color: var(--text-muted);
+      font-size: 10.5px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .panel-body {
+      min-height: 0;
+      min-width: 0;
+      overflow: hidden;
+      padding: 10px;
+    }
+    .chart-shell {
+      display: grid;
+      gap: 8px;
+      height: 100%;
+      min-height: 230px;
+      min-width: 0;
+    }
+    .chart-meta {
+      align-items: center;
+      color: var(--text-muted);
+      display: flex;
+      gap: 8px;
+      font-size: 10.5px;
+      min-width: 0;
+    }
+    .chart-meta code {
+      color: var(--text-secondary);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .chart {
+      background:
+        linear-gradient(to right, rgba(15, 23, 42, 0.045) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(15, 23, 42, 0.045) 1px, transparent 1px);
+      background-size: 48px 36px;
+      border: 1px solid var(--line-subtle);
+      border-radius: 4px;
+      min-height: 172px;
+      overflow: hidden;
+      position: relative;
+    }
+    .chart svg {
+      display: block;
+      height: 100%;
+      min-height: 172px;
+      width: 100%;
+    }
+    .axis-label {
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      font-size: 9px;
+      position: absolute;
+    }
+    .axis-label.x { bottom: 5px; right: 8px; }
+    .axis-label.y { left: 8px; top: 6px; }
+    .legend {
+      align-items: center;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px 10px;
+    }
+    .legend span {
+      align-items: center;
+      color: var(--text-secondary);
+      display: inline-flex;
+      gap: 5px;
+      font-size: 10.5px;
+    }
+    .bar-grid {
+      display: grid;
+      gap: 8px;
+      padding-top: 2px;
+    }
+    .bar-row {
+      align-items: center;
+      display: grid;
+      gap: 8px;
+      grid-template-columns: 94px minmax(0, 1fr) 48px;
+      min-width: 0;
+    }
+    .bar-label {
+      color: var(--text-secondary);
+      font-family: var(--font-mono);
+      font-size: 10.5px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .bar-track {
+      background: var(--surface-3);
+      height: 7px;
+      overflow: hidden;
+    }
+    .bar-fill { background: var(--accent); height: 100%; }
+    .bar-value {
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      font-size: 10.5px;
+      text-align: right;
+    }
+    .table {
+      border-collapse: collapse;
+      width: 100%;
+    }
+    .table th, .table td {
+      border-bottom: 1px solid var(--line-subtle);
+      padding: 7px 6px;
+      text-align: left;
+      white-space: nowrap;
+    }
+    .table th {
+      color: var(--text-muted);
+      font-size: 10px;
+      font-weight: 720;
+      text-transform: uppercase;
+    }
+    .table td {
+      color: var(--text-secondary);
+      font-size: 11px;
+    }
+    .table .num {
+      font-family: var(--font-mono);
+      text-align: right;
+    }
+    .table tr:hover td { background: rgba(15, 23, 42, 0.025); }
+    .id { color: var(--text-primary); font-family: var(--font-mono); font-weight: 650; }
+    .query-status {
+      align-items: center;
+      border-top: 1px solid var(--line-subtle);
+      color: var(--text-muted);
+      display: flex;
+      gap: 8px;
+      min-height: 34px;
+      padding: 0 12px;
+    }
+
+    .query-panel {
+      background: var(--surface-2);
+      border-left: 1px solid var(--line-subtle);
+      display: grid;
+      grid-column: 3;
+      grid-row: 2 / -1;
+      grid-template-rows: auto minmax(0, 1fr) auto;
+      min-width: 0;
+    }
+    .query-head {
+      background: var(--surface-1);
+      border-bottom: 1px solid var(--line-subtle);
+      display: grid;
+      gap: 8px;
+      padding: 10px 12px;
+    }
+    .query-head h2 {
+      font-size: 14px;
+      font-style: italic;
+      line-height: 1.15;
+      margin: 0;
+    }
+    .query-head p {
+      color: var(--text-muted);
+      margin: 0;
+    }
+    .query-body {
+      display: grid;
+      gap: 12px;
+      min-height: 0;
+      overflow: auto;
+      padding: 12px;
+    }
+    .editor-section {
+      border-left: 2px solid var(--accent);
+      display: grid;
+      gap: 8px;
+      padding-left: 10px;
+    }
+    .editor-section.warn { border-left-color: var(--blocked); }
+    .editor-section.ready { border-left-color: var(--ready); }
+    .section-title {
+      align-items: center;
+      display: flex;
+      gap: 8px;
+      min-width: 0;
+    }
+    .section-title h3 {
+      flex: 1;
+      font-size: 12px;
+      margin: 0;
+    }
+    .field-grid {
+      display: grid;
+      gap: 6px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .field {
+      background: var(--surface-1);
+      border: 1px solid var(--line-subtle);
+      border-radius: 4px;
+      display: grid;
+      gap: 5px;
+      min-width: 0;
+      padding: 7px;
+    }
+    .field label {
+      color: var(--text-muted);
+      font-size: 10px;
+      font-weight: 720;
+      text-transform: uppercase;
+    }
+    .field select, .field input {
+      background: transparent;
+      border: 0;
+      color: var(--text-primary);
+      min-width: 0;
+      outline: 0;
+      width: 100%;
+    }
+    .segmented {
+      background: var(--surface-1);
+      border: 1px solid var(--line-subtle);
+      border-radius: 4px;
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      overflow: hidden;
+    }
+    .segmented button {
+      border-right: 1px solid var(--line-subtle);
+      color: var(--text-secondary);
+      min-height: 26px;
+    }
+    .segmented button:last-child { border-right: 0; }
+    .segmented button.is-active {
+      background: var(--bg-info);
+      color: var(--accent);
+      font-weight: 650;
+    }
+    textarea {
+      background: var(--surface-1);
+      border: 1px solid var(--line-subtle);
+      border-radius: 4px;
+      color: var(--text-secondary);
+      line-height: 1.55;
+      min-height: 118px;
+      outline: 0;
+      padding: 8px;
+      resize: vertical;
+      width: 100%;
+    }
+    .field-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .metric-card {
+      background: var(--surface-1);
+      border-left: 2px solid var(--ready);
+      display: grid;
+      gap: 3px;
+      padding: 7px 0 7px 9px;
+    }
+    .metric-card.warn { border-left-color: var(--blocked); }
+    .metric-card strong {
+      color: var(--text-primary);
+      font-family: var(--font-mono);
+      font-size: 13px;
+    }
+    .metric-card span { color: var(--text-muted); font-size: 10.5px; }
+    .query-footer {
+      align-items: center;
+      background: var(--surface-1);
+      border-top: 1px solid var(--line-subtle);
+      display: flex;
+      gap: 6px;
+      padding: 10px 12px;
+    }
+
+    .drawer {
+      bottom: 0;
+      display: none;
+      grid-template-columns: minmax(0, 1fr) minmax(560px, min(56vw, 760px));
+      left: 0;
+      pointer-events: none;
+      position: fixed;
+      right: 0;
+      top: 38px;
+      z-index: 10;
+    }
+    .drawer.is-open { display: grid; }
+    .drawer-scrim {
+      background: rgba(253, 253, 253, 0.66);
+      pointer-events: auto;
+    }
+    .drawer-shell {
+      background: var(--surface-1);
+      border-left: 1px solid var(--line);
+      box-shadow: var(--shadow-drawer);
+      display: grid;
+      grid-template-rows: auto auto minmax(0, 1fr);
+      min-width: 0;
+      pointer-events: auto;
+    }
+    .drawer-header {
+      border-bottom: 1px solid var(--line-subtle);
+      display: grid;
+      gap: 8px;
+      padding: 12px 16px 10px;
+    }
+    .drawer-breadcrumb {
+      color: var(--text-muted);
+      display: flex;
+      gap: 7px;
+      font-size: 10.5px;
+    }
+    .drawer-title {
+      align-items: baseline;
+      display: flex;
+      gap: 8px;
+      min-width: 0;
+    }
+    .drawer-title h2 {
+      flex: 1;
+      font-size: 18px;
+      font-style: italic;
+      line-height: 1.15;
+      margin: 0;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .drawer-actions {
+      align-items: center;
+      display: flex;
+      gap: 6px;
+    }
+    .drawer-tabs {
+      border-bottom: 1px solid var(--line-subtle);
+      display: flex;
+      gap: 2px;
+      overflow-x: auto;
+      padding: 0 12px;
+    }
+    .drawer-tab {
+      border-bottom: 2px solid transparent;
+      color: var(--text-secondary);
+      height: 36px;
+      padding: 0 8px;
+      white-space: nowrap;
+    }
+    .drawer-tab.is-active {
+      border-bottom-color: var(--accent);
+      color: var(--text-primary);
+      font-weight: 650;
+    }
+    .drawer-body {
+      display: grid;
+      gap: 12px;
+      min-height: 0;
+      overflow: auto;
+      padding: 14px 16px 28px;
+    }
+    .info-rail {
+      border-left: 2px solid var(--accent);
+      display: grid;
+      gap: 7px;
+      padding-left: 10px;
+    }
+    .info-rail.warn { border-left-color: var(--blocked); }
+    .info-rail.ready { border-left-color: var(--ready); }
+    .info-rail.purple { border-left-color: var(--purple); }
+    .kv-grid {
+      display: grid;
+      gap: 8px 14px;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+    .kv {
+      display: grid;
+      gap: 2px;
+      min-width: 0;
+    }
+    .kv label {
+      color: var(--text-muted);
+      font-size: 10.5px;
+      font-weight: 720;
+      text-transform: uppercase;
+    }
+    .kv span {
+      color: var(--text-secondary);
+      font-family: var(--font-mono);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .trace-mini {
+      background:
+        linear-gradient(to right, rgba(15, 23, 42, 0.045) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(15, 23, 42, 0.045) 1px, transparent 1px);
+      background-size: 52px 34px;
+      border: 1px solid var(--line-subtle);
+      border-radius: 4px;
+      min-height: 116px;
+      position: relative;
+    }
+    .trace-mini svg {
+      display: block;
+      height: 116px;
+      width: 100%;
+    }
+    .entity-row {
+      background: transparent;
+      border: 0;
+      border-left: 2px solid var(--ready);
+      color: inherit;
+      display: grid;
+      gap: 4px;
+      min-width: 0;
+      padding: 7px 0 7px 10px;
+      text-align: left;
+      width: 100%;
+    }
+    .entity-row.warn { border-left-color: var(--blocked); }
+    .entity-row.purple { border-left-color: var(--purple); }
+    .entity-row:hover { background: rgba(15, 23, 42, 0.025); }
+
+    @media (max-width: 1280px) {
+      .app { grid-template-columns: 54px minmax(0, 1fr) 342px; }
+      .brand { width: 54px; }
+      .brand span:last-child,
+      .sidebar .scope-head,
+      .scope-row .label,
+      .scope-row .count,
+      .eyebrow { display: none; }
+      .scope-row { justify-content: center; padding: 0; }
+      .panel-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .span-2, .span-3, .span-4 { grid-column: span 2; }
+      .pulse-strip { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .drawer { grid-template-columns: 0 minmax(420px, 100vw); }
+      .kv-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand"><span class="brand-mark"></span><span>xtrm console</span></div>
+      <nav class="tabs" aria-label="Console tabs">
+        <button>Feed</button>
+        <button>Issues</button>
+        <button>Specialists</button>
+        <button class="is-active">Operations</button>
+        <button>Evidence</button>
+        <button>Graph</button>
+        <button>GitHub</button>
+        <button>Observability</button>
+        <button>Sessions</button>
+      </nav>
+      <div class="top-spacer"></div>
+      <div class="top-meta"><span>workspace</span><b>all xtrm</b><span>range</span><b>24h</b></div>
+    </header>
+
+    <aside class="sidebar">
+      <div class="scope-head">
+        <label class="search"><span class="mono">/</span><input aria-label="Search scopes" placeholder="scope, metric, role" /></label>
+        <div class="field">
+          <label>Datasource</label>
+          <select aria-label="Datasource">
+            <option>native OTel + Prom + Loki</option>
+            <option>Prometheus only</option>
+            <option>observability.db snapshot</option>
+          </select>
+        </div>
+      </div>
+      <div class="scope-scroll">
+        <div class="eyebrow">Scopes</div>
+        <button class="scope-row is-active"><span class="dot accent"></span><span class="label">all xtrm</span><span class="count">19</span></button>
+        <button class="scope-row"><span class="dot ready"></span><span class="label">specialists</span><span class="count">7</span></button>
+        <button class="scope-row"><span class="dot ready"></span><span class="label">substrate</span><span class="count">4</span></button>
+        <button class="scope-row"><span class="dot warn"></span><span class="label">channels</span><span class="count">2</span></button>
+        <button class="scope-row"><span class="dot ready"></span><span class="label">gitboard</span><span class="count">3</span></button>
+        <button class="scope-row"><span class="dot ready"></span><span class="label">runtime deps</span><span class="count">3</span></button>
+
+        <div class="eyebrow">Saved queries</div>
+        <button class="scope-row"><span class="label mono">role_success_p95</span><span class="count">line</span></button>
+        <button class="scope-row"><span class="label mono">template_cost_by_day</span><span class="count">bar</span></button>
+        <button class="scope-row"><span class="label mono">debug_failures_cluster</span><span class="count">table</span></button>
+        <button class="scope-row"><span class="label mono">sre_escalations_live</span><span class="count">stat</span></button>
+
+        <div class="eyebrow">Fields</div>
+        <button class="scope-row"><span class="label mono">role</span><span class="count">dim</span></button>
+        <button class="scope-row"><span class="label mono">chain_template</span><span class="count">dim</span></button>
+        <button class="scope-row"><span class="label mono">model</span><span class="count">dim</span></button>
+        <button class="scope-row"><span class="label mono">status</span><span class="count">dim</span></button>
+        <button class="scope-row"><span class="label mono">duration_seconds</span><span class="count">metric</span></button>
+        <button class="scope-row"><span class="label mono">cost_dollars</span><span class="count">metric</span></button>
+        <button class="scope-row"><span class="label mono">tokens_total</span><span class="count">metric</span></button>
+      </div>
+    </aside>
+
+    <section class="pulse-strip" aria-label="Operations pulse">
+      <button class="pulse-cell"><span class="pulse-label">specialists active</span><span class="pulse-value">12</span><span class="pulse-note">5 roles, 3 models</span></button>
+      <button class="pulse-cell"><span class="pulse-label">chains in flight</span><span class="pulse-value">18</span><span class="pulse-note">+3 vs 1h</span></button>
+      <button class="pulse-cell"><span class="pulse-label">failure rate 24h</span><span class="pulse-value">3.8%</span><span class="pulse-note">-0.4 vs avg</span></button>
+      <button class="pulse-cell"><span class="pulse-label">spend today</span><span class="pulse-value">$6.42</span><span class="pulse-note">56% of budget</span></button>
+      <button class="pulse-cell"><span class="pulse-label">runtime health</span><span class="pulse-value">19/19</span><span class="pulse-note">all up</span></button>
+      <button class="pulse-cell warn"><span class="pulse-label">escalations</span><span class="pulse-value">1</span><span class="pulse-note">operator pending</span></button>
+    </section>
+
+    <main class="main">
+      <header class="main-head">
+        <div class="title-block">
+          <h1>Operations query lab</h1>
+          <p>Native AgentOps dashboard with editable queries, fields, grouping, and chart panels.</p>
+        </div>
+        <span class="chip active"><span class="dot accent"></span>native UI</span>
+        <span class="chip">no Grafana iframe</span>
+        <div class="toolbar">
+          <button class="button">Duplicate panel</button>
+          <button class="button">Save view</button>
+          <button class="button primary">Run query</button>
+        </div>
+      </header>
+
+      <div class="panel-grid">
+        <section class="panel span-4 is-selected" data-panel="latency">
+          <header class="panel-head">
+            <h2>Job duration by role</h2>
+            <span class="subtitle">query: p95 duration grouped by role · editable</span>
+            <div class="top-spacer"></div>
+            <span class="chip active">line</span>
+            <span class="chip">p95</span>
+          </header>
+          <div class="panel-body">
+            <div class="chart-shell">
+              <div class="chart-meta"><span class="chip ready">fresh 12s</span><code>histogram_quantile(0.95, sum(rate(xtrm_job_duration_seconds_bucket[5m])) by (le, role))</code></div>
+              <div class="chart">
+                <span class="axis-label y">p95 sec</span><span class="axis-label x">last 24h</span>
+                <svg viewBox="0 0 760 220" preserveAspectRatio="none" aria-label="Line chart">
+                  <polyline points="18,162 76,148 132,154 188,121 244,137 300,96 356,112 412,84 468,102 524,78 580,91 636,66 742,73" fill="none" stroke="var(--accent)" stroke-width="2" vector-effect="non-scaling-stroke"/>
+                  <polyline points="18,178 76,168 132,172 188,158 244,161 300,144 356,151 412,139 468,145 524,132 580,138 636,125 742,129" fill="none" stroke="var(--agent-reviewer)" stroke-width="1.6" vector-effect="non-scaling-stroke"/>
+                  <polyline points="18,190 76,184 132,188 188,176 244,180 300,169 356,174 412,162 468,166 524,155 580,160 636,150 742,154" fill="none" stroke="var(--agent-test)" stroke-width="1.6" vector-effect="non-scaling-stroke"/>
+                </svg>
+              </div>
+              <div class="legend"><span><i class="dot accent"></i>executor</span><span><i class="dot reviewer"></i>reviewer</span><span><i class="dot test"></i>test-engineer</span></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel span-2" data-panel="spend">
+          <header class="panel-head">
+            <h2>Spend by role</h2>
+            <span class="subtitle">today · budget aware</span>
+            <div class="top-spacer"></div>
+            <span class="chip active">bar</span>
+          </header>
+          <div class="panel-body">
+            <div class="bar-grid">
+              <div class="bar-row"><span class="bar-label">executor</span><span class="bar-track"><span class="bar-fill" style="display:block;width:68%;background:var(--agent-executor)"></span></span><span class="bar-value">$2.74</span></div>
+              <div class="bar-row"><span class="bar-label">reviewer</span><span class="bar-track"><span class="bar-fill" style="display:block;width:38%;background:var(--agent-reviewer)"></span></span><span class="bar-value">$1.41</span></div>
+              <div class="bar-row"><span class="bar-label">debugger</span><span class="bar-track"><span class="bar-fill" style="display:block;width:28%;background:var(--agent-debugger)"></span></span><span class="bar-value">$0.93</span></div>
+              <div class="bar-row"><span class="bar-label">seconder</span><span class="bar-track"><span class="bar-fill" style="display:block;width:19%;background:var(--agent-seconder)"></span></span><span class="bar-value">$0.62</span></div>
+              <div class="bar-row"><span class="bar-label">test</span><span class="bar-track"><span class="bar-fill" style="display:block;width:13%;background:var(--agent-test)"></span></span><span class="bar-value">$0.41</span></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel span-3" data-panel="throughput">
+          <header class="panel-head">
+            <h2>Chain throughput</h2>
+            <span class="subtitle">per template · click row opens template drawer in production</span>
+          </header>
+          <div class="panel-body">
+            <table class="table">
+              <thead><tr><th>Template</th><th class="num">Chains</th><th class="num">Done</th><th class="num">Esc.</th><th class="num">p50</th></tr></thead>
+              <tbody>
+                <tr data-entity-kind="chain-template" data-entity-id="template:code-standard" data-entity-title="code-standard chain template"><td class="id">code-standard</td><td class="num">18</td><td class="num">16</td><td class="num">0</td><td class="num">4m12s</td></tr>
+                <tr data-entity-kind="chain-template" data-entity-id="template:debug" data-entity-title="debug chain template"><td class="id">debug</td><td class="num">5</td><td class="num">4</td><td class="num" style="color:var(--blocked);font-weight:720">1</td><td class="num">6m02s</td></tr>
+                <tr data-entity-kind="chain-template" data-entity-id="template:code-with-tests" data-entity-title="code-with-tests template"><td class="id">code-with-tests</td><td class="num">7</td><td class="num">6</td><td class="num">0</td><td class="num">7m38s</td></tr>
+                <tr data-entity-kind="chain-template" data-entity-id="template:security-deep" data-entity-title="security-deep template"><td class="id">security-deep</td><td class="num">1</td><td class="num">1</td><td class="num">0</td><td class="num">12m21s</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel span-3" data-panel="scatter">
+          <header class="panel-head">
+            <h2>Cost vs duration</h2>
+            <span class="subtitle">scatter · outlier detection</span>
+            <div class="top-spacer"></div>
+            <span class="chip warn">2 outliers</span>
+          </header>
+          <div class="panel-body">
+            <div class="chart-shell">
+              <div class="chart">
+                <span class="axis-label y">cost</span><span class="axis-label x">duration</span>
+                <svg viewBox="0 0 560 220" preserveAspectRatio="none" aria-label="Scatter chart">
+                  <g fill="var(--accent)" opacity="0.72">
+                    <circle cx="54" cy="171" r="4"/><circle cx="84" cy="161" r="4"/><circle cx="136" cy="150" r="4"/><circle cx="170" cy="132" r="4"/>
+                    <circle cx="206" cy="145" r="4"/><circle cx="232" cy="116" r="4"/><circle cx="279" cy="126" r="4"/><circle cx="319" cy="101" r="4"/>
+                    <circle cx="362" cy="111" r="4"/><circle cx="401" cy="84" r="4"/>
+                  </g>
+                  <g fill="var(--blocked)" opacity="0.9">
+                    <circle cx="444" cy="54" r="5"/><circle cx="497" cy="42" r="5"/>
+                  </g>
+                </svg>
+              </div>
+              <div class="legend"><span><i class="dot accent"></i>normal runs</span><span><i class="dot warn"></i>expensive slow runs</span></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel span-3" data-panel="failures">
+          <header class="panel-head">
+            <h2>Failure clusters</h2>
+            <span class="subtitle">memory type:failure grouped by pattern</span>
+          </header>
+          <div class="panel-body">
+            <table class="table">
+              <thead><tr><th>Pattern</th><th class="num">Instances</th><th>Last</th><th>Status</th></tr></thead>
+              <tbody>
+                <tr data-entity-kind="memory" data-entity-id="mem:scope-mixed" data-entity-title="scope mixed auth and logging"><td>scope mixed auth and logging</td><td class="num">3</td><td class="mono">12h</td><td><span class="chip warn">watch</span></td></tr>
+                <tr data-entity-kind="memory" data-entity-id="mem:reviewer-rejected" data-entity-title="reviewer rejected acceptance criteria"><td>reviewer rejected acceptance criteria</td><td class="num">2</td><td class="mono">2d</td><td><span class="chip ready">mitigated</span></td></tr>
+                <tr data-entity-kind="memory" data-entity-id="mem:debugger-stuck" data-entity-title="debugger could not isolate root cause"><td>debugger could not isolate root cause</td><td class="num">1</td><td class="mono">3d</td><td><span class="chip fail">open</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel span-3" data-panel="runtime">
+          <header class="panel-head">
+            <h2>Runtime backstage</h2>
+            <span class="subtitle">inline popovers in production, not drawers</span>
+          </header>
+          <div class="panel-body">
+            <div class="field-grid">
+              <div class="metric-card"><strong>19/19</strong><span>services healthy</span></div>
+              <div class="metric-card warn"><strong>1</strong><span>LSP respawn in 2h</span></div>
+              <div class="metric-card"><strong>12</strong><span>channels active</span></div>
+              <div class="metric-card"><strong>0</strong><span>orphan worktrees</span></div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <div class="query-status">
+        <span class="chip ready"><span class="dot ready"></span>query ok</span>
+        <span>312 series</span>
+        <span class="mono">218ms</span>
+        <span>sampled from Prom + OTel spans</span>
+      </div>
+    </main>
+
+    <aside class="query-panel" aria-label="Query builder">
+      <header class="query-head">
+        <h2>Panel query</h2>
+        <p>Select a panel, adjust fields, run, then save as an Operations view.</p>
+        <div class="field">
+          <label>Selected panel</label>
+          <select id="panelSelect" aria-label="Selected panel">
+            <option>Job duration by role</option>
+            <option>Spend by role</option>
+            <option>Chain throughput</option>
+            <option>Cost vs duration</option>
+            <option>Failure clusters</option>
+          </select>
+        </div>
+      </header>
+
+      <div class="query-body">
+        <section class="editor-section">
+          <div class="section-title"><h3>Visualization</h3><span class="chip active">editable</span></div>
+          <div class="segmented" role="group" aria-label="Chart type">
+            <button class="is-active">Line</button>
+            <button>Bar</button>
+            <button>Table</button>
+            <button>Scatter</button>
+          </div>
+          <div class="field-grid">
+            <div class="field"><label>Metric</label><select><option>duration_seconds</option><option>cost_dollars</option><option>tokens_total</option><option>job_outcome_total</option></select></div>
+            <div class="field"><label>Aggregation</label><select><option>p95</option><option>p50</option><option>sum</option><option>avg</option><option>rate</option></select></div>
+            <div class="field"><label>Group by</label><select><option>role</option><option>chain_template</option><option>model</option><option>status</option></select></div>
+            <div class="field"><label>Range</label><select><option>24h</option><option>6h</option><option>7d</option><option>custom</option></select></div>
+          </div>
+        </section>
+
+        <section class="editor-section ready">
+          <div class="section-title"><h3>Fields</h3><button class="chip">add field</button></div>
+          <div class="field-list">
+            <button class="chip active mono">role</button>
+            <button class="chip active mono">duration_seconds</button>
+            <button class="chip mono">chain_template</button>
+            <button class="chip mono">model</button>
+            <button class="chip mono">status</button>
+            <button class="chip mono">cost_dollars</button>
+            <button class="chip mono">tokens_total</button>
+            <button class="chip mono">trace_id</button>
+          </div>
+        </section>
+
+        <section class="editor-section warn">
+          <div class="section-title"><h3>Query text</h3><span class="chip warn">PromQL</span></div>
+          <textarea spellcheck="false">histogram_quantile(
+  0.95,
+  sum(rate(xtrm_job_duration_seconds_bucket{
+    workspace="all-xtrm",
+    role=~"$role"
+  }[5m])) by (le, role)
+)</textarea>
+          <div class="field-grid">
+            <div class="metric-card"><strong>312</strong><span>series returned</span></div>
+            <div class="metric-card"><strong>218ms</strong><span>query latency</span></div>
+          </div>
+        </section>
+
+        <section class="editor-section">
+          <div class="section-title"><h3>Panel contract</h3></div>
+          <div class="field-list">
+            <span class="chip ready">drawer: role</span>
+            <span class="chip">source: Prom + OTel</span>
+            <span class="chip">entity: specialist role</span>
+            <span class="chip">freshness visible</span>
+          </div>
+        </section>
+      </div>
+
+      <footer class="query-footer">
+        <button class="button">Reset</button>
+        <button class="button">Copy query</button>
+        <div class="top-spacer"></div>
+        <button class="button primary">Apply</button>
+      </footer>
+    </aside>
+
+    <aside class="drawer is-open" id="entityDrawer" aria-label="Entity drawer">
+      <button class="drawer-scrim" id="drawerScrim" aria-label="Close drawer"></button>
+      <section class="drawer-shell">
+        <header class="drawer-header">
+          <div class="drawer-breadcrumb"><span>xtrm</span><span>/</span><span id="drawerKind">chain-template</span><span>/</span><span id="drawerId">template:debug</span></div>
+          <div class="drawer-title">
+            <span class="id" id="drawerIdTitle">template:debug</span>
+            <span>/</span>
+            <h2 id="drawerTitle">debug chain template</h2>
+            <div class="drawer-actions">
+              <button class="button">Copy ID</button>
+              <button class="button">Open trace</button>
+              <button class="button primary">Create panel</button>
+            </div>
+          </div>
+          <div class="field-list">
+            <span class="chip active">kind:chain-template</span>
+            <span class="chip warn">esc:1</span>
+            <span class="chip mono">p50:6m02s</span>
+            <span class="chip mono">chains:5</span>
+          </div>
+        </header>
+
+        <nav class="drawer-tabs" aria-label="Drawer tabs">
+          <button class="drawer-tab is-active">Overview</button>
+          <button class="drawer-tab">Recent Activity</button>
+          <button class="drawer-tab">Query Usage</button>
+          <button class="drawer-tab">Evidence</button>
+          <button class="drawer-tab">Configuration</button>
+        </nav>
+
+        <div class="drawer-body">
+          <section class="info-rail warn">
+            <h3 style="margin:0;font-size:12.5px">Why this opened as a drawer</h3>
+            <p style="margin:0;color:var(--text-secondary)">The right query panel edits the selected chart. This overlay inspects the clicked entity, preserving the console drawer contract without squashing either the chart grid or query workbench.</p>
+          </section>
+
+          <div class="kv-grid">
+            <div class="kv"><label>kind</label><span>chain-template</span></div>
+            <div class="kv"><label>template</label><span>debug</span></div>
+            <div class="kv"><label>chains</label><span>5</span></div>
+            <div class="kv"><label>escalated</label><span>1</span></div>
+            <div class="kv"><label>success</label><span>80.0%</span></div>
+            <div class="kv"><label>p50</label><span>6m02s</span></div>
+            <div class="kv"><label>p95</label><span>12m44s</span></div>
+            <div class="kv"><label>cost</label><span>$0.93</span></div>
+          </div>
+
+          <section class="info-rail">
+            <h3 style="margin:0;font-size:12.5px">Mini trace and cost shape</h3>
+            <div class="trace-mini">
+              <svg viewBox="0 0 680 116" preserveAspectRatio="none" aria-label="Debug template mini trace">
+                <polyline points="16,78 70,72 124,76 178,61 232,68 286,50 340,56 394,42 448,47 502,32 556,39 664,35" fill="none" stroke="var(--accent)" stroke-width="2" vector-effect="non-scaling-stroke"/>
+                <polyline points="16,91 70,88 124,89 178,83 232,86 286,77 340,80 394,70 448,73 502,62 556,66 664,64" fill="none" stroke="var(--blocked)" stroke-width="1.6" vector-effect="non-scaling-stroke"/>
+              </svg>
+            </div>
+            <div class="legend"><span><i class="dot accent"></i>duration p95</span><span><i class="dot warn"></i>escalation pressure</span></div>
+          </section>
+
+          <section class="info-rail ready">
+            <h3 style="margin:0;font-size:12.5px">Recent instances</h3>
+            <button class="entity-row warn"><span class="id">chain:7f3a</span><span>hard_cap reached after 12 review iterations</span><span class="chip warn">operator pending</span></button>
+            <button class="entity-row"><span class="id">chain:9e2c</span><span>SRE-agent isolated stuck materializer backpressure</span><span class="chip ready">done</span></button>
+            <button class="entity-row purple"><span class="id">mem:debugger-stuck</span><span>failure cluster created from repeated debug dead-ends</span><span class="chip">memory</span></button>
+          </section>
+        </div>
+      </section>
+    </aside>
+  </div>
+
+  <script>
+    const panels = Array.from(document.querySelectorAll(".panel[data-panel]"));
+    const panelSelect = document.getElementById("panelSelect");
+    const drawer = document.getElementById("entityDrawer");
+    const drawerKind = document.getElementById("drawerKind");
+    const drawerId = document.getElementById("drawerId");
+    const drawerIdTitle = document.getElementById("drawerIdTitle");
+    const drawerTitle = document.getElementById("drawerTitle");
+
+    panels.forEach((panel, index) => {
+      panel.addEventListener("click", () => {
+        panels.forEach((p) => p.classList.remove("is-selected"));
+        panel.classList.add("is-selected");
+        if (panelSelect) panelSelect.selectedIndex = Math.min(index, panelSelect.options.length - 1);
+      });
+    });
+
+    document.querySelectorAll(".segmented button").forEach((button) => {
+      button.addEventListener("click", () => {
+        button.parentElement.querySelectorAll("button").forEach((b) => b.classList.remove("is-active"));
+        button.classList.add("is-active");
+      });
+    });
+
+    document.querySelectorAll(".field-list button.chip").forEach((button) => {
+      button.addEventListener("click", () => button.classList.toggle("active"));
+    });
+
+    document.querySelectorAll(".pulse-cell").forEach((cell, index) => {
+      cell.addEventListener("click", () => {
+        const target = panels[Math.min(index, panels.length - 1)];
+        panels.forEach((p) => p.classList.remove("is-selected"));
+        target.classList.add("is-selected");
+        target.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      });
+    });
+
+    document.querySelectorAll("[data-entity-kind]").forEach((row) => {
+      row.addEventListener("click", (event) => {
+        event.stopPropagation();
+        const kind = row.dataset.entityKind || "entity";
+        const id = row.dataset.entityId || "entity:unknown";
+        const title = row.dataset.entityTitle || id;
+        drawerKind.textContent = kind;
+        drawerId.textContent = id;
+        drawerIdTitle.textContent = id;
+        drawerTitle.textContent = title;
+        drawer.classList.add("is-open");
+      });
+    });
+
+    document.getElementById("drawerScrim").addEventListener("click", () => {
+      drawer.classList.remove("is-open");
+    });
+  </script>
+</body>
+</html>
