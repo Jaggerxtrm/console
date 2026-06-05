@@ -84,8 +84,8 @@ No NAT, no public exposure, no extra firewall work for app port even if ufw stay
 | Var | Default | What it does | When override |
 |---|---:|---|---|
 | `HOST` | `0.0.0.0` in production, `127.0.0.1` in dev | Server bind address | Set to tailnet IP for native deploy |
-| `PORT` | `3000` | HTTP listen port | Change if port already in use |
-| `AGENT_FORGE_DB` | `~/.agent-forge/state.db` | SQLite state DB path | Move DB or isolate per host |
+| `PORT` | `3030` | HTTP listen port for the native Bun service | Set explicitly in systemd; Docker overrides to `3000` for local reproduction |
+| `GITBOARD_DATA_DIR` | `~/.agent-forge` | Directory containing `xtrm.sqlite` plus legacy `gitboard.sqlite` fold input | Move DBs or isolate per host |
 | `XDG_PROJECTS_DIR` | `~/projects` fallback | Scanner root for repo discovery | Point at alternate repo tree, e.g. nested `~/dev` + `~/projects` layouts |
 | `DOLT_HOST` | `127.0.0.1` on native, `host.docker.internal` when `XDG_PROJECTS_DIR` is set | Dolt SQL host | Override when container / host routing differs |
 | `LOG_DIR` | `~/.xtrm/logs` | JSONL log directory | Override for native host logs |
@@ -105,6 +105,10 @@ No NAT, no public exposure, no extra firewall work for app port even if ufw stay
 
 Kept for local reproduction only.
 
+Docker/Compose intentionally keep `PORT=3000` and map runtime state through
+`GITBOARD_DATA_DIR=/data`. Native systemd remains the primary deployment path
+and uses `PORT=3030` on the tailnet host.
+
 Known issues:
 - Vite v7 `outDir` resolves under repo root in this setup
 - `host.docker.internal` needs `DOLT_HOST` override in some runtimes
@@ -117,7 +121,7 @@ Use Docker only if you need to reproduce container behavior.
 
 ```bash
 curl http://<tailnet-ip>:3030/gitboard
-curl http://<tailnet-ip>:3030/api/internal/dolt-health
+curl http://<tailnet-ip>:3030/api/internal/dolt/health
 ```
 
 ## Docs sweep evidence

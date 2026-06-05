@@ -10,8 +10,8 @@ services:
       - .env
     environment:
       PORT: "3000"
-      AGENT_FORGE_DB: /data/state.db
-      PROJECTS_DIR: /projects
+      GITBOARD_DATA_DIR: /data
+      XDG_PROJECTS_DIR: /projects
     volumes:
       - gitboard-state:/data
       - ${HOME}/projects:/projects:ro

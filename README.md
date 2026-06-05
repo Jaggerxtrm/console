@@ -9,6 +9,7 @@ Primary deploy path.
 - Service: `~/.config/systemd/user/gitboard.service`
 - Starts app with Bun, no container layer
 - Binds to Tailscale IP on host
+- Serves Gitboard at `http://<tailnet-ip>:3030/gitboard`
 - Needs `loginctl enable-linger <user>` so it survives logout
 
 Quick start:
@@ -23,6 +24,7 @@ systemctl --user enable --now gitboard
 ### 2) Docker / Compose  
 Kept in tree, but experimental / not primary deploy.
 - Useful for local reproduction
+- Explicitly keeps `PORT=3000` and `GITBOARD_DATA_DIR=/data`
 - Known gaps documented in `docs/deployment.md`
 
 ### 3) Dev mode  
@@ -30,6 +32,9 @@ For local hacking:
 ```bash
 bun run dev
 ```
+
+The API defaults to `:3030`; the Vite dashboard dev server proxies `/api` and
+`/ws` to that port.
 
 ## Docs
 

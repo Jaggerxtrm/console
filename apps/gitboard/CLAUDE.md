@@ -12,8 +12,8 @@ Agent Forge (display name: **OmniForge**) is a CLI/TUI orchestrator for AI agent
 
 ```bash
 # Development — run both concurrently
-bun run dev              # API server + poller on :3000
-bun run dev:dashboard    # Vite HMR on :5173 (proxies /api and /ws to :3000)
+bun run dev              # API server + poller on :3030
+bun run dev:dashboard    # Vite HMR on :5173 (proxies /api and /ws to :3030)
 
 # Type checking (no emit)
 bun run lint             # or: bun run typecheck
@@ -75,12 +75,15 @@ src/
 
 ### Data layer (`src/core/`)
 
-- **`store.ts`** — `createDatabase(path)` opens/creates `state.db` with WAL mode and all 6 tables.
+- **`xtrm-store.ts`** — `createXtrmDatabase(path)` opens/creates `xtrm.sqlite` with the bridge schema.
+- **`store.ts`** — legacy GitHub table store used by compatibility paths and fold input.
 - **`github-store.ts`** — typed CRUD functions over the 3 GitHub tables.
 - **`github-poller.ts`** — `GithubPoller` class with `start(repos)`, `stop()`, `backfill(repo)`. Auth via `gh auth token` first, then `GITHUB_TOKEN` env var.
 - **`github-discover.ts`** — auto-discovers repos on first run via `gh repo list`, falls back to REST API.
 
-Database path: `~/.agent-forge/state.db` (override with `AGENT_FORGE_DB` env var).
+Database directory: `~/.agent-forge` (override with `GITBOARD_DATA_DIR` env var).
+Current runtime state lives in `xtrm.sqlite`; legacy `gitboard.sqlite` is folded
+into it at startup when present.
 
 ### API bridge (`src/api/`)
 
@@ -135,8 +138,8 @@ Backend dependency: `src/api/server.ts:6` imports `beadsRoutes` from `../../../b
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `AGENT_FORGE_DB` | `~/.agent-forge/state.db` | SQLite database path |
-| `PORT` | `3000` | API server port |
+| `GITBOARD_DATA_DIR` | `~/.agent-forge` | Directory for `xtrm.sqlite` and legacy `gitboard.sqlite` |
+| `PORT` | `3030` | API server port |
 | `GITHUB_TOKEN` | (from `gh auth token`) | GitHub API auth fallback |
 | `VITE_BEADS_API_URL` | `""` (same-origin) | Override base for `dashboard/lib/beads-api.ts`. Default uses gitboard's own server, which mounts `/api/beads/*` via `server.ts:6,35`; set only for split-host setups. |
 

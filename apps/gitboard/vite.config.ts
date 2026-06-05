@@ -17,15 +17,15 @@ export default defineConfig({
     },
     proxy: {
       "/api/console/terminal/ws": {
-        target: "ws://localhost:3000",
+        target: "ws://localhost:3030",
         ws: true,
       },
       "/api": {
-        target: "http://localhost:3000",
+        target: "http://localhost:3030",
         changeOrigin: true,
       },
       "/ws": {
-        target: "ws://localhost:3000",
+        target: "ws://localhost:3030",
         ws: true,
       },
     },

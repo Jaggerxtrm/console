@@ -67,18 +67,18 @@ the running Gitboard service on Tailscale remains stable.
 
 ## Drift And Cleanup Candidates
 
-1. Port defaults are inconsistent.
-   - Live docs and systemd use `3030`.
-   - `apps/gitboard/src/index.ts`, `startServer`, Dockerfile, and
-     `docker-compose.yml` default to `3000`.
-   - This should be fixed or explicitly documented as dev/container-only.
+1. Port defaults were inconsistent. Resolved by `forge-benk.6`.
+   - Native code, live docs and systemd now use `3030`.
+   - Dockerfile and `docker-compose.yml` intentionally keep `3000` as a
+     local-reproduction override.
 
-2. Environment variable names are inconsistent.
+2. Environment variable names were inconsistent. Resolved by `forge-benk.6`.
    - Runtime code uses `GITBOARD_DATA_DIR` for `gitboard.sqlite` and
      `xtrm.sqlite`.
-   - Docker docs still mention `AGENT_FORGE_DB` and Compose sets `PROJECTS_DIR`,
-     while scanners use `XDG_PROJECTS_DIR`.
-   - `github-poller.ts` still has an `AGENT_FORGE_DB` standalone path fallback.
+   - Docker/Compose now use `GITBOARD_DATA_DIR=/data` and
+     `XDG_PROJECTS_DIR=/projects`.
+   - The standalone `github-poller.ts` path fallback now uses
+     `GITBOARD_DATA_DIR/gitboard.sqlite`.
 
 3. Backend docs are stale around Beadboard.
    - `docs/backend.md` still says Gitboard imports Beadboard control-plane code
@@ -105,14 +105,16 @@ the running Gitboard service on Tailscale remains stable.
      follow-up if it recurs.
 
 6. Docker is still present but not the winning deploy path.
-   - It exposes `3000`, uses `/data/state.db`, and sets `PROJECTS_DIR`.
+   - It exposes `3000`, uses `GITBOARD_DATA_DIR=/data`, and sets
+     `XDG_PROJECTS_DIR=/projects`.
    - Treat as dormant local reproduction unless it is refreshed in a dedicated
      ops cleanup.
 
 ## Proposed Follow-Up Beads
 
-- Normalize runtime/deployment defaults: reconcile `PORT`, `HOST`,
-  `GITBOARD_DATA_DIR`, `AGENT_FORGE_DB`, and `XDG_PROJECTS_DIR`.
+- Normalize runtime/deployment defaults: reconciled by `forge-benk.6`; keep
+  watching for new drift around `PORT`, `HOST`, `GITBOARD_DATA_DIR`, and
+  `XDG_PROJECTS_DIR`.
 - Refresh backend docs: update stale Beadboard import/path claims and mark
   historical backend-redesign sections as superseded by the current bridge.
 - Remove tracked runtime artifacts: untrack SQLite/log files and add a focused

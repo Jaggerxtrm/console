@@ -69,7 +69,7 @@ Current startup sequence:
 const DATA_DIR = process.env.GITBOARD_DATA_DIR ?? `${process.env.HOME}/.agent-forge`;
 const GITBOARD_DB_PATH = join(DATA_DIR, "gitboard.sqlite");
 const XTRM_DB_PATH = join(DATA_DIR, "xtrm.sqlite");
-const PORT = Number(process.env.PORT ?? 3000);
+const PORT = Number(process.env.PORT ?? 3030);
 
 const xtrmDb = createXtrmDatabase(XTRM_DB_PATH);
 foldGitboardSQLite(GITBOARD_DB_PATH, xtrmDb);
@@ -117,7 +117,7 @@ Core runtime variables:
 | Variable | Used by | Default | Meaning |
 |---|---|---:|---|
 | `GITBOARD_DATA_DIR` | `index.ts` | `~/.agent-forge` | Directory for `xtrm.sqlite` and legacy `gitboard.sqlite` |
-| `PORT` | `index.ts` / `startServer` | `3000` | HTTP port; production systemd uses `3030` |
+| `PORT` | `index.ts` / `startServer` | `3030` | HTTP port for native service; Docker overrides to `3000` |
 | `HOST` | `startServer` | production `0.0.0.0`, otherwise `127.0.0.1` | Bind host |
 | `LOG_DIR` | logger/internal logs | `~/.xtrm/logs` or app logs fallback | JSONL log directory |
 | `GITBOARD_LOG_DIR` | logger | app logs fallback | Legacy log env name |

@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { join } from "node:path";
 import {
   insertEvent,
   insertCommit,
@@ -871,7 +872,8 @@ export class GithubPoller {
 // Entry point for direct execution: bun run src/core/github-poller.ts
 if (import.meta.main) {
   const token = getGithubToken();
-  const dbPath = process.env.AGENT_FORGE_DB ?? `${process.env.HOME}/.agent-forge/state.db`;
+  const dataDir = process.env.GITBOARD_DATA_DIR ?? `${process.env.HOME}/.agent-forge`;
+  const dbPath = join(dataDir, "gitboard.sqlite");
 
   // Import at runtime to avoid circular issues when running as script
   const { createDatabase } = await import("./store.ts");

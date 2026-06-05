@@ -11,7 +11,7 @@ const DATA_DIR = process.env.GITBOARD_DATA_DIR ?? `${process.env.HOME}/.agent-fo
 const GITBOARD_DB_PATH = join(DATA_DIR, "gitboard.sqlite");
 const XTRM_DB_PATH = join(DATA_DIR, "xtrm.sqlite");
 mkdirSync(DATA_DIR, { recursive: true });
-const PORT = Number(process.env.PORT ?? 3000);
+const PORT = Number(process.env.PORT ?? 3030);
 setLogLevel((process.env.LOG_LEVEL as "debug" | "info" | "warn" | "error" | undefined) ?? "info");
 emitLogPath();
 

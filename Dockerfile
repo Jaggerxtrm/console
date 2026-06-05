@@ -9,7 +9,8 @@ FROM oven/bun:1-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
-ENV AGENT_FORGE_DB=/data/state.db
+ENV GITBOARD_DATA_DIR=/data
+ENV XDG_PROJECTS_DIR=/projects
 
 COPY --from=builder /app/package.json /app/package.json
 COPY --from=builder /app/bun.lock /app/bun.lock
