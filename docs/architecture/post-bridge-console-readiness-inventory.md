@@ -21,6 +21,8 @@ the running Gitboard service on Tailscale remains stable.
 - Current UI shell: Gitboard-hosted Console surface under `/gitboard`, with
   `/api/console/*` APIs and dashboard pages in
   `apps/gitboard/src/dashboard/pages/console`.
+- Layer ownership contract:
+  `docs/architecture/console-app-materializer-api-boundaries.md`.
 
 ## Classification
 

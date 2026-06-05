@@ -10,3 +10,4 @@ Covered boundaries:
 - GitHub PR detail/report fan-out bounds.
 - GitHub poller concurrency, ETag, backoff, and WS publication behavior.
 - Specialist job endpoint epoch-aware caching.
+- Console app/API/materializer separation.

@@ -7,6 +7,9 @@ work. It protects the current running Gitboard service, the post-bridge
 materializer/API contract, and the Beads dependency surfaces while cleanup and
 future `apps/console` scaffold work proceeds.
 
+Boundary ownership for these guards is defined in
+`docs/architecture/console-app-materializer-api-boundaries.md`.
+
 ## Required Baseline
 
 Run these for any cleanup child that changes code, config, package scripts, API
@@ -30,6 +33,7 @@ source scanning, or state table migrations:
 
 ```bash
 bun run --cwd apps/gitboard test -- \
+  tests/backend-boundaries/console-separation-boundary-contract.test.ts \
   tests/core/materializer.test.ts \
   tests/core/materializer/observability-adapter.test.ts \
   tests/core/materializer/beads-adapter.test.ts \

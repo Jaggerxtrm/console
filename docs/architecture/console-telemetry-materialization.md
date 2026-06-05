@@ -6,6 +6,10 @@ This document is the local source of truth for Gitboard/Console telemetry
 materialization while xtrm migrates from Beads plus Specialists plus GitHub into
 native Substrate.
 
+Operational ownership boundaries between UI, APIs, materializer, GitHub, and
+future Substrate are defined in
+`docs/architecture/console-app-materializer-api-boundaries.md`.
+
 Authoritative upstream contracts:
 
 - `/home/dawid/dev/specialists/docs/telemetry/forensic-event-contract.md`
