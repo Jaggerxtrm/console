@@ -1,7 +1,7 @@
 // TopBar (forge-7xu). Surface switch [GitHub | Console] on left,
 // tab strip on right.
 
-import { BookIcon, ColumnsIcon, GearIcon, GraphIcon, ListUnorderedIcon, MarkGithubIcon, MoonIcon, PulseIcon, ShareAndroidIcon, SunIcon } from "@primer/octicons-react";
+import { BookIcon, ColumnsIcon, DatabaseIcon, GearIcon, GraphIcon, ListUnorderedIcon, MarkGithubIcon, MoonIcon, PulseIcon, ShareAndroidIcon, SunIcon } from "@primer/octicons-react";
 import {
   useShellStore,
   selectSelection,
@@ -86,6 +86,7 @@ function consoleIcon(id: TabId) {
     case "graph": return <ShareAndroidIcon size={12} />;
     case "observability": return <PulseIcon size={12} />;
     case "specialists": return <GearIcon size={12} />;
+    case "operations": return <DatabaseIcon size={12} />;
     default: return null;
   }
 }

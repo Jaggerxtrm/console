@@ -13,6 +13,7 @@ import { BeadsRepoView } from "../beads/BeadsRepoView.tsx";
 import { Graph } from "../../pages/console/Graph.tsx";
 import { Observability } from "../../pages/console/Observability.tsx";
 import { Specialists } from "../../pages/console/Specialists.tsx";
+import { Operations } from "../../pages/console/Operations.tsx";
 import { BottomDrawer } from "./BottomDrawer.tsx";
 import type { GithubTab, RepoNode } from "../../../types/shell.ts";
 import type { GithubEvent, GithubPr, GithubIssue, GithubRelease } from "../../../types/github.ts";
@@ -67,6 +68,9 @@ export function MainPane() {
         break;
       case "specialists":
         inner = <Specialists />;
+        break;
+      case "operations":
+        inner = <Operations />;
         break;
       default:
         inner = <Observability />;

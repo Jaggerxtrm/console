@@ -17,7 +17,7 @@ export type GithubTab =
   | "reports";
 
 export type BeadsTab = "feed" | "triage" | "memories";
-export type ConsoleTab = "feed" | "triage" | "memories" | "graph" | "observability" | "specialists";
+export type ConsoleTab = "feed" | "triage" | "memories" | "graph" | "observability" | "specialists" | "operations";
 
 export type TabId = GithubTab | ConsoleTab;
 
@@ -44,6 +44,7 @@ export const CONSOLE_TABS: { id: ConsoleTab; label: string }[] = [
   { id: "graph",         label: "Graph" },
   { id: "observability", label: "Observability" },
   { id: "specialists",   label: "Specialists" },
+  { id: "operations",    label: "Operations" },
 ];
 
 export const DEFAULT_TAB: Record<Surface, TabId> = {

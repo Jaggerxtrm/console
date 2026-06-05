@@ -32,7 +32,7 @@ export function App() {
       store.setSurface("console");
       return;
     }
-    if (path.includes("/console/beads") || path.endsWith("/console") || path.includes("/console/console/")) {
+    if (path.startsWith("/console")) {
       if (store.selection.surface !== "console") store.setSurface("console");
       const tab = routeTab(path);
       if (tab && store.selection.tab !== tab) store.setTab(tab);
@@ -238,6 +238,7 @@ function routeTab(path: string): TabId | null {
   if (path.includes("/beads/feed") || path.endsWith("/beads")) return "feed";
   if (path.includes("/console/graph")) return "graph";
   if (path.includes("/console/specialists")) return "specialists";
+  if (path.includes("/console/operations")) return "operations";
   if (path.includes("/console/observability")) return "observability";
   if (path.endsWith("/console")) return "observability";
   return null;
