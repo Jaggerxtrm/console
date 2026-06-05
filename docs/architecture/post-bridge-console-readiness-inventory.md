@@ -41,7 +41,7 @@ the running Gitboard service on Tailscale remains stable.
 | `packages/html-preview` | Dormant/tooling | Has CLI package and README; `.worktrees/forge-a3m2-html-preview` exists but is ignored | Investigate before removal; likely tooling, not runtime |
 | Dockerfile / Compose | Dormant reproduction path | README and `docs/deployment.md` mark Docker experimental/not primary | Keep dormant unless a follow-up decides to remove or refresh |
 | `/beadboard` route/docs | Retired legacy surface | Smoke coverage expects `/beadboard` to return 404; docs still cite removed `apps/beadboard` paths | Keep retired unless a deliberate compatibility bead reopens it |
-| `/api/beads` route file | Legacy unmounted code | `src/api/routes/beads.ts` exists, but `src/api/server.ts` does not mount `/api/beads`; stale tests still reference the old API | Do not treat as running bridge; resolve under the legacy cache follow-up before adding guards |
+| `/api/beads` route file | Legacy unmounted code | `src/api/routes/beads.ts` exists, but `src/api/server.ts` does not mount `/api/beads`; `forge-benk.10` updates the old cache test to assert retirement and `/api/substrate` as the supported read surface | Do not treat as running bridge; keep retired unless a deliberate compatibility bead reopens it |
 | `apps/console` | Future migration target | `forge-9xet.2` exists but package is not present yet | Do not create in this inventory task |
 | Tracked runtime artifacts | Cleanup candidate | `git ls-files` shows `apps/gitboard/data/audit.sqlite` and `apps/gitboard/logs/2026-05-19.jsonl` tracked despite ignore rules | Remove in a dedicated cleanup bead with rollback-safe validation |
 

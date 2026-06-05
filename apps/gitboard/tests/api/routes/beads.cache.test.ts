@@ -1,13 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { Hono } from "hono";
 import { createApp } from "../../../src/api/server.ts";
 
-describe("beads cache", () => {
-  it("serves stale cached projects when scanner later fails", async () => {
+describe("legacy beads route", () => {
+  it("keeps /api/beads retired and serves project reads through /api/substrate", async () => {
     const app = createApp({} as never).app;
-    const first = await app.fetch(new Request("http://localhost/api/beads/projects"));
-    expect(first.status).toBe(200);
-    const json = await first.json() as { projects: unknown[] };
+
+    const legacy = await app.fetch(new Request("http://localhost/api/beads/projects"));
+    expect(legacy.status).toBe(404);
+
+    const current = await app.fetch(new Request("http://localhost/api/substrate/projects"));
+    expect(current.status).toBe(200);
+    const json = await current.json() as { projects: unknown[] };
     expect(Array.isArray(json.projects)).toBe(true);
   });
 });

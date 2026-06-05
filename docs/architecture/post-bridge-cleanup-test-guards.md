@@ -119,9 +119,9 @@ bun run --cwd apps/gitboard test -- \
   tests/core/fold-gitboard-sqlite.test.ts
 ```
 
-Keep stale `/api/beads` cache coverage out of this guard until `forge-benk.10`
-decides whether the legacy route stays retired or gets an explicit compatibility
-adapter.
+Legacy `/api/beads` cache coverage is resolved by `forge-benk.10`: the route
+stays retired and `tests/api/routes/beads.cache.test.ts` asserts that
+`/api/substrate/projects` is the supported project read surface.
 
 ## Prometheus And Operations Cardinality
 

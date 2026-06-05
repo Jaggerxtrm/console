@@ -14,7 +14,7 @@ export function createInternalDoltHealthRouter(): Hono {
 
     return c.json({
       state: "ok",
-      note: "Pool snapshot retired in PR#10; see /api/beads/projects for per-project source health.",
+      note: "Pool snapshot retired in PR#10; see /api/substrate/projects for per-project source health.",
     });
   });
 
