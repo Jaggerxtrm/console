@@ -3,9 +3,9 @@
 Status: current documentation entrypoint.
 
 Use this file before implementing Console, materializer, telemetry, Beads, or
-Gitboard cleanup work. The documentation set contains current contracts,
-bridge-era contracts, planning specs, and historical design records. They are
-all useful, but they do not all have the same authority.
+cleanup work. The documentation set contains current contracts and planning
+specs. Removed legacy documents are no longer part of the working
+documentation graph.
 
 ## Documentation Map
 
@@ -14,7 +14,7 @@ flowchart TB
     Entry["docs/READ_THIS_FIRST.md\nstart here"]
 
     subgraph Current["Current Running-State References"]
-        Backend["docs/backend.md\nrunning apps/gitboard service"]
+        Backend["docs/backend.md\nrunning backend/materializer service"]
         Architecture["docs/architecture/console-architecture.md\nUI/API/materializer ownership,\nstate, dormant tooling, repo state"]
         Visual["docs/xtrm-console-visual-contract.md\nConsole visual language"]
     end
@@ -29,18 +29,11 @@ flowchart TB
         ObsSpec["docs/architecture/console-observability-spec.md\nSlices A-F: datasource, panels,\nsource health, evidence UX, journal"]
     end
 
-    subgraph Historical["Historical / Superseded Context"]
-        Redesign["docs/backend-redesign.md"]
-        Beadboard["docs/beadboard-inline-feed-spec.md"]
-    end
-
     Entry --> Current
     Entry --> Operational
     Entry --> Planning
-    Entry --> Historical
     Current --> Operational
     Planning -. "must not override" .-> Current
-    Historical -. "reasoning only" .-> Current
 ```
 
 ## Trust Order
@@ -58,17 +51,17 @@ When documents conflict, use this order:
    event catalog, Prometheus projection, redaction, and AgentOps semantics.
 5. `/home/dawid/second-mind/1-projects/xtrm/substrate/substrate_design_it.md`
    for future Substrate direction.
-6. Planning specs (`docs/architecture/console-observability-spec.md`) and
-   historical specs only when they do not conflict with the current
-   references above.
+6. Planning specs (`docs/architecture/console-observability-spec.md`) only
+   when they do not conflict with the current references above.
 
 ## Current Canonical Docs
 
 `docs/backend.md` is the current backend reference for the running
 `apps/gitboard` service. It describes the native Bun service, Hono API,
-materializer, `xtrm.sqlite`, legacy `gitboard.sqlite` fold-in, GitHub adapter,
-Beads/Substrate bridge, specialists feed, WebSocket channels, and deployment
-posture.
+production serving for `/console` and compatibility serving for `/gitboard`,
+the materializer, `xtrm.sqlite`, legacy `gitboard.sqlite` fold-in, GitHub
+adapter, Beads/Substrate bridge, specialists feed, WebSocket channels, and
+deployment posture.
 
 `docs/architecture/console-architecture.md` is the architectural single source
 of truth. It covers UI/API/materializer/state ownership, the materializer
@@ -115,22 +108,12 @@ Planning docs must not invent telemetry labels, event schemas, token
 semantics, or Substrate state ownership. Those come from upstream specialists
 telemetry docs and Substrate design docs.
 
-## Historical Docs
-
-Historical docs are retained because they explain decisions, not because they
-are current contracts.
-
-`docs/backend-redesign.md` is explicitly historical and partially superseded by
-the implemented post-bridge architecture. Use it for reasoning, migration
-history, and why the materializer exists.
-
-`docs/beadboard-inline-feed-spec.md` is a stale Beadboard-era design draft. It
-contains useful feed-first product thinking, but it predates `/beadboard`
-retirement and the current Console module model. Do not treat it as current
-implementation guidance unless a new bead explicitly extracts and updates its
-still-valid ideas into Console docs.
-
 ## Materializer Rule Of Thumb
+
+The materializer lives in `apps/gitboard/src/core/materializer` and is created
+by `apps/gitboard/src/api/server.ts`. The `apps/console` frontend never owns
+materializer lifecycle, source ingestion, source cursors, or bridge table
+writes.
 
 The materializer writes bridge read models. APIs read those models and project
 DTOs. UI reads APIs. GitHub is a durable external adapter. Beads/Specialists
@@ -143,15 +126,16 @@ last-successful cache or UI-local read cache where needed.
 
 ## Cleanup Tracking
 
-Residual documentation and legacy cleanup is tracked by `forge-tx7j`
-(`Post-benk legacy residue cleanup follow-up`). Link follow-up cleanup beads
-there when:
+Residual documentation and legacy cleanup is tracked by `forge-kr53`
+(`Console cleanup: retire Beadboard/Gitboard residue`). Link follow-up cleanup
+beads there when:
 
 - a document still reads as current but is historical;
-- a Beadboard/Gitboard-era reference conflicts with Console module language;
+- a retired Beadboard reference or stale Gitboard-as-product reference conflicts
+  with Console module language;
 - a bridge-era doc needs to be retired after native Substrate or Console work
   lands;
 - a point bug still affects materializer/API parity.
 
-Do not reopen broad Gitboard-to-Console visual migration under `forge-tx7j`.
-That migration needs dedicated implementation beads with rollback paths.
+Do not reopen broad visual redesign under `forge-kr53`. Visual design remains
+its own implementation tranche with rollback paths.

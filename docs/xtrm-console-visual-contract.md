@@ -1,9 +1,8 @@
 # xtrm Console Visual Contract
 
-This document is the source of truth for the xtrm Console visual language. It
-originated during Gitboard/Beadboard unification work, but the current
-post-bridge state is that `/beadboard` is retired and `apps/console` is the
-gradual migration target. Do not implement new console UI until it conforms to
+This document is the source of truth for the xtrm Console visual language.
+The current post-bridge state is that `apps/console` is the ready frontend app
+served at `/console`. Do not implement new console UI until it conforms to
 this contract.
 
 ## Product direction
@@ -287,8 +286,8 @@ Do not introduce:
 - large glowing borders
 - pill-heavy controls
 - rounded card grids as primary navigation
-- separate Beadboard/Gitboard spacing scales
-- separate Beadboard/Gitboard color palettes
+- separate legacy spacing scales
+- separate legacy color palettes
 - decorative HUD panels that do not carry data
 - emoji status markers
 
@@ -318,4 +317,4 @@ Before marking any console UI work done:
 - [ ] No iframe embedding is used for module composition.
 - [ ] Expanded details use the same section rhythm.
 - [ ] Kanban, if present, is secondary and visually subordinate to the feed.
-- [ ] `/gitboard` remains stable until the true Console shell replaces it; `/beadboard` stays retired unless a deliberate compatibility bead reopens it.
+- [ ] `/console` remains the product frontend; `/gitboard` remains compatibility until a dedicated runtime rename replaces it.

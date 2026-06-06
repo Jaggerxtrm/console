@@ -7,23 +7,23 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../../../");
 
 const requiredBoundaryCases = [
   {
-    file: "apps/beadboard/tests/api/routes/beads-routes.test.ts",
+    file: "apps/gitboard/tests/api/routes/substrate.test.ts",
     titles: [
-      "routes /issues/closed to the closed-list handler before issue detail",
+      "orders closed issues by most recent close timestamp before applying the limit",
     ],
   },
   {
-    file: "apps/beadboard/tests/core/dolt-client-runtime.test.ts",
+    file: "apps/gitboard/tests/core/materializer/beads-adapter.test.ts",
     titles: [
-      "keeps same-port databases in separate runtime keys",
-      "opens breaker for one pool key without blocking another pool key",
+      "delegates snapshot + diff and materializer advances cursor only on success",
+      "preserves Beads runtime graph semantics for pre-Substrate chains",
     ],
   },
   {
     file: "apps/gitboard/tests/api/routes/graph.test.ts",
     titles: [
       "reuses cached scan and issue data until explicit refresh",
-      "does not reuse an in-flight scan for explicit refresh",
+      "reuses an in-flight project scan for explicit refresh",
       "keeps unrelated project issue caches warm on project-scoped refresh",
     ],
   },

@@ -57,7 +57,7 @@ export function getCurrentMaterializer(): Materializer | null {
 
 const repoRoot = process.cwd().endsWith("/apps/gitboard") ? join(process.cwd(), "../..") : process.cwd();
 const gitboardDist = join(repoRoot, "apps/gitboard/dist/dashboard");
-// beadboardDist removed (forge-5w9.9) — frontend deprecated; /beadboard redirects to /gitboard.
+const consoleDist = join(repoRoot, "apps/console/dist/dashboard/console");
 
 type AppVariables = {
   parityHarness: ReturnType<typeof createObservabilityParityHarness> | null;
@@ -170,7 +170,25 @@ export function createApp(db: Database, xtrmDb?: Database): {
 
   // Serve built dashboards in production
   if (process.env.NODE_ENV === "production") {
-    // Gitboard - serve assets and SPA
+    // Console scaffold - serve assets and SPA from the standalone app build.
+    app.get("/console/assets/*", async (c) => {
+      const path = c.req.path.replace("/console", "");
+      const file = Bun.file(join(consoleDist, path));
+      if (await file.exists()) return new Response(file, { headers: { "Content-Type": contentType(path) } });
+      return c.notFound();
+    });
+
+    app.get("/console", async (c) => {
+      const file = Bun.file(join(consoleDist, "index.html"));
+      return new Response(file, { headers: { "Content-Type": "text/html" } });
+    });
+
+    app.get("/console/*", async (c) => {
+      const file = Bun.file(join(consoleDist, "index.html"));
+      return new Response(file, { headers: { "Content-Type": "text/html" } });
+    });
+
+    // Gitboard compatibility shell - keep serving the current production bundle.
     app.get("/gitboard/assets/*", async (c) => {
       const path = c.req.path.replace("/gitboard", "/gitboard");
       const file = Bun.file(join(gitboardDist, path));
@@ -188,8 +206,8 @@ export function createApp(db: Database, xtrmDb?: Database): {
       return new Response(file, { headers: { "Content-Type": "text/html" } });
     });
 
-    // Root redirects to gitboard
-    app.get("/", (c) => c.redirect("/gitboard"));
+    // Root now enters the Console frontend; /gitboard remains compatibility.
+    app.get("/", (c) => c.redirect("/console"));
   }
 
   return { app, registry, wsHandler, materializer };

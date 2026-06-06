@@ -91,7 +91,7 @@ export function RepoSidebar({ repos, stats, selectedRepos, unreadRepos = new Set
   const allActive = selectedRepos.length === 0;
 
   return (
-    <div className="gitboard-repo-rail" style={{
+    <div className="console-repo-rail" style={{
       width: `clamp(160px, ${width}px, 480px)`,
       minWidth: 160,
       maxWidth: 480,

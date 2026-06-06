@@ -2688,7 +2688,7 @@ body {
   background: var(--surface-secondary);
 }
 
-/* Unified centered detail stack — matches beadboard .bead-expanded-stack */
+/* Unified centered detail stack — matches Console bead detail stack */
 .gb-detail-stack {
   width: clamp(min(100%, 560px), 75%, 1400px);
   margin: 0 auto;
@@ -3172,7 +3172,7 @@ body {
  * ============================================================ */
 
 
-/* Beadboard structural alignment */
+/* Console structural alignment */
 .module-header { display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 12px; border-bottom: 1px solid var(--border-subtle); background: var(--surface-1); }
 .module-header-shell { display: grid; gap: 6px; }
 .module-search { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 8px; border: 1px solid var(--border-subtle); color: var(--text-muted); background: var(--surface-2); }

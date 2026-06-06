@@ -126,7 +126,7 @@ function DashboardShell({ view }: { view: View }) {
         <div className="ww-action-cluster" style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
           <span className="ww-system-state"><i /> operational</span>
           <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
-            Beadboard retired
+            Compatibility shell
           </span>
         </div>
       </header>

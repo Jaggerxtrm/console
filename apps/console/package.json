@@ -1,7 +1,7 @@
 {
   "name": "@xtrm/console",
   "version": "0.2.0",
-  "description": "Gradual xtrm Console scaffold seeded from Gitboard",
+  "description": "xtrm Console frontend",
   "type": "module",
   "scripts": {
     "dev": "vite --config vite.config.ts",

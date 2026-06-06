@@ -1019,17 +1019,17 @@ body {
 }
 
 .westworld-app,
-.westworld-app .gitboard-main {
+.westworld-app .console-main {
   min-width: 0;
 }
 
-.westworld-app .gitboard-main {
+.westworld-app .console-main {
   overflow: hidden;
   isolation: isolate;
 }
 
-.westworld-app .gitboard-main::before,
-.westworld-app .gitboard-main::after {
+.westworld-app .console-main::before,
+.westworld-app .console-main::after {
   content: "";
   position: absolute;
   inset: 0;
@@ -1037,25 +1037,25 @@ body {
   z-index: 1;
 }
 
-.westworld-app .gitboard-main::before {
+.westworld-app .console-main::before {
   background: var(--surface-secondary);
   filter: blur(10px);
   opacity: 0.9;
 }
 
-.westworld-app .gitboard-main::after {
+.westworld-app .console-main::after {
   background: var(--surface-secondary);
   background-size: 28px 28px, 28px 28px, 180px 180px;
   mask-image: radial-gradient(circle at 52% 42%, black, transparent 82%);
   opacity: 0.7;
 }
 
-.westworld-app .gitboard-main > div {
+.westworld-app .console-main > div {
   position: relative;
   z-index: 2;
 }
 
-.westworld-app .gitboard-main > div > div:first-child {
+.westworld-app .console-main > div > div:first-child {
   background: var(--surface-secondary);
   box-shadow:
     inset -1px 0 0 rgba(144, 205, 216, 0.10),
@@ -1063,7 +1063,7 @@ body {
     14px 0 48px rgba(0, 0, 0, 0.18);
 }
 
-.westworld-app .gitboard-main > div > div:first-child::before {
+.westworld-app .console-main > div > div:first-child::before {
   content: "system partitions";
   display: block;
   height: 22px;
@@ -1075,27 +1075,27 @@ body {
   letter-spacing: 0.18em;
 }
 
-.westworld-app .gitboard-main > div > div:first-child button {
+.westworld-app .console-main > div > div:first-child button {
   border-radius: 0 !important;
 }
 
-.westworld-app .gitboard-main > div > div:first-child button[aria-pressed="true"] {
+.westworld-app .console-main > div > div:first-child button[aria-pressed="true"] {
   background: var(--surface-secondary);
   box-shadow:
     inset 0 1px 0 rgba(255,255,255,0.026),
     inset 16px 0 28px rgba(255, 255, 255, 0.12);
 }
 
-.westworld-app .gitboard-main > div > div:first-child button:hover:not([aria-pressed="true"]) {
+.westworld-app .console-main > div > div:first-child button:hover:not([aria-pressed="true"]) {
   background: rgba(255, 255, 255, 0.12) !important;
 }
 
-.westworld-app .gitboard-main > div > div:nth-child(2) {
+.westworld-app .console-main > div > div:nth-child(2) {
   position: relative;
   background: rgba(18, 18, 18, 0.58) !important;
 }
 
-.westworld-app .gitboard-main > div > div:nth-child(2)::before {
+.westworld-app .console-main > div > div:nth-child(2)::before {
   content: "";
   position: absolute;
   inset: 32px 18px 18px;
@@ -1106,40 +1106,40 @@ body {
   z-index: 0;
 }
 
-.westworld-app .gitboard-main > div > div:nth-child(2) > * {
+.westworld-app .console-main > div > div:nth-child(2) > * {
   position: relative;
   z-index: 1;
 }
 
-.westworld-app .gitboard-main > div > div:nth-child(2) > div:first-child {
+.westworld-app .console-main > div > div:nth-child(2) > div:first-child {
   height: 34px !important;
   background: var(--surface-secondary);
 }
 
-.westworld-app .gitboard-main > div > div:nth-child(2) > div:first-child span {
+.westworld-app .console-main > div > div:nth-child(2) > div:first-child span {
   text-transform: none;
   letter-spacing: 0.055em;
 }
 
-.westworld-app .gitboard-main > div > div:nth-child(2) > div:nth-child(2) {
+.westworld-app .console-main > div > div:nth-child(2) > div:nth-child(2) {
   height: 34px;
   background: rgba(18, 18, 18, 0.76) !important;
   backdrop-filter: blur(14px);
 }
 
-.westworld-app .gitboard-main > div > div:nth-child(2) > div:nth-child(3) {
+.westworld-app .console-main > div > div:nth-child(2) > div:nth-child(3) {
   background:
     radial-gradient(circle at 76% 18%, rgba(255, 255, 255, 0.12), transparent 24%),
     rgba(18, 18, 18, 0.36) !important;
 }
 
-.westworld-app .gitboard-main article,
-.westworld-app .gitboard-main [role="article"] {
+.westworld-app .console-main article,
+.westworld-app .console-main [role="article"] {
   position: relative;
 }
 
-.westworld-app .gitboard-main article::before,
-.westworld-app .gitboard-main [role="article"]::before {
+.westworld-app .console-main article::before,
+.westworld-app .console-main [role="article"]::before {
   content: "";
   position: absolute;
   left: 0;
@@ -1150,52 +1150,52 @@ body {
   opacity: 0.75;
 }
 
-.westworld-app .gitboard-main article:hover,
-.westworld-app .gitboard-main [role="article"]:hover,
-.westworld-app .gitboard-main button:hover {
+.westworld-app .console-main article:hover,
+.westworld-app .console-main [role="article"]:hover,
+.westworld-app .console-main button:hover {
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12), inset 20px 0 34px rgba(255, 255, 255, 0.12);
 }
 
-.westworld-app .gitboard-main svg {
+.westworld-app .console-main svg {
   filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.12));
 }
 
-.westworld-app .gitboard-main a[href*="github.com"] {
+.westworld-app .console-main a[href*="github.com"] {
   color: var(--text-primary) !important;
 }
 
-.westworld-app .gitboard-main code,
-.westworld-app .gitboard-main pre {
+.westworld-app .console-main code,
+.westworld-app .console-main pre {
   color: var(--text-secondary);
   text-shadow: none;
 }
 
-.westworld-app .gitboard-main [style*="borderRadius: var(--radius-sm)"],
-.westworld-app .gitboard-main [style*="border-radius: var(--radius-sm)"],
-.westworld-app .gitboard-main [style*="borderRadius: var(--radius-md)"],
-.westworld-app .gitboard-main [style*="border-radius: var(--radius-md)"],
-.westworld-app .gitboard-main [style*="borderRadius: var(--radius-lg)"],
-.westworld-app .gitboard-main [style*="border-radius: var(--radius-lg)"] {
+.westworld-app .console-main [style*="borderRadius: var(--radius-sm)"],
+.westworld-app .console-main [style*="border-radius: var(--radius-sm)"],
+.westworld-app .console-main [style*="borderRadius: var(--radius-md)"],
+.westworld-app .console-main [style*="border-radius: var(--radius-md)"],
+.westworld-app .console-main [style*="borderRadius: var(--radius-lg)"],
+.westworld-app .console-main [style*="border-radius: var(--radius-lg)"] {
   border-radius: 6px !important;
 }
 
-.westworld-app .gitboard-main [style*="padding: 8px 16px"] {
+.westworld-app .console-main [style*="padding: 8px 16px"] {
   padding-top: 7px !important;
   padding-bottom: 7px !important;
 }
 
-.westworld-app .gitboard-main [style*="maxHeight: 160"],
-.westworld-app .gitboard-main [style*="max-height: 160"] {
+.westworld-app .console-main [style*="maxHeight: 160"],
+.westworld-app .console-main [style*="max-height: 160"] {
   background: var(--surface-secondary);
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  .westworld-app .gitboard-main::before {
+  .westworld-app .console-main::before {
     animation: ww-atmosphere-drift 18s ease-in-out infinite alternate;
   }
 
-  .westworld-app .gitboard-main article::before,
-  .westworld-app .gitboard-main [role="article"]::before {
+  .westworld-app .console-main article::before,
+  .westworld-app .console-main [role="article"]::before {
     animation: ww-edge-breathe 5.8s ease-in-out infinite;
   }
 }
@@ -1333,13 +1333,13 @@ body {
 }
 
 /* Console internal headers: segmented machine framing. */
-.westworld-app .gitboard-main > div > div:nth-child(2) > div:first-child,
-.westworld-app .gitboard-main > div > div:nth-child(2) > div:nth-child(2) {
+.westworld-app .console-main > div > div:nth-child(2) > div:first-child,
+.westworld-app .console-main > div > div:nth-child(2) > div:nth-child(2) {
   clip-path: polygon(0 0, 100% 0, 100% 100%, 8px 100%, 0 calc(100% - 8px));
 }
 
-.westworld-app .gitboard-main > div > div:nth-child(2) > div:first-child::after,
-.westworld-app .gitboard-main > div > div:nth-child(2) > div:nth-child(2)::after {
+.westworld-app .console-main > div > div:nth-child(2) > div:first-child::after,
+.westworld-app .console-main > div > div:nth-child(2) > div:nth-child(2)::after {
   content: "";
   position: absolute;
   right: 14px;
@@ -1350,13 +1350,13 @@ body {
   pointer-events: none;
 }
 
-.westworld-app .gitboard-main > div > div:nth-child(2) > div:nth-child(2) button {
+.westworld-app .console-main > div > div:nth-child(2) > div:nth-child(2) button {
   position: relative;
   text-transform: none;
   letter-spacing: 0.08em;
 }
 
-.westworld-app .gitboard-main > div > div:nth-child(2) > div:nth-child(2) button::before {
+.westworld-app .console-main > div > div:nth-child(2) > div:nth-child(2) button::before {
   content: "";
   position: absolute;
   left: 8px;
@@ -1449,12 +1449,12 @@ body {
   font-size: var(--header-font-size) !important;
 }
 
-.westworld-app .gitboard-shell {
+.westworld-app .console-shell {
   position: relative;
   background: rgba(16, 16, 16, 0.54) !important;
 }
 
-.westworld-app .gitboard-repo-rail {
+.westworld-app .console-repo-rail {
   background: var(--surface-secondary) !important;
   box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.12), inset -16px 0 36px rgba(255, 255, 255, 0.12);
 }
@@ -1515,34 +1515,34 @@ body {
   box-shadow: 0 0 12px rgba(255, 255, 255, 0.12);
 }
 
-.westworld-app .gitboard-center {
+.westworld-app .console-center {
   background: rgba(18, 18, 18, 0.46) !important;
 }
 
-.westworld-app .gitboard-statsbar {
+.westworld-app .console-statsbar {
   height: var(--ww-header-h) !important;
   padding: 0 14px !important;
   background: var(--surface-secondary);
 }
 
-.westworld-app .gitboard-statsbar {
+.westworld-app .console-statsbar {
   margin: 0 0 1px;
   border: var(--card-border);
   border-radius: var(--card-radius-md);
   background: var(--surface-secondary) !important;
 }
 
-.westworld-app .gitboard-stat {
+.westworld-app .console-stat {
   height: 100%;
   padding-right: 2px;
 }
 
-.westworld-app .gitboard-statsbar .gitboard-stat span {
+.westworld-app .console-statsbar .console-stat span {
   font-size: var(--header-font-size) !important;
   font-family: var(--font-ui) !important;
 }
 
-.westworld-app .gitboard-event-detail {
+.westworld-app .console-event-detail {
   border: var(--card-border);
   border-radius: var(--card-radius-md);
   background: var(--surface-secondary);
@@ -1550,21 +1550,21 @@ body {
   gap: 12px;
 }
 
-.westworld-app .gitboard-event-detail > div:first-child {
+.westworld-app .console-event-detail > div:first-child {
   border-bottom: 1px solid var(--border-subtle);
   padding: 0 0 10px;
 }
 
-.westworld-app .gitboard-event-detail > div:last-child {
+.westworld-app .console-event-detail > div:last-child {
   padding: 0;
 }
 
-.westworld-app .gitboard-tabbar {
+.westworld-app .console-tabbar {
   height: var(--ww-header-h) !important;
   background: rgba(6, 12, 17, 0.72) !important;
 }
 
-.westworld-app .gitboard-tabbar .gitboard-tab {
+.westworld-app .console-tabbar .console-tab {
   height: var(--ww-header-h) !important;
   padding: 0 14px !important;
   border-bottom: 0 !important;
@@ -1574,7 +1574,7 @@ body {
   text-transform: none;
 }
 
-.westworld-app .gitboard-tabbar .gitboard-tab.is-active {
+.westworld-app .console-tabbar .console-tab.is-active {
   color: var(--text-primary) !important;
   background: var(--surface-secondary);
   box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.12);
@@ -1644,8 +1644,8 @@ body {
 }
 
 /* Undo the earlier over-shaped header treatment where it created uneven cuts. */
-.westworld-app .gitboard-main > div > div:nth-child(2) > div:first-child,
-.westworld-app .gitboard-main > div > div:nth-child(2) > div:nth-child(2) {
+.westworld-app .console-main > div > div:nth-child(2) > div:first-child,
+.westworld-app .console-main > div > div:nth-child(2) > div:nth-child(2) {
   clip-path: none !important;
 }
 
@@ -2688,7 +2688,7 @@ body {
   background: var(--surface-secondary);
 }
 
-/* Unified centered detail stack — matches beadboard .bead-expanded-stack */
+/* Unified centered detail stack — matches Console bead detail stack */
 .gb-detail-stack {
   width: clamp(min(100%, 560px), 75%, 1400px);
   margin: 0 auto;
@@ -3172,7 +3172,7 @@ body {
  * ============================================================ */
 
 
-/* Beadboard structural alignment */
+/* Console structural alignment */
 .module-header { display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 12px; border-bottom: 1px solid var(--border-subtle); background: var(--surface-1); }
 .module-header-shell { display: grid; gap: 6px; }
 .module-search { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 8px; border: 1px solid var(--border-subtle); color: var(--text-muted); background: var(--surface-2); }
@@ -6278,14 +6278,14 @@ body:has(.ide-shell[data-theme="light"]) { background: #fff !important; }
 .g-hd-tog-state { color: var(--text-muted); font-size: 9px; }
 .g-hd-tog.is-on .g-hd-tog-state { color: var(--graph-state-ready); }
 
-.westworld-app.design-preview-container .gitboard-main {
+.westworld-app.design-preview-container .console-main {
   background: var(--surface-primary) !important;
   height: calc(100vh - var(--topbar-height));
   isolation: isolate;
 }
 
-.westworld-app.design-preview-container .gitboard-main::before,
-.westworld-app.design-preview-container .gitboard-main::after {
+.westworld-app.design-preview-container .console-main::before,
+.westworld-app.design-preview-container .console-main::after {
   display: none !important;
 }
 
