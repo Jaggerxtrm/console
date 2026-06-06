@@ -13,6 +13,29 @@ It consumes the upstream specialists contracts:
 Console must not duplicate metric definitions. Every panel below either names an
 upstream `xtrm_*` metric or explicitly marks the signal as future/missing.
 
+## Panel Data Map
+
+```mermaid
+flowchart LR
+    Metrics["Prometheus projection\nxtrm_* low-cardinality metrics"]
+    Forensic["xtrm.forensic.v1 events\nrich correlation + redaction"]
+    Jobs["specialist_job_metrics\nturns, tools, token split"]
+    Panels["Console AgentOps panels\nruntime, tokens, tools, MCP, evidence"]
+    Evidence["Evidence drawer\njob, trace, bead, PR, runbook"]
+
+    Metrics --> Panels
+    Jobs --> Panels
+    Forensic --> Evidence
+    Panels --> Evidence
+
+    Metrics -. "symptom aggregate" .-> Panels
+    Evidence -. "precise drilldown" .-> Forensic
+```
+
+The panels start from aggregate metrics or job metric rows, then drill down into
+forensic/evidence state for exact IDs and payloads. This prevents dashboards
+from grouping by high-cardinality runtime identifiers.
+
 ## Panel Groups
 
 ### 1. Runtime State

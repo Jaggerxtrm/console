@@ -19,6 +19,37 @@ Authoritative upstream contracts:
 - `/home/dawid/dev/specialists/docs/design/roadmap/specialists-roadmap.md`
 - `/home/dawid/second-mind/1-projects/xtrm/substrate/substrate_design_it.md`
 
+## System Map
+
+```mermaid
+flowchart LR
+    subgraph Sources["Upstream Sources"]
+        Beads["Beads graph\nissues, deps, memories"]
+        Specialists["Specialists observability\nforensic events, job metrics"]
+        GitHub["GitHub\nPRs, issues, commits, releases"]
+        Infra["Prometheus/Grafana/Loki\nlow-cardinality projections"]
+        FutureSubstrate["Future Substrate daemon/API\nnative state.db"]
+    end
+
+    Materializer["Gitboard materializer\nbridge read-model writer"]
+    State["xtrm.sqlite / state.db bridge\nsubstrate_*, specialist_*, xtrm_* tables"]
+    API["Console APIs\n/api/substrate, /api/specialists, /api/feed"]
+    Console["Console UI\nread surface + drilldowns"]
+
+    Beads --> Materializer
+    Specialists --> Materializer
+    GitHub --> Materializer
+    Materializer --> State
+    State --> API
+    API --> Console
+    Infra -. "read/query/deeplink" .-> Console
+    FutureSubstrate -. "future live read + last-successful cache" .-> API
+```
+
+The important split is that the materializer writes only bridge state. Console
+reads APIs; Prometheus/Grafana remain aggregate/deeplink sources; future
+Substrate should be read live rather than copied into another SQLite projection.
+
 ## Positioning
 
 Console is a read surface. It should render state, evidence, metrics and
@@ -117,6 +148,45 @@ Specialists observability uses this priority order:
 GitHub and Beads/Substrate bridge emitters should reuse the same forensic
 contract instead of creating Gitboard-specific event names when a catalog event
 already exists.
+
+### Materializer Run Sequence
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Scheduler as Scanner / watcher / timer
+    participant Mat as Materializer
+    participant Adapter as Source adapter
+    participant Source as Source DB/API/files
+    participant State as xtrm.sqlite
+    participant WS as ChannelRegistry
+    participant API as Console API
+    participant UI as Console UI
+
+    Scheduler->>Mat: request run(source_key, cursor)
+    Mat->>State: mark materialization_state running
+    Mat->>Adapter: read since cursor
+    Adapter->>Source: fetch source rows/events
+    Source-->>Adapter: rows + next cursor
+    Adapter-->>Mat: normalized rows, deps, forensic/evidence refs
+    Mat->>State: transaction write rows + cursor
+    State-->>Mat: commit ok
+    Mat->>WS: publish sync hint after commit
+    UI->>API: refresh/read DTOs
+    API->>State: read materialized state only
+    State-->>API: DTO source rows
+    API-->>UI: display rows + drilldown pointers
+
+    alt source failure
+        Adapter-->>Mat: error/fallback
+        Mat->>State: preserve last success + record failure event
+        Mat->>WS: publish degraded/freshness hint
+    end
+```
+
+Run ordering matters: cursors advance only inside the same transaction as row
+writes, and websocket hints are emitted only after commit. This is what keeps
+the UI from rendering a future cursor with stale or half-written rows.
 
 ## API And UI Boundary
 

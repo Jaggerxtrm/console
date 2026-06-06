@@ -1,6 +1,10 @@
 # xtrm Console Visual Contract
 
-This document is the source of truth for the Gitboard/Beadboard unification style. Do not implement new console UI until it conforms to this contract.
+This document is the source of truth for the xtrm Console visual language. It
+originated during Gitboard/Beadboard unification work, but the current
+post-bridge state is that `/beadboard` is retired and `apps/console` is the
+gradual migration target. Do not implement new console UI until it conforms to
+this contract.
 
 ## Product direction
 
@@ -37,7 +41,7 @@ The look should be elegant, quiet, square, dense, and readable.
 
 ## Non-negotiable rules
 
-1. **Gitboard = Beadboard.**
+1. **Git and Beads are Console modules, not separate apps.**
    - Same shell.
    - Same background.
    - Same row anatomy.
@@ -314,4 +318,4 @@ Before marking any console UI work done:
 - [ ] No iframe embedding is used for module composition.
 - [ ] Expanded details use the same section rhythm.
 - [ ] Kanban, if present, is secondary and visually subordinate to the feed.
-- [ ] `/gitboard` and `/beadboard` remain stable until the true shell replaces them.
+- [ ] `/gitboard` remains stable until the true Console shell replaces it; `/beadboard` stays retired unless a deliberate compatibility bead reopens it.

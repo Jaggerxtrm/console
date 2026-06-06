@@ -7,6 +7,59 @@ map for post-bridge cleanup and future Console migration work. It complements
 `docs/architecture/console-telemetry-materialization.md`, which remains the
 telemetry and materialization source of truth.
 
+## Boundary Diagram
+
+```mermaid
+flowchart TB
+    subgraph UI["Dashboard UI"]
+        Views["Console views\nOperations, Beads, Specialists, Graph"]
+        ClientState["Client view state\nfilters, selection, drawer"]
+    end
+
+    subgraph API["API Composition"]
+        Routes["Route DTOs\n/api/*"]
+        Server["server.ts composition root"]
+    end
+
+    subgraph Bridge["Bridge Writers"]
+        Mat["Materializer\nsource cursors + bridge tables"]
+        GitHub["GitHub poller/store\nremote adapter"]
+        Scanner["Scanner/watchers\nsource discovery + hints"]
+    end
+
+    subgraph State["Local Read Model"]
+        Xtrm["xtrm.sqlite\nsubstrate_*, specialist_*, xtrm_*"]
+        Legacy["gitboard.sqlite\nlegacy app/GitHub tables"]
+    end
+
+    subgraph Sources["External / Upstream Sources"]
+        Beads["Beads files / Dolt"]
+        Specialists["Specialists observability DB"]
+        RemoteGitHub["GitHub REST"]
+        FutureSubstrate["Future Substrate daemon/API"]
+    end
+
+    Views --> Routes
+    Views --> ClientState
+    Routes --> Xtrm
+    Routes --> Legacy
+    Server --> Routes
+    Server --> Mat
+    Server --> Scanner
+    Mat --> Xtrm
+    GitHub --> Legacy
+    Scanner --> Xtrm
+    Beads --> Mat
+    Specialists --> Mat
+    RemoteGitHub --> GitHub
+    FutureSubstrate -. "future live read" .-> Routes
+```
+
+The diagram is intentionally asymmetric: APIs and UI read; materializer,
+pollers, and scanners write. When native Substrate arrives, it should enter as a
+live source/API boundary, not as another materializer input copied into
+`substrate_*` bridge tables.
+
 ## Boundary Summary
 
 | Layer | Owns | May read | May write | Must not do |

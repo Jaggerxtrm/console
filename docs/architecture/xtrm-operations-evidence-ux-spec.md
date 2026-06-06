@@ -6,6 +6,32 @@ This spec defines how Console Operations presents telemetry evidence without
 replacing Grafana, Prometheus, Loki, specialists forensic state, or substrate.
 It does not define final visual design.
 
+## Evidence Interaction Flow
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Operator
+    participant Panel as Console panel
+    participant Drawer as Evidence drawer
+    participant Upstream as Upstream system
+    participant Board as Beads/Substrate work
+
+    Operator->>Panel: inspect metric, alert, runbook, or recommendation
+    Panel->>Drawer: open ObserveEvidenceRef
+    Drawer-->>Operator: show source, query, range, freshness, redaction
+    Operator->>Drawer: copy query or open drilldown
+    Drawer->>Upstream: deeplink/search/read forensic detail
+    Upstream-->>Drawer: exact event, trace, dashboard, log, job, PR
+    alt missing or actionable signal
+        Operator->>Board: create/accept follow-up with evidence ref
+    end
+```
+
+Evidence is an interaction contract, not only a data type. The operator should
+always be able to move from an aggregate panel to the exact upstream proof, then
+optionally create work with that proof attached.
+
 ## Core Rule
 
 Console renders context and decisions. Upstream systems remain source of truth.

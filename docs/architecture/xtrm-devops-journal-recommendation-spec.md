@@ -5,6 +5,32 @@ Status: planning output for `forge-ow7c.7`, pre-implementation.
 This spec defines how Console Operations should render DevOps Agent-style
 journals and recommendations while preserving substrate class semantics.
 
+## Promotion Flow
+
+```mermaid
+flowchart TD
+    Journal["Journal record\ntimeline/evidence only"]
+    Recommendation["Recommendation\nproposal + status + rank"]
+    Inspect["Operator inspects evidence\nredaction + links + source task"]
+    Followup["followup\nnon-blocking work"]
+    Gate["gate / escalation\nblocks current chain"]
+    Advisor["advisor\nplanning context"]
+    Root["root\nstandalone accepted work"]
+    Reject["rejected / superseded\nno execution"]
+
+    Journal --> Recommendation
+    Recommendation --> Inspect
+    Inspect --> Followup
+    Inspect --> Gate
+    Inspect --> Advisor
+    Inspect --> Root
+    Inspect --> Reject
+```
+
+Journals remain evidence. Recommendations become work only through explicit
+promotion, and the chosen target class is determined by runtime effect rather
+than by the wording of the recommendation.
+
 ## Source Model
 
 AWS DevOps Agent provides useful shape, not authority:
