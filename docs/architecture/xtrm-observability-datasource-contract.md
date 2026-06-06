@@ -20,6 +20,31 @@ OpenTelemetry traces, AWS/CloudWatch evidence, and substrate-native records.
 If a signal is missing, Console records a missing-signal evidence item and routes
 work to the owning repo. It must not patch local fake metrics into existence.
 
+## Query And Evidence Flow
+
+```mermaid
+flowchart LR
+    Panel["Console panel\nStat, TimeSeries, Threshold, Evidence list"]
+    Request["ObserveQueryRequest\nsignal, query, range, limits, tenant"]
+    Datasource["ObserveDatasource\nPrometheus, Grafana, Loki,\nForensic, Substrate, Fixture"]
+    Response["ObserveQueryResponse\nstatus, freshness, data"]
+    Evidence["ObserveEvidenceRef\nquery, correlation, redaction, links"]
+    Drawer["Evidence drawer\ncopy query, inspect ids, open upstream"]
+    Followup["Missing-signal follow-up\nowning repo"]
+
+    Panel --> Request
+    Request --> Datasource
+    Datasource --> Response
+    Response --> Panel
+    Response --> Evidence
+    Evidence --> Drawer
+    Response -. "status=missing_signal" .-> Followup
+```
+
+Panels are deliberately not tied to Prometheus result types. Every response
+carries freshness and evidence metadata so aggregate symptoms can drill down to
+forensic rows, Grafana panels, traces, jobs, beads, runbooks, or GitHub objects.
+
 ## Signals
 
 The datasource layer is multi-signal from day one.

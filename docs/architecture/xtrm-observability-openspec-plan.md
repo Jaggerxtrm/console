@@ -31,6 +31,38 @@ External refresh sources checked on 2026-06-06:
 - AWS DevOps Agent Task, Recommendation, and JournalRecord APIs.
 - AWS AgentCore observability docs.
 
+## Planning Topology
+
+```mermaid
+flowchart TD
+    PRD["xtrm Observability PRD\nplanning-ready intent"]
+    Inputs["Infra + specialists + substrate docs\nsource-of-truth contracts"]
+    A["Slice A\nDatasource and evidence contract"]
+    B["Slice B\nDashboard schema/renderer contract"]
+    C["Slice C\nAgentOps panels"]
+    D["Slice D\nSource health evidence"]
+    E["Slice E\nOperator evidence UX"]
+    F["Slice F\nJournal and recommendation promotion"]
+    Impl["Implementation beads\nfixtures, guards, panels"]
+
+    PRD --> A
+    Inputs --> A
+    A --> B
+    A --> C
+    A --> D
+    A --> E
+    A --> F
+    B --> Impl
+    C --> Impl
+    D --> Impl
+    E --> Impl
+    F --> Impl
+```
+
+This is the safety shape for the work: contract first, then schema and panel
+families, then implementation. Any future implementation bead should be traceable
+back to one of these slices rather than reopening the whole PRD.
+
 ## Planning Decisions
 
 1. Query proxy: default to server-side proxy for managed/self use.

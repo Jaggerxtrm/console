@@ -6,6 +6,35 @@ This spec moves Beads/Dolt/source-health UI from bespoke status chips toward the
 shared observability datasource/evidence model. It does not remove existing
 fallback behavior; it defines the target contract for future implementation.
 
+## Health Evidence Map
+
+```mermaid
+flowchart TB
+    Repo["Repo / beads project"]
+    Dolt["Dolt source\nSQL + shared server"]
+    JSONL["JSONL fallback\nfiles + mtime"]
+    Mat["Materializer\ncursor + last success"]
+    Infra["Infra telemetry\nPrometheus, Loki, alerts"]
+    SourcePanel["Source Health panel\nhealth, source, freshness"]
+    Evidence["Evidence refs\nsource event, log query, runbook"]
+    Owner["Owning repo follow-up\ninfra, gitboard, substrate"]
+
+    Repo --> Dolt
+    Repo --> JSONL
+    Dolt --> Mat
+    JSONL --> Mat
+    Infra --> SourcePanel
+    Mat --> SourcePanel
+    Dolt --> SourcePanel
+    JSONL --> SourcePanel
+    SourcePanel --> Evidence
+    SourcePanel -. "missing/degraded" .-> Owner
+```
+
+The panel separates three questions that current chips can blur together:
+whether the source is healthy, whether the fallback/cache is fresh, and whether
+the materializer is keeping the read model current.
+
 ## Current Bridge Reality
 
 Gitboard/Console currently derives source health from local app paths:
