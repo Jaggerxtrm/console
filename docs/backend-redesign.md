@@ -9,11 +9,8 @@ post-bridge architecture.
 
 > Current-state reference: `docs/backend.md`.
 >
-> Operational ownership reference:
-> `docs/architecture/console-app-materializer-api-boundaries.md`.
->
-> Telemetry/materialization SSOT:
-> `docs/architecture/console-telemetry-materialization.md`.
+> Architectural ownership, telemetry materialization, repo state, and dormant
+> tooling reference: `docs/architecture/console-architecture.md`.
 >
 > This document is preserved because it records the reasoning that led to the
 > materializer bridge. Sections that say "current" were written before the

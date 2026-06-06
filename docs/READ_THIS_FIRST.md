@@ -15,23 +15,18 @@ flowchart TB
 
     subgraph Current["Current Running-State References"]
         Backend["docs/backend.md\nrunning apps/gitboard service"]
-        Boundary["docs/architecture/console-app-materializer-api-boundaries.md\nUI/API/materializer ownership"]
-        Telemetry["docs/architecture/console-telemetry-materialization.md\nbridge telemetry/materializer SSOT"]
+        Architecture["docs/architecture/console-architecture.md\nUI/API/materializer ownership,\nstate, dormant tooling, repo state"]
         Visual["docs/xtrm-console-visual-contract.md\nConsole visual language"]
     end
 
-    subgraph Bridge["Bridge-Era Operational Docs"]
-        Inventory["post-bridge-console-readiness-inventory.md"]
-        Guards["post-bridge-cleanup-test-guards.md"]
-        Tooling["post-bridge-dormant-tooling-classification.md"]
-        Preflight["apps-console-scaffold-preflight.md"]
+    subgraph Operational["Operational Docs"]
+        Guards["docs/architecture/console-test-guards.md\ntest command checklist"]
+        Preflight["docs/architecture/apps-console-scaffold-preflight.md\nscaffold gate"]
     end
 
     subgraph Planning["Target / Planning Contracts"]
         PRD["docs/xtrm-observability-prd.md"]
-        OpenSpec["xtrm-observability-openspec-plan.md"]
-        Datasource["xtrm-observability-datasource-contract.md"]
-        Panels["AgentOps, Source Health, Evidence UX,\nJournal/Recommendation specs"]
+        ObsSpec["docs/architecture/console-observability-spec.md\nSlices A-F: datasource, panels,\nsource health, evidence UX, journal"]
     end
 
     subgraph Historical["Historical / Superseded Context"]
@@ -40,10 +35,10 @@ flowchart TB
     end
 
     Entry --> Current
-    Entry --> Bridge
+    Entry --> Operational
     Entry --> Planning
     Entry --> Historical
-    Current --> Bridge
+    Current --> Operational
     Planning -. "must not override" .-> Current
     Historical -. "reasoning only" .-> Current
 ```
@@ -54,17 +49,18 @@ When documents conflict, use this order:
 
 1. Current source code and tests for the running service.
 2. `docs/backend.md` for current backend behavior.
-3. `docs/architecture/console-app-materializer-api-boundaries.md` for ownership
-   between UI, API routes, materializer, GitHub, and future Substrate.
-4. `docs/architecture/console-telemetry-materialization.md` for the local
-   telemetry/materializer bridge contract.
-5. Upstream specialists telemetry docs in
+3. `docs/architecture/console-architecture.md` for ownership between UI, API
+   routes, materializer, GitHub, future Substrate, plus the canonical
+   Prometheus label discipline, current state inventory, and dormant tooling
+   classification.
+4. Upstream specialists telemetry docs in
    `/home/dawid/dev/specialists/docs/telemetry/*` for forensic envelopes,
    event catalog, Prometheus projection, redaction, and AgentOps semantics.
-6. `/home/dawid/second-mind/1-projects/xtrm/substrate/substrate_design_it.md`
+5. `/home/dawid/second-mind/1-projects/xtrm/substrate/substrate_design_it.md`
    for future Substrate direction.
-7. Planning specs and historical specs only when they do not conflict with the
-   current references above.
+6. Planning specs (`docs/architecture/console-observability-spec.md`) and
+   historical specs only when they do not conflict with the current
+   references above.
 
 ## Current Canonical Docs
 
@@ -74,37 +70,31 @@ materializer, `xtrm.sqlite`, legacy `gitboard.sqlite` fold-in, GitHub adapter,
 Beads/Substrate bridge, specialists feed, WebSocket channels, and deployment
 posture.
 
-`docs/architecture/console-app-materializer-api-boundaries.md` is the ownership
-contract. Use it when deciding whether a change belongs in dashboard UI, API
-projection, materializer writes, GitHub polling, source scanning, or future
-Substrate.
-
-`docs/architecture/console-telemetry-materialization.md` is the local telemetry
-and materialization SSOT for the pre-Substrate bridge. It is canonical for this
-repo's bridge behavior, but it deliberately defers upstream telemetry semantics
-to specialists and future native runtime ownership to Substrate.
+`docs/architecture/console-architecture.md` is the architectural single source
+of truth. It covers UI/API/materializer/state ownership, the materializer
+contract, the Specialists and Beads/Substrate boundaries, the
+feed/Prometheus boundary including the canonical forbidden-label list, the
+current repository surface inventory, and the dormant tooling classification.
+Use it when deciding whether a change belongs in dashboard UI, API projection,
+materializer writes, GitHub polling, source scanning, or future Substrate.
 
 `docs/xtrm-console-visual-contract.md` is the visual language contract for
 Console. It is not proof that the visual migration is complete; it defines how
 new Console UI should look when implemented.
 
-## Bridge-Era Docs
+## Operational Docs
 
-Bridge-era docs are true for the current migration phase, but they are not
-intended to become permanent product architecture.
-
-- `docs/architecture/post-bridge-console-readiness-inventory.md` classifies the
-  repository after the telemetry bridge and before deeper Console cleanup.
-- `docs/architecture/post-bridge-cleanup-test-guards.md` records guardrails for
-  cleanup children and scaffold work.
-- `docs/architecture/post-bridge-dormant-tooling-classification.md` explains
-  supported auxiliary tooling versus dormant local reproduction tooling.
-- `docs/architecture/apps-console-scaffold-preflight.md` was a gate for the
-  first `apps/console` scaffold slice; treat it as scaffold history unless a
-  future Console scaffold bead explicitly reopens it.
+- `docs/architecture/console-test-guards.md` is the test command checklist
+  for cleanup, scaffold, and Console readiness work. Use it as the closure
+  rule for any implementation child that touches materializer, API, telemetry
+  cardinality, Beads dependency rendering, or deployment behavior.
+- `docs/architecture/apps-console-scaffold-preflight.md` is the gate for the
+  first `apps/console` scaffold slice; it remains a focused scaffold-specific
+  document.
 
 Keep these docs accurate while they are still referenced by open work, but do
-not let them define native Substrate or the final Console product architecture.
+not let them define native Substrate or the final Console product
+architecture.
 
 ## Planning And Target Contracts
 
@@ -114,20 +104,16 @@ implemented yet.
 
 - `docs/xtrm-observability-prd.md` owns the Console product surface for
   observability, not the infra pipeline or specialists runtime semantics.
-- `docs/architecture/xtrm-observability-openspec-plan.md` decomposes the PRD
-  into implementation slices.
-- `docs/architecture/xtrm-observability-datasource-contract.md` defines how
-  Console asks upstream systems for metrics, logs, traces, forensic events, and
-  evidence.
-- `docs/architecture/xtrm-agentops-panel-spec.md`,
-  `docs/architecture/xtrm-source-health-evidence-spec.md`,
-  `docs/architecture/xtrm-operations-evidence-ux-spec.md`, and
-  `docs/architecture/xtrm-devops-journal-recommendation-spec.md` are
-  pre-implementation panel and UX contracts.
+- `docs/architecture/console-observability-spec.md` is the consolidated
+  Console observability spec. It covers the OpenSpec planning topology and
+  Slices A–F: datasource and evidence contract (A), dashboard schema/renderer
+  contract (B, open), AgentOps panels (C), source health and Dolt evidence
+  (D), operator evidence UX (E), and DevOps journal/recommendation promotion
+  (F).
 
-Planning docs must not invent telemetry labels, event schemas, token semantics,
-or Substrate state ownership. Those come from upstream specialists telemetry
-docs and Substrate design docs.
+Planning docs must not invent telemetry labels, event schemas, token
+semantics, or Substrate state ownership. Those come from upstream specialists
+telemetry docs and Substrate design docs.
 
 ## Historical Docs
 

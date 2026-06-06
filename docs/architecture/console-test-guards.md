@@ -1,19 +1,22 @@
-# Post-Bridge Cleanup Test Guards
+# Console Test Guards
 
-Status: `forge-benk.5` guard plan for cleanup and Console readiness work.
+Status: current test guard checklist for cleanup, scaffold, and Console
+readiness work.
 
-Use this checklist for `forge-benk` children before closing implementation
-work. It protects the current running Gitboard service, the post-bridge
-materializer/API contract, and the Beads dependency surfaces while cleanup and
-future `apps/console` scaffold work proceeds.
+Use this checklist for any implementation child that touches code, config,
+package scripts, API routes, materializer behavior, dashboard rendering, or
+deployment docs before closing the work. It protects the running Gitboard
+service, the post-bridge materializer/API contract, and the Beads dependency
+surfaces while cleanup and `apps/console` work proceeds.
 
 Boundary ownership for these guards is defined in
-`docs/architecture/console-app-materializer-api-boundaries.md`.
+`docs/architecture/console-architecture.md`. That document explains *why* a
+guard exists; this document defines *what* command to run.
 
-## Required Baseline
+## 1. Required Baseline
 
-Run these for any cleanup child that changes code, config, package scripts, API
-routes, materializer behavior, dashboard rendering, or deployment docs:
+Run these for any cleanup child that changes code, config, package scripts,
+API routes, materializer behavior, dashboard rendering, or deployment docs:
 
 ```bash
 bun run --cwd apps/gitboard typecheck
@@ -21,11 +24,11 @@ bun run --cwd apps/gitboard build:dashboard
 git diff --check
 ```
 
-Expected current caveat: `typecheck` may still fail until `forge-benk.2`
-burns down or splits the post-bridge baseline. If it fails, the closing notes
-must list the remaining errors and the bead that owns them.
+Expected current caveat: `typecheck` may still fail until the post-bridge
+TypeScript baseline burns down or splits. If it fails, the closing notes must
+list the remaining errors and the bead that owns them.
 
-## Materializer And State Boundary
+## 2. Materializer And State Boundary
 
 Run when touching `apps/gitboard/src/core/materializer`,
 `apps/gitboard/src/core/xtrm-store.ts`, `apps/gitboard/src/api/server.ts`,
@@ -46,9 +49,10 @@ Assertions protected:
 - materializer run/failure/cursor behavior remains observable;
 - `specialist_forensic_events` and legacy fallback materialize correctly;
 - Beads dependencies and tombstones survive materialization;
-- `substrate_*` remains a bridge/projection table family, not native Substrate.
+- `substrate_*` remains a bridge/projection table family, not native
+  Substrate.
 
-## API Contracts
+## 3. API Contracts
 
 Run when touching `/api/feed`, `/api/specialists`, `/api/substrate`,
 `/api/console/graph`, auth/admin gating, route composition, or DTO projection:
@@ -65,18 +69,19 @@ bun run --cwd apps/gitboard test -- \
 
 Assertions protected:
 
-- `/api/specialists/jobs/:job_id/feed-events` remains canonical-envelope-first;
+- `/api/specialists/jobs/:job_id/feed-events` remains
+  canonical-envelope-first;
 - `/api/feed` remains cursor-paginated rollup, not a raw envelope dump;
 - malformed rows are redacted/materializer-owned;
 - graph/substrate reads stay state-backed and repo-scoped.
 
-## Conditional API-Adjacent Guards
+## 4. Conditional API-Adjacent Guards
 
-Run these only when the touched code can affect the named mounted surface. They
-are not part of the required baseline because they are broader than the core
-materializer/feed contract.
+Run these only when the touched code can affect the named mounted surface.
+They are not part of the required baseline because they are broader than the
+core materializer/feed contract.
 
-WebSocket routing or realtime delivery:
+### 4.1 WebSocket Routing And Realtime Delivery
 
 ```bash
 bun run --cwd apps/gitboard test -- \
@@ -85,7 +90,7 @@ bun run --cwd apps/gitboard test -- \
   tests/api/ws/realtime-contract.test.ts
 ```
 
-GitHub adapter, poller, or route behavior:
+### 4.2 GitHub Adapter, Poller, Or Route Behavior
 
 ```bash
 bun run --cwd apps/gitboard test -- \
@@ -98,7 +103,7 @@ bun run --cwd apps/gitboard test -- \
   tests/core/github-discover.test.ts
 ```
 
-Console shell, terminal, or local provider policy:
+### 4.3 Console Shell, Terminal, Or Local Provider Policy
 
 ```bash
 bun run --cwd apps/gitboard test -- \
@@ -109,7 +114,7 @@ bun run --cwd apps/gitboard test -- \
   tests/core/local-pty-provider.test.ts
 ```
 
-Sources, scanner, or fold migration:
+### 4.4 Sources, Scanner, Or Fold Migration
 
 ```bash
 bun run --cwd apps/gitboard test -- \
@@ -119,29 +124,30 @@ bun run --cwd apps/gitboard test -- \
   tests/core/fold-gitboard-sqlite.test.ts
 ```
 
+### 4.5 Legacy /api/beads Retirement
+
 Legacy `/api/beads` cache coverage is resolved by `forge-benk.10`: the route
 stays retired and `tests/api/routes/beads.cache.test.ts` asserts that
 `/api/substrate/projects` is the supported project read surface.
 
-## Prometheus And Operations Cardinality
+## 5. Prometheus And Operations Cardinality
 
-Run when touching operations metrics, telemetry docs, fixtures, labels, or any
-Prometheus-facing code:
+Run when touching operations metrics, telemetry docs, fixtures, labels, or
+any Prometheus-facing code:
 
 ```bash
 bun run --cwd apps/gitboard test -- \
   tests/server/observability/prometheus-cardinality.test.ts
 ```
 
-Forbidden labels remain: `job_id`, `bead_id`, `issue_id`, `chain_id`,
-`participant_id`, `trace_id`, `span_id`, `tool_call_id`, path, command, URL,
-raw error, diff, prompt, user, email, or token. Drilldown must go through
+Forbidden-label list is defined once in
+`docs/architecture/console-architecture.md` §8.1; drilldown must go through
 forensic/evidence state, not Prometheus label cardinality.
 
-## Beads Feed And Console Regression Surface
+## 6. Beads Feed And Console Regression Surface
 
-Run when touching dashboard Beads feed, specialists feed rendering, graph tabs,
-repo tree/source health, or shell navigation:
+Run when touching dashboard Beads feed, specialists feed rendering, graph
+tabs, repo tree/source health, or shell navigation:
 
 ```bash
 bun run --cwd apps/gitboard test -- \
@@ -159,12 +165,13 @@ Assertions protected:
 
 - dependency tree, relationship labels, closed-history dependency expansion,
   and row identity survive cleanup;
-- specialists forensic feed rendering remains available from chain/job detail;
+- specialists forensic feed rendering remains available from chain/job
+  detail;
 - `/gitboard` remains the stable host surface while Console is the target;
 - legacy/persisted Beads surface state maps to Console feed without visual
   redesign work in this cleanup track.
 
-## Repo Hygiene Guard
+## 7. Repo Hygiene Guard
 
 Run when touching ignore rules, generated outputs, smoke tests, or cleanup of
 tracked runtime artifacts:
@@ -179,14 +186,10 @@ git ls-files \
 ```
 
 Allowed matches must be test fixtures or intentionally tracked examples.
-Current known cleanup candidates are:
+Cleanup implementation belongs to dedicated cleanup beads (historically
+`forge-benk.8`), not to this guard plan.
 
-- `apps/gitboard/data/audit.sqlite`
-- `apps/gitboard/logs/2026-05-19.jsonl`
-
-The cleanup implementation belongs to `forge-benk.8`, not to this guard plan.
-
-## Live Tailscale Smoke
+## 8. Live Tailscale Smoke
 
 Run when touching deployment, port/host config, production static serving,
 WebSocket routing, or dashboard build output:
@@ -205,9 +208,10 @@ only after the dashboard bundle has been rebuilt and the service restarted:
 bunx playwright test apps/gitboard/tests/e2e/specialists-live-dependencies.spec.cjs
 ```
 
-## Closure Rule
+## 9. Closure Rule
 
-Every `forge-benk` implementation child must list:
+Every implementation child that triggers any of the guards above must list,
+when closing:
 
 - exact commands run;
 - pass/fail result;
@@ -215,4 +219,5 @@ Every `forge-benk` implementation child must list:
 - follow-up bead IDs for failures intentionally deferred.
 
 Do not close a child with only "build passed" when it touched materializer,
-API, telemetry cardinality, Beads dependency rendering, or deployment behavior.
+API, telemetry cardinality, Beads dependency rendering, or deployment
+behavior.

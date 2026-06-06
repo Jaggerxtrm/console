@@ -39,9 +39,15 @@ The API defaults to `:3030`; the Vite dashboard dev server proxies `/api` and
 
 ## Docs
 
+- `docs/READ_THIS_FIRST.md` — documentation entrypoint and trust order
 - `docs/deployment.md` — native systemd + Tailscale runbook
-- `docs/architecture/post-bridge-dormant-tooling-classification.md` — supported
-  auxiliary tooling vs dormant reproduction tooling
+- `docs/architecture/console-architecture.md` — UI/API/materializer/state
+  ownership, materializer contract, current repo state, and dormant tooling
+  classification
+- `docs/architecture/console-observability-spec.md` — Console observability
+  spec, Slices A–F (datasource, panels, source health, evidence UX, journal)
+- `docs/architecture/console-test-guards.md` — test command checklist for
+  cleanup, scaffold, and Console readiness work
 - `docs/architecture/apps-console-scaffold-preflight.md` — gate checklist for
   the future `apps/console` scaffold
 - `apps/gitboard/CLAUDE.md` — app-specific notes

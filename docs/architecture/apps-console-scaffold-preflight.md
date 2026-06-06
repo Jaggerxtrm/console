@@ -42,10 +42,8 @@ Read before starting `forge-9xet.2`:
 - `/home/dawid/second-mind/1-projects/xtrm/console/console-product-contract.md`
 - `/home/dawid/second-mind/1-projects/xtrm/substrate/substrate_design_it.md`
 - `apps/gitboard/design-mocks/xtrm-console-complete.html`
-- `docs/architecture/console-app-materializer-api-boundaries.md`
-- `docs/architecture/console-telemetry-materialization.md`
-- `docs/architecture/post-bridge-dormant-tooling-classification.md`
-- `docs/architecture/post-bridge-cleanup-test-guards.md`
+- `docs/architecture/console-architecture.md`
+- `docs/architecture/console-test-guards.md`
 
 ## Initial Scaffold Rules
 
@@ -86,7 +84,7 @@ bun run --cwd apps/gitboard build:dashboard
 If `apps/console` adds tests in the scaffold slice, run the focused console test
 command before any broad migration work. If it changes shared dashboard code,
 also run the relevant Gitboard dashboard regression tests from
-`docs/architecture/post-bridge-cleanup-test-guards.md`.
+`docs/architecture/console-test-guards.md`.
 
 ## Known Blockers And Non-Blockers
 

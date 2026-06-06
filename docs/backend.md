@@ -6,12 +6,9 @@ Documentation entrypoint: `docs/READ_THIS_FIRST.md`.
 
 This document describes the post-bridge backend shape. Older Beadboard-era
 details have been removed from the current-state narrative. Historical redesign
-context lives in `docs/backend-redesign.md`; telemetry/materialization ownership
-lives in:
-
-- `docs/architecture/console-telemetry-materialization.md`
-- `docs/architecture/console-app-materializer-api-boundaries.md`
-- `docs/architecture/post-bridge-console-readiness-inventory.md`
+context lives in `docs/backend-redesign.md`; architectural ownership
+(UI/API/materializer/state, telemetry materialization, current repo state,
+dormant tooling) lives in `docs/architecture/console-architecture.md`.
 
 <!-- INDEX:START -->
 ## Index
@@ -192,7 +189,7 @@ Logical table families:
 - `materialization_state`: per-source cursor, last success and last error.
 
 The ownership contract is documented in
-`docs/architecture/console-app-materializer-api-boundaries.md`.
+`docs/architecture/console-architecture.md`.
 
 ## Materializer Bridge
 
@@ -432,8 +429,8 @@ bun run --cwd apps/gitboard test -- \
   tests/server/observability/prometheus-cardinality.test.ts
 ```
 
-Use `docs/architecture/post-bridge-cleanup-test-guards.md` for the complete
-conditional guard matrix.
+Use `docs/architecture/console-test-guards.md` for the complete conditional
+guard matrix.
 
 ## Known Sharp Edges
 
