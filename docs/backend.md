@@ -2,6 +2,8 @@
 
 Status: current backend reference for the running `apps/gitboard` service.
 
+Documentation entrypoint: `docs/READ_THIS_FIRST.md`.
+
 This document describes the post-bridge backend shape. Older Beadboard-era
 details have been removed from the current-state narrative. Historical redesign
 context lives in `docs/backend-redesign.md`; telemetry/materialization ownership
