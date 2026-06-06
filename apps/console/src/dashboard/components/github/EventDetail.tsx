@@ -106,7 +106,7 @@ export function EventDetail({ event, commits }: Props) {
   const delPct = total > 0 ? ((event.deletions ?? 0) / total) * 100 : 0;
 
   return (
-    <div className="gitboard-event-detail" style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
+    <div className="console-event-detail" style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
       {/* Panel header */}
       <div style={{
         display: "flex",

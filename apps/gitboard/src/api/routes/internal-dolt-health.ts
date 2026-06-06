@@ -1,8 +1,7 @@
 import { Hono } from "hono";
 
-// PR#10 reshaped beadboard's dolt-client (forge-1qz pool snapshot removed in favor of
-// per-project ProjectSourceHealth). This endpoint now returns a minimal liveness
-// payload until a follow-up reintroduces a pool snapshot if needed.
+// This endpoint returns minimal liveness; per-project source health lives on
+// /api/substrate/projects.
 export function createInternalDoltHealthRouter(): Hono {
   const app = new Hono();
 
@@ -14,7 +13,7 @@ export function createInternalDoltHealthRouter(): Hono {
 
     return c.json({
       state: "ok",
-      note: "Pool snapshot retired in PR#10; see /api/substrate/projects for per-project source health.",
+      note: "See /api/substrate/projects for per-project source health.",
     });
   });
 

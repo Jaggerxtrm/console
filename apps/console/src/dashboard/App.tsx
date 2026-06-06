@@ -126,11 +126,11 @@ function DashboardShell({ view }: { view: View }) {
         <div className="ww-action-cluster" style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
           <span className="ww-system-state"><i /> operational</span>
           <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
-            Beadboard retired
+            Console frontend
           </span>
         </div>
       </header>
-      <main className="gitboard-main" style={{ flex: 1, minHeight: 0, minWidth: 0 }}>
+      <main className="console-main" style={{ flex: 1, minHeight: 0, minWidth: 0 }}>
         {isPreview ? (
           <DesignPreview />
         ) : activeTab === "github" ? (

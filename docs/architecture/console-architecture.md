@@ -338,15 +338,16 @@ by `apps/gitboard/tests/server/observability/prometheus-cardinality.test.ts`.
 - API composition: `apps/gitboard/src/api/server.ts`.
 - Current state store: `xtrm.sqlite` in `GITBOARD_DATA_DIR`, with
   `gitboard.sqlite` folded in by `foldGitboardSQLite` when present.
-- Current UI shell: Gitboard-hosted Console surface under `/gitboard`, with
-  `/api/console/*` APIs and dashboard pages in
-  `apps/gitboard/src/dashboard/pages/console`.
+- Current product frontend: `apps/console`, built by Vite and served by the
+  backend at `/console`.
+- Compatibility UI shell: `apps/gitboard` dashboard bundle under `/gitboard`.
+- Console APIs remain on the backend under `/api/console/*`.
 
 ### 9.2 Surface Classification
 
 | Surface | Classification | Evidence | Cleanup posture |
 |---|---|---|---|
-| `apps/gitboard` | Running | `package.json` has `dev`, `start`, `build:dashboard`; `src/index.ts` starts Bun server and GitHub poller | Keep as production/reference app until `apps/console` scaffold proves parity |
+| `apps/gitboard` | Running backend/materializer service | `package.json` has `dev`, `start`, `build:dashboard`; `src/index.ts` starts Bun server and GitHub poller; `src/api/server.ts` creates `Materializer` | Keep as backend/API/materializer host; `/gitboard` is compatibility UI only |
 | Native systemd deploy | Running | `docs/deployment.md` documents `gitboard.service` with `HOST` and `PORT=3030` | Keep; this is the primary deploy path |
 | Tailscale `:3030` URL | Running | `README.md` and `docs/deployment.md` describe tailnet access; `docs/backend.md` is current architecture reference | Keep; use for live verification |
 | GitHub poller/store | Running adapter | `src/index.ts` starts `GithubPoller` unless `SKIP_GITHUB_POLLER=1`; `src/api/routes/github.ts` mounted | Keep; durable external adapter, not temporary Beads bridge |
@@ -358,9 +359,9 @@ by `apps/gitboard/tests/server/observability/prometheus-cardinality.test.ts`.
 | `packages/api-client` | Shared package | Workspace package with API client build/test scripts | Keep; review usage during scaffold |
 | `packages/html-preview` | Supported auxiliary tooling | Has CLI package, README, tests, and tailnet document-preview workflow | Keep supported as workspace operator tooling; see Dormant Tooling below |
 | Dockerfile / Compose | Dormant reproduction path | README and `docs/deployment.md` mark Docker experimental/not primary; envs now align with `GITBOARD_DATA_DIR` and `XDG_PROJECTS_DIR` | Keep dormant local reproduction tooling; see Dormant Tooling below |
-| `/beadboard` route/docs | Retired legacy surface | Smoke coverage expects `/beadboard` to return 404; docs still cite removed `apps/beadboard` paths | Keep retired unless a deliberate compatibility bead reopens it |
+| `/beadboard` route/docs | Retired legacy surface | Smoke coverage expects `/beadboard` to return 404; stale docs were removed under `forge-kr53` | Keep retired |
 | `/api/beads` route file | Legacy unmounted code | `src/api/routes/beads.ts` exists, but `src/api/server.ts` does not mount `/api/beads`; `forge-benk.10` updated the old cache test to assert retirement and `/api/substrate` as the supported read surface | Do not treat as running bridge; keep retired unless a deliberate compatibility bead reopens it |
-| `apps/console` | Future migration target | `forge-9xet.2` exists; scaffold tracked under that bead | Initial scaffold lives under `apps/console`; runtime/deploy stay with `apps/gitboard` |
+| `apps/console` | Ready frontend app | `package.json` has `dev`, `build`, and `typecheck`; `apps/gitboard/src/api/server.ts` serves its production build at `/console` | Own Console UI only; backend/API/materializer stay in `apps/gitboard` |
 | Tracked runtime artifacts | Cleanup candidate | `git ls-files` may show `apps/gitboard/data/*.sqlite` or `apps/gitboard/logs/*.jsonl` tracked despite ignore rules | Remove in dedicated cleanup beads with rollback-safe validation |
 
 ### 9.3 Runtime Entrypoints
@@ -375,8 +376,8 @@ by `apps/gitboard/tests/server/observability/prometheus-cardinality.test.ts`.
   - Mounts the API routes listed in Section 3.
   - Creates `Materializer`, `UnifiedScanner`, Beads trigger watcher,
     observability watcher, and optional parity harnesses.
-  - Serves production dashboard assets under `/gitboard` and redirects `/` to
-    `/gitboard`.
+  - Serves production Console assets under `/console`, keeps `/gitboard` as a
+    compatibility shell, and redirects `/` to `/console`.
   - Does not mount the legacy `beadsRoutes` router; `/api/beads/*` should stay
     retired unless a follow-up explicitly reinstates compatibility.
 
@@ -430,10 +431,9 @@ without local secrets.
    - Treat as dormant local reproduction unless it is refreshed in a dedicated
      ops cleanup.
 
-5. Historical design context: `docs/backend-redesign.md` records the reasoning
-   behind the materializer bridge. It is explicitly marked historical in
-   `docs/READ_THIS_FIRST.md`. Treat current-state language inside it as
-   superseded by Sections 1-9 of this document and by `docs/backend.md`.
+5. Historical legacy docs were removed from the current documentation graph
+   under `forge-kr53`. Current materializer reasoning lives in this document
+   and `docs/backend.md`.
 
 ## 12. Enforcement
 
@@ -455,5 +455,6 @@ guards.
 - `forge-szc0`: keep telemetry schema/docs aligned with upstream Specialists
   contracts; this boundary should remain stable while field-level schema docs
   evolve.
-- `forge-tx7j`: post-benk legacy residue cleanup; link follow-up cleanup beads
-  there when a Bridge-era doc needs retirement.
+- `forge-kr53`: Console cleanup epic for retiring Beadboard/Gitboard residue
+  and keeping `apps/console` ready while materializer ownership remains in
+  `apps/gitboard`.

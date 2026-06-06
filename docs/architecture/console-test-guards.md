@@ -21,6 +21,8 @@ API routes, materializer behavior, dashboard rendering, or deployment docs:
 ```bash
 bun run --cwd apps/gitboard typecheck
 bun run --cwd apps/gitboard build:dashboard
+bun run --cwd apps/console typecheck
+bun run --cwd apps/console build
 git diff --check
 ```
 
@@ -130,6 +132,22 @@ Legacy `/api/beads` cache coverage is resolved by `forge-benk.10`: the route
 stays retired and `tests/api/routes/beads.cache.test.ts` asserts that
 `/api/substrate/projects` is the supported project read surface.
 
+### 4.6 Production Console Static Serving
+
+Run when touching `apps/gitboard/src/api/server.ts`, `apps/console`, Vite
+config, deployment docs, or static asset routing:
+
+```bash
+bash apps/gitboard/tests/smoke/p9-console-production-ready.sh
+```
+
+Assertions protected:
+
+- `/console` serves the built `apps/console` frontend;
+- `/gitboard` remains available as compatibility shell;
+- `/` redirects to `/console`;
+- retired legacy routes stay retired.
+
 ## 5. Prometheus And Operations Cardinality
 
 Run when touching operations metrics, telemetry docs, fixtures, labels, or
@@ -167,7 +185,8 @@ Assertions protected:
   and row identity survive cleanup;
 - specialists forensic feed rendering remains available from chain/job
   detail;
-- `/gitboard` remains the stable host surface while Console is the target;
+- `/console` remains the product frontend and `/gitboard` remains a
+  compatibility shell;
 - legacy/persisted Beads surface state maps to Console feed without visual
   redesign work in this cleanup track.
 

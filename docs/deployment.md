@@ -55,6 +55,7 @@ Adjust paths / tailnet IP for your host.
    bun install
    cd apps/gitboard
    bun run build:dashboard
+   bun run --cwd ../console build
    ```
 3. Reload and start service:
    ```bash
@@ -123,14 +124,7 @@ Use Docker only if you need to reproduce container behavior.
 ## Checks
 
 ```bash
+curl http://<tailnet-ip>:3030/console
 curl http://<tailnet-ip>:3030/gitboard
-curl http://<tailnet-ip>:3030/api/internal/dolt/health
+curl http://<tailnet-ip>:3030/health
 ```
-
-## Docs sweep evidence
-
-Checked `docs/beadboard-inline-feed-spec.md`, `docs/xtrm-console-visual-contract.md`, and `docs/graph/detail.md` for deploy / run-mode drift.
-
-- `docs/beadboard-inline-feed-spec.md` — no deploy/run-mode content to refresh.
-- `docs/xtrm-console-visual-contract.md` — no deploy/run-mode content to refresh.
-- `docs/graph/detail.md` — graph visual spec only; no deploy/run-mode drift.

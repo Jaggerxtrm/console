@@ -34,7 +34,7 @@ operator move from aggregate symptom to durable proof.
 
 - `docs/xtrm-observability-prd.md`
 - `docs/xtrm-console-visual-contract.md`
-- `docs/backend-redesign.md`
+- `docs/backend.md`
 - `docs/deployment.md`
 - `docs/architecture/console-architecture.md`
 - `/home/dawid/projects/mercury/infra/MONITORING.md`

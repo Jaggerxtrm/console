@@ -1,7 +1,7 @@
 # Omniforge
 
-Agent orchestration + issue tracking monorepo. Primary runtime app:
-`apps/gitboard`. Gradual Console scaffold: `apps/console`.
+Agent orchestration + issue tracking monorepo. Primary backend/materializer
+service: `apps/gitboard`. Ready Console frontend app: `apps/console`.
 
 ## Current run modes
 
@@ -10,7 +10,8 @@ Primary deploy path.
 - Service: `~/.config/systemd/user/gitboard.service`
 - Starts app with Bun, no container layer
 - Binds to Tailscale IP on host
-- Serves Gitboard at `http://<tailnet-ip>:3030/gitboard`
+- Serves Console at `http://<tailnet-ip>:3030/console`
+- Keeps `http://<tailnet-ip>:3030/gitboard` as the compatibility shell
 - Needs `loginctl enable-linger <user>` so it survives logout
 
 Quick start:
@@ -18,6 +19,7 @@ Quick start:
 bun install
 cd apps/gitboard
 bun run build:dashboard
+bun run --cwd ../console build
 systemctl --user daemon-reload
 systemctl --user enable --now gitboard
 ```
@@ -48,8 +50,8 @@ The API defaults to `:3030`; the Vite dashboard dev server proxies `/api` and
   spec, Slices A–F (datasource, panels, source health, evidence UX, journal)
 - `docs/architecture/console-test-guards.md` — test command checklist for
   cleanup, scaffold, and Console readiness work
-- `docs/architecture/apps-console-scaffold-preflight.md` — gate checklist for
-  the future `apps/console` scaffold
+- `docs/architecture/apps-console-scaffold-preflight.md` — completed scaffold
+  checklist and boundary reference
 - `apps/gitboard/CLAUDE.md` — app-specific notes
 - `apps/gitboard/testing.md` — test guidance
 
@@ -58,8 +60,8 @@ The API defaults to `:3030`; the Vite dashboard dev server proxies `/api` and
 ```
 omniforge/
 ├── apps/
-│   ├── gitboard/          # Running Gitboard service and API
-│   └── console/           # Gradual xtrm Console frontend scaffold
+│   ├── gitboard/          # Running backend, API, materializer, compatibility shell
+│   └── console/           # Ready xtrm Console frontend app
 ├── packages/
 │   ├── core/              # @omniforge/core - shared utilities and types
 │   ├── ui/                # @omniforge/ui - design system components

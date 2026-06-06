@@ -1,14 +1,16 @@
 # apps/console Scaffold Preflight
 
-Status: gate for `forge-benk.4`; input to `forge-9xet.2`.
+Status: completed scaffold boundary reference.
 
-This is a preflight checklist only. It does not create `apps/console`, rename
-`apps/gitboard`, or change deployment defaults.
+`apps/console` now exists as a frontend app and is served by the backend at
+`/console`. This document remains as the boundary reference for future Console
+frontend changes: do not move backend/API/materializer ownership into
+`apps/console`.
 
 ## Source Baseline
 
-Use `apps/gitboard` as the source app because it is the only running service and
-already contains the post-bridge API/materializer boundaries.
+Use `apps/gitboard` as the backend/API/materializer source because it remains
+the only running service and already contains the post-bridge boundaries.
 
 Copy/adapt first:
 
@@ -45,11 +47,11 @@ Read before starting `forge-9xet.2`:
 - `docs/architecture/console-architecture.md`
 - `docs/architecture/console-test-guards.md`
 
-## Initial Scaffold Rules
+## Ongoing Scaffold Rules
 
-1. Create `apps/console` as a separate workspace package.
-2. Keep `apps/gitboard` building and serving `/gitboard` on `:3030`.
-3. Start with a copied/adapted dashboard shell, not the full visual redesign.
+1. Keep `apps/console` as a separate workspace package.
+2. Keep `apps/gitboard` building and serving the backend on `:3030`.
+3. Keep `/console` as the product frontend and `/gitboard` as compatibility.
 4. Keep API reads going through the existing Gitboard API routes.
 5. Keep Beads feed grouping and inline dossier behavior stable.
 6. Do not introduce a `/api/beads` dependency; project reads use
@@ -72,7 +74,7 @@ bash apps/gitboard/tests/smoke/p6-beadboard-404.sh
 bash apps/gitboard/tests/smoke/p8-runtime-artifacts.sh
 ```
 
-After scaffold:
+Console validation:
 
 ```bash
 bun run --cwd apps/console typecheck
@@ -88,7 +90,7 @@ also run the relevant Gitboard dashboard regression tests from
 
 ## Known Blockers And Non-Blockers
 
-Blockers for `forge-9xet.2`:
+Blockers for future Console frontend changes:
 
 - Any regression in Gitboard typecheck/build.
 - Any scaffold plan that makes Console own materializer/source ingestion.

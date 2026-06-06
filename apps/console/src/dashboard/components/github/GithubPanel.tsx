@@ -42,7 +42,7 @@ function TabBar({
 
   return (
     <div
-      className="gitboard-tabbar"
+      className="console-tabbar"
       style={{
         display: "flex",
         borderBottom: "1px solid var(--border-subtle)",
@@ -53,7 +53,7 @@ function TabBar({
       {tabs.map((tab) => (
         <button
           key={tab.id}
-          className={activeTab === tab.id ? "gitboard-tab is-active" : "gitboard-tab"}
+          className={activeTab === tab.id ? "console-tab is-active" : "console-tab"}
           onClick={() => !tab.disabled && onSelect(tab.id)}
           disabled={tab.disabled}
           title={tab.disabled ? "Select a repo first" : undefined}
@@ -147,7 +147,7 @@ export function GithubPanel({ onMount = useGithubActivity }: { onMount?: () => v
   }
 
   return (
-    <div className="gitboard-shell" style={{ display: "flex", height: "100%", overflow: "hidden" }}>
+    <div className="console-shell" style={{ display: "flex", height: "100%", overflow: "hidden" }}>
       {/* Left: Repo Sidebar */}
       <RepoSidebar
         repos={repos}
@@ -161,7 +161,7 @@ export function GithubPanel({ onMount = useGithubActivity }: { onMount?: () => v
       />
 
       {/* Center: Tabbed timeline */}
-      <div className="gitboard-center" style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+      <div className="console-center" style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
         <StatsHeader summary={summary} />
 
         {(() => {

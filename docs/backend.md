@@ -4,11 +4,11 @@ Status: current backend reference for the running `apps/gitboard` service.
 
 Documentation entrypoint: `docs/READ_THIS_FIRST.md`.
 
-This document describes the post-bridge backend shape. Older Beadboard-era
-details have been removed from the current-state narrative. Historical redesign
-context lives in `docs/backend-redesign.md`; architectural ownership
-(UI/API/materializer/state, telemetry materialization, current repo state,
-dormant tooling) lives in `docs/architecture/console-architecture.md`.
+This document describes the post-bridge backend shape. Older legacy documents
+have been removed from the current documentation graph. Architectural
+ownership (UI/API/materializer/state, telemetry materialization, current repo
+state, dormant tooling) lives in
+`docs/architecture/console-architecture.md`.
 
 <!-- INDEX:START -->
 ## Index
@@ -33,29 +33,30 @@ dormant tooling) lives in `docs/architecture/console-architecture.md`.
 
 ## Runtime Overview
 
-Gitboard is currently the only running service. It is a native Bun process
-under `apps/gitboard` that combines:
+`apps/gitboard` is currently the only running backend/materializer service. It
+is a native Bun process that combines:
 
 1. A Hono HTTP API.
-2. Static dashboard serving under `/gitboard`.
-3. A WebSocket hub for dashboard realtime invalidation and logs.
-4. A terminal WebSocket bridge for optional local shell sessions.
-5. A local `xtrm.sqlite` bridge store in `GITBOARD_DATA_DIR`.
-6. A background materializer for Beads/Substrate-shaped rows and Specialists
+2. Static Console frontend serving under `/console`.
+3. Static compatibility shell serving under `/gitboard`.
+4. A WebSocket hub for dashboard realtime invalidation and logs.
+5. A terminal WebSocket bridge for optional local shell sessions.
+6. A local `xtrm.sqlite` bridge store in `GITBOARD_DATA_DIR`.
+7. A background materializer for Beads/Substrate-shaped rows and Specialists
    observability rows.
-7. A durable GitHub adapter/poller/store for remote GitHub state.
+8. A durable GitHub adapter/poller/store for remote GitHub state.
 
-The app name remains Gitboard in this tranche. Console is the product target,
-but route rename, package rename, visual redesign and broad string cleanup are
-owned by later migration work.
+The backend/package name remains `apps/gitboard` for deployment compatibility.
+Console is the product frontend and is served from `apps/console` at
+`/console`.
 
 Production target used during current operations:
 
 ```text
-Service: systemd --user gitboard.service
-URL:     http://100.113.49.52:3030/gitboard
-Console: http://100.113.49.52:3030/gitboard/console
-Runtime: native Bun, not Docker Compose
+Service:       systemd --user gitboard.service
+Console:       http://100.113.49.52:3030/console
+Compatibility: http://100.113.49.52:3030/gitboard
+Runtime:       native Bun, not Docker Compose
 ```
 
 ## Process Startup
@@ -103,6 +104,7 @@ apps/gitboard/src/core/logger.ts                 JSONL logs + websocket log fano
 apps/gitboard/src/core/shell-provider-policy.ts  Shell/terminal access policy
 apps/gitboard/src/server/beads/*.ts              Beads trigger watcher
 apps/gitboard/src/server/observability/*.ts      Specialists observability registry/watcher/DAO
+apps/console/src/dashboard/*.tsx                 Console frontend shell
 ```
 
 There is no load-bearing top-level Beadboard app in the current tree. Legacy
@@ -193,7 +195,9 @@ The ownership contract is documented in
 
 ## Materializer Bridge
 
-The materializer lives in `apps/gitboard/src/core/materializer`.
+The materializer lives in `apps/gitboard/src/core/materializer` and is created
+from `apps/gitboard/src/api/server.ts`. `apps/console` never owns materializer
+lifecycle or bridge writes.
 
 Responsibilities:
 
@@ -375,6 +379,7 @@ Security boundary: policy and Tailscale trust, not container isolation.
 ```bash
 cd apps/gitboard
 bun run build:dashboard
+bun run --cwd ../console build
 systemctl --user restart gitboard
 systemctl --user --no-pager --lines=50 status gitboard
 ```
@@ -383,6 +388,7 @@ systemctl --user --no-pager --lines=50 status gitboard
 
 ```bash
 curl -fsS http://100.113.49.52:3030/health
+curl -fsS http://100.113.49.52:3030/console
 curl -fsS http://100.113.49.52:3030/gitboard
 curl -fsS 'http://100.113.49.52:3030/api/feed?limit=5'
 curl -fsS 'http://100.113.49.52:3030/api/console/graph?project_id=gitboard&refresh=true'
@@ -434,13 +440,12 @@ guard matrix.
 
 ## Known Sharp Edges
 
-1. `apps/gitboard` remains the service/package name until the Console migration
-   track performs a deliberate rename.
+1. `apps/gitboard` remains the backend/materializer service/package name until
+   a dedicated runtime-rename bead replaces it.
 2. `substrate_*` tables are bridge/projection tables, not native Substrate.
 3. `/api/beads` is legacy unmounted code. `forge-benk.10` retired the stale
    cache coverage in favor of `/api/substrate/*`.
-4. `/beadboard` is retired. Do not describe it as a current compatibility app
-   unless a future compatibility bead reopens it.
+4. `/beadboard` is retired. Do not describe it as a current compatibility app.
 5. GitHub is a durable external adapter and should not be deleted with temporary
    Beads/Specialists bridge cleanup.
 6. Specialists live fallback is compatibility only; the primary path is
