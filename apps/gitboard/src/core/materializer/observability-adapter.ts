@@ -30,7 +30,7 @@ type TokenTotals = {
 
 export function createObservabilityAdapter(dbPath: string, repoSlug: string): MaterializerAdapter<JobRow> {
   const db = new Database(dbPath);
-  const beadIdSelect = hasColumn(db, "specialist_jobs", "bead_id") ? "bead_id" : "NULL AS bead_id";
+  const beadIdSelect = hasColumn(db, "specialist_jobs", "bead_id") ? "j.bead_id AS bead_id" : "NULL AS bead_id";
   const hasMetrics = hasTable(db, "specialist_job_metrics");
   const hasForensic = hasTable(db, "specialist_forensic_events");
   return {

@@ -107,4 +107,28 @@ describe("observability adapter", () => {
     expect(evidence.evidence_id).toBe("commit-1");
     expect(JSON.parse(evidence.ref_json)).toMatchObject({ sha: "abc" });
   });
+
+  it("keeps specialist job bead ids unambiguous when metrics also expose bead_id", async () => {
+    const root = mkdtempSync(join(tmpdir(), "obs-adapter-bead-id-"));
+    tempDirs.push(root);
+    const obsDbPath = join(root, "observability.db");
+    const xtrmDbPath = join(root, "xtrm.sqlite");
+    const obsDb = new Database(obsDbPath);
+    obsDb.exec("CREATE TABLE specialist_jobs (job_id TEXT, bead_id TEXT, specialist TEXT, status TEXT, chain_id TEXT, epic_id TEXT, chain_kind TEXT, worktree_column TEXT, last_output TEXT, updated_at_ms INTEGER)");
+    obsDb.exec("CREATE TABLE specialist_job_metrics (job_id TEXT, bead_id TEXT, model TEXT, total_turns INTEGER, total_tools INTEGER, token_trajectory_json TEXT)");
+    obsDb.exec("CREATE TABLE specialist_events (id INTEGER, job_id TEXT, seq INTEGER, specialist TEXT, bead_id TEXT, t TEXT, type TEXT, event_json TEXT)");
+    obsDb.query("INSERT INTO specialist_jobs (job_id, bead_id, specialist, status, chain_id, epic_id, chain_kind, worktree_column, last_output, updated_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+      .run("job-1", "job-bead", "executor", "done", "chain-1", null, "executor", "/tmp/worktree", "done", 1000);
+    obsDb.query("INSERT INTO specialist_job_metrics (job_id, bead_id, model, total_turns, total_tools, token_trajectory_json) VALUES (?, ?, ?, ?, ?, ?)")
+      .run("job-1", "metrics-bead", "model-x", 1, 1, JSON.stringify([]));
+
+    const xtrmDb = createXtrmDatabase(xtrmDbPath);
+    const materializer = new Materializer(xtrmDb);
+    materializer.register("obs:repo-1", createObservabilityAdapter(obsDbPath, "repo-1"));
+
+    await materializer.runOnce("obs:repo-1");
+
+    const row = xtrmDb.query("SELECT bead_id FROM specialist_jobs WHERE job_id = ?").get("job-1") as { bead_id: string } | undefined;
+    expect(row?.bead_id).toBe("job-bead");
+  });
 });
