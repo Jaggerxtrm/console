@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createGitboardRuntimeOwnershipMap, evaluateGitboardDeprecationReadiness, getReadyRuntimeMigrationSurfaceIds } from "../src/runtime/index.ts";
+import { createGitboardFinalRuntimeMigrationPlan, createGitboardRuntimeOwnershipMap, evaluateGitboardDeprecationReadiness, getReadyRuntimeMigrationSurfaceIds } from "../src/runtime/index.ts";
 
 describe("gitboard runtime ownership map", () => {
   it("keeps apps/console out of runtime ownership", () => {
@@ -16,6 +16,8 @@ describe("gitboard runtime ownership map", () => {
     expect(surfacesById.get("xtrm-state-schema")?.knownHighRiskSymbols).toContain("createXtrmDatabase");
     expect(surfacesById.get("runtime-host")?.knownHighRiskSymbols).toContain("createApp");
     expect(surfacesById.get("materializer-runtime")?.knownHighRiskSymbols).toContain("Materializer");
+    expect(surfacesById.get("source-lifecycle")?.knownHighRiskSymbols[0]).toBe("ProjectScanner");
+    expect(surfacesById.get("terminal-shell-boundary")?.knownHighRiskSymbols).toContain("TerminalBridge");
     expect(surfacesById.get("github-adapter")?.preserves).toContain("durable GitHub tables");
   });
 
@@ -27,6 +29,11 @@ describe("gitboard runtime ownership map", () => {
       "source-lifecycle",
       "github-adapter",
     ]);
+    expect(getReadyRuntimeMigrationSurfaceIds([
+      "xtrm-state-schema",
+      "runtime-host",
+      "materializer-runtime",
+    ])).toContain("realtime-log-delivery");
   });
 
   it("blocks gitboard deprecation until every core-owned surface has moved", () => {
@@ -40,5 +47,26 @@ describe("gitboard runtime ownership map", () => {
     const complete = evaluateGitboardDeprecationReadiness(ownership.surfaces.map((surface) => surface.id));
     expect(complete.ready).toBe(true);
     expect(complete.missingSurfaceIds).toEqual([]);
+  });
+
+  it("defines the final migration children, smoke gates, and wrapper retirement checks", () => {
+    const plan = createGitboardFinalRuntimeMigrationPlan();
+
+    expect(plan.epicId).toBe("forge-3dm4");
+    expect(plan.targetRuntimeOwner).toBe("@xtrm/core/runtime");
+    expect(plan.compatibilityHost).toBe("apps/gitboard");
+    expect(plan.children.map((child) => child.key)).toEqual([
+      "final-boundary-docs",
+      "core-read-model-services",
+      "source-lifecycle-extraction",
+      "github-runtime-adapter",
+      "runtime-host-socket-boundary",
+      "terminal-shell-safety",
+      "service-static-retirement",
+      "final-wrapper-cleanup",
+    ]);
+    expect(plan.children.find((child) => child.key === "source-lifecycle-extraction")?.gitnexusImpactTargets[0]).toBe("ProjectScanner");
+    expect(plan.smokeGates.map((gate) => gate.name)).toContain("GitHub poller enabled smoke");
+    expect(plan.wrapperRetirementChecklist).toContain("Console does not open SQLite and remains UI/read-query only.");
   });
 });

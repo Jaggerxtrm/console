@@ -19,6 +19,19 @@ The typed source of truth for this contract is
 | `graph.console-joins` | `/api/console/graph` | Derived graph projection joining issues, edges, and specialist activity |
 | `source-health.freshness` | `/api/sources`, connection, graph, specialists health | Native source freshness with degraded-but-readable semantics |
 
+## Final Migration Requirement
+
+`forge-3dm4` makes the remaining read-model extraction explicit: substrate,
+specialists, graph, and source-health query services move into
+`packages/core/src/state` before their app SQL/query wrappers are retired.
+`apps/gitboard` keeps the public routes mounted while route modules adapt HTTP
+parameters and DTOs to core-owned services.
+
+Every read-model slice must add route-to-core parity before wrapper retirement.
+The parity gate is mandatory for `/api/substrate/*`, `/api/specialists/*`,
+`/api/console/graph`, and `/api/sources` plus source-health projections used by
+graph and specialists.
+
 ## Retirement Rules
 
 - Preserve opaque IDs. Do not introduce cross-domain foreign-key assumptions.
@@ -52,9 +65,26 @@ compatible while those surfaces are retained.
 GitHub poller/store tables remain durable external adapter state and are not
 part of Beads/Specialists bridge retirement.
 
+For `forge-3dm4`, wrapper retirement also requires the runtime smoke gates in
+`docs/architecture/gitboard-runtime-deprecation.md`: isolated deprecation
+smoke, GitHub poller-enabled smoke or classified credential unavailability, and
+manual production restart smoke evidence.
+
 ## Current State
 
 | Contract | Core owner | App wrapper | Bridge state still retained |
 |---|---|---|---|
 | `feed.rollups` | `packages/core/src/state/feed-read-model.ts` owns row selection, severity/redaction normalization, drilldown pointers, and opaque cursor encoding by `(t_unix_ms, seq, id)` | `apps/gitboard/src/api/routes/feed.ts` parses HTTP query parameters and returns the existing `{ rows, cursor }` DTO | `xtrm_forensic_events`, `xtrm_evidence_refs`, `substrate_issues`, and `github_events` remain the bridge/durable adapter inputs until daemon-native rollups are served |
 | `source-health.freshness` | `packages/core/src/state/source-health.ts` owns the canonical health vocabulary, helper, and freshness mapping; `packages/core/src/runtime/source-lifecycle.ts` defines discovery/health service contracts | `apps/gitboard/src/types/source-health.ts` is a compatibility re-export; app scanner/watcher implementations and source route projection still own runtime reads | `sources`, `materialization_state`, scanner attach/skip logs, and existing degraded-but-readable DTOs remain retained until source lifecycle services move behind parity tests |
+
+## Non-Retirable Until Daemon Served
+
+These bridge surfaces remain non-retirable during the final `apps/gitboard`
+host migration unless `evaluateBridgeRetirementReadiness` returns ready for
+every contract:
+
+- Beads/Substrate projection tables backing issue graph, graph joins, and feed
+  drilldowns;
+- Specialists observability projection tables backing activity/evidence,
+  forensic feed events, graph joins, websocket hints, and feed rollups;
+- source-health bridge state backing degraded-but-readable API responses.

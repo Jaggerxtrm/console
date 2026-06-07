@@ -1,6 +1,7 @@
 # Gitboard Runtime Deprecation Map
 
-Status: active migration plan for `forge-6oae`.
+Status: final migration plan for `forge-3dm4`, building on the completed
+`forge-6oae` safe deprecation wave.
 
 `apps/gitboard` is still the live compatibility host. The target state is not to
 break its HTTP surface, but to remove runtime ownership from the app: database
@@ -9,6 +10,21 @@ GitHub adapter state move to `packages/core`.
 
 The typed source of truth for this map is
 `packages/core/src/runtime/ownership.ts`.
+
+## Final Runtime Target
+
+The replacement runtime owner is `@xtrm/core/runtime`, with `xt daemon` as the
+native service target for state/socket ownership. `apps/gitboard` remains only a
+compatibility host while the final migration is underway:
+
+- mounted HTTP adapters for existing `/api/*` routes;
+- static serving for `/console` and `/gitboard`;
+- Bun websocket upgrade glue until the daemon owns the socket boundary;
+- `gitboard.service` compatibility until the service/static retirement gate
+  passes.
+
+`apps/console` remains UI/read-query only and must not open SQLite or own
+runtime writes.
 
 ## Architecture Docs Gate
 
@@ -51,6 +67,62 @@ lifecycle, and GitHub adapter slices move.
 | `console-read-models` | Feed rollup core-owned as of `forge-6oae.5`; substrate, specialists, graph, and source-health query code still pending | `@xtrm/core/state` | `apps/gitboard/src/api/routes/feed.ts` is an HTTP adapter over `readFeedPage`; other app routes still own their current SQL/query wrappers | Feed route/API parity, core feed service tests, typecheck/build, and staging smoke passed |
 | `source-lifecycle` | Source-health vocabulary/helper core-owned as of `forge-6oae.13`; scanner/watcher runtime still app-owned | `@xtrm/core/runtime` and `@xtrm/core/state` | `apps/gitboard/src/types/source-health.ts` re-exports core source-health; `apps/gitboard` still owns `ProjectScanner`, `UnifiedScanner`, source routes, and watchers | Source-health parity tests, source/API tests, typecheck/build, and staging smoke passed |
 | `github-adapter` | Durable GitHub store core-owned as of `forge-6oae.7`; legacy GitHub adapter DB factory core-owned as of `forge-6oae.8`; poller/discovery/readme still app-owned | `@xtrm/core/github` | `apps/gitboard/src/core/github-store.ts` and `apps/gitboard/src/core/store.ts` re-export core; app routes/startup still wire poller, discovery, README enrichment, websocket hints, and source-health updates | Core owns durable GitHub adapter state; app wires route/startup |
+| `realtime-log-delivery` | Channel registry, WS handler, and logger still app-owned | `@xtrm/core/runtime` | `apps/gitboard` adapts Bun upgrades and internal log routes | Websocket protocol, replay buffer, post-commit hints, and request/error/slow logs remain compatible |
+| `terminal-shell-boundary` | Terminal bridge/provider registry and shell policy still app-owned | `@xtrm/core/terminal/protocol` plus runtime policy contracts | `apps/gitboard` wires local provider implementations | Verified-admin, origin, cwd/shell allowlist, rate-limit, TTL, and readonly specialist-feed behavior unchanged |
+| `service-static-retirement` | `gitboard.service`, `/console`, and `/gitboard` still hosted by app entrypoint | `@xtrm/core/runtime` | `apps/gitboard` stays as service/static compatibility alias until final gate | Native service/static smoke, deployment docs, and wrapper checklist all green |
+
+## Final Child Beads
+
+These are the required `forge-3dm4` implementation children, in dependency
+order. Each child must update this document in the same branch as its code
+change and record the tests/smoke evidence that passed.
+
+| Order | Child | Depends on | Surfaces | Required impact targets | Validation gate |
+|---:|---|---|---|---|---|
+| 1 | Plan/document final runtime boundary | none | compatibility shell | `createApp`, `startServer` | runtime ownership tests and docs agree |
+| 2 | Move remaining Console read-model services to core | 1 | `console-read-models` | `createSubstrateRouter`, `createSpecialistsRouter`, `createGraphDao`, `createSourcesRouter` | route-to-core DTO parity and targeted route tests |
+| 3 | Extract scanner/watchers/source lifecycle | 2 | `source-lifecycle` | `ProjectScanner`, `UnifiedScanner`, `BeadsChangeWatcher` | source parity, graph/source tests, attach/skip log smoke |
+| 4 | Move GitHub poller/discovery/readme runtime hooks | 1 | `github-adapter` | `GithubPoller`, `discoverAndInsert`, `getGithubToken` | GitHub poller/route tests and poller-enabled smoke tier |
+| 5 | Move runtime host, websocket, and log delivery contracts | 2, 4 | `runtime-host`, `realtime-log-delivery` | `createApp`, `startServer`, `ChannelRegistry`, `WsHandler`, `emit` | runtime host, realtime contract, and internal log tests |
+| 6 | Move terminal/shell safety boundary contracts | 5 | `terminal-shell-boundary` | `TerminalBridge`, `parseShellProviderPolicy`, `LocalPtyProvider` | terminal provider, shell policy, and denial/allowance probes |
+| 7 | Turn service/static host into compatibility wrapper | 3, 5, 6 | `service-static-retirement` | `startServer` | production-ready static smoke, deprecation smoke, deployment docs |
+| 8 | Retire obsolete wrappers | 7 | compatibility shell cleanup | `createApp`, `startServer` | bridge readiness, GitNexus detect-changes, staging/prod smoke evidence |
+
+`ProjectScanner` is a CRITICAL impact target: current graph impact reaches
+source routes, graph DAO/cache invalidation, parity, `createApp`, Beads watcher,
+and `UnifiedScanner` flows. Keep that extraction isolated and do not combine it
+with route cleanup or service/static retirement.
+
+## Smoke And Production Gates
+
+The final migration requires three smoke tiers:
+
+1. Isolated deprecation smoke:
+   `bun run --cwd apps/gitboard smoke:deprecation`.
+   Evidence: health/API probes, `materializer.run`, `materializer.publishHint`,
+   `channel.publish`, and no materializer/API errors.
+2. GitHub poller-enabled smoke:
+   run without `SKIP_GITHUB_POLLER=1` or explicitly classify unavailable
+   credentials. Evidence: GitHub auth/token path, poller cycle/backfill logs,
+   GitHub route probes, and rate-limit behavior unchanged.
+3. Production restart smoke:
+   manual `gitboard.service` restart only after local/staging evidence.
+   Evidence: tailnet health/API probes, websocket/log probe, and
+   materializer/channel logs flowing.
+
+## Wrapper Retirement Checklist
+
+Do not delete or collapse an app wrapper unless all of these are true:
+
+- the current public route remains mounted or has a replacement route with
+  parity tests;
+- Console remains UI/read-query only and never opens SQLite;
+- bridge retirement readiness is true for all daemon-served Console contracts;
+- GitHub durable adapter state is retained and not treated as temporary bridge
+  data;
+- WebSocket, terminal, and static route compatibility probes pass;
+- `npx gitnexus detect-changes` or the MCP equivalent reports only expected
+  symbols and flows.
 
 ## GitHub Adapter Current State
 
