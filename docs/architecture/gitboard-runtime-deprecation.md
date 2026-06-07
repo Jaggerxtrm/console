@@ -63,6 +63,29 @@ Still app-owned in `apps/gitboard`:
 This slice does not broaden verified-admin, origin, cwd, shell, env, rate,
 TTL, or readonly specialist-feed behavior.
 
+### forge-3dm4.8 final cleanup gate
+
+No compatibility wrapper is removed in this slice. The bridge-retirement probe
+currently returns `ready: false`, `action: retain`, with missing daemon-served
+contracts:
+- `feed.rollups`
+- `graph.console-joins`
+- `source-health.freshness`
+
+Retained wrappers:
+- `createApp` and `startServer` compatibility wrappers
+- app HTTP route DTO adapters for public `/api/*`
+- Bun WebSocket upgrade adapters, `ChannelRegistry`, `WsHandler`, and log ring
+- `TerminalBridge`, local PTY/provider wiring, and shell route adapters
+- static `/console` and `/gitboard` mounts
+- host-local `gitboard.service` compatibility alias
+- durable GitHub adapter tables and route state
+
+This completes the final migration gate through `forge-3dm4.8` while preserving
+compatibility. Actual wrapper deletion requires daemon-served replacements,
+route/static/socket parity, smoke evidence, and manual production restart
+evidence.
+
 ## Final Runtime Target
 
 The replacement runtime owner is `@xtrm/core/runtime`, with `xt daemon` as the
@@ -138,7 +161,7 @@ change and record the tests/smoke evidence that passed.
 | 5 | Move runtime host, websocket, and log delivery contracts | 2, 4 | `runtime-host`, `realtime-log-delivery` | `createApp`, `startServer`, `ChannelRegistry`, `WsHandler`, `emit` | runtime host, realtime contract, and internal log tests |
 | 6 | Move terminal/shell safety boundary contracts | 5 | `terminal-shell-boundary` | `TerminalBridge`, `parseShellProviderPolicy`, `LocalPtyProvider` | terminal provider, shell policy, and denial/allowance probes |
 | 7 | Turn service/static host into compatibility wrapper | 3, 5, 6 | `service-static-retirement` | `startServer` if server code changes; `createGitboardRuntimeOwnershipMap` for metadata | production-ready static smoke, deprecation smoke, deployment docs |
-| 8 | Retire obsolete wrappers | 7 | compatibility shell cleanup | `createApp`, `startServer` | bridge readiness, GitNexus detect-changes, staging/prod smoke evidence |
+| 8 | Retire obsolete wrappers | 7 | compatibility shell cleanup | `evaluateBridgeRetirementReadiness`, `createGitboardRuntimeOwnershipMap`; `createApp`/`startServer` only if deleting wrappers | bridge readiness says retain; GitNexus detect-changes, static smoke, deprecation smoke evidence recorded |
 
 `ProjectScanner` is a CRITICAL impact target: current graph impact reaches
 source routes, graph DAO/cache invalidation, parity, `createApp`, Beads watcher,
@@ -183,6 +206,18 @@ Do not delete or collapse an app wrapper unless all of these are true:
   current Bun app entrypoint;
 - `npx gitnexus detect-changes` or the MCP equivalent reports only expected
   symbols and flows.
+
+Current `forge-3dm4.8` status:
+
+| Checklist item | Status | Evidence |
+|---|---|---|
+| Public route mounted or replaced with parity tests | PASS | No public route removed; deprecation smoke probes `/api/*` compatibility |
+| Console remains UI/read-query only | PASS | No `apps/console` runtime write path added |
+| Bridge retirement readiness true | PARTIAL | `evaluateBridgeRetirementReadiness` returns `retain`; missing `feed.rollups`, `graph.console-joins`, `source-health.freshness` |
+| GitHub adapter state retained | PASS | Durable GitHub state remains retained and outside bridge cleanup |
+| WebSocket, terminal, static probes pass | PARTIAL | Static p9 and deprecation smoke pass; daemon-owned socket/terminal replacement not yet complete |
+| gitboard.service compatibility alias documented | PASS | `.7` documents rollback to current Bun app entrypoint |
+| GitNexus expected-scope report | PASS | `.8` detect-changes records docs/metadata-only scope |
 
 ## GitHub Adapter Current State
 

@@ -61,6 +61,27 @@ process wiring, route DTOs, timers, and cleanup.
 This slice does not change read-model ownership or daemon bridge readiness; it
 only removes app ownership of pure terminal/shell policy decisions.
 
+### forge-3dm4.8 final cleanup gate
+
+Final wrapper retirement is blocked until bridge readiness is true. The current
+probe is:
+
+```json
+{
+  "ready": false,
+  "action": "retain",
+  "missingContracts": [
+    "feed.rollups",
+    "graph.console-joins",
+    "source-health.freshness"
+  ]
+}
+```
+
+No bridge table, route DTO adapter, `createApp`/`startServer` wrapper,
+`gitboard.service` alias, `/console`, `/gitboard`, WebSocket, terminal, or
+internal-log compatibility surface is retired by this slice.
+
 ## Console Surfaces
 
 | Contract | Current routes | Replacement source |
@@ -116,6 +137,10 @@ compatible while those surfaces are retained.
 
 GitHub poller/store tables remain durable external adapter state and are not
 part of Beads/Specialists bridge retirement.
+
+`forge-3dm4.8` confirms the current action remains `retain`: Beads/Substrate,
+Specialists observability, and source-health bridge state stay in place until
+the missing daemon-served contracts above are available and parity-tested.
 
 For `forge-3dm4`, wrapper retirement also requires the runtime smoke gates in
 `docs/architecture/gitboard-runtime-deprecation.md`: isolated deprecation

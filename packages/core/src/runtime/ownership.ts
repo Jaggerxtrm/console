@@ -292,7 +292,7 @@ export function createGitboardFinalRuntimeMigrationPlan(): GitboardFinalRuntimeM
         surfaces: ["gitboard-compatibility-shell", "service-static-retirement"],
         gitnexusImpactTargets: ["createApp", "startServer"],
         validation: ["bridge retirement readiness", "GitNexus detect changes", "staging/prod smoke evidence"],
-        notes: "No wrapper deletion until every served daemon contract and compatibility probe is green.",
+        notes: "Current final cleanup gate retains app wrappers until bridge readiness is true for feed.rollups, graph.console-joins, and source-health.freshness plus daemon static/socket/API probes.",
       },
     ],
     smokeGates: [
