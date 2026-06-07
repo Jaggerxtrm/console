@@ -21,6 +21,10 @@ import {
   type GithubCommit,
   type GithubRepo,
 } from "../../src/core/github-store.ts";
+import {
+  getEvents as getCoreEvents,
+  insertEvent as insertCoreEvent,
+} from "../../../../packages/core/src/github/index.ts";
 import type { Database } from "bun:sqlite";
 
 const makeEvent = (overrides: Partial<GithubEvent> = {}): GithubEvent => ({
@@ -79,6 +83,11 @@ describe("github-store", () => {
   afterEach(async () => {
     db.close();
     await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it("keeps the app module as a compatibility re-export of the core store", () => {
+    expect(insertEvent).toBe(insertCoreEvent);
+    expect(getEvents).toBe(getCoreEvents);
   });
 
   describe("insertEvent", () => {

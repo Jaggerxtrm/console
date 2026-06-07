@@ -141,7 +141,7 @@ describe("GithubPoller loop", () => {
     const poller = new GithubPoller(db, "token", { repoConcurrency: 2 });
     await poller.pollRepos();
 
-    expect(calls).toHaveLength(6);
+    expect(calls).toHaveLength(9);
     expect(maxActive).toBe(2);
   });
 
@@ -157,7 +157,7 @@ describe("GithubPoller loop", () => {
     await poller.pollRepos();
     await poller.pollRepos();
 
-    expect(calls).toHaveLength(2);
+    expect(calls).toHaveLength(3);
     const state = getRepoPollState(db, repo);
     expect(state.last_activity_at).toBeNull();
     expect(db.query<{ last_polled_at: string | null }, []>("SELECT last_polled_at FROM github_repos WHERE full_name = 'owner/repo'").get()?.last_polled_at).not.toBeNull();
@@ -181,7 +181,10 @@ describe("GithubPoller loop", () => {
     const requestHeaders: Headers[] = [];
     vi.spyOn(globalThis, "fetch").mockImplementation(async (_input, init) => {
       requestHeaders.push(new Headers(init?.headers));
-      if (requestHeaders.length <= 2) return mockResponse([], {}, { ETag: requestHeaders.length === 1 ? '"issues-v1"' : '"pulls-v1"' });
+      if (requestHeaders.length <= 3) {
+        const etags = ['"issues-v1"', '"pulls-v1"', '"releases-v1"'];
+        return mockResponse([], {}, { ETag: etags[requestHeaders.length - 1] });
+      }
       return new Response(null, { status: 304, headers: { "X-RateLimit-Remaining": "1000", "X-RateLimit-Limit": "5000" } });
     });
 
@@ -192,11 +195,13 @@ describe("GithubPoller loop", () => {
     const firstState = getRepoPollState(db, repo);
     expect(firstState.issue_etag).toBe('"issues-v1"');
     expect(firstState.pr_etag).toBe('"pulls-v1"');
+    expect(firstState.release_etag).toBe('"releases-v1"');
 
     db.prepare("UPDATE github_repos SET last_polled_at = '2020-01-01T00:00:00Z' WHERE full_name = ?").run(repo);
     await poller.pollRepos();
 
-    expect(requestHeaders[2].get("If-None-Match")).toBe('"issues-v1"');
-    expect(requestHeaders[3].get("If-None-Match")).toBe('"pulls-v1"');
+    expect(requestHeaders[3].get("If-None-Match")).toBe('"issues-v1"');
+    expect(requestHeaders[4].get("If-None-Match")).toBe('"pulls-v1"');
+    expect(requestHeaders[5].get("If-None-Match")).toBe('"releases-v1"');
   });
 });
