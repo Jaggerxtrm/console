@@ -1,0 +1,99 @@
+{
+  "startedAt": "2026-06-07T10:35:59.704Z",
+  "completedAt": "2026-06-07T10:36:22.254Z",
+  "baseUrl": "http://127.0.0.1:3099",
+  "dataDir": "/tmp/gitboard-deprecation-data-JOmb8t",
+  "logDir": "/tmp/gitboard-deprecation-logs-aEpq2I",
+  "skipGithubPoller": true,
+  "githubPollerEvidence": {
+    "enabled": false,
+    "required": false,
+    "cycleStarts": 0,
+    "cycleCompletes": 0,
+    "routeTimingEvents": 3,
+    "errors": 0,
+    "rateLimitChanges": 0,
+    "classifiedUnavailableCredentials": false
+  },
+  "probes": [
+    {
+      "path": "/health",
+      "status": 200,
+      "bytes": 15,
+      "ok": true
+    },
+    {
+      "path": "/api/substrate/projects",
+      "status": 200,
+      "bytes": 15,
+      "ok": true
+    },
+    {
+      "path": "/api/console/graph",
+      "status": 200,
+      "bytes": 385,
+      "ok": true
+    },
+    {
+      "path": "/api/feed",
+      "status": 200,
+      "bytes": 45,
+      "ok": true
+    },
+    {
+      "path": "/api/specialists/jobs/in-flight",
+      "status": 200,
+      "bytes": 368,
+      "ok": true
+    },
+    {
+      "path": "/api/github/repos",
+      "status": 200,
+      "bytes": 11,
+      "ok": true
+    },
+    {
+      "path": "/api/github/events",
+      "status": 200,
+      "bytes": 33,
+      "ok": true
+    },
+    {
+      "path": "/api/github/repos/stats",
+      "status": 200,
+      "bytes": 11,
+      "ok": true
+    },
+    {
+      "path": "/api/github/releases",
+      "status": 200,
+      "bytes": 15,
+      "ok": true
+    },
+    {
+      "path": "/api/internal/logs?limit=1000",
+      "status": 200,
+      "bytes": 1904,
+      "ok": true
+    }
+  ],
+  "logCounts": {
+    "materializer.run": 12,
+    "materializer.publishHint": 12,
+    "channel.publish": 24,
+    "api.request.error": 0,
+    "api.request.slow": 0,
+    "materializer.error": 0,
+    "materializer.run.failed": 0,
+    "github.events.timing": 1,
+    "github.repos.timing": 1,
+    "github.releases.timing": 1,
+    "poller.cycle.start": 0,
+    "poller.cycle.complete": 0,
+    "poller.error": 0,
+    "poller.rate_limit.changed": 0,
+    "rows": 59
+  },
+  "ok": true,
+  "failures": []
+}
