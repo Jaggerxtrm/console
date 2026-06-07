@@ -9,6 +9,27 @@ SQLite and does not own runtime writes.
 The typed source of truth for this contract is
 `packages/core/src/state/read-models.ts`.
 
+### forge-3dm4.3 source-lifecycle slice
+
+Core now owns the source lifecycle policy helpers used by app adapters:
+- `formatSourceDisplayPath`
+- `createSourceRefreshState`
+- `canRefreshSources`
+- `normalizeLegacySourceStatus`
+- `getMissingDiscoveredSourceKeys`
+- `summarizeSourceRefresh`
+- `decideBeadsSourceRead`
+- `buildBeadsSourceHealthEvent`
+- `buildSourceHealthChangedPayload`
+
+`apps/gitboard` remains the compatibility shell for:
+- `ProjectScanner` traversal
+- `UnifiedScanner` scan/SQL orchestration
+- `BeadsChangeWatcher` watch/poll/publish loop
+- route DTO assembly and route mounting
+
+Public routes and DTOs are unchanged; only lifecycle decision helpers moved.
+
 ## Console Surfaces
 
 | Contract | Current routes | Replacement source |

@@ -1,7 +1,8 @@
 import { Hono } from "hono";
 import type { Database } from "bun:sqlite";
 import { UnifiedScanner, type UnifiedSource } from "../../core/unified-scanner.ts";
-import { canRefreshSources, createSourceRefreshState, formatSourceDisplayPath, isAllowedMutationRequest, isAllowedSourceKind, isLocalhost } from "./sources-policy.ts";
+import { isAllowedMutationRequest, isAllowedSourceKind, isLocalhost } from "./sources-policy.ts";
+import { canRefreshSources, createSourceRefreshState, formatSourceDisplayPath } from "./sources-policy.ts";
 import {
   buildSourceKey as coreBuildSourceKey,
   getSourceRow as coreGetSourceRow,

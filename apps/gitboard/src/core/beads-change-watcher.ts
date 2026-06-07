@@ -6,6 +6,7 @@ import { ProjectScanner } from "./project-scanner.ts";
 import { DoltClient } from "./dolt-client.ts";
 import { BeadsReader } from "./beads-reader.ts";
 import { emit, makeLogEntry } from "./logger.ts";
+import { buildBeadsSourceHealthEvent, buildSourceHealthChangedPayload, decideBeadsSourceRead } from "../../../../packages/core/src/runtime/index.ts";
 
 // forge-h830: the 2s interval was hammering Dolt with getCommitHash + readSnapshot
 // for every tracked project (25 × every 2s = 12 qps just for this watcher),
@@ -76,19 +77,20 @@ export class BeadsChangeWatcher {
     const commitHash = await this.getCommitHash(project);
     const prevHash = this.lastCommitHash.get(project.id);
     const haveSnapshot = this.previous.has(project.id);
+    const readiness = decideBeadsSourceRead(commitHash, prevHash ?? null, haveSnapshot);
 
     // Fast path: commit hash unchanged AND we already have a snapshot →
     // nothing diffed since last tick. Emit health and skip the expensive
     // readSnapshot (which would otherwise SELECT up to 1000 rows + 3 batched
     // IN-clause hydration queries per project per 2s on a stable repo).
-    if (commitHash && prevHash === commitHash && haveSnapshot) {
+    if (readiness.shouldSkipRead && commitHash) {
       emit(makeLogEntry("watcher", "poll.skipped", "debug", undefined, { projectId: project.id }));
       this.enqueue({
         projectId: project.id,
-        source: "dolt",
+        source: readiness.source,
         version: commitHash,
         event: "beads:source_health",
-        data: { projectId: project.id, source: "dolt", drift: false, healthy: true },
+        data: buildBeadsSourceHealthEvent(project.id, commitHash, false, true),
       });
       return;
     }
@@ -115,7 +117,7 @@ export class BeadsChangeWatcher {
     const priorHealthy = this.lastHealth.get(project.id);
     if (priorHealthy !== healthy) {
       this.lastHealth.set(project.id, healthy);
-      emit(makeLogEntry("watcher", "source_health.changed", "info", undefined, { projectId: project.id, healthy, source: commitHash ? "dolt" : "jsonl" }));
+      emit(makeLogEntry("watcher", "source_health.changed", "info", undefined, buildSourceHealthChangedPayload(project.id, healthy, commitHash ? "dolt" : "jsonl")));
     }
     // forge-h830: the cached commit hash MUST persist across stable-state polls
     // for the fast-path check at L72 to work. The prior `else this.lastCommitHash.delete()`
@@ -125,7 +127,7 @@ export class BeadsChangeWatcher {
     // ~60 publishes/sec to WS subscribers. Removing the delete restores the
     // intended "skip readSnapshot when commit hash unchanged" semantics.
     if (drift) emit(makeLogEntry("watcher", "drift.detected", "warn", undefined, { projectId: project.id }));
-    this.enqueue({ projectId: project.id, source: commitHash ? "dolt" : "jsonl", version: commitHash ?? String(Date.now()), event: "beads:source_health", data: { projectId: project.id, source: commitHash ? "dolt" : "jsonl", drift, healthy } });
+    this.enqueue({ projectId: project.id, source: commitHash ? "dolt" : "jsonl", version: commitHash ?? String(Date.now()), event: "beads:source_health", data: buildBeadsSourceHealthEvent(project.id, commitHash, drift, healthy) });
     this.diffAndQueue(project.id, previous, snapshot, commitHash ?? String(Date.now()));
   }
 
