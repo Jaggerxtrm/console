@@ -111,6 +111,10 @@ function resolveToken(): string {
   throw new Error('No GitHub token');
 }
 
+function isAllowedMarkdownPath(path: string): boolean {
+  return path === "README.md" || path === "CHANGELOG.md";
+}
+
 export function createGithubRouter(db: Database, registry: ChannelRegistry): Hono {
   const app = new Hono();
 
@@ -459,6 +463,7 @@ export function createGithubRouter(db: Database, registry: ChannelRegistry): Hon
     const owner = c.req.param("owner");
     const name = c.req.param("name");
     const path = c.req.query("path") || "README.md";
+    if (!isAllowedMarkdownPath(path)) return c.json({ error: "invalid path" }, 400);
     try {
       const file = await fetchRepoFile(owner, name, path);
       if (!file) return c.json({ content: null, sha: null, last_modified: null }, 200);
