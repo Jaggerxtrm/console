@@ -22,7 +22,11 @@ export class Materializer {
 
   register<TRow, TDependency>(sourceKey: string, adapter: MaterializerAdapter<TRow, TDependency>): void {
     this.registry.set(sourceKey, adapter);
-    if (!this.queues.has(sourceKey)) this.queues.set(sourceKey, new SourceQueue());
+    if (!this.queues.has(sourceKey)) {
+      this.queues.set(sourceKey, new SourceQueue((failedSourceKey, error) => {
+        emit(makeLogEntry("system", "materializer.error", "error", undefined, { source_key: failedSourceKey, error: error instanceof Error ? error.message : String(error) }));
+      }));
+    }
   }
 
   trigger(sourceKey: string): void {
