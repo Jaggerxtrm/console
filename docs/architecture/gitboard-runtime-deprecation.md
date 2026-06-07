@@ -11,6 +11,23 @@ GitHub adapter state move to `packages/core`.
 The typed source of truth for this map is
 `packages/core/src/runtime/ownership.ts`.
 
+### forge-3dm4.3 source-lifecycle slice
+
+Moved to `@xtrm/core/runtime`:
+- source path redaction helper
+- refresh cooldown gate / refresh state helper
+- missing-source reconciliation decision helper
+- refresh summary payload helper
+- watcher unchanged-commit skip decision + source-health payload helper
+
+Still app-owned in `apps/gitboard`:
+- `ProjectScanner` traversal and cache
+- `UnifiedScanner` filesystem/DB orchestration and SQL updates
+- `BeadsChangeWatcher` fs.watch, timers, Dolt reads, and publish plumbing
+- HTTP route mounting and compatibility wrappers
+
+This slice does not remove `ProjectScanner` or change public DTOs.
+
 ## Final Runtime Target
 
 The replacement runtime owner is `@xtrm/core/runtime`, with `xt daemon` as the

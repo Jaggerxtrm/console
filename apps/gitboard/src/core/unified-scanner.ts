@@ -5,6 +5,7 @@ import { basename, join } from "node:path";
 import type { Database } from "bun:sqlite";
 import { emit, makeLogEntry } from "./logger.ts";
 import { ProjectScanner } from "./project-scanner.ts";
+import { formatSourceDisplayPath, normalizeLegacySourceStatus, getMissingDiscoveredSourceKeys, summarizeSourceRefresh } from "../../../../packages/core/src/runtime/index.ts";
 import { getObservabilityConfig } from "../server/observability/config.ts";
 import { listRepos } from "../server/observability/registry.ts";
 
@@ -26,15 +27,7 @@ export type UnifiedSource = {
   status: UnifiedSourceStatus;
 };
 
-export function formatSourceDisplayPath(path: string): string {
-  const segments = path.split(/[\\/]+/).filter(Boolean);
-  if (segments.length <= 2) return path;
-  return `…/${segments.slice(-2).join("/")}`;
-}
-
-export function normalizeLegacySourceStatus(status: string): "active" | "missing" {
-  return status === "missing" ? "missing" : "active";
-}
+export { normalizeLegacySourceStatus };
 
 type LegacyBeadsProject = { id: string; path: string; status: string };
 type LegacyObsRepo = { repoSlug: string; dbPath: string };
@@ -206,7 +199,7 @@ export class UnifiedScanner {
     const discovered = await this.scan();
     this.upsertDiscoveredSources(discovered);
     this.markMissingSources(discovered);
-    emit(makeLogEntry("system", "scanner.refresh", "info", undefined, { total: discovered.length, kinds: this.countKinds(discovered) }));
+    emit(makeLogEntry("system", "scanner.refresh", "info", undefined, summarizeSourceRefresh(discovered)));
     if (this.parityEnabled) await this.emitParityDiff(discovered);
     return discovered;
   }
@@ -217,13 +210,10 @@ export class UnifiedScanner {
   }
 
   private markMissingSources(discovered: UnifiedSource[]): void {
-    const discoveredKeys = new Set(discovered.map((source) => source.sourceKey));
     const rows = this.db.query("SELECT source_key FROM sources WHERE origin = 'discovered'").all() as Array<{ source_key: string }>;
+    const missingKeys = getMissingDiscoveredSourceKeys(discovered.map((source) => source.sourceKey), rows.map((row) => row.source_key));
     const stmt = this.db.query("UPDATE sources SET status = 'missing' WHERE source_key = ? AND origin = 'discovered'");
-    for (const row of rows) {
-      if (discoveredKeys.has(row.source_key)) continue;
-      stmt.run(row.source_key);
-    }
+    for (const sourceKey of missingKeys) stmt.run(sourceKey);
   }
 
   private async emitParityDiff(discovered: UnifiedSource[]): Promise<void> {
