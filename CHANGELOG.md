@@ -11,11 +11,14 @@ session reports under `.xtrm/reports/`.
 ## [Unreleased]
 
 ### Added
+- **Core runtime migration exports** — `@xtrm/core/materializer`, `@xtrm/core/state`, and related runtime/GitHub ownership contracts now expose the reusable materializer, state/schema, source lifecycle, feed read-model, and GitHub store/database surfaces that `apps/gitboard` previously owned directly (`forge-fuyf`, `forge-6oae`).
+- **Gitboard deprecation staging smoke** — `bun run --cwd apps/gitboard smoke:deprecation` starts an isolated local/staging instance and probes health, Substrate, graph, feed, Specialists, GitHub endpoints, and materializer/channel log flow before runtime bridge closure (`forge-6oae.11`).
 - **Console Beads/Dolt repair actions** — `/api/substrate/projects/<id>/repair-actions` now returns safe operator repair suggestions for degraded Beads/Dolt sources, including source-health rescan, Dolt status inspection, start/restart, port-config recovery, and dead pid cleanup guidance. Console Observability now surfaces these actions in a Beads Dolt repair panel (`forge-9yhh`).
 - **xtrm Observability Platform PRD** — `docs/xtrm-observability-prd.md`. Planning-ready (not implementation-ready) input to the OpenSpec planning phase. Specifies an embedded observability surface inside the xtrm console as the foundation for a future customer-shippable product. Datasource-as-interface; panels as owned primitives; multi-tenancy as a day-one shape. Phased delivery from dolt-health MVP through multi-tenant customer instances (`forge-y1uk`, `forge-kqkf`).
 - **Probe script** — `tools/probes/obs-materializer-lag.ts` — measures sp dispatch → obs.db → xtrm.sqlite → API lag end-to-end. Used to verify `forge-0vuv` and reusable for future regression checks.
 
 ### Changed
+- **Gitboard runtime deprecation** — `apps/gitboard` is now documented and tested as a compatibility host around core-owned runtime primitives. Mounted APIs and DTO shapes remain intact while the final migration away from the app host is tracked in `forge-3dm4` (`forge-6oae`).
 - **Console materializer ownership** — architecture docs now make the current gitboard materializer bridge explicitly temporary pre-`~/.xtrm/state.db`; Console remains UI/read/query only, with future ownership moving toward `packages/core/state` and `packages/core/materializer` behind `xt daemon` (`forge-yht2`).
 - **GitHub source health** — GitHub rate-limit changes are published through canonical `github:source_health.rate_limit` instead of a standalone `github:rate_limit` event. Existing metadata remains for compatibility (`forge-5o3o`).
 - **Console graph dependency loading** — Graph requests now include historical bead relationships (`include_closed=true`) and the Beads feed preloads a larger closed-history window while `forge-lqgo` tracks the remaining live `specialists` dependency rendering discrepancy.
