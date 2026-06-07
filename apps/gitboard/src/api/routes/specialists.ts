@@ -137,7 +137,7 @@ export function createSpecialistsRouter(
     if (!db) return c.json({ error: "feed events unavailable" }, 404);
     const job = resolveJobForEventLookup(resolve(), jobId);
     if (!job) return c.json({ error: "feed events not found" }, 404);
-    const events = readFeedEvents(db, job.repoSlug, jobId);
+    const events = coreReadSpecialistFeedEvents(db, job.repoSlug, jobId);
     return c.json({ events });
   });
 
