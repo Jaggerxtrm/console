@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import type { Database } from "bun:sqlite";
+import { createRuntimeHostDescriptor, type RuntimeHostDescriptor } from "../../../../packages/core/src/runtime/index.ts";
 import { createGithubRouter } from "./routes/github.ts";
 import { createInternalDoltHealthRouter } from "./routes/internal-dolt-health.ts";
 import { createInternalLogsRouter } from "./routes/internal-logs.ts";
@@ -68,12 +69,43 @@ export function createApp(db: Database, xtrmDb?: Database): {
   registry: ChannelRegistry;
   wsHandler: WsHandler;
   materializer: Materializer | null;
+  runtimeHost: RuntimeHostDescriptor<Database, ChannelRegistry, Materializer>;
 } {
   const app = new Hono<{ Variables: AppVariables }>();
   const registry = new ChannelRegistry();
   currentRegistry = registry;
   const storeDb = xtrmDb ?? db;
   const materializer = xtrmDb ? new Materializer(storeDb, registry) : null;
+  const runtimeHost = createRuntimeHostDescriptor({
+    storeDb,
+    stateDb: xtrmDb ?? null,
+    registry,
+    materializer,
+    capabilities: [
+      "http-api",
+      "websocket",
+      "materializer",
+      "source-health",
+      "github-adapter",
+      "static-dashboard",
+      "internal-logs",
+    ],
+    mountedRoutes: [
+      "/api/github",
+      "/api/substrate",
+      "/api/specialists",
+      "/api/console/observability",
+      "/api/console/graph",
+      "/api/feed",
+      "/api/sources",
+      "/api/console/shell",
+      "/api/console/terminal",
+      "/api/internal",
+      "/health",
+      "/console",
+      "/gitboard",
+    ],
+  });
   currentMaterializer = materializer;
   const obsRepos = listRepos();
   currentUnifiedScanner?.stop();
@@ -210,7 +242,7 @@ export function createApp(db: Database, xtrmDb?: Database): {
     app.get("/", (c) => c.redirect("/console"));
   }
 
-  return { app, registry, wsHandler, materializer };
+  return { app, registry, wsHandler, materializer, runtimeHost };
 }
 
 export function startServer(xtrmDb: Database, options: ServerOptions = {}): void {
