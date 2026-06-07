@@ -26,7 +26,6 @@ export function createSourcesRouter(xtrmDb: Database | null, scanner: UnifiedSca
 
   routes.get("/", async (c) => {
     if (!xtrmDb) return c.json({ sources: [] });
-    if (scanner) return c.json({ sources: await scanner.getSources() });
     const sources = coreListSources(xtrmDb);
     return c.json({ sources: sources.map(mapSourceRow) });
   });
@@ -68,4 +67,3 @@ export function createSourcesRouter(xtrmDb: Database | null, scanner: UnifiedSca
 
   return routes;
 }
-
