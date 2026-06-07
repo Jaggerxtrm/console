@@ -36,6 +36,14 @@ class CollectingLogger {
   }
 }
 
+type PollerApi = GithubPoller & {
+  apiGetWithMeta<T>(path: string, repo?: string, endpoint?: string, persistedEtag?: string | null): Promise<{
+    data: T | null;
+    status: "ok" | "not_modified" | "error";
+    etag: string | null;
+  }>;
+};
+
 describe("core github poller ports and helpers", () => {
   it("transformEvent returns the same shape as the legacy app transformer", () => {
     const event = transformEvent(rawPushEvent);
@@ -75,6 +83,69 @@ describe("core github poller ports and helpers", () => {
     expect(getGithubToken()).toBe("test-token-123");
     if (restore === undefined) delete process.env.GITHUB_TOKEN;
     else process.env.GITHUB_TOKEN = restore;
+  });
+
+  it("emits etag.hit_304 and preserves persisted ETag on conditional GitHub 304", async () => {
+    const logger = new CollectingLogger();
+    const poller = new GithubPoller({} as never, "test-token", { logger }) as PollerApi;
+    const fetchMock = vi.fn(async () => new Response(null, {
+      status: 304,
+      headers: { ETag: "persisted-etag" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      const result = await poller.apiGetWithMeta<{ id: string }>("/repos/owner/repo/issues", "owner/repo", "issues", "persisted-etag");
+      expect(result).toEqual({ data: null, status: "not_modified", etag: "persisted-etag" });
+      expect(fetchMock).toHaveBeenCalledWith("https://api.github.com/repos/owner/repo/issues", expect.objectContaining({
+        headers: expect.objectContaining({ "If-None-Match": "persisted-etag" }),
+      }));
+      expect(logger.entries).toContainEqual(expect.objectContaining({
+        component: "poller",
+        event: "etag.hit_304",
+        level: "debug",
+        data: { repo: "owner/repo", endpoint: "issues" },
+      }));
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("publishes degraded source-health and rate_limit.changed log on GitHub rate-limit pause", async () => {
+    const publisher = new CollectingPublisher();
+    const logger = new CollectingLogger();
+    const poller = new GithubPoller({} as never, "test-token", { registry: publisher, logger, protocolVersion: "test-v1" }) as PollerApi;
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ message: "rate limited" }), {
+      status: 403,
+      headers: {
+        "Retry-After": "30",
+        "X-RateLimit-Limit": "5000",
+        "X-RateLimit-Remaining": "0",
+        "X-RateLimit-Reset": "1770000000",
+      },
+    })));
+    try {
+      const result = await poller.apiGetWithMeta<{ ok: boolean }>("/rate-limited", "owner/repo", "issues");
+      expect(result.status).toBe("error");
+      expect(publisher.events).toHaveLength(1);
+      expect(publisher.events[0]).toMatchObject({
+        channel: "github:activity",
+        event: "github:source_health",
+      });
+      expect(typeof publisher.events[0]?.version).toBe("string");
+      expect(publisher.events[0]?.version).toBe((publisher.events[0]?.data as { checked_at?: string }).checked_at);
+      expect(publisher.events[0]?.data).toMatchObject({
+        source: "github",
+        status: "degraded",
+        rate_limit: { limit: 5000, remaining: 0 },
+      });
+      expect(logger.entries).toContainEqual(expect.objectContaining({
+        component: "poller",
+        event: "rate_limit.changed",
+        level: "warn",
+      }));
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
 
