@@ -14,7 +14,7 @@ import {
 } from "./github-store.ts";
 import type { GithubEvent, GithubCommit, GithubPr, GithubIssue, GithubRepo, GithubRelease } from "./github-store.ts";
 import type { ChannelRegistry } from "../api/ws/channels.ts";
-import type { GithubRealtimeEvent } from "../types/realtime.ts";
+import type { GithubRealtimeEvent, GithubSourceHealth } from "../types/realtime.ts";
 import type { SourceHealth } from "../types/source-health.ts";
 import { makeSourceHealth } from "../types/source-health.ts";
 import { emit, makeLogEntry } from "./logger.ts";
@@ -47,6 +47,12 @@ interface ApiGetResult<T> {
   status: "ok" | "not_modified" | "error";
   etag: string | null;
 }
+
+type RateLimitSnapshot = {
+  remaining: number;
+  limit: number;
+  reset_at: string;
+};
 
 interface RepoEndpointPollResult {
   watermark: string | null;
@@ -228,40 +234,42 @@ export class GithubPoller {
     };
   }
 
-  private parseRateLimit(response: Response): { remaining: number; limit: number } | null {
+  private parseRateLimit(response: Response): RateLimitSnapshot | null {
     const remaining = Number(response.headers.get("X-RateLimit-Remaining") ?? NaN);
     const limit = Number(response.headers.get("X-RateLimit-Limit") ?? NaN);
-    if (!Number.isFinite(remaining) || !Number.isFinite(limit)) return null;
-    return { remaining, limit };
+    const resetSeconds = Number(response.headers.get("X-RateLimit-Reset") ?? NaN);
+    if (!Number.isFinite(remaining) || !Number.isFinite(limit) || !Number.isFinite(resetSeconds)) return null;
+    return { remaining, limit, reset_at: new Date(resetSeconds * 1000).toISOString() };
   }
 
   private maybePauseForRateLimit(response: Response): boolean {
     const retryAfter = Number(response.headers.get("Retry-After") ?? NaN);
     const resetSeconds = Number(response.headers.get("X-RateLimit-Reset") ?? NaN);
+    const rate = this.parseRateLimit(response);
     if ((response.status === 403 || response.status === 429) && Number.isFinite(retryAfter)) {
       this.pausedUntil = Math.max(this.pausedUntil, Date.now() + retryAfter * 1000);
-      this.publishGithubSourceHealth("degraded", { status: response.status, retryAfter, pausedUntil: this.pausedUntil });
+      this.publishGithubSourceHealth("degraded", { status: response.status, retryAfter, pausedUntil: this.pausedUntil, ...(rate ?? {}) });
       emit(makeLogEntry("poller", "rate_limit.changed", "warn", undefined, { status: response.status, retryAfter, pausedUntil: this.pausedUntil }));
       return true;
     }
     if ((response.status === 403 || response.status === 429) && Number.isFinite(resetSeconds)) {
       this.pausedUntil = Math.max(this.pausedUntil, resetSeconds * 1000);
-      this.publishGithubSourceHealth("degraded", { status: response.status, resetSeconds, pausedUntil: this.pausedUntil });
+      const reset_at = new Date(resetSeconds * 1000).toISOString();
+      this.publishGithubSourceHealth("degraded", { status: response.status, resetSeconds, pausedUntil: this.pausedUntil, reset_at, ...(rate ?? {}) });
       emit(makeLogEntry("poller", "rate_limit.changed", "warn", undefined, { status: response.status, resetSeconds, pausedUntil: this.pausedUntil }));
       return true;
     }
 
-    const rate = this.parseRateLimit(response);
     if (!rate) return false;
     if (rate.remaining < 500) {
       this.pausedUntil = Math.max(this.pausedUntil, Date.now() + 60_000);
-      this.publishGithubSourceHealth("degraded", { remaining: rate.remaining, limit: rate.limit, pausedUntil: this.pausedUntil });
+      this.publishGithubSourceHealth("degraded", { ...rate, pausedUntil: this.pausedUntil });
       emit(makeLogEntry("poller", "rate_limit.changed", "warn", undefined, { remaining: rate.remaining, limit: rate.limit, pausedUntil: this.pausedUntil }));
       return true;
     }
     if (this.pausedUntil > 0 && this.pausedUntil <= Date.now() && rate.remaining > rate.limit * 0.8) {
       this.pausedUntil = 0;
-      this.publishGithubSourceHealth("fresh", { remaining: rate.remaining, limit: rate.limit });
+      this.publishGithubSourceHealth("fresh", rate);
     }
     return false;
   }
@@ -406,7 +414,13 @@ export class GithubPoller {
   }
 
   private publishGithubSourceHealth(status: SourceHealth["status"], metadata: Record<string, unknown>): void {
-    const health = makeSourceHealth("github", status, { metadata });
+    const rateLimit = rateLimitFromMetadata(metadata);
+    const base = makeSourceHealth("github", status, { metadata });
+    const health: GithubSourceHealth = {
+      ...base,
+      source: "github",
+      ...(rateLimit ? { rate_limit: rateLimit } : {}),
+    };
     this.publishGithubEvent("github:source_health", health, health.checked_at);
   }
 
@@ -867,6 +881,14 @@ export class GithubPoller {
       console.log("[github-poller] Stopped.");
     }
   }
+}
+
+function rateLimitFromMetadata(metadata: Record<string, unknown>): GithubSourceHealth["rate_limit"] | undefined {
+  const remaining = Number(metadata.remaining);
+  const limit = Number(metadata.limit);
+  const resetAt = typeof metadata.reset_at === "string" ? metadata.reset_at : undefined;
+  if (!Number.isFinite(remaining) || !Number.isFinite(limit) || !resetAt) return undefined;
+  return { remaining, limit, reset_at: resetAt };
 }
 
 // Entry point for direct execution: bun run src/core/github-poller.ts

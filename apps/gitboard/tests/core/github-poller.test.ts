@@ -302,7 +302,12 @@ describe("GithubPoller", () => {
 
     expect(messages).toContainEqual(expect.objectContaining({
       event: "github:source_health",
-      data: expect.objectContaining({ source: "github", status: "degraded" }),
+      data: expect.objectContaining({
+        source: "github",
+        status: "degraded",
+        rate_limit: expect.objectContaining({ limit: 5000, remaining: 0, reset_at: expect.any(String) }),
+        metadata: expect.objectContaining({ limit: 5000, remaining: 0, reset_at: expect.any(String) }),
+      }),
     }));
   });
 
