@@ -115,6 +115,11 @@ function isAllowedMarkdownPath(path: string): boolean {
   return path === "README.md" || path === "CHANGELOG.md";
 }
 
+function isKnownGithubRepo(db: Database, owner: string, name: string): boolean {
+  const fullName = `${owner}/${name}`;
+  return getRepos(db).some((repo) => repo.full_name === fullName);
+}
+
 export function createGithubRouter(db: Database, registry: ChannelRegistry): Hono {
   const app = new Hono();
 
@@ -464,6 +469,7 @@ export function createGithubRouter(db: Database, registry: ChannelRegistry): Hon
     const name = c.req.param("name");
     const path = c.req.query("path") || "README.md";
     if (!isAllowedMarkdownPath(path)) return c.json({ error: "invalid path" }, 400);
+    if (!isKnownGithubRepo(db, owner, name)) return c.json({ error: "not found" }, 404);
     try {
       const file = await fetchRepoFile(owner, name, path);
       if (!file) return c.json({ content: null, sha: null, last_modified: null }, 200);
@@ -477,6 +483,7 @@ export function createGithubRouter(db: Database, registry: ChannelRegistry): Hon
   app.get("/repo/:owner/:name/reports", async (c) => {
     const owner = c.req.param("owner");
     const name = c.req.param("name");
+    if (!isKnownGithubRepo(db, owner, name)) return c.json({ error: "not found" }, 404);
     try {
       const entries = await listRepoDir(owner, name, ".xtrm/reports");
       const reports = entries
@@ -497,6 +504,7 @@ export function createGithubRouter(db: Database, registry: ChannelRegistry): Hon
     const name = c.req.param("name");
     const filename = c.req.param("filename");
     if (!/^[\w.-]+\.md$/.test(filename)) return c.json({ error: "invalid filename" }, 400);
+    if (!isKnownGithubRepo(db, owner, name)) return c.json({ error: "not found" }, 404);
     try {
       const file = await fetchRepoFile(owner, name, `.xtrm/reports/${filename}`);
       if (!file) return c.json({ error: "not found" }, 404);

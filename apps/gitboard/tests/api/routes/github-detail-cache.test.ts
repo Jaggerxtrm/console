@@ -6,7 +6,7 @@ import type { Database } from "bun:sqlite";
 import { ChannelRegistry } from "../../../src/api/ws/channels.ts";
 import { createGithubRouter } from "../../../src/api/routes/github.ts";
 import { createDatabase } from "../../../src/core/store.ts";
-import { upsertPr } from "../../../src/core/github-store.ts";
+import { upsertPr, upsertRepo } from "../../../src/core/github-store.ts";
 import { clearReadmeCache } from "../../../src/core/github-readme.ts";
 
 let dir: string;
@@ -18,6 +18,14 @@ beforeEach(async () => {
   process.env.GITHUB_TOKEN = "test-token";
   process.env.GITBOARD_PR_DETAIL_SECTION_TIMEOUT_MS = "20";
   clearReadmeCache();
+  upsertRepo(db, {
+    full_name: "owner/repo",
+    display_name: "owner/repo",
+    tracked: true,
+    group_name: null,
+    last_polled_at: null,
+    color: null,
+  });
   upsertPr(db, {
     repo: "owner/repo",
     number: 1,
@@ -109,6 +117,17 @@ describe("GitHub markdown route", () => {
     expect(badBody.error).toBe("invalid path");
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+
+  it("rejects unknown repos before fetching markdown", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse({ content: "private", sha: "sha", last_modified: null }));
+
+    const res = await routerRequest("/repo/unknown/private/markdown?path=README.md");
+    const body = await res.json() as { error: string };
+
+    expect(res.status).toBe(404);
+    expect(body.error).toBe("not found");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 });
 
 describe("GitHub reports route", () => {
@@ -124,5 +143,27 @@ describe("GitHub reports route", () => {
     expect(res.status).toBe(200);
     expect(body.data).toEqual([{ name: "2026-05-20.md", path: ".xtrm/reports/2026-05-20.md", sha: "sha-1", size: 123, frontmatter: null }]);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects unknown repos before listing reports", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse([]));
+
+    const res = await routerRequest("/repo/unknown/private/reports");
+    const body = await res.json() as { error: string };
+
+    expect(res.status).toBe(404);
+    expect(body.error).toBe("not found");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects unknown repos before fetching report details", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse({ content: "private", sha: "sha", last_modified: null }));
+
+    const res = await routerRequest("/repo/unknown/private/reports/2026-05-20.md");
+    const body = await res.json() as { error: string };
+
+    expect(res.status).toBe(404);
+    expect(body.error).toBe("not found");
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
