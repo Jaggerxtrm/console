@@ -12,6 +12,7 @@ import { __resetObservabilityRegistryForTests } from "../../../src/server/observ
 import { createAttachPool } from "../../../src/server/observability/attach-pool.ts";
 import { createObservabilityDao } from "../../../src/server/observability/dao.ts";
 import type { SpecialistJob } from "../../../src/server/observability/types.ts";
+import { readSpecialistFeedEvents } from "../../../../../packages/core/src/state/index.ts";
 
 type SeedRow = {
   beadId: string;
@@ -246,15 +247,18 @@ describe("GET /api/specialists/jobs/:job_id/result", () => {
 });
 
 describe("GET /api/specialists/jobs/:job_id/feed-events", () => {
-  it("returns forensic events for resolved repo only", async () => {
-    const app = createResultApp(true);
+  it("returns forensic events matching core read-model output for resolved repo only", async () => {
+    const { app, db } = createResultHarness(true);
     const res = await app.fetch(new Request("http://localhost/api/specialists/jobs/job-1/feed-events", { headers: { "x-gitboard-shell-token": "test-admin-token" } }));
 
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ events: [
+    const body = await res.json() as { events: unknown[] };
+    expect(body.events).toEqual(readSpecialistFeedEvents(db, "repo-a", "job-1"));
+    expect(body).toEqual({ events: [
       expect.objectContaining({ schema_version: "xtrm.forensic.v1", event_family: "job", event_name: "job.started", seq: 1, body: { mode: "test" } }),
       expect.objectContaining({ schema_version: "xtrm.forensic.v1", event_family: "job", event_name: "job.completed", seq: 2, body: { elapsed_ms: 15 } }),
     ] });
+    db.close();
   });
 
   it("returns 404 when job cannot be resolved to a repo", async () => {
@@ -512,6 +516,10 @@ function createAppWithDao(reposOverride: Array<{ repoSlug: string; rows: SeedRow
 }
 
 function createResultApp(_success = false, options: { extraPayload?: boolean } = {}): Hono {
+  return createResultHarness(_success, options).app;
+}
+
+function createResultHarness(_success = false, options: { extraPayload?: boolean } = {}): { app: Hono; db: Database } {
   const xtrmDb = new Database(":memory:");
   xtrmDb.exec(`
     CREATE TABLE specialist_job_events (
@@ -544,7 +552,7 @@ function createResultApp(_success = false, options: { extraPayload?: boolean } =
     recentJobs: () => [resolvedJob()],
     chainById: () => [],
   }, xtrmDb, { listRepos: () => [{ repoSlug: "repo-a", repoPath: join(dir, "repo-a"), dbPath: join(dir, "repo-a.db"), mtimeMs: 0 }, { repoSlug: "repo-b", repoPath: join(dir, "repo-b"), dbPath: join(dir, "repo-b.db"), mtimeMs: 0 }], getEpoch: () => 0 }));
-  return app;
+  return { app, db: xtrmDb };
 }
 
 function forensicEnvelope(eventName: string, seq: number, body: Record<string, unknown>, extraPayload = false): Record<string, unknown> {
