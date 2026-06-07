@@ -46,6 +46,31 @@ describe("sources routes", () => {
     db.close();
   });
 
+  it("keeps source list reads on the core read model when a scanner is injected", async () => {
+    const db = createXtrmDatabase(dbPath);
+    const app = createSourcesRouter(db, {
+      getSources: async () => {
+        throw new Error("list route should not call scanner");
+      },
+      refresh: async () => [],
+    } as never);
+    db.exec(`
+      INSERT INTO sources (source_key, kind, path, origin, status, discovered_at, last_seen_at)
+      VALUES ('beads:/repo-a', 'beads', '/repo-a', 'manual', 'active', NULL, NULL);
+    `);
+
+    const response = await app.fetch(new Request("http://localhost", { headers: { host: "localhost" } }));
+    expect(response.status).toBe(200);
+    const body = await response.json() as { sources: unknown[] };
+
+    expect(body.sources).toEqual(listSources(db).map(({ path, ...source }) => ({
+      ...source,
+      display_path: path,
+    })));
+
+    db.close();
+  });
+
   it("pins a source and upserts on repeat pin", async () => {
     const db = createXtrmDatabase(dbPath);
     const app = createSourcesRouter(db);
