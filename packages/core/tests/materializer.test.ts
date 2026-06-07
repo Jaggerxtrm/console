@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createAdapterRegistry, COALESCE_MS, snapshotDiff, snapshotHash, SourceQueue } from "../src/materializer/index.ts";
+import { createAdapterRegistry, COALESCE_MS, Materializer, snapshotDiff, snapshotHash, SourceQueue } from "../src/materializer/index.ts";
 import type { MaterializerAdapter } from "../src/materializer/index.ts";
 
 const keyFn = (row: { id: string }) => row.id;
@@ -10,6 +10,11 @@ describe("core materializer infrastructure", () => {
     const adapter = {} as MaterializerAdapter;
     registry.set("source:a", adapter);
     expect(registry.get("source:a")).toBe(adapter);
+  });
+
+  it("exports the core Materializer implementation", () => {
+    const materializer = new Materializer({} as never);
+    expect(() => materializer.trigger("missing:source")).toThrow("unknown source: missing:source");
   });
 
   it("diffs and hashes snapshots stably", () => {

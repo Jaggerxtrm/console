@@ -47,7 +47,7 @@ lifecycle, and GitHub adapter slices move.
 |---|---|---|---|---|
 | `xtrm-state-schema` | Core-owned as of `forge-6oae.2` | `@xtrm/core/state/database` | `apps/gitboard/src/core/xtrm-store.ts` re-exports core schema API | Existing schema/materializer/API tests and direct Bun DB probe passed |
 | `runtime-host` | Core contract defined as of `forge-6oae.3` | `@xtrm/core/runtime` | `apps/gitboard/src/api/server.ts` still mounts routes and starts watchers | Host descriptor tests, route tests, typecheck, and local staging smoke passed |
-| `materializer-runtime` | Pending | `@xtrm/core/materializer` | App materializer index must remain a wrapper | App materializer index is a wrapper only |
+| `materializer-runtime` | Core-owned as of `forge-6oae.4` | `@xtrm/core/materializer` | `apps/gitboard/src/core/materializer/index.ts` injects gitboard logger and observability epoch hooks | Core materializer tests, app materializer tests, typecheck/build, and staging smoke passed |
 | `console-read-models` | Pending | `@xtrm/core/state` | App routes must remain HTTP DTO adapters | Routes are HTTP DTO adapters over core read-model services |
 | `source-lifecycle` | Pending | `@xtrm/core/runtime` | App supplies env/config only | Core owns discovery and health services; app supplies env/config |
 | `github-adapter` | Pending | `@xtrm/core/github` | App wires route/startup only | Core owns durable GitHub adapter state; app wires route/startup |
@@ -59,6 +59,7 @@ lifecycle, and GitHub adapter slices move.
 | `forge-6oae.1` | Runtime ownership map | `packages/core` runtime ownership tests, lint/build, diff check, GitNexus LOW | Planning surface only; no runtime moved |
 | `forge-6oae.2` | `xtrm-state-schema` | Core package lint/build, app schema/materializer/API tests, direct Bun DB probe for 17 tables, diff check | `bun:sqlite` remains a Bun-only import, exposed through explicit `@xtrm/core/state/database` subpath |
 | `forge-6oae.3` | `runtime-host` | Core host tests, app route tests, gitboard typecheck, package build, staging smoke on port 3099 with zero materializer/request errors | `createApp` still owns route mounting and watcher startup until later slices |
+| `forge-6oae.4` | `materializer-runtime` | Core materializer export tests, gitboard materializer/adapter tests, package build, gitboard typecheck, staging smoke on port 3099 with materializer/log filters | Beads and observability adapters remain app-owned until source/read-model extraction beads |
 
 ## Non-Negotiables
 
