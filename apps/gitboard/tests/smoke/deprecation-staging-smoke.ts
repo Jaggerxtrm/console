@@ -16,6 +16,8 @@ const baseUrl = `http://127.0.0.1:${port}`;
 const dataDir = process.env.GITBOARD_DATA_DIR ?? mkdtempSync(join(tmpdir(), "gitboard-deprecation-data-"));
 const logDir = process.env.LOG_DIR ?? mkdtempSync(join(tmpdir(), "gitboard-deprecation-logs-"));
 const reportPath = process.env.SMOKE_REPORT_PATH ?? join(process.cwd(), "tests/smoke/deprecation-staging-smoke.report.json");
+const githubPollerEnabled = process.env.GITBOARD_SMOKE_ENABLE_GITHUB_POLLER === "1";
+const githubPollerRequired = process.env.GITBOARD_SMOKE_REQUIRE_GITHUB_POLLER === "1";
 const endpointPaths = [
   "/health",
   "/api/substrate/projects",
@@ -39,6 +41,10 @@ const logKeys = [
   "github.events.timing",
   "github.repos.timing",
   "github.releases.timing",
+  "poller.cycle.start",
+  "poller.cycle.complete",
+  "poller.error",
+  "poller.rate_limit.changed",
 ];
 
 function sleep(ms: number): Promise<void> {
@@ -104,15 +110,18 @@ async function waitForObservableActivity(timeoutMs: number): Promise<LogCounts> 
 async function main(): Promise<void> {
   mkdirSync(join(process.cwd(), "tests/smoke"), { recursive: true });
 
+  const serverEnv: Record<string, string | undefined> = {
+    ...process.env,
+    PORT: String(port),
+    GITBOARD_DATA_DIR: dataDir,
+    LOG_DIR: logDir,
+  };
+  if (!githubPollerEnabled) serverEnv.SKIP_GITHUB_POLLER = "1";
+  else delete serverEnv.SKIP_GITHUB_POLLER;
+
   const server = Bun.spawn(["bun", "src/index.ts"], {
     cwd: process.cwd(),
-    env: {
-      ...process.env,
-      PORT: String(port),
-      GITBOARD_DATA_DIR: dataDir,
-      LOG_DIR: logDir,
-      SKIP_GITHUB_POLLER: "1",
-    },
+    env: serverEnv,
     stdout: "ignore",
     stderr: "ignore",
   });
@@ -137,13 +146,28 @@ async function main(): Promise<void> {
       if ((logCounts[key] ?? 0) > 0) failures.push(`${key}=${logCounts[key]}`);
     }
 
+    const githubPollerEvidence = {
+      enabled: githubPollerEnabled,
+      required: githubPollerRequired,
+      cycleStarts: logCounts["poller.cycle.start"] ?? 0,
+      cycleCompletes: logCounts["poller.cycle.complete"] ?? 0,
+      routeTimingEvents: (logCounts["github.events.timing"] ?? 0) + (logCounts["github.repos.timing"] ?? 0) + (logCounts["github.releases.timing"] ?? 0),
+      errors: logCounts["poller.error"] ?? 0,
+      rateLimitChanges: logCounts["poller.rate_limit.changed"] ?? 0,
+      classifiedUnavailableCredentials: githubPollerEnabled && !(process.env.GITHUB_TOKEN || process.env.GH_TOKEN),
+    };
+    if (githubPollerRequired && githubPollerEvidence.cycleStarts === 0 && !githubPollerEvidence.classifiedUnavailableCredentials) {
+      failures.push("github poller enabled smoke produced no poller cycle evidence");
+    }
+
     const report = {
       startedAt,
       completedAt: new Date().toISOString(),
       baseUrl,
       dataDir,
       logDir,
-      skipGithubPoller: true,
+      skipGithubPoller: !githubPollerEnabled,
+      githubPollerEvidence,
       probes,
       logCounts,
       ok: failures.length === 0,
