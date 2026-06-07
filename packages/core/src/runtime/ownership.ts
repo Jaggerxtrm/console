@@ -182,7 +182,7 @@ export function createGitboardRuntimeOwnershipMap(): GitboardRuntimeOwnershipMap
         currentOwner: "apps/gitboard",
         targetOwner: "packages/core",
         currentPaths: ["apps/gitboard/src/api/terminal/bridge.ts", "apps/gitboard/src/api/terminal/provider-registry.ts", "apps/gitboard/src/core/shell-provider-policy.ts", "apps/gitboard/src/core/local-pty-provider.ts"],
-        targetExport: "@xtrm/core/terminal/protocol",
+        targetExport: "@xtrm/core/terminal/protocol and @xtrm/core/terminal/policy",
         knownHighRiskSymbols: ["TerminalBridge", "parseShellProviderPolicy", "LocalPtyProvider"],
         preserves: ["verified-admin gate", "origin checks", "cwd and shell allowlists", "rate limits", "TTL and idle cleanup", "readonly specialist-feed provider"],
         deprecationGate: "Core owns terminal/shell policy contracts and app code only wires local provider implementations.",

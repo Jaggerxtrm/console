@@ -17,6 +17,10 @@
       "import": "./dist/terminal/protocol.js",
       "types": "./dist/terminal/protocol.d.ts"
     },
+    "./terminal/policy": {
+      "import": "./dist/terminal/policy.js",
+      "types": "./dist/terminal/policy.d.ts"
+    },
     "./materializer": {
       "import": "./dist/materializer/index.js",
       "types": "./dist/materializer/index.d.ts"
