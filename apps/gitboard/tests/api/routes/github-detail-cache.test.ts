@@ -94,6 +94,23 @@ describe("GitHub PR detail route", () => {
   });
 });
 
+describe("GitHub markdown route", () => {
+  it("accepts README and rejects arbitrary files without outbound fetch", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse({ content: "readme", sha: "sha", last_modified: null }));
+
+    const ok = await routerRequest("/repo/owner/repo/markdown?path=README.md");
+    const okBody = await ok.json() as { content: string; sha: string; last_modified: string | null };
+    const bad = await routerRequest("/repo/owner/repo/markdown?path=package.json");
+    const badBody = await bad.json() as { error: string };
+
+    expect(ok.status).toBe(200);
+    expect(okBody.content).toBe("readme");
+    expect(bad.status).toBe(400);
+    expect(badBody.error).toBe("invalid path");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("GitHub reports route", () => {
   it("lists report entries without fetching every report body for frontmatter", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse([
