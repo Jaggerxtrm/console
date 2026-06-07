@@ -122,9 +122,26 @@ export interface BeadsConnectionStatus {
   message?: string;
   port?: number;
   pid?: number;
+  pid_alive?: boolean;
   database?: string;
   note?: string;
   error?: string;
+}
+
+export interface BeadsRepairAction {
+  id: "rescan_source_health" | "inspect_dolt_status" | "start_dolt_server" | "restart_dolt_server" | "recover_port_config" | "remove_dead_pid_file" | (string & {});
+  label: string;
+  description: string;
+  command?: string;
+  endpoint?: string;
+  available: boolean;
+  disabledReason?: string;
+}
+
+export interface BeadsRepairActionsResponse {
+  projectId: string;
+  status: string;
+  actions: BeadsRepairAction[];
 }
 
 export interface BeadsStats {

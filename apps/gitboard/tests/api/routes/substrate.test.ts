@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { mkdtemp, rm } from "fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 import { createSubstrateRouter } from "../../../src/api/routes/substrate.ts";
@@ -28,6 +28,54 @@ describe("substrate projects", () => {
     const body = await response.json() as { projects: Array<{ path: string; beadsPath: string }> };
     expect(body.projects[0]?.path).not.toContain("/very/private/workspace/demo/.beads");
     expect(body.projects[0]?.beadsPath).not.toContain("/very/private/workspace/demo/.beads");
+
+    db.close();
+  });
+
+  it("returns safe Dolt repair actions when port config is missing", async () => {
+    const repoDir = join(tmpDir, "demo");
+    const beadsDir = join(repoDir, ".beads");
+    await mkdir(beadsDir, { recursive: true });
+    await writeFile(join(beadsDir, "config.yaml"), "dolt:\n  shared-server: false\n");
+    const db = createXtrmDatabase(dbPath);
+    db.query("INSERT INTO sources (source_key, kind, path, origin, status) VALUES ('beads:demo', 'beads', ?, 'manual', 'active')").run(beadsDir);
+    const app = createSubstrateRouter(db);
+
+    const response = await app.fetch(new Request("http://localhost/projects/demo/repair-actions", { headers: { host: "localhost" } }));
+    expect(response.status).toBe(200);
+    const body = await response.json() as { status: string; actions: Array<{ id: string; available: boolean; command?: string; endpoint?: string }> };
+
+    expect(body.status).toBe("jsonl_fallback");
+    expect(body.actions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "rescan_source_health", available: true, endpoint: "/api/substrate/projects/demo/connection" }),
+      expect.objectContaining({ id: "start_dolt_server", available: true }),
+      expect.objectContaining({ id: "recover_port_config", available: true }),
+    ]));
+    expect(body.actions.find((action) => action.id === "start_dolt_server")?.command).toContain("bd -C");
+
+    db.close();
+  });
+
+  it("marks dead Dolt pid files as repairable", async () => {
+    const repoDir = join(tmpDir, "demo");
+    const beadsDir = join(repoDir, ".beads");
+    await mkdir(beadsDir, { recursive: true });
+    await writeFile(join(beadsDir, "config.yaml"), "port: 65534\ndolt_database: demo\n");
+    await writeFile(join(beadsDir, "dolt-server.pid"), "99999999\n");
+    const db = createXtrmDatabase(dbPath);
+    db.query("INSERT INTO sources (source_key, kind, path, origin, status) VALUES ('beads:demo', 'beads', ?, 'manual', 'active')").run(beadsDir);
+    const app = createSubstrateRouter(db);
+
+    const response = await app.fetch(new Request("http://localhost/projects/demo/repair-actions", { headers: { host: "localhost" } }));
+    expect(response.status).toBe(200);
+    const body = await response.json() as { status: string; actions: Array<{ id: string; available: boolean; command?: string }> };
+
+    expect(body.status).toBe("dolt_process_dead");
+    expect(body.actions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "restart_dolt_server", available: true }),
+      expect.objectContaining({ id: "remove_dead_pid_file", available: true }),
+    ]));
+    expect(body.actions.find((action) => action.id === "remove_dead_pid_file")?.command).toContain("dolt-server.pid");
 
     db.close();
   });

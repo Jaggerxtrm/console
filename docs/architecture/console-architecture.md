@@ -82,6 +82,33 @@ not a second SQLite projection.
 
 ## 2. Boundary Ownership
 
+### 2.1 Materializer Ownership Decision
+
+`apps/gitboard/src/core/materializer` is a temporary pre-`state.db` backend
+bridge. It exists because the current service still needs one place to ingest
+cross-domain sources, advance cursors, project rows into SQLite, and publish
+read-model hints while the xtrm bottom-tier runtime is not yet available.
+
+This bridge is not Console-owned product architecture. `apps/console` owns UI,
+navigation, query/read UX, and local view state only. It must not gain durable
+source ingestion, cursor advancement, bridge-table writes, or direct SQLite
+ownership unless a future task explicitly labels that work as temporary bridge
+compatibility.
+
+The target runtime architecture is Path 1 from the xtrm state-store decision:
+local runtime truth lives in `~/.xtrm/state.db`, served over
+`~/.xtrm/state.sock` by `xt daemon`. In the future monorepo,
+`packages/core/state` owns the daemon process, SQLite file, socket protocol,
+schema registry, and transaction serialization. `packages/core/materializer`
+owns reusable materializer infrastructure. Domain packages own their namespaced
+schemas and expose them through the core state client. Supabase/Postgres remains
+a future upward projection for team/company web tiers, not the local runtime
+write path.
+
+References: `~/second-mind/1-projects/xtrm/monorepo-migration.md` §2, §3.0,
+§3.1, §3.2, §11 and
+`~/second-mind/1-projects/xtrm/state-store-options.md` §1, §9.
+
 | Layer | Owns | May read | May write | Must not do |
 |---|---|---|---|---|
 | Dashboard UI in `apps/gitboard/src/dashboard` | Display state, navigation, drilldown affordances, stale-while-revalidate behavior | Public API DTOs under `/api/*` | Client-only view state and telemetry events | Read `.specialists`, Beads files, Dolt, GitHub, or SQLite directly |
@@ -150,6 +177,41 @@ High-cardinality identifiers remain in `correlation_json`, `body_json`,
 No UI component should bypass these APIs to read source stores directly. No API
 route should advance materializer cursor state as part of a user read. No
 materializer adapter should format display DTOs for a single route.
+
+### 4.1 Future Ownership Matrix
+
+| Ownership bucket | Current evidence | Future disposition |
+|---|---|---|
+| Core state engine | `apps/gitboard/src/core/xtrm-store.ts`, `materialization_state`, SQLite migrations and transaction boundaries | Move toward `packages/core/state`; this becomes the local `state.db` engine behind `xt daemon` |
+| Core materializer infrastructure | `Materializer`, adapter registry/types, source queue/coalescing, cursor lifecycle, post-commit websocket hints, snapshot diffing | Move toward `packages/core/materializer`; keep it reusable and independent of Console UI taxonomy |
+| Domain schema responsibility | `substrate_*`, `specialist_*`, `xtrm_forensic_events`, `xtrm_evidence_refs`, and `github_*` row shapes | Domain packages own native schemas through core state APIs; GitHub remains a durable external adapter |
+| Console read/query layer | `/api/substrate`, `/api/specialists`, `/api/console/graph`, `/api/feed`, source-health DTOs, dashboard projections | Keep as read/projector surfaces; never advance materializer cursors or write durable source state on ordinary reads |
+| Legacy bridge to delete | Beads JSONL/Dolt projection into `substrate_*`; Specialists compatibility materialization into `specialist_*` once native runtime state exists | Retire after `xt daemon` + `state.db` can serve the required Console read models; do not rename the bridge into product architecture |
+
+### 4.2 Migration Path To `state.db`
+
+1. Preserve the bridge in place while `apps/gitboard` is the running backend.
+   New bridge work must stay in materializer adapters, scanners, pollers, or
+   explicitly admin-gated API actions; `apps/console` remains read/query/UI.
+2. Introduce `packages/core/state` as the home for the daemon source,
+   `StateClient`, schema registry, transaction serialization, and
+   `~/.xtrm/state.db` ownership. `xt daemon start` owns
+   `~/.xtrm/state.sock`.
+3. Extract reusable materializer infrastructure toward
+   `packages/core/materializer`: adapter contracts, queues, cursor lifecycle,
+   idempotent write orchestration, failure recording, and post-commit hints.
+   Keep domain row shapes owned by their domain packages.
+4. Define native Substrate and Specialists read models served by the daemon so
+   Console can query stable APIs instead of bridge tables.
+5. Retire bridge-only paths once daemon-backed read models cover current
+   Console requirements: `substrate_*` Beads projection, Specialists
+   compatibility materialization, and any fallback routes whose only purpose is
+   pre-daemon compatibility.
+
+The migration must preserve current behavior while the bridge exists: API DTOs,
+source health, `materializer.*` forensic events, `materialization_state`
+cursors, websocket sync hints, stale-source behavior, and GitHub external
+adapter state.
 
 ## 5. Materializer Contract
 
@@ -444,6 +506,11 @@ guards.
 
 ## 13. Follow-Up Ownership
 
+- `forge-yht2`: materializer ownership decision before `state.db` migration.
+  Keep this document as the canonical bridge/ownership map: current materializer
+  stays in `apps/gitboard` only as a disposable pre-daemon bridge; future state
+  and materializer infrastructure moves toward `packages/core/state` and
+  `packages/core/materializer`.
 - `forge-benk.6`: normalized runtime environment names and port defaults
   without changing these ownership boundaries. Closed.
 - `forge-benk.7`: refreshed stale backend docs so they describe this boundary

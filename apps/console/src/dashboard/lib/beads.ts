@@ -3,6 +3,8 @@ export type {
   BeadDependency,
   BeadIssue,
   BeadIssueDetail,
+  BeadsRepairAction,
+  BeadsRepairActionsResponse,
   BeadsProject,
   BeadsStats,
   Interaction,

@@ -199,6 +199,10 @@ The materializer lives in `apps/gitboard/src/core/materializer` and is created
 from `apps/gitboard/src/api/server.ts`. `apps/console` never owns materializer
 lifecycle or bridge writes.
 
+This is a temporary pre-`state.db` bridge, not permanent Console product
+architecture. It exists until the xtrm bottom-tier runtime can serve Console
+read models from `~/.xtrm/state.db` behind `xt daemon`.
+
 Responsibilities:
 
 - own per-source cursors;
@@ -218,6 +222,16 @@ Current source families:
 The materializer owns bridge writes. API routes should read materialized state
 and project DTOs; they should not advance cursors or write bridge tables on
 ordinary reads.
+
+Future ownership moves the general runtime pieces toward `packages/core/state`
+and `packages/core/materializer`: daemon/socket/state engine, schema registry,
+transaction serialization, materializer scheduling, cursor lifecycle, and
+post-commit hinting. Domain packages own their native schemas through the core
+state client; Console remains a read/query/UI app. When `xt daemon` +
+`state.db` can serve the required Console read models, the bridge materializer
+is retired rather than renamed into product architecture. Supabase/Postgres is
+only an upward projection path for team/company web tiers, not the local
+runtime write path.
 
 ## API Surface
 
@@ -371,6 +385,32 @@ keeps the local provider disabled by default and requires loopback or configured
 admin/origin checks for non-loopback access.
 
 Security boundary: policy and Tailscale trust, not container isolation.
+
+Provider ownership and future scope:
+
+| Provider | Status | Ownership decision |
+|---|---|---|
+| `specialist-feed` | Current, readonly | Console renderer reuse for job output. It requires verified admin access but does not grant command input. |
+| `pty` | Current, local/dev shell | First write-capable provider. It stays behind `GITBOARD_SHELL_PROVIDER_*` policy gates, cwd/shell allowlists, rate limits, TTLs, env scrubbing, and audit/orphan cleanup. |
+| `tmux` | Future optional provider | Keep as a config-enabled provider candidate, not an MVP dependency. Use it only if persistence/detach semantics are worth the added process cleanup and host dependency. |
+| `ssh` | Future remote provider | Plan only. Treat SSH/Tailscale shells as high-risk remote execution requiring explicit host profiles, credential storage design, allowlists, operator opt-in, and production gates before implementation. |
+| `command` | Future narrow provider | Reserved for bounded command streams, not a general replacement for shell-capable providers. |
+
+`tmux` should not replace the raw PTY provider in product architecture. If it
+lands, it should sit behind a separate provider enablement flag and expose the
+same `TerminalStream` protocol with `persistent` capability. Required follow-up
+work includes attach/detach token mapping, browser reload and server restart
+resume behavior, session naming, stale socket/pane cleanup, idle/TTL
+enforcement, and tests for orphaned sessions.
+
+SSH/Tailscale support remains excluded from the current Console terminal MVP.
+The future shape is host-profile based: an operator opts into named profiles
+with host allowlists, cwd/shell restrictions, admin-only access, remote origin
+checks, explicit audit logging, and a credential strategy that does not leak
+private keys, agent sockets, tokens, or command input into logs. Windows clients
+may use the browser UI against a Linux VPS over Tailscale, but shell execution
+still occurs on the configured remote host and must not bypass the same
+TerminalStream provider contract or shell-provider safety model.
 
 ## Operations And Diagnostics
 

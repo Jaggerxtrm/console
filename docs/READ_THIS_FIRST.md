@@ -115,10 +115,21 @@ by `apps/gitboard/src/api/server.ts`. The `apps/console` frontend never owns
 materializer lifecycle, source ingestion, source cursors, or bridge table
 writes.
 
+The canonical ownership decision is in
+`docs/architecture/console-architecture.md` §2.1. Treat the current
+materializer as a temporary pre-`~/.xtrm/state.db` bridge: future runtime truth
+belongs behind `xt daemon`, with state engine work moving toward
+`packages/core/state` and reusable materializer infrastructure toward
+`packages/core/materializer`.
+
 The materializer writes bridge read models. APIs read those models and project
 DTOs. UI reads APIs. GitHub is a durable external adapter. Beads/Specialists
 materialization is temporary until native Substrate and specialists runtime
 state expose their own stable APIs.
+
+Do not add new durable ingestion, cursor, or state-write responsibility under
+`apps/console` unless the task explicitly labels it as temporary bridge work
+with a deletion condition.
 
 Future Substrate should not be copied into another SQLite projection. Console
 should read native Substrate through its daemon/API and keep only a

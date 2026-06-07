@@ -17,6 +17,16 @@ Provider kinds:
 - `command`
 - `specialist-feed`
 
+Provider status:
+
+| Kind | Runtime status | Notes |
+|---|---|---|
+| `pty` | Implemented | Local shell-capable provider behind shell-provider policy gates. |
+| `specialist-feed` | Implemented | Readonly job output stream using the same renderer. |
+| `tmux` | Reserved | Optional future shell-capable provider for persistent/detachable sessions. It must not be required for local PTY MVP. |
+| `ssh` | Reserved | Future remote shell-capable provider for explicitly allowlisted hosts only. No credential storage or remote execution behavior is implied by the protocol. |
+| `command` | Reserved | Future bounded command-stream provider. |
+
 Capabilities:
 
 - `readonly`
@@ -24,6 +34,30 @@ Capabilities:
 - `resizable`
 - `snapshot`
 - `persistent`
+
+Future `tmux` semantics:
+
+- Use `persistent` only when a session can survive browser reload and backend
+  reconnect without pretending that output replay is lossless.
+- Keep attach/detach behavior token-bound through the existing `attach`
+  payload; do not expose tmux session names directly to the browser.
+- Enforce the same cwd/shell allowlists, admin checks, env scrubbing, TTLs,
+  idle timeout, and orphan cleanup rules as the PTY provider.
+- Treat stale tmux sessions, dead panes, missing sockets, and server restarts as
+  recoverable terminal errors until a provider implementation proves stronger
+  resume guarantees.
+
+Future `ssh` / Tailscale semantics:
+
+- Represent remote targets as named host profiles, not arbitrary host strings in
+  `open.payload`.
+- Require explicit host allowlists, operator opt-in, admin-only access, and
+  production gates before enabling command input.
+- Keep credential material out of protocol payloads, logs, and persisted
+  Console state; decide key/agent handling in a dedicated implementation bead.
+- Apply the same stream envelope, resize/input/status/error messages, and shell
+  policy expectations as local providers so Console remains UI/read/write
+  transport, not runtime owner.
 
 Backpressure note:
 

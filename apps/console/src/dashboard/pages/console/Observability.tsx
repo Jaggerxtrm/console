@@ -1,14 +1,17 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 import { useObservabilitySummary } from "../../hooks/useObservabilitySummary.ts";
 import { ShellProviderNotice } from "../../components/console/ShellProviderNotice.tsx";
 import type { ShellProviderStatus } from "../../../core/shell-provider-policy.ts";
+import { substrateApi } from "../../lib/beads.ts";
+import type { BeadsConnectionStatus, BeadsProject, BeadsRepairActionsResponse } from "../../../types/beads.ts";
 
 export function Observability() {
   const [range, setRange] = useState<"7d" | "30d" | "all">("7d");
   const data = useObservabilitySummary(range);
   const tools = data?.toolUsage.totals ?? [];
   const [status, setStatus] = useState<ShellProviderStatus | null>(null);
+  const [beadsHealth, setBeadsHealth] = useState<BeadsRepairRow[]>([]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -18,6 +21,22 @@ export function Observability() {
       .catch(() => setStatus(null));
     return () => controller.abort();
   }, []);
+
+  const loadBeadsHealth = useCallback(async () => {
+    const projects = await substrateApi.listProjects();
+    const rows = await Promise.all(projects.map(async (project) => {
+      const [connection, repairs] = await Promise.all([
+        substrateApi.getConnection(project.id).catch(() => null),
+        substrateApi.getRepairActions(project.id).catch(() => null),
+      ]);
+      return { project, connection, repairs };
+    }));
+    setBeadsHealth(rows);
+  }, []);
+
+  useEffect(() => {
+    void loadBeadsHealth().catch(() => setBeadsHealth([]));
+  }, [loadBeadsHealth]);
 
   return (
     <section style={shellStyle}>
@@ -39,8 +58,50 @@ export function Observability() {
       <MetricTable title="9. Context burn" columns={["Specialist", "Avg final context %"]} rows={(data?.contextBurn ?? []).map((row) => [row.specialist, pct(row.avgFinalContextPct / 100)])} />
       <MetricTable title="10. Stalls" columns={["Specialist", "Total ms", "Stale warnings"]} rows={(data?.stalls.bySpecialist ?? []).map((row) => [row.specialist, row.totalMs, row.staleWarnings])} />
       <MetricTable title="11. Chains" columns={["Bucket", "Count"]} rows={(data?.chains.lengthHistogram ?? []).map((row) => [row.bucket, row.count])} />
+      <BeadsRepairPanel rows={beadsHealth} onRescan={loadBeadsHealth} />
     </section>
   );
+}
+
+type BeadsRepairRow = {
+  project: BeadsProject;
+  connection: BeadsConnectionStatus | null;
+  repairs: BeadsRepairActionsResponse | null;
+};
+
+function BeadsRepairPanel({ rows, onRescan }: { rows: BeadsRepairRow[]; onRescan: () => Promise<void> }) {
+  const degraded = rows.filter((row) => row.connection?.degraded || row.connection?.status !== "dolt_connected");
+  return (
+    <section style={sectionStyle}>
+      <div style={panelHeaderStyle}>
+        <div style={panelTitleStyle}>12. Beads Dolt repair</div>
+        <button type="button" style={smallButtonStyle} onClick={() => void onRescan()}>Rescan</button>
+      </div>
+      <div style={tableStyle}>
+        <div style={rowStyle}>
+          {["Project", "Status", "Port", "Action", "Command"].map((col, i) => <Cell key={col} value={col} header width={[0.18, 0.16, 0.1, 0.2, 0.36][i]} />)}
+        </div>
+        {(degraded.length > 0 ? degraded : rows).map((row) => {
+          const action = firstAvailableAction(row.repairs);
+          return (
+            <div key={row.project.id} style={rowStyle}>
+              <Cell value={row.project.name} width={0.18} />
+              <Cell value={row.connection?.status ?? "unknown"} width={0.16} />
+              <Cell value={row.connection?.port ?? "none"} width={0.1} />
+              <Cell value={action?.label ?? "No action"} width={0.2} />
+              <Cell value={action?.command ?? action?.endpoint ?? row.connection?.message ?? row.connection?.note ?? "Healthy"} width={0.36} />
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function firstAvailableAction(repairs: BeadsRepairActionsResponse | null) {
+  return repairs?.actions.find((action) => action.available && action.id !== "rescan_source_health")
+    ?? repairs?.actions.find((action) => action.available)
+    ?? null;
 }
 
 function MetricTable({ title, columns, rows }: { title: string; columns: Array<string>; rows: Array<Array<string | number>> }) {
@@ -77,3 +138,6 @@ const sectionStyle: CSSProperties = { borderTop: "1px solid var(--border-subtle)
 const tableStyle: CSSProperties = { display: "grid", gap: 0, border: "1px solid var(--border-subtle)", marginTop: 8 };
 const rowStyle: CSSProperties = { display: "flex" };
 const cellStyle: CSSProperties = { padding: "6px 8px", borderRight: "1px solid var(--border-subtle)", borderBottom: "1px solid var(--border-subtle)", fontSize: 12, minWidth: 0 };
+const panelHeaderStyle: CSSProperties = { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 };
+const panelTitleStyle: CSSProperties = { fontSize: 13, fontWeight: 600 };
+const smallButtonStyle: CSSProperties = { background: "transparent", color: "var(--text-primary)", border: "1px solid var(--border-subtle)", padding: "4px 8px", fontSize: 12 };

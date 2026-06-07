@@ -5,6 +5,7 @@
 import type {
   BeadIssue,
   BeadIssueDetail,
+  BeadsRepairActionsResponse,
   BeadsProject,
   BeadsStats,
   BeadsConnectionStatus,
@@ -107,6 +108,12 @@ export const substrateApi = {
   async getConnection(projectId: string): Promise<BeadsConnectionStatus> {
     return await jsonFetch<BeadsConnectionStatus>(
       `/api/substrate/projects/${enc(projectId)}/connection`,
+    );
+  },
+
+  async getRepairActions(projectId: string): Promise<BeadsRepairActionsResponse> {
+    return await jsonFetch<BeadsRepairActionsResponse>(
+      `/api/substrate/projects/${enc(projectId)}/repair-actions`,
     );
   },
 };
