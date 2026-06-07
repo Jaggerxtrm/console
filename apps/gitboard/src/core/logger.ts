@@ -1,8 +1,9 @@
 import { mkdirSync, readdirSync, statSync, symlinkSync, unlinkSync, existsSync } from "node:fs";
 import { appendFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { LogComponent, LogEntry, LogLevel } from "../types/log.ts";
 import type { ChannelRegistry } from "../api/ws/channels.ts";
+import { makeLogEntry, type LogEntry, type LogLevel } from "../../../../packages/core/src/runtime/index.ts";
+export { makeLogEntry };
 export type { EventType } from "./observability/event-types.ts";
 
 const LOG_RING_SIZE = 5000;
@@ -96,7 +97,7 @@ function queueDiskWrite(entry: LogEntry): void {
     .then(async () => {
       await ensureDiskDir();
       await cleanupRetentionIfNeeded();
-      await appendFile(currentLogPath(), `${JSON.stringify(entry)}\n`);
+      await appendFile(currentLogPath(entry.ts), `${JSON.stringify(entry)}\n`);
     })
     .catch((error) => {
       console.error("[gitboard] log write failed", error);
@@ -104,7 +105,7 @@ function queueDiskWrite(entry: LogEntry): void {
     });
 }
 
-function currentLogPath(): string { return join(activeLogDir(), `${new Date().toISOString().slice(0, 10)}.jsonl`); }
+function currentLogPath(ts = new Date().toISOString()): string { return join(activeLogDir(), `${ts.slice(0, 10)}.jsonl`); }
 
 function activeLogDir(): string {
   try {
@@ -126,10 +127,6 @@ async function cleanupRetentionIfNeeded(): Promise<void> {
     const path = join(activeLogDir(), name);
     if (statSync(path).mtimeMs < cutoff) unlinkSync(path);
   }
-}
-
-export function makeLogEntry(component: LogComponent, event: string, level: LogLevel, msg?: string, data?: Record<string, unknown>): LogEntry {
-  return { ts: new Date().toISOString(), level, component, event, msg, data };
 }
 
 export { LOG_RING_SIZE, LOG_DEFAULT_LEVEL, LOG_DISK_DIR, LOG_RETENTION_DAYS };

@@ -1,40 +1,10 @@
-import { REALTIME_PROTOCOL_VERSION } from "../../types/realtime.ts";
+import { REALTIME_PROTOCOL_VERSION, type RealtimeChannelName, type RealtimeEnvelope, type RealtimeMessage, type RealtimeSubscriber } from "../../../../../packages/core/src/runtime/index.ts";
 
-export type ChannelName =
-  | "github:activity"
-  | `github:repo:${string}`
-  | "substrate:changes"
-  | `substrate:project:${string}`
-  | "specialists:activity"
-  | `specialists:repo:${string}`
-  | `session:${string}`
-  | `output:${string}`
-  | "messages"
-  | `protocol:${string}`
-  | "system";
+export type ChannelName = RealtimeChannelName;
 
-export interface WsMessage {
-  type: string;
-  channel: ChannelName;
-  event: string;
-  data: unknown;
-}
+export interface WsMessage extends RealtimeMessage {}
 
-export interface RealtimeEnvelope<E extends string = string, D = unknown> {
-  type: "event";
-  channel: ChannelName;
-  event: E;
-  seq: number;
-  ts: string;
-  version: string;
-  boot_id: string;
-  data: D;
-}
-
-export interface Subscriber {
-  id: string;
-  send: (msg: WsMessage | RealtimeEnvelope) => void;
-}
+export interface Subscriber extends RealtimeSubscriber {}
 
 const RING_BUFFER_SIZE = 500;
 

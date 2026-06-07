@@ -30,6 +30,22 @@ Core now owns the source lifecycle policy helpers used by app adapters:
 
 Public routes and DTOs are unchanged; only lifecycle decision helpers moved.
 
+### forge-3dm4.5 realtime/log contract slice
+
+Core now owns the realtime and log delivery protocol contracts used by app
+adapters:
+- `REALTIME_PROTOCOL_VERSION`
+- realtime channel, message, envelope, subscriber, and registry interfaces
+- log level/component/entry types
+- `makeLogEntry`
+
+`apps/gitboard` remains the compatibility shell for websocket upgrade handling,
+`ChannelRegistry` replay buffers, `WsHandler` connection lifecycle, logger
+ring/disk/broadcast plumbing, request logging, and internal log HTTP DTOs.
+
+This slice does not change read-model ownership or daemon bridge readiness; it
+only removes app ownership of the shared realtime/log protocol shapes.
+
 ## Console Surfaces
 
 | Contract | Current routes | Replacement source |

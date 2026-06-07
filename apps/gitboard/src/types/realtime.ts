@@ -9,7 +9,7 @@ import type {
 import type { GithubEvent, GithubIssue, GithubPr, GithubRelease } from "./github.ts";
 import type { SourceHealth } from "./source-health.ts";
 
-export const REALTIME_PROTOCOL_VERSION = 1;
+export { REALTIME_PROTOCOL_VERSION } from "../../../../packages/core/src/runtime/index.ts";
 
 export type RealtimeEnvelope<E extends string, D> = {
   type: "event";
