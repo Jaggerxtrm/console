@@ -3,6 +3,7 @@ import { createGraphDao } from "../../core/graph-dao.ts";
 import { makeSourceHealth, type SourceHealth } from "../../types/source-health.ts";
 import type { GraphResponse } from "../../types/graph.ts";
 import { canRefreshSources, createSourceRefreshState, isAllowedMutationRequest } from "./sources-policy.ts";
+import { readXtrmGraphSnapshot, type GraphSnapshotResult } from "../../../../../packages/core/src/state/index.ts";
 
 let defaultDao: ReturnType<typeof createGraphDao> | null = null;
 const refreshStateByProject = new Map<string, ReturnType<typeof createSourceRefreshState>>();
@@ -37,6 +38,12 @@ export function createGraphRouter(dao = getDefaultDao()): Hono {
   });
 
   return app;
+}
+
+export function createXtrmGraphRoute(xtrmDb: import("bun:sqlite").Database): { getGraphSnapshot: (projectId: string | null | undefined, includeClosed: boolean) => GraphSnapshotResult } {
+  return {
+    getGraphSnapshot: (projectId, includeClosed) => readXtrmGraphSnapshot(xtrmDb, projectId, includeClosed),
+  };
 }
 
 function makeGraphSourceHealth(graph: GraphResponse & { project?: string }, freshness: "fresh" | "stale" | "degraded"): SourceHealth {

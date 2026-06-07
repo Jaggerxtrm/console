@@ -9,6 +9,17 @@ import { listRepos } from "../../server/observability/registry.ts";
 import type { RepoEntry } from "../../server/observability/registry.ts";
 import type { AttachPoolLike, SpecialistChain, SpecialistJob } from "../../server/observability/types.ts";
 import { makeSourceHealth } from "../../types/source-health.ts";
+import {
+  readMaterializationState as coreReadMaterializationState,
+  readSpecialistChainJobs as coreReadSpecialistChainJobs,
+  readSpecialistFeedEvents as coreReadSpecialistFeedEvents,
+  readSpecialistInFlightJobs as coreReadSpecialistInFlightJobs,
+  readSpecialistJobResult as coreReadSpecialistJobResult,
+  readSpecialistJobsByBead as coreReadSpecialistJobsByBead,
+  readSpecialistRecentJobs as coreReadSpecialistRecentJobs,
+  type SpecialistJobFilter,
+  type SpecialistJobRow,
+} from "../../../../../packages/core/src/state/index.ts";
 
 export interface SpecialistsDao {
   jobsByBead(beadId: string, filter?: SpecialistJobFilter): SpecialistJob[];
@@ -17,10 +28,6 @@ export interface SpecialistsDao {
   chainById(chainId: string, filter?: SpecialistJobFilter): SpecialistChain[];
   coverage?(): ObservabilityCoverage;
 }
-
-export type SpecialistJobFilter = {
-  repoSlugs?: readonly string[];
-};
 
 type SpecialistRepoSummary = ReadonlyArray<Pick<RepoEntry, "repoSlug">>;
 type SpecialistRepoList = ReadonlyArray<RepoEntry>;
@@ -118,15 +125,9 @@ export function createSpecialistsRouter(
     const jobId = c.req.param("job_id");
     const db = xtrmDatabase;
     if (!db) return c.json({ error: "result unavailable" }, 404);
-    const row = db.query(`
-      SELECT event_type, payload
-      FROM specialist_job_events
-      WHERE job_id = ? AND event_type IN ('result', 'terminal_output')
-      ORDER BY created_at DESC
-      LIMIT 1
-    `).get(jobId) as { event_type?: string; payload?: string } | undefined;
-    if (!row) return c.json({ error: "result not found" }, 404);
-    return c.json({ text: row.payload ?? "", content_type: "text/markdown" });
+    const result = coreReadSpecialistJobResult(db, jobId);
+    if (!result) return c.json({ error: "result not found" }, 404);
+    return c.json({ text: result.text, content_type: result.contentType });
   });
 
   router.get("/jobs/:job_id/feed-events", async (c) => {
@@ -261,109 +262,39 @@ function hasSuccessfulObsMaterialization(rows: MaterializationStateRow[]): boole
 }
 
 function createXtrmSpecialistsDao(db: import("bun:sqlite").Database, repoLister: () => SpecialistRepoList, epochGetter: (repoSlug: string) => number): XtrmSpecialistsDao {
-  const beadIdExpr = hasMainTableColumn(db, "specialist_jobs", "bead_id")
-    ? "COALESCE(l.issue_id, j.bead_id, j.job_id)"
-    : "COALESCE(l.issue_id, j.job_id)";
   return {
-    jobsByBead: (beadId, filter) => {
-      const repoFilter = repoWhere(filter);
-      return loadJobs(db, `WHERE ${beadIdExpr} = ?${repoFilter.sql}`, [beadId, ...repoFilter.params], beadIdExpr);
-    },
-    inFlightJobs: (filter) => {
-      const repoFilter = repoWhere(filter);
-      return loadJobs(db, `WHERE j.status IN ('starting', 'running', 'waiting')${repoFilter.sql}`, repoFilter.params, beadIdExpr);
-    },
-    recentJobs: (limit, filter) => {
-      const repoFilter = repoWhere(filter);
-      return loadJobs(db, `WHERE j.status IN ('done', 'error', 'failed', 'cancelled')${repoFilter.sql}`, repoFilter.params, beadIdExpr).slice(0, limit);
-    },
-    chainById: (chainId, filter) => {
-      const repoFilter = repoWhere(filter);
-      return loadJobs(db, `WHERE (j.chain_id = ? OR (j.chain_id IS NULL AND j.job_id = ?))${repoFilter.sql}`, [chainId, chainId, ...repoFilter.params], beadIdExpr) as unknown as SpecialistChain[];
-    },
+    jobsByBead: (beadId, filter) => coreReadSpecialistJobsByBead(db, beadId, filter).map(toSpecialistJob),
+    inFlightJobs: (filter) => coreReadSpecialistInFlightJobs(db, filter).map(toSpecialistJob),
+    recentJobs: (limit, filter) => coreReadSpecialistRecentJobs(db, limit, filter).map(toSpecialistJob),
+    chainById: (chainId, filter) => coreReadSpecialistChainJobs(db, chainId, filter).map(toSpecialistJob) as unknown as SpecialistChain[],
     inFlightWithRecent: (limit, filter) => {
       const repos = summarizeRepos(repoLister());
       const epoch = repoEpochs(repos, epochGetter);
-      const repoFilter = repoWhere(filter);
-      const in_flight = loadJobs(db, `WHERE j.status IN ('starting', 'running', 'waiting')${repoFilter.sql}`, repoFilter.params, beadIdExpr);
-      const recent_history = loadJobs(db, `WHERE j.status IN ('done', 'error', 'failed', 'cancelled')${repoFilter.sql}`, repoFilter.params, beadIdExpr).slice(0, limit);
+      const in_flight = coreReadSpecialistInFlightJobs(db, filter).map(toSpecialistJob);
+      const recent_history = coreReadSpecialistRecentJobs(db, limit, filter).map(toSpecialistJob);
       return { in_flight, recent_history, jobs: in_flight, epoch };
     },
-    materializationState: () => db.query("SELECT source_key, last_status, last_success_at FROM materialization_state").all() as MaterializationStateRow[],
+    materializationState: () => coreReadMaterializationState(db) as MaterializationStateRow[],
   };
 }
 
-function loadJobs(db: import("bun:sqlite").Database, whereSql: string, params: readonly string[], beadIdExpr = "COALESCE(l.issue_id, j.bead_id, j.job_id)"): SpecialistJob[] {
-  const metricExpr = (column: string) => hasMainTableColumn(db, "specialist_jobs", column) ? `j.${column}` : "NULL";
-  const rows = db.query(`
-    SELECT j.repo_slug, j.job_id, ${beadIdExpr} AS bead_id, j.chain_id, j.epic_id, j.chain_kind, j.status, j.updated_at, j.specialist, j.last_output,
-      COALESCE((SELECT COUNT(*) FROM specialist_job_events e WHERE e.repo_slug = j.repo_slug AND e.job_id = j.job_id), 0) AS event_count,
-      ${metricExpr("turns")} AS turns, ${metricExpr("tools")} AS tools, ${metricExpr("model")} AS model,
-      ${metricExpr("token_input")} AS token_input, ${metricExpr("token_output")} AS token_output,
-      ${metricExpr("token_cache_read")} AS token_cache_read, ${metricExpr("token_cache_creation")} AS token_cache_creation,
-      ${metricExpr("token_reasoning")} AS token_reasoning, ${metricExpr("token_tool")} AS token_tool,
-      ${metricExpr("usage_source")} AS usage_source
-    FROM specialist_jobs AS j
-    LEFT JOIN substrate_job_link AS l ON l.repo_slug = j.repo_slug AND l.job_id = j.job_id
-    ${whereSql}
-    ORDER BY COALESCE(j.updated_at, '') DESC, j.job_id ASC
-  `).all(...params) as Array<Record<string, unknown>>;
-  return rows.map(mapJobRow);
-}
-
-function hasMainTableColumn(db: import("bun:sqlite").Database, table: string, column: string): boolean {
-  try {
-    const rows = db.query(`PRAGMA table_info(${table})`).all() as Array<{ name?: string }>;
-    return rows.some((row) => row.name === column);
-  } catch {
-    return false;
-  }
-}
-
-function mapJobRow(row: Record<string, unknown>): SpecialistJob {
+function toSpecialistJob(row: SpecialistJobRow): SpecialistJob {
   return {
-    jobId: row.job_id == null ? null : String(row.job_id),
-    repoSlug: String(row.repo_slug),
-    beadId: String(row.bead_id),
-    chainId: row.chain_id == null ? null : String(row.chain_id),
-    epicId: row.epic_id == null ? null : String(row.epic_id),
-    chainKind: row.chain_kind == null ? null : String(row.chain_kind),
-    status: String(row.status),
-    updatedAt: String(row.updated_at ?? new Date().toISOString()),
-    specialist: row.specialist == null ? null : String(row.specialist),
-    lastOutput: row.last_output == null ? null : String(row.last_output),
-    turns: row.turns == null ? null : Number(row.turns),
-    tools: row.tools == null ? null : Number(row.tools),
-    model: row.model == null ? null : String(row.model),
-    tokenUsage: {
-      input: Number(row.token_input ?? 0),
-      output: Number(row.token_output ?? 0),
-      cacheRead: Number(row.token_cache_read ?? 0),
-      cacheCreation: Number(row.token_cache_creation ?? 0),
-      reasoning: Number(row.token_reasoning ?? 0),
-      tool: Number(row.token_tool ?? 0),
-      source: row.usage_source == null ? null : String(row.usage_source),
-    },
+    jobId: row.jobId,
+    repoSlug: row.repoSlug,
+    beadId: row.beadId,
+    chainId: row.chainId,
+    epicId: row.epicId,
+    chainKind: row.chainKind,
+    status: row.status,
+    updatedAt: row.updatedAt,
+    specialist: row.specialist,
+    lastOutput: row.lastOutput,
+    turns: row.turns,
+    tools: row.tools,
+    model: row.model,
+    tokenUsage: row.tokenUsage,
   };
-}
-
-function readFeedEvents(db: import("bun:sqlite").Database, repoSlug: string, jobId: string): FeedEventPayload[] {
-  if (hasMainTableColumn(db, "xtrm_forensic_events", "envelope_json")) {
-    const rows = db.query(`
-      SELECT envelope_json
-      FROM xtrm_forensic_events
-      WHERE repo_slug = ? AND job_id = ?
-      ORDER BY COALESCE(t_unix_ms, 0) ASC, COALESCE(seq, 0) ASC, id ASC
-    `).all(repoSlug, jobId) as Array<{ envelope_json?: string }>;
-    return rows.flatMap((row) => parseFeedEvent(row.envelope_json));
-  }
-  const rows = db.query(`
-    SELECT payload
-    FROM specialist_job_events
-    WHERE repo_slug = ? AND job_id = ? AND event_type = 'forensic_event'
-    ORDER BY created_at ASC
-  `).all(repoSlug, jobId) as Array<{ payload?: string }>;
-  return rows.flatMap((row) => parseFeedEvent(row.payload));
 }
 
 function parseFeedEvent(payload: string | undefined): FeedEventPayload[] {
@@ -436,12 +367,6 @@ function parseLimit(value: string | undefined, fallback: number): number {
 function parseRepoSlugs(value: string | undefined): string[] {
   if (!value) return [];
   return [...new Set(value.split(",").map((item) => item.trim()).filter(Boolean))];
-}
-
-function repoWhere(filter?: SpecialistJobFilter): { sql: string; params: string[] } {
-  const repoSlugs = filter?.repoSlugs?.filter(Boolean) ?? [];
-  if (repoSlugs.length === 0) return { sql: "", params: [] };
-  return { sql: ` AND j.repo_slug IN (${repoSlugs.map(() => "?").join(",")})`, params: [...repoSlugs] };
 }
 
 function summarizeRepos(repos: SpecialistRepoList): SpecialistRepoSummary {
