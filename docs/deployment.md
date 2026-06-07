@@ -1,6 +1,9 @@
 # gitboard deployment
 
-Primary deploy path: native Bun process under systemd user service, exposed only through Tailscale on host.
+Primary deploy path: native Bun process under systemd user service, exposed
+only through Tailscale on host. During the final runtime migration,
+`gitboard.service` is a compatibility alias for the current Bun app entrypoint
+until the core daemon unit replacement and static retirement probes are green.
 
 ## What won
 
@@ -22,7 +25,7 @@ Create `~/.config/systemd/user/gitboard.service`:
 
 ```ini
 [Unit]
-Description=gitboard
+Description=gitboard compatibility wrapper
 After=network-online.target
 Wants=network-online.target
 
@@ -34,7 +37,7 @@ Environment=PORT=3030
 Environment=XDG_PROJECTS_DIR=%h/projects
 Environment=DOLT_HOST=127.0.0.1
 Environment=LOG_DIR=%h/.xtrm/logs
-ExecStart=bun run src/index.ts
+ExecStart=bun --cwd apps/gitboard src/index.ts
 Restart=always
 RestartSec=2
 
@@ -42,7 +45,15 @@ RestartSec=2
 WantedBy=default.target
 ```
 
-Adjust paths / tailnet IP for your host.
+Adjust paths / tailnet IP for your host. The wrapper intentionally preserves
+`HOST`, `PORT`, `GITBOARD_DATA_DIR`, `XDG_PROJECTS_DIR`, `DOLT_HOST`, and
+`LOG_DIR`; do not change those during runtime ownership migration unless the
+same change passes local/staging smoke and is easy to roll back.
+
+Rollback path: keep this unit and keep the wrapper command unchanged. The core
+daemon replacement may become the target later, but production should stay on
+this compatibility wrapper until `/api/*`, WebSocket/log, terminal, `/console`,
+and `/gitboard` probes all pass.
 
 ### First start
 
@@ -63,9 +74,14 @@ Adjust paths / tailnet IP for your host.
    systemctl --user enable --now gitboard
    ```
 
+Production restart is manual. Before a restart, capture local/staging evidence:
+`bun run --cwd apps/gitboard smoke:deprecation`, static `/console` and
+`/gitboard` probes, websocket/log probes, and materializer/channel log flow.
+
 ### Runbook
 
 ```bash
+journalctl --user -u gitboard -n 100
 systemctl --user restart gitboard
 journalctl --user -u gitboard -f
 tail -F ~/.xtrm/logs/$(date +%F).jsonl
@@ -76,7 +92,8 @@ tail -F ~/.xtrm/logs/$(date +%F).jsonl
 - install Tailscale on host
 - run `tailscale up` for auth
 - bind `HOST` to host tailnet IP
-- reach app at `http://<tailnet-ip>:3030/gitboard`
+- reach Console at `http://<tailnet-ip>:3030/console`
+- reach compatibility Gitboard at `http://<tailnet-ip>:3030/gitboard`
 
 No NAT, no public exposure, no extra firewall work for app port even if ufw stays open on other ports.
 
@@ -121,10 +138,18 @@ Known issues:
 
 Use Docker only if you need to reproduce container behavior.
 
-## Checks
+## Compatibility checks
 
 ```bash
 curl http://<tailnet-ip>:3030/console
 curl http://<tailnet-ip>:3030/gitboard
 curl http://<tailnet-ip>:3030/health
+```
+
+Local static gate:
+
+```bash
+bun run --cwd apps/gitboard build:dashboard
+bun run --cwd apps/console build
+bash apps/gitboard/tests/smoke/p9-console-production-ready.sh
 ```
