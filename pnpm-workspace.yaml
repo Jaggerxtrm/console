@@ -1,11 +1,3 @@
 packages:
   - 'packages/*'
   - 'apps/*'
-allowBuilds:
-  '@ast-grep/lang-go': set this to true or false
-  '@ast-grep/lang-php': set this to true or false
-  '@ast-grep/lang-python': set this to true or false
-  '@ast-grep/lang-ruby': set this to true or false
-  '@ast-grep/lang-rust': set this to true or false
-  esbuild: set this to true or false
-  node-pty: set this to true or false
