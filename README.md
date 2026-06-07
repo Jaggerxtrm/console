@@ -1,17 +1,22 @@
 # Omniforge
 
-Agent orchestration + issue tracking monorepo. Primary backend/materializer
-service: `apps/gitboard`. Ready Console frontend app: `apps/console`.
+Agent orchestration + issue tracking monorepo. Current compatibility
+backend/materializer service: `apps/gitboard`. Target runtime ownership is
+moving to core/daemon services while `apps/gitboard` keeps public HTTP,
+WebSocket, `/console`, and `/gitboard` compatibility. Ready Console frontend
+app: `apps/console`.
 
 ## Current run modes
 
-### 1) Native systemd user service  
-Primary deploy path.
+### 1) Native systemd user service
+Primary deploy path and current compatibility wrapper.
 - Service: `~/.config/systemd/user/gitboard.service`
-- Starts app with Bun, no container layer
+- Starts the compatibility app with Bun, no container layer
+- Wrapper command: `bun --cwd apps/gitboard src/index.ts`
 - Binds to Tailscale IP on host
 - Serves Console at `http://<tailnet-ip>:3030/console`
 - Keeps `http://<tailnet-ip>:3030/gitboard` as the compatibility shell
+- Production restart remains manual after local/staging smoke and log evidence
 - Needs `loginctl enable-linger <user>` so it survives logout
 
 Quick start:
@@ -23,6 +28,10 @@ bun run --cwd ../console build
 systemctl --user daemon-reload
 systemctl --user enable --now gitboard
 ```
+
+Rollback path: keep the same host-local `gitboard.service` env and wrapper
+command above until the core daemon unit replacement has passed static,
+WebSocket, terminal, API, and log compatibility probes.
 
 ### 2) Docker / Compose  
 Kept in tree, but experimental / not primary deploy.
@@ -60,7 +69,7 @@ The API defaults to `:3030`; the Vite dashboard dev server proxies `/api` and
 ```
 omniforge/
 ├── apps/
-│   ├── gitboard/          # Running backend, API, materializer, compatibility shell
+│   ├── gitboard/          # Current compatibility backend/API/static shell
 │   └── console/           # Ready xtrm Console frontend app
 ├── packages/
 │   ├── core/              # @omniforge/core - shared utilities and types

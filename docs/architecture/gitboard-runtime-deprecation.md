@@ -121,7 +121,7 @@ lifecycle, and GitHub adapter slices move.
 | `github-adapter` | Durable GitHub store, DB factory, poller, discovery, readme, and GitHub route runtime all core-owned as of `forge-3dm4.4`. Core ports: `GithubActivityPublisher`, `GithubAdapterLogger`. | `@xtrm/core/github` (includes `poller.ts`, `discover.ts`, `readme.ts`, `token.ts`, `ports.ts`) | `apps/gitboard/src/core/github-poller.ts`, `github-discover.ts`, `github-readme.ts`, and `github-store.ts` are thin re-export/injection shims that wire app-side logger + channel registry into the core ports. App routes and startup still mount poller and routes. | Core owns GitHub runtime adapter orchestration; app startup and routes preserve current behavior and DTOs; SKIP_GITHUB_POLLER still honored; ETag/304, rate-limit handling, backfill/poll logs, source-health updates, and websocket publish behavior preserved |
 | `realtime-log-delivery` | Realtime/log protocol contracts core-owned as of `forge-3dm4.5`; implementations still app-owned | `@xtrm/core/runtime` (`realtime.ts`, `logs.ts`) | `apps/gitboard` keeps `ChannelRegistry`, `WsHandler`, logger ring/disk/broadcast plumbing, Bun upgrades, and internal log routes as adapters | Websocket protocol/replay tests, internal log route tests, logger tests, typecheck, GitNexus, and staging smoke pass or are classified before close |
 | `terminal-shell-boundary` | Terminal stream protocol and shell policy contracts core-owned as of `forge-3dm4.6`; bridge/provider implementations still app-owned | `@xtrm/core/terminal/protocol` and `@xtrm/core/terminal/policy` | `apps/gitboard` wires local provider implementations, Bun terminal websocket upgrades, PTY spawning, timers, and route DTOs | Verified-admin, origin, cwd/shell allowlist, env scrub, rate-limit, TTL, and readonly specialist-feed behavior unchanged |
-| `service-static-retirement` | `gitboard.service`, `/console`, and `/gitboard` still hosted by app entrypoint | `@xtrm/core/runtime` | `apps/gitboard` stays as service/static compatibility alias until final gate | Native service/static smoke, deployment docs, and wrapper checklist all green |
+| `service-static-retirement` | `gitboard.service` documented as a host-local compatibility alias as of `forge-3dm4.7`; `/console` and `/gitboard` still hosted by the app entrypoint | `@xtrm/core/runtime` daemon unit replacement after gates | `apps/gitboard` stays as service/static compatibility alias using `bun --cwd apps/gitboard src/index.ts` until final gate | Static p9 smoke, deprecation smoke, deployment docs, and wrapper checklist all green |
 
 ## Final Child Beads
 
@@ -137,7 +137,7 @@ change and record the tests/smoke evidence that passed.
 | 4 | Move GitHub poller/discovery/readme runtime hooks | 1 | `github-adapter` | `GithubPoller`, `discoverAndInsert`, `getGithubToken` | GitHub poller/route tests and poller-enabled smoke tier (core `github-poller.test.ts` 10 tests, gitboard `github-poller.test.ts`/`github-poller-loop.test.ts`/`github-discover.test.ts`/`github.test.ts`/`github-detail-cache.test.ts`/`github-releases.test.ts` 60 tests pass; `packages/core` tsc clean) |
 | 5 | Move runtime host, websocket, and log delivery contracts | 2, 4 | `runtime-host`, `realtime-log-delivery` | `createApp`, `startServer`, `ChannelRegistry`, `WsHandler`, `emit` | runtime host, realtime contract, and internal log tests |
 | 6 | Move terminal/shell safety boundary contracts | 5 | `terminal-shell-boundary` | `TerminalBridge`, `parseShellProviderPolicy`, `LocalPtyProvider` | terminal provider, shell policy, and denial/allowance probes |
-| 7 | Turn service/static host into compatibility wrapper | 3, 5, 6 | `service-static-retirement` | `startServer` | production-ready static smoke, deprecation smoke, deployment docs |
+| 7 | Turn service/static host into compatibility wrapper | 3, 5, 6 | `service-static-retirement` | `startServer` if server code changes; `createGitboardRuntimeOwnershipMap` for metadata | production-ready static smoke, deprecation smoke, deployment docs |
 | 8 | Retire obsolete wrappers | 7 | compatibility shell cleanup | `createApp`, `startServer` | bridge readiness, GitNexus detect-changes, staging/prod smoke evidence |
 
 `ProjectScanner` is a CRITICAL impact target: current graph impact reaches
@@ -162,6 +162,12 @@ The final migration requires three smoke tiers:
    Evidence: tailnet health/API probes, websocket/log probe, and
    materializer/channel logs flowing.
 
+`forge-3dm4.7` keeps production restart manual and documents the current
+host-local service as a compatibility alias:
+`ExecStart=bun --cwd apps/gitboard src/index.ts`. Roll back by keeping that
+unit/env unchanged until the future core daemon unit replacement has its own
+static, API, WebSocket/log, terminal, and materializer evidence.
+
 ## Wrapper Retirement Checklist
 
 Do not delete or collapse an app wrapper unless all of these are true:
@@ -173,6 +179,8 @@ Do not delete or collapse an app wrapper unless all of these are true:
 - GitHub durable adapter state is retained and not treated as temporary bridge
   data;
 - WebSocket, terminal, and static route compatibility probes pass;
+- `gitboard.service` is a documented compatibility alias with rollback to the
+  current Bun app entrypoint;
 - `npx gitnexus detect-changes` or the MCP equivalent reports only expected
   symbols and flows.
 
