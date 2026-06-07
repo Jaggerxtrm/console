@@ -46,6 +46,21 @@ ring/disk/broadcast plumbing, request logging, and internal log HTTP DTOs.
 This slice does not change read-model ownership or daemon bridge readiness; it
 only removes app ownership of the shared realtime/log protocol shapes.
 
+### forge-3dm4.6 terminal/shell policy contract slice
+
+Core now owns the terminal shell safety policy contracts used by app adapters:
+- shell provider policy/status/access context types
+- shell-capable provider kind and permission helpers
+- shell provider env parsing and enabled/disabled decision helpers
+- shell websocket path/origin and admin-token verification helpers
+
+`apps/gitboard` remains the compatibility shell for Bun websocket upgrades,
+`TerminalBridge` connection/session state, local PTY spawning, specialist-feed
+process wiring, route DTOs, timers, and cleanup.
+
+This slice does not change read-model ownership or daemon bridge readiness; it
+only removes app ownership of pure terminal/shell policy decisions.
+
 ## Console Surfaces
 
 | Contract | Current routes | Replacement source |

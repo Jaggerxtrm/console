@@ -46,6 +46,23 @@ This slice does not move Bun websocket upgrades to the daemon and does not
 change websocket envelope fields, replay behavior, internal log DTOs, or log
 entry shapes.
 
+### forge-3dm4.6 terminal/shell policy contract slice
+
+Moved to `@xtrm/core/terminal/policy`:
+- shell provider policy/status/access context contracts
+- shell-capable provider kind and readonly/shell permission helpers
+- shell provider env parsing and enabled/disabled decision helpers
+- shell websocket path/origin and admin-token verification helpers
+
+Still app-owned in `apps/gitboard`:
+- `TerminalBridge` connection, attach, detach, input, resize, exit, and cleanup state
+- local PTY spawning, filesystem realpath checks, timers, input/output budgets, and process cleanup
+- specialist-feed process wiring and route DTO adapters
+- Bun websocket upgrade glue in `startServer`
+
+This slice does not broaden verified-admin, origin, cwd, shell, env, rate,
+TTL, or readonly specialist-feed behavior.
+
 ## Final Runtime Target
 
 The replacement runtime owner is `@xtrm/core/runtime`, with `xt daemon` as the
@@ -103,7 +120,7 @@ lifecycle, and GitHub adapter slices move.
 | `source-lifecycle` | Source-health vocabulary/helper core-owned as of `forge-6oae.13`; scanner/watcher runtime still app-owned | `@xtrm/core/runtime` and `@xtrm/core/state` | `apps/gitboard/src/types/source-health.ts` re-exports core source-health; `apps/gitboard` still owns `ProjectScanner`, `UnifiedScanner`, source routes, and watchers | Source-health parity tests, source/API tests, typecheck/build, and staging smoke passed |
 | `github-adapter` | Durable GitHub store, DB factory, poller, discovery, readme, and GitHub route runtime all core-owned as of `forge-3dm4.4`. Core ports: `GithubActivityPublisher`, `GithubAdapterLogger`. | `@xtrm/core/github` (includes `poller.ts`, `discover.ts`, `readme.ts`, `token.ts`, `ports.ts`) | `apps/gitboard/src/core/github-poller.ts`, `github-discover.ts`, `github-readme.ts`, and `github-store.ts` are thin re-export/injection shims that wire app-side logger + channel registry into the core ports. App routes and startup still mount poller and routes. | Core owns GitHub runtime adapter orchestration; app startup and routes preserve current behavior and DTOs; SKIP_GITHUB_POLLER still honored; ETag/304, rate-limit handling, backfill/poll logs, source-health updates, and websocket publish behavior preserved |
 | `realtime-log-delivery` | Realtime/log protocol contracts core-owned as of `forge-3dm4.5`; implementations still app-owned | `@xtrm/core/runtime` (`realtime.ts`, `logs.ts`) | `apps/gitboard` keeps `ChannelRegistry`, `WsHandler`, logger ring/disk/broadcast plumbing, Bun upgrades, and internal log routes as adapters | Websocket protocol/replay tests, internal log route tests, logger tests, typecheck, GitNexus, and staging smoke pass or are classified before close |
-| `terminal-shell-boundary` | Terminal bridge/provider registry and shell policy still app-owned | `@xtrm/core/terminal/protocol` plus runtime policy contracts | `apps/gitboard` wires local provider implementations | Verified-admin, origin, cwd/shell allowlist, rate-limit, TTL, and readonly specialist-feed behavior unchanged |
+| `terminal-shell-boundary` | Terminal stream protocol and shell policy contracts core-owned as of `forge-3dm4.6`; bridge/provider implementations still app-owned | `@xtrm/core/terminal/protocol` and `@xtrm/core/terminal/policy` | `apps/gitboard` wires local provider implementations, Bun terminal websocket upgrades, PTY spawning, timers, and route DTOs | Verified-admin, origin, cwd/shell allowlist, env scrub, rate-limit, TTL, and readonly specialist-feed behavior unchanged |
 | `service-static-retirement` | `gitboard.service`, `/console`, and `/gitboard` still hosted by app entrypoint | `@xtrm/core/runtime` | `apps/gitboard` stays as service/static compatibility alias until final gate | Native service/static smoke, deployment docs, and wrapper checklist all green |
 
 ## Final Child Beads
