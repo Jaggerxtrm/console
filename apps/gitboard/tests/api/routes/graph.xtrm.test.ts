@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { createGraphDao } from "../../../src/core/graph-dao.ts";
 import { createGraphRouter } from "../../../src/api/routes/graph.ts";
 import { createXtrmDatabase } from "../../../src/core/xtrm-store.ts";
+import { readXtrmGraphSnapshot } from "../../../../../packages/core/src/state/index.ts";
 
 describe("graph route xtrm source", () => {
   it("surfaces xtrm graph health without letting GET refresh trigger materializer", async () => {
@@ -16,7 +17,13 @@ describe("graph route xtrm source", () => {
     app.route("/api/console/graph", createGraphRouter(createGraphDao({ xtrmDb: db, triggerMaterialization: (projectId) => triggered.push(projectId) })));
 
     const response = await app.fetch(new Request("http://localhost/api/console/graph?project=repo-a&refresh=true"));
-    const json = await response.json() as { freshness: string; source_health: { status: string; metadata?: Record<string, unknown> }; nodes: Array<{ id: string }> };
+    const json = await response.json() as {
+      freshness: string;
+      source_health: { status: string; message?: string; metadata?: Record<string, unknown> };
+      nodes: Array<{ id: string }>;
+      edges: unknown[];
+      specialists: unknown[];
+    };
 
     expect(response.status).toBe(200);
     expect(triggered).toEqual([]);
@@ -24,6 +31,15 @@ describe("graph route xtrm source", () => {
     expect(json.source_health.status).toBe("degraded");
     expect(json.source_health.metadata).toEqual(expect.objectContaining({ last_status: "error" }));
     expect(json.source_health.metadata).not.toHaveProperty("source_key");
+    const coreSnapshot = readXtrmGraphSnapshot(db, "repo-a", false);
+    expect(json.nodes).toEqual(coreSnapshot.graph.nodes);
+    expect(json.edges).toEqual(coreSnapshot.graph.edges);
+    expect(json.specialists).toEqual(coreSnapshot.graph.specialists);
+    expect(json.freshness).toEqual(coreSnapshot.freshness);
+    expect(coreSnapshot.sourceHealth).toBeDefined();
+    expect(json.source_health.status).toEqual(coreSnapshot.sourceHealth?.status);
+    expect(json.source_health.message).toEqual(coreSnapshot.sourceHealth?.message);
+    expect(json.source_health.metadata).toEqual(coreSnapshot.sourceHealth?.metadata);
     expect(json.nodes.map((node) => node.id)).toEqual(["A"]);
 
     db.close();

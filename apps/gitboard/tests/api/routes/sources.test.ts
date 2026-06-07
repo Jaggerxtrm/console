@@ -4,6 +4,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { createSourcesRouter } from "../../../src/api/routes/sources.ts";
 import { createXtrmDatabase } from "../../../src/core/xtrm-store.ts";
+import { listSources } from "../../../../../packages/core/src/state/index.ts";
 
 describe("sources routes", () => {
   let tmpDir: string;
@@ -21,6 +22,28 @@ describe("sources routes", () => {
     if (originalAdminToken === undefined) delete process.env.GITBOARD_SOURCES_ADMIN_TOKEN;
     else process.env.GITBOARD_SOURCES_ADMIN_TOKEN = originalAdminToken;
     await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it("returns list DTO matching core source read-model output", async () => {
+    const db = createXtrmDatabase(dbPath);
+    const app = createSourcesRouter(db);
+    db.exec(`
+      INSERT INTO sources (source_key, kind, path, origin, status, discovered_at, last_seen_at)
+      VALUES
+        ('beads:/repo-a', 'beads', '/repo-a', 'manual', 'active', '2026-01-01T00:00:00Z', '2026-01-02T00:00:00Z'),
+        ('observability:repo-a', 'observability', 'repo-a', 'discovered', 'active', NULL, '2026-01-03T00:00:00Z');
+    `);
+
+    const response = await app.fetch(new Request("http://localhost", { headers: { host: "localhost" } }));
+    expect(response.status).toBe(200);
+    const body = await response.json() as { sources: unknown[] };
+
+    expect(body.sources).toEqual(listSources(db).map(({ path, ...source }) => ({
+      ...source,
+      display_path: path,
+    })));
+
+    db.close();
   });
 
   it("pins a source and upserts on repeat pin", async () => {

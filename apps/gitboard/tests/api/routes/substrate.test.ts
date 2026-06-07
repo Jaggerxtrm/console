@@ -4,6 +4,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { createSubstrateRouter } from "../../../src/api/routes/substrate.ts";
 import { createXtrmDatabase } from "../../../src/core/xtrm-store.ts";
+import { readSubstrateClosedIssues, readSubstrateRuntimeGraph } from "../../../../../packages/core/src/state/index.ts";
 
 describe("substrate projects", () => {
   let tmpDir: string;
@@ -145,6 +146,8 @@ describe("substrate projects", () => {
     expect(response.status).toBe(200);
     const body = await response.json() as { issues: Array<{ id: string }> };
 
+    const coreIssues = readSubstrateClosedIssues(db, "demo", 2);
+    expect(body.issues).toEqual(coreIssues);
     expect(body.issues.map((issue) => issue.id)).toEqual(["new-p4", "middle-p1"]);
 
     db.close();
@@ -175,6 +178,8 @@ describe("substrate projects", () => {
       expect.objectContaining({ id: "chain-1", runtime_kind: "chain_molecule", formula_name: "review-fix", contract_kind: "change-contract" }),
       expect.objectContaining({ id: "chain-1.1", runtime_kind: "step", contract_kind: "step-contract" }),
     ]));
+    const coreGraph = readSubstrateRuntimeGraph(db, "demo");
+    expect(body).toEqual(coreGraph);
     expect(body.edges).toEqual([
       { from: "chain-1", to: "epic-1", relation: "parent-child" },
       { from: "chain-1.1", to: "chain-1", relation: "parent-child" },
