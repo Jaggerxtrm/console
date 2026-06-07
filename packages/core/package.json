@@ -29,6 +29,10 @@
       "import": "./dist/state/index.js",
       "types": "./dist/state/index.d.ts"
     },
+    "./state/database": {
+      "import": "./dist/state/database.js",
+      "types": "./dist/state/database.d.ts"
+    },
     "./utils/date": {
       "import": "./dist/utils/date.js",
       "types": "./dist/utils/date.d.ts"
