@@ -6,8 +6,11 @@ import { createApp } from "../../src/api/server.ts";
 import { createXtrmDatabase } from "../../src/core/xtrm-store.ts";
 
 const tempDirs: string[] = [];
+const originalDatasetteDebug = process.env.EXPLORE_DATASETTE_DEBUG;
 
 afterEach(() => {
+  if (originalDatasetteDebug === undefined) delete process.env.EXPLORE_DATASETTE_DEBUG;
+  else process.env.EXPLORE_DATASETTE_DEBUG = originalDatasetteDebug;
   while (tempDirs.length > 0) {
     const dir = tempDirs.pop();
     if (dir) rmSync(dir, { recursive: true, force: true });
@@ -30,8 +33,19 @@ describe("gitboard runtime host compatibility", () => {
     expect(runtimeHost.capabilities).toContain("materializer");
     expect(runtimeHost.mountedRoutes).toContain("/api/feed");
     expect(runtimeHost.mountedRoutes).toContain("/api/internal");
+    expect(runtimeHost.mountedRoutes).not.toContain("/explore/sql");
 
     const response = await app.request("/health");
     expect(response.status).toBe(200);
+  });
+
+  it("publishes Datasette SQL proxy only when explicit debug flag is enabled", () => {
+    const root = mkdtempSync(join(tmpdir(), "gitboard-runtime-host-debug-"));
+    tempDirs.push(root);
+    process.env.EXPLORE_DATASETTE_DEBUG = "1";
+    const db = createXtrmDatabase(join(root, "xtrm.sqlite"));
+    const { runtimeHost } = createApp(db, db);
+
+    expect(runtimeHost.mountedRoutes).toContain("/explore/sql");
   });
 });

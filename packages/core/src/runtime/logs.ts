@@ -10,6 +10,7 @@ export type LogComponent =
   | "migration"
   | "store"
   | "drawer"
+  | "explore"
   | "cockpit"
   | "logger"
   | "materializer";

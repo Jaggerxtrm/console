@@ -65,6 +65,8 @@ We have a live Prometheus/Grafana stack running on the VPS that already collects
 
 This PRD specifies an **embedded observability platform** inside the xtrm console. It is a thin, opinionated UI layer over a datasource abstraction. Prometheus is the first datasource impl. Over time it absorbs the bespoke health probes, hosts dashboards the devops-agent authors, and grows into a Datadog-class product surface we can ship to customers — without ever taking a hard dependency on Grafana's runtime.
 
+See also [Addendum: explore-mode datasource impls](#addendum-explore-mode-datasource-impls-forge-i7pr10) for the `/explore` SQL/Datasette exception boundary.
+
 Three architectural commitments make this work:
 
 1. **Datasource as an interface, not a vendor.** Code never imports `prometheus-*`; it imports a typed `Datasource` interface. Prometheus is impl #1.
@@ -102,6 +104,8 @@ graph TB
 - Recent incidents (forge-58ek conn leak, forge-bi35 substrate null, forge-0vuv chip lag) all left clean signals in app logs but would have been **caught in seconds** by a panel-with-alert. The data was always there; the *surface to act on it* wasn't.
 
 ### 2.2 Why an embedded surface, not just more Grafana
+
+Clarification: the `/explore` SQL Datasette MVP is covered by [Addendum: explore-mode datasource impls](#addendum-explore-mode-datasource-impls-forge-i7pr10); it does not weaken the owned-panel commitments below.
 
 - **Linkage.** A graph node, a bead chip, and a chain row in xtrm should be able to deep-link to a metric panel ("show me this bead's specialist's worker memory over the last hour") and vice-versa. Iframe Grafana can't do that without per-link plumbing that breaks every Grafana upgrade.
 - **Agent-native.** The devops-agent specialist authors dashboards on demand ("show me dolt health for last 24h") — those need to render in the same surface the operator is already in. Round-tripping to Grafana breaks the loop.
@@ -491,3 +495,17 @@ This PRD is **planning-ready**. The intended next step is to feed it through Ope
 - Resolution of the open questions in Section 10, recorded back in this document as "Decisions" appendices.
 
 Until that planning pass is done, no implementation beads should be dispatched from this document. The forge-70el epic continues independently and is the prerequisite for the layout primitives this PRD inherits.
+
+---
+
+## Addendum: explore-mode datasource impls (forge-i7pr.10)
+
+Date: 2026-06-28
+
+`forge-i7pr` first introduced `/console/explore/sql` with Datasette embedded as an ad-hoc SQL datasource, then the native AgentOps direction superseded it for the product surface. `/console/explore` and `/console/explore/agentops` are now the primary operator entry points.
+
+The strategic boundary remains: dashboards and product panels query a typed `Datasource` contract and render through native xtrm primitives. Datasette is debug/developer fallback only, served same-origin through `/explore/sql/*` when `EXPLORE_DATASETTE_DEBUG=1`; it is not default navigation and not product UX.
+
+WAL lesson: do not mount a live WAL-mode SQLite database as immutable. Use normal read-only access for local inspection, or create a coherent snapshot before immutable mounting.
+
+Follow-up explore implementations remain separate: Forensic explorer is tracked by `forge-l5mf`; PromQL explorer is tracked by `forge-qixi`.

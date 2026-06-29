@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "bun run src/index.ts",
+    "dev:datasette": "bun run ../../tools/datasette/dev-datasette.ts",
     "dev:dashboard": "vite --config vite.config.ts",
     "build": "vite build --config vite.config.ts",
     "build:dashboard": "vite build --config vite.config.ts",
