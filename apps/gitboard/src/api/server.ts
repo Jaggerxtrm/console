@@ -19,6 +19,8 @@ import { createGraphDao } from "../core/graph-dao.ts";
 import { createShellRouter } from "./routes/shell.ts";
 import { createSourcesRouter } from "./routes/sources.ts";
 import { createTerminalRouter } from "./routes/terminal.ts";
+import { createExploreAgentopsRouter } from "./routes/explore-agentops.ts";
+import { createExploreSqlRouter } from "./routes/explore-sql.ts";
 import { ChannelRegistry, type ChannelName } from "./ws/channels.ts";
 import { WsHandler } from "./ws/handler.ts";
 import { Materializer } from "../core/materializer/index.ts";
@@ -75,6 +77,7 @@ export function createApp(db: Database, xtrmDb?: Database): {
   const registry = new ChannelRegistry();
   currentRegistry = registry;
   const storeDb = xtrmDb ?? db;
+  const datasetteDebugEnabled = process.env.EXPLORE_DATASETTE_DEBUG === "1";
   const materializer = xtrmDb ? new Materializer(storeDb, registry) : null;
   const runtimeHost = createRuntimeHostDescriptor({
     storeDb,
@@ -100,7 +103,9 @@ export function createApp(db: Database, xtrmDb?: Database): {
       "/api/sources",
       "/api/console/shell",
       "/api/console/terminal",
+      "/api/console/explore",
       "/api/internal",
+      ...(datasetteDebugEnabled ? ["/explore/sql"] : []),
       "/health",
       "/console",
       "/gitboard",
@@ -190,11 +195,13 @@ export function createApp(db: Database, xtrmDb?: Database): {
   app.route("/api/sources", createSourcesRouter(xtrmDb ?? null, currentUnifiedScanner));
   app.route("/api/console/shell", createShellRouter());
   app.route("/api/console/terminal", createTerminalRouter());
+  app.route("/api/console/explore", createExploreAgentopsRouter(xtrmDb ?? null));
   app.route("/api/internal", createInternalDoltHealthRouter());
   app.route("/api/internal", createInternalLogsRouter());
   app.route("/api/internal", createInternalSubstrateRouter(xtrmDb ?? null));
   app.route("/api/internal", createInternalVerifyRouter());
   app.route("/api/internal", createInternalParityRouter());
+  if (datasetteDebugEnabled) app.route("/explore/sql", createExploreSqlRouter());
   app.get("/api/internal/parity/beads", (c) => {
     if (!String(c.req.header("host") ?? "").startsWith("localhost") && !String(c.req.header("host") ?? "").startsWith("127.0.0.1") && !String(c.req.header("host") ?? "").startsWith("[::1]")) return c.json({ error: "forbidden" }, 403);
     return c.json({ parity_ok_count: currentBeadsParityHarness?.getParityOkCount() ?? 0, latest_summary: currentBeadsParityHarness?.getLatestSummary() ?? null });

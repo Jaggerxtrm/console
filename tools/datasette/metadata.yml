@@ -1,0 +1,112 @@
+title: xtrm Explore SQLite
+description: Read-only Datasette surface for materialized xtrm operator data.
+databases:
+  xtrm:
+    title: xtrm materialized state
+    tables:
+      substrate_issues:
+        description: Materialized Beads issues across repositories.
+        columns:
+          repo_slug: Repository slug.
+          issue_id: Bead issue identifier.
+          title: Issue title.
+          state: Open, closed, blocked, deferred, or deleted state.
+          priority: Beads priority.
+          issue_type: Task, bug, feature, epic, or related type.
+          owner: Current issue owner.
+          labels: Serialized labels.
+          parent_id: Parent epic or task id.
+          created_at: Source creation timestamp.
+          updated_at: Source update timestamp.
+      specialist_jobs:
+        description: Materialized specialist job rows and token counters.
+        columns:
+          repo_slug: Repository slug.
+          job_id: Specialist job identifier.
+          bead_id: Related bead id.
+          specialist: Specialist role.
+          status: Job lifecycle state.
+          chain_id: Chain correlation id.
+          model: Model used by the job.
+          turns: Turn count.
+          tools: Tool call count.
+          token_input: Input tokens.
+          token_output: Output tokens.
+          token_cache_read: Cache-read tokens.
+          token_cache_creation: Cache-creation tokens.
+          updated_at: Last observed update.
+      substrate_dependencies:
+        description: Materialized Beads dependency edges.
+      xtrm_forensic_events:
+        description: Redacted xtrm forensic event envelopes.
+    queries:
+      "Recipe 1 - specialist model leaderboard by active cost":
+        sql: |-
+          select specialist, model, count(*) as jobs, sum(coalesce(updated_at_ms, 0)) as active_ms, sum(coalesce(turns, 0)) as turns, sum(coalesce(tools, 0)) as tools
+          from specialist_jobs
+          group by specialist, model
+          order by active_ms desc, jobs desc
+          limit 50
+      "Recipe 2 - outliers above high token and tool usage":
+        sql: |-
+          select job_id, specialist, model, status, tools, token_input, token_output, updated_at
+          from specialist_jobs
+          where coalesce(tools, 0) >= :min_tools or coalesce(token_input, 0) + coalesce(token_output, 0) >= :min_tokens
+          order by (coalesce(token_input, 0) + coalesce(token_output, 0)) desc, coalesce(tools, 0) desc
+          limit 100
+      "Recipe 3 - payload bloat proxy by input tokens":
+        sql: |-
+          select specialist, count(*) as jobs, avg(coalesce(token_input, 0)) as avg_input_tokens, max(coalesce(token_input, 0)) as max_input_tokens
+          from specialist_jobs
+          group by specialist
+          order by avg_input_tokens desc
+          limit 20
+      "Recipe 4 - waiting state hygiene":
+        sql: |-
+          select job_id, repo_slug, bead_id, specialist, model, status, updated_at
+          from specialist_jobs
+          where status in ('waiting', 'blocked', 'stalled')
+          order by updated_at asc
+          limit 100
+      "Recipe 5 - tool call distribution per specialist":
+        sql: |-
+          select specialist, count(*) as jobs, sum(coalesce(tools, 0)) as tool_calls, avg(coalesce(tools, 0)) as avg_tools
+          from specialist_jobs
+          group by specialist
+          order by tool_calls desc
+          limit 50
+      "Recipe 6 - payload vs active runtime correlation inputs":
+        sql: |-
+          select job_id, specialist, model, coalesce(token_input, 0) + coalesce(token_output, 0) as total_tokens, coalesce(updated_at_ms, 0) as active_runtime_proxy_ms
+          from specialist_jobs
+          where coalesce(token_input, 0) + coalesce(token_output, 0) > 0
+          order by total_tokens desc
+          limit 200
+      "Recipe 7 - first turn input token proxy":
+        sql: |-
+          select specialist, model, avg(coalesce(token_input, 0)) as avg_input_tokens, count(*) as jobs
+          from specialist_jobs
+          group by specialist, model
+          order by avg_input_tokens desc
+          limit 50
+      "Recipe 8 - eager skill body cost proxy":
+        sql: |-
+          select specialist, model, avg(coalesce(token_input, 0)) as avg_input_tokens, avg(coalesce(token_cache_creation, 0)) as avg_cache_creation_tokens, count(*) as jobs
+          from specialist_jobs
+          group by specialist, model
+          order by avg_input_tokens desc
+          limit 50
+      "Open beads by repository and priority":
+        sql: |-
+          select repo_slug, priority, state, count(*) as issues
+          from substrate_issues
+          where deleted_at is null and state not in ('closed', 'deleted')
+          group by repo_slug, priority, state
+          order by repo_slug, priority, issues desc
+      "Recent forensic event families":
+        sql: |-
+          select repo_slug, event_family, event_name, severity, count(*) as events, max(timestamp) as latest
+          from xtrm_forensic_events
+          group by repo_slug, event_family, event_name, severity
+          order by latest desc
+          limit 100

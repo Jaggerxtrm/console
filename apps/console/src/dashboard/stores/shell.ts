@@ -130,6 +130,7 @@ export const useShellStore = create<ShellState>((set) => ({
   setTab: (tab) =>
     set((state) => {
       const next: SidebarSelection = { ...state.selection, tab };
+      syncConsolePath(next);
       writeJSON(LS.selection, next);
       return { selection: next };
     }),
@@ -238,3 +239,9 @@ export const selectSidebarCollapsed = (s: ShellState) => s.sidebarCollapsed;
 export const selectTheme = (s: ShellState) => s.theme;
 export const selectDrawerSpecialistsScope = (s: ShellState) => s.drawerSpecialistsScope;
 export const selectSidebar = (s: ShellState) => s.sidebar;
+
+function syncConsolePath(selection: SidebarSelection): void {
+  if (typeof window === "undefined" || selection.surface !== "console") return;
+  const path = selection.tab === "explore" ? "/console/explore/agentops" : `/console/${selection.tab}`;
+  if (window.location.pathname !== path) window.history.pushState({}, "", path);
+}

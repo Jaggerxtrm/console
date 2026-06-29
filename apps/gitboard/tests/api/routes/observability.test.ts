@@ -15,11 +15,11 @@ beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), "gitboard-observability-"));
   db = new Database(join(dir, "repo.db"), { create: true });
   db.exec(`
-    CREATE TABLE specialist_jobs (job_id TEXT, bead_id TEXT, status TEXT, specialist TEXT, updated_at_ms INTEGER);
+    CREATE TABLE specialist_jobs (job_id TEXT, bead_id TEXT, chain_id TEXT, epic_id TEXT, chain_kind TEXT, status TEXT, specialist TEXT, updated_at_ms INTEGER);
     CREATE TABLE specialist_job_metrics (job_id TEXT, model TEXT, started_at_ms INTEGER, completed_at_ms INTEGER, elapsed_ms INTEGER, active_runtime_ms INTEGER, total_turns INTEGER, total_tools INTEGER, tool_call_counts_json TEXT, token_trajectory_json TEXT, context_trajectory_json TEXT, stall_gaps_json TEXT, run_complete_json TEXT, updated_at_ms INTEGER);
     CREATE TABLE specialist_results (job_id TEXT, output TEXT);
   `);
-  db.prepare("INSERT INTO specialist_jobs VALUES (?, ?, ?, ?, ?) ").run("job-1", "bead-1", "waiting", "reviewer", Date.now());
+  db.prepare("INSERT INTO specialist_jobs VALUES (?, ?, ?, ?, ?, ?, ?, ?) ").run("job-1", "bead-1", null, null, null, "waiting", "reviewer", Date.now());
   db.prepare("INSERT INTO specialist_job_metrics VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run(
     "job-1",
     "model-x",
