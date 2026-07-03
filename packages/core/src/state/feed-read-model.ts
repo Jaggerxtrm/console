@@ -43,7 +43,7 @@ export interface FeedPage {
 export function readFeedPage(db: Database | null | undefined, options: { limit?: number; cursor?: FeedCursor | string | null } = {}): FeedPage {
   const limit = normalizeFeedLimit(options.limit);
   const cursor = typeof options.cursor === "string" ? parseFeedCursor(options.cursor) : options.cursor ?? null;
-  const rows = readFeedRows(db, cursor).sort(compareFeedRows).slice(0, limit);
+  const rows = readFeedRows(db, cursor, limit).sort(compareFeedRows).slice(0, limit);
   return { rows, cursor: { limit, next: rows.length === limit ? encodeFeedCursor(rows[rows.length - 1]!) : null } };
 }
 
@@ -67,24 +67,26 @@ export function normalizeFeedLimit(value: number | string | undefined | null): n
   return Math.min(Math.max(parsed, 1), 100);
 }
 
-function readFeedRows(db: Database | null | undefined, cursor: FeedCursor | null): FeedRow[] {
+function readFeedRows(db: Database | null | undefined, cursor: FeedCursor | null, limit: number): FeedRow[] {
   if (!db) return [];
   return [
-    ...readSpecialistRows(db),
-    ...readBeadsRows(db),
-    ...readGithubRows(db),
+    ...readSpecialistRows(db, cursor, limit),
+    ...readBeadsRows(db, cursor, limit),
+    ...readGithubRows(db, cursor, limit),
   ].filter((row) => isAfterCursor(row, cursor));
 }
 
-function readSpecialistRows(db: Database): FeedRow[] {
+function readSpecialistRows(db: Database, cursor: FeedCursor | null, limit: number): FeedRow[] {
   if (!hasTable(db, "xtrm_forensic_events")) return [];
   const rows = db.query(`
     SELECT id, repo_slug, job_id, seq, t_unix_ms, severity, event_family, event_name,
            redaction_json, body_json, resource_json
     FROM xtrm_forensic_events
+    WHERE (? IS NULL OR t_unix_ms > ? OR (t_unix_ms = ? AND seq > ?) OR (t_unix_ms = ? AND seq = ? AND id > ?))
     ORDER BY t_unix_ms ASC, seq ASC, id ASC
-  `).all() as Array<Record<string, unknown>>;
-  const evidenceByJob = readEvidenceByJob(db);
+    LIMIT ?
+  `).all(cursor?.t_unix_ms ?? null, cursor?.t_unix_ms ?? 0, cursor?.t_unix_ms ?? 0, cursor?.seq ?? 0, cursor?.t_unix_ms ?? 0, cursor?.seq ?? 0, cursor?.id ?? "", limit) as Array<Record<string, unknown>>;
+  const evidenceByJob = readEvidenceByJob(db, rows.map((row) => row.job_id).filter((jobId): jobId is string => typeof jobId === "string"));
 
   return rows.flatMap((row) => {
     const eventFamily = String(row.event_family ?? "event");
@@ -118,13 +120,15 @@ function readSpecialistRows(db: Database): FeedRow[] {
   });
 }
 
-function readBeadsRows(db: Database): FeedRow[] {
+function readBeadsRows(db: Database, cursor: FeedCursor | null, limit: number): FeedRow[] {
   if (!hasTable(db, "substrate_issues")) return [];
   const rows = db.query(`
     SELECT repo_slug, issue_id, title, state, updated_at, created_at
     FROM substrate_issues
     WHERE deleted_at IS NULL OR deleted_at = ''
-  `).all() as Array<Record<string, unknown>>;
+    ORDER BY COALESCE(updated_at, created_at) ASC, issue_id ASC
+    LIMIT ?
+  `).all(Math.max(limit * 4, limit)) as Array<Record<string, unknown>>;
   return rows.map((row) => {
     const issueId = String(row.issue_id ?? "unknown");
     const state = String(row.state ?? "open");
@@ -146,12 +150,15 @@ function readBeadsRows(db: Database): FeedRow[] {
   });
 }
 
-function readGithubRows(db: Database): FeedRow[] {
+function readGithubRows(db: Database, cursor: FeedCursor | null, limit: number): FeedRow[] {
   if (!hasTable(db, "github_events")) return [];
   const rows = db.query(`
     SELECT id, type, repo, action, title, created_at
     FROM github_events
-  `).all() as Array<Record<string, unknown>>;
+    WHERE (? IS NULL OR created_at >= datetime(? / 1000, 'unixepoch'))
+    ORDER BY created_at ASC, id ASC
+    LIMIT ?
+  `).all(cursor?.t_unix_ms ?? null, cursor?.t_unix_ms ?? 0, Math.max(limit * 4, limit)) as Array<Record<string, unknown>>;
   return rows.map((row) => {
     const eventId = String(row.id ?? "unknown");
     const type = String(row.type ?? "github_event");
@@ -174,9 +181,12 @@ function readGithubRows(db: Database): FeedRow[] {
   });
 }
 
-function readEvidenceByJob(db: Database): Map<string, string[]> {
+function readEvidenceByJob(db: Database, jobIds: string[]): Map<string, string[]> {
   if (!hasTable(db, "xtrm_evidence_refs")) return new Map();
-  const rows = db.query("SELECT job_id, evidence_id FROM xtrm_evidence_refs WHERE job_id IS NOT NULL").all() as Array<{ job_id: string; evidence_id: string }>;
+  const uniqueJobIds = [...new Set(jobIds)].filter(Boolean);
+  if (uniqueJobIds.length === 0) return new Map();
+  const placeholders = uniqueJobIds.map(() => "?").join(", ");
+  const rows = db.query(`SELECT job_id, evidence_id FROM xtrm_evidence_refs WHERE job_id IN (${placeholders})`).all(...uniqueJobIds) as Array<{ job_id: string; evidence_id: string }>;
   const byJob = new Map<string, string[]>();
   for (const row of rows) {
     const list = byJob.get(row.job_id) ?? [];

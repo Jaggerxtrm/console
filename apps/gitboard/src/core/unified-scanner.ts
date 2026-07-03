@@ -120,7 +120,7 @@ export class UnifiedScanner {
       }
       for (const entry of entries) {
         if (!entry.isDirectory()) continue;
-        if (BEADS_EXCLUDES.includes(entry.name)) continue;
+        if (this.shouldSkipScanChild(entry.name)) continue;
         discovered.push(...await this.scanBeadsPath(join(dirPath, entry.name), depth + 1));
       }
     } catch (error) {
@@ -152,7 +152,7 @@ export class UnifiedScanner {
     this.addObservabilityCandidate(root, candidates);
     try {
       for (const entry of readdirSync(root, { withFileTypes: true })) {
-        if (entry.isDirectory()) this.addObservabilityCandidate(join(root, entry.name), candidates);
+        if (entry.isDirectory() && !this.shouldSkipScanChild(entry.name)) this.addObservabilityCandidate(join(root, entry.name), candidates);
       }
     } catch (error) {
       this.logProbeFailure("observability root children", root, error);
@@ -264,6 +264,10 @@ export class UnifiedScanner {
     return dirPath.split(/[\\/]+/).some((part) => part === ".worktrees" || part === "worktrees");
   }
 
+  private shouldSkipScanChild(name: string): boolean {
+    return name.startsWith(".") || BEADS_EXCLUDES.includes(name);
+  }
+
   private isGitWorktree(repoPath: string): boolean {
     try {
       const gitPath = join(repoPath, ".git");
@@ -287,4 +291,3 @@ export class UnifiedScanner {
     emit(makeLogEntry("system", "scanner.probe", "warn", undefined, { stage, path, error: message }));
   }
 }
-

@@ -87,6 +87,26 @@ describe("UnifiedScanner", () => {
     db.close();
   });
 
+  it("skips hidden operational directories while scanning for beads projects", async () => {
+    await mkdir(join(repoDir, ".specialists", "jobs", "job-a", ".beads"), { recursive: true });
+    await mkdir(join(repoDir, ".xtrm", "nested", ".beads"), { recursive: true });
+    await writeFile(join(repoDir, ".specialists", "jobs", "job-a", ".beads", "metadata.json"), JSON.stringify({ project_id: "job-project" }));
+    await writeFile(join(repoDir, ".xtrm", "nested", ".beads", "metadata.json"), JSON.stringify({ project_id: "xtrm-nested-project" }));
+    const db = createXtrmDatabase(dbPath);
+    const scanner = new UnifiedScanner(db, { beadsScanPaths: [tmpDir], observabilityRoots: [tmpDir], parityEnabled: false });
+
+    await scanner.refresh();
+
+    const realProject = db.query<{ c: number }, []>("SELECT COUNT(*) AS c FROM sources WHERE source_key = 'beads:demo-project'").get();
+    const jobProject = db.query<{ c: number }, []>("SELECT COUNT(*) AS c FROM sources WHERE source_key = 'beads:job-project'").get();
+    const xtrmProject = db.query<{ c: number }, []>("SELECT COUNT(*) AS c FROM sources WHERE source_key = 'beads:xtrm-nested-project'").get();
+    expect(realProject?.c).toBe(1);
+    expect(jobProject?.c).toBe(0);
+    expect(xtrmProject?.c).toBe(0);
+
+    db.close();
+  });
+
   it("normalizes legacy idle beads as active for parity", () => {
     expect(normalizeLegacySourceStatus("idle")).toBe("active");
     expect(normalizeLegacySourceStatus("missing")).toBe("missing");

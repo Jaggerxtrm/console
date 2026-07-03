@@ -30,25 +30,31 @@ try {
       process.exit(0);
     });
   } else {
-  const token = getGithubToken();
-  const username = await getAuthenticatedUsername(token);
+    const token = getGithubToken();
+    const username = await getAuthenticatedUsername(token);
 
-  // Auto-discover repos on first run so the DB is populated
-  await discoverAndInsert(xtrmDb);
+    // Auto-discover repos on first run so the DB is populated
+    await discoverAndInsert(xtrmDb);
 
-  const poller = new GithubPoller(xtrmDb, token, { registry: getCurrentRegistry() ?? undefined });
+    const poller = new GithubPoller(xtrmDb, token, { registry: getCurrentRegistry() ?? undefined });
 
-  console.log(`[gitboard] Backfilling events for user ${username}...`);
-  await poller.backfill(username);
-  poller.start(username);
-  console.log(`[gitboard] GitHub poller running for ${username}`);
+    if (process.env.GITBOARD_STARTUP_BACKFILL === "1") {
+      console.log(`[gitboard] Backfilling events for user ${username}...`);
+      void poller.backfill(username).catch((error) => {
+        console.warn("[gitboard] GitHub startup backfill failed:", (error as Error).message);
+      });
+    } else {
+      console.log("[gitboard] GitHub startup backfill skipped: set GITBOARD_STARTUP_BACKFILL=1 to enable");
+    }
+    poller.start(username);
+    console.log(`[gitboard] GitHub poller running for ${username}`);
 
-  process.on("SIGINT", () => {
-    console.log("\n[gitboard] Shutting down...");
-    poller.stop();
-    xtrmDb.close();
-    process.exit(0);
-  });
+    process.on("SIGINT", () => {
+      console.log("\n[gitboard] Shutting down...");
+      poller.stop();
+      xtrmDb.close();
+      process.exit(0);
+    });
   }
 } catch (err) {
   console.warn("[gitboard] GitHub poller disabled:", (err as Error).message);

@@ -114,9 +114,11 @@ export function createApp(db: Database, xtrmDb?: Database): {
         registry.publish(channel, "specialists:sync_hint", { source_key: sourceKey, kind: "epoch_bump" }, String(Date.now()));
       }
     });
-    queueMicrotask(() => {
-      for (const repo of obsRepos) materializer.trigger(`obs:${repo.repoSlug}`);
-    });
+    if (process.env.GITBOARD_STARTUP_MATERIALIZE === "1") {
+      queueMicrotask(() => {
+        for (const repo of obsRepos) materializer.trigger(`obs:${repo.repoSlug}`);
+      });
+    }
   }
   const wsHandler = new WsHandler(registry);
   setRealtimePublisher(registry);

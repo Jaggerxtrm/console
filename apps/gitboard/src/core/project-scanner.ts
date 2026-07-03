@@ -82,7 +82,7 @@ export class ProjectScanner {
       // Recurse into subdirectories
       for (const entry of entries) {
         if (!entry.isDirectory()) continue;
-        if (this.config.excludePatterns.includes(entry.name)) continue;
+        if (this.shouldSkipScanChild(entry.name)) continue;
 
         const subPath = join(dirPath, entry.name);
         const subProjects = await this.scanPath(subPath, depth + 1);
@@ -166,6 +166,10 @@ export class ProjectScanner {
     if (id) return this.projectCache.get(id);
 
     return undefined;
+  }
+
+  private shouldSkipScanChild(name: string): boolean {
+    return name.startsWith(".") || this.config.excludePatterns.includes(name);
   }
 
   /**

@@ -308,9 +308,13 @@ const MIGRATIONS = [
   "CREATE INDEX IF NOT EXISTS idx_specialist_jobs_repo_status ON specialist_jobs(repo_slug, status)",
   "CREATE INDEX IF NOT EXISTS idx_specialist_jobs_repo_bead ON specialist_jobs(repo_slug, bead_id)",
   "CREATE INDEX IF NOT EXISTS idx_specialist_job_events_repo_job ON specialist_job_events(repo_slug, job_id, created_at)",
+  "CREATE INDEX IF NOT EXISTS idx_xtrm_forensic_feed_order ON xtrm_forensic_events(t_unix_ms, seq, id)",
   "CREATE INDEX IF NOT EXISTS idx_xtrm_forensic_repo_job_time ON xtrm_forensic_events(repo_slug, job_id, t_unix_ms, seq)",
   "CREATE INDEX IF NOT EXISTS idx_xtrm_forensic_event_name ON xtrm_forensic_events(event_family, event_name, t_unix_ms)",
   "CREATE INDEX IF NOT EXISTS idx_xtrm_evidence_repo_kind ON xtrm_evidence_refs(repo_slug, evidence_kind, created_at)",
+  "CREATE INDEX IF NOT EXISTS idx_xtrm_evidence_job ON xtrm_evidence_refs(job_id)",
+  "CREATE INDEX IF NOT EXISTS idx_substrate_issues_feed_order ON substrate_issues(COALESCE(updated_at, created_at), issue_id)",
+  "CREATE INDEX IF NOT EXISTS idx_github_events_feed_order ON github_events(created_at, id)",
   "CREATE INDEX IF NOT EXISTS idx_substrate_job_link_repo_substrate ON substrate_job_link(repo_slug, substrate_type, substrate_id)",
   "CREATE INDEX IF NOT EXISTS idx_sources_kind_status ON sources(kind, status)",
 ];
