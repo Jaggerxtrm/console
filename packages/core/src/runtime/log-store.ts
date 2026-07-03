@@ -1,6 +1,6 @@
 import { appendFile } from "node:fs/promises";
-import { existsSync, mkdirSync, readdirSync, statSync, symlinkSync, unlinkSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, lstatSync, mkdirSync, readdirSync, symlinkSync, unlinkSync } from "node:fs";
+import { isAbsolute, join, resolve } from "node:path";
 import { LOG_DEFAULT_LEVEL, LOG_RETENTION_DAYS, LOG_RING_SIZE, type LogEntry, type LogLevel } from "./logs.ts";
 
 export { LOG_DEFAULT_LEVEL, LOG_RETENTION_DAYS, LOG_RING_SIZE };
@@ -32,6 +32,7 @@ type Listener = {
 export type LoggerRuntime = ReturnType<typeof createLoggerRuntime>;
 
 export function createLoggerRuntime(options: LoggerRuntimeOptions) {
+  const logPaths = resolveLogPaths(options);
   const ringSizeLimit = options.ringSize ?? LOG_RING_SIZE;
   const retentionDays = options.retentionDays ?? LOG_RETENTION_DAYS;
   const ring = new Array<LogEntry>(ringSizeLimit);
@@ -76,15 +77,15 @@ export function createLoggerRuntime(options: LoggerRuntimeOptions) {
   }
 
   function ensureLogStorage(): string {
-    if (logStorageReady) return options.diskDir;
-    mkdirSync(options.diskDir, { recursive: true });
+    if (logStorageReady) return logPaths.diskDir;
+    mkdirSync(logPaths.diskDir, { recursive: true });
     ensureLegacyLink();
     logStorageReady = true;
-    return options.diskDir;
+    return logPaths.diskDir;
   }
 
   function getLogDiskDir(): string {
-    return options.diskDir;
+    return logPaths.diskDir;
   }
 
   function pushRing(entry: LogEntry): void {
@@ -129,8 +130,9 @@ export function createLoggerRuntime(options: LoggerRuntimeOptions) {
   function activeLogDir(): string {
     try {
       return ensureLogStorage();
-    } catch {
-      return options.fallbackDiskDir ?? "./logs";
+    } catch (error) {
+      if (!logPaths.fallbackDiskDir) throw error;
+      return logPaths.fallbackDiskDir;
     }
   }
 
@@ -146,14 +148,16 @@ export function createLoggerRuntime(options: LoggerRuntimeOptions) {
     for (const name of readdirSync(activeLogDir())) {
       if (!name.endsWith(".jsonl")) continue;
       const path = join(activeLogDir(), name);
-      if (statSync(path).mtimeMs < cutoff) unlinkSync(path);
+      const stats = lstatSync(path);
+      if (stats.isSymbolicLink()) continue;
+      if (stats.mtimeMs < cutoff) unlinkSync(path);
     }
   }
 
   function ensureLegacyLink(): void {
     if (!options.legacyLogDir || !options.legacyLinkName) return;
     if (!existsSync(options.legacyLogDir)) return;
-    const legacyLink = join(options.diskDir, options.legacyLinkName);
+    const legacyLink = join(logPaths.diskDir, options.legacyLinkName);
     if (existsSync(legacyLink)) return;
     try {
       symlinkSync(options.legacyLogDir, legacyLink, "dir");
@@ -161,6 +165,24 @@ export function createLoggerRuntime(options: LoggerRuntimeOptions) {
   }
 
   return { emit, getRing, subscribe, setDiskEnabled, setLogLevel, setRealtimePublisher, ensureLogStorage, getLogDiskDir };
+}
+
+type LogPaths = {
+  readonly diskDir: string;
+  readonly fallbackDiskDir?: string;
+};
+
+function resolveLogPaths(options: LoggerRuntimeOptions): LogPaths {
+  return {
+    diskDir: resolveLogDir(options.diskDir, "diskDir"),
+    fallbackDiskDir: options.fallbackDiskDir ? resolveLogDir(options.fallbackDiskDir, "fallbackDiskDir") : undefined,
+  };
+}
+
+function resolveLogDir(dir: string, label: string): string {
+  const trimmed = dir.trim();
+  if (!trimmed) throw new Error(`Logger ${label} must not be empty`);
+  return isAbsolute(trimmed) ? trimmed : resolve(trimmed);
 }
 
 function matchesFilter(entry: LogEntry, filter: LogFilter | undefined): boolean {

@@ -53,6 +53,14 @@ describe("logger", () => {
     expect(lstatSync(join(defaultDir, "legacy")).isSymbolicLink()).toBe(true);
   });
 
+  it("normalizes relative env log dirs to absolute paths", async () => {
+    vi.stubEnv("LOG_DIR", ".tmp-relative-logs");
+    const logger = await loadLogger();
+    logger.setDiskEnabled(false);
+
+    expect(logger.getLogDiskDir()).toBe(join(process.cwd(), ".tmp-relative-logs"));
+  });
+
   it("keeps wrapper subscribe filter compatibility", async () => {
     const logger = await loadLogger();
     logger.setDiskEnabled(false);

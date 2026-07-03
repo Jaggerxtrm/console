@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { existsSync, utimesSync } from "node:fs";
+import { existsSync, symlinkSync, utimesSync } from "node:fs";
 import { join } from "node:path";
 import { LOG_RING_SIZE, type LogEntry } from "../src/runtime/index.ts";
 import { createLoggerRuntime } from "../src/runtime/server.ts";
@@ -75,6 +75,39 @@ describe("logger runtime", () => {
     expect(existsSync(current)).toBe(true);
     expect(await readFile(current, "utf8")).toContain('"event":"hello"');
     expect(existsSync(oldFile)).toBe(false);
+  });
+
+  it("does not fall back to cwd logs when storage init fails", async () => {
+    const blockedParent = join(tmpRoot, "blocked-parent");
+    await mkdir(tmpRoot, { recursive: true });
+    await writeFile(blockedParent, "not a directory");
+    await rm(join(process.cwd(), "logs"), { recursive: true, force: true });
+    const errors: unknown[] = [];
+    const logger = createLoggerRuntime({ diskDir: join(blockedParent, "logs"), onWriteError: (error) => errors.push(error) });
+
+    logger.emit(entry("2026-05-19T00:00:00.000Z", "info", "hello"));
+    await waitForWriteQueue();
+
+    expect(errors).toHaveLength(1);
+    expect(existsSync(join(process.cwd(), "logs"))).toBe(false);
+  });
+
+  it("skips symlinks during retention cleanup", async () => {
+    const dir = join(tmpRoot, "symlink-logs");
+    const targetDir = join(tmpRoot, "outside");
+    await mkdir(dir, { recursive: true });
+    await mkdir(targetDir, { recursive: true });
+    const target = join(targetDir, "target.jsonl");
+    const link = join(dir, "2026-05-01.jsonl");
+    await writeFile(target, "outside\n");
+    symlinkSync(target, link);
+    const logger = createLoggerRuntime({ diskDir: dir, retentionDays: 7 });
+
+    logger.emit(entry("2026-05-19T00:00:00.000Z", "info", "hello"));
+    await waitForWriteQueue();
+
+    expect(existsSync(link)).toBe(true);
+    expect(await readFile(target, "utf8")).toBe("outside\n");
   });
 
   it("skips disk writes when disabled", async () => {

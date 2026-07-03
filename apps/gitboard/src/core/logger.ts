@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 import type { ChannelRegistry } from "../api/ws/channels.ts";
 import { createLoggerRuntime } from "../../../../packages/core/src/runtime/server.ts";
 import {
@@ -13,15 +13,15 @@ import {
 export { makeLogEntry, LOG_DEFAULT_LEVEL, LOG_RING_SIZE };
 export type { EventType } from "./observability/event-types.ts";
 
-const HOME_DIR = process.env.HOME ?? ".";
+const HOME_DIR = resolve(process.env.HOME ?? ".");
 const LEGACY_LOG_DIR = join(HOME_DIR, ".agent-forge", "logs");
 const XTRM_LOG_DIR = join(HOME_DIR, ".xtrm", "logs");
-const LOG_DISK_DIR = process.env.LOG_DIR || process.env.GITBOARD_LOG_DIR || XTRM_LOG_DIR;
+const ENV_LOG_DISK_DIR = process.env.LOG_DIR?.trim() || process.env.GITBOARD_LOG_DIR?.trim();
+const LOG_DISK_DIR = ENV_LOG_DISK_DIR ? resolveEnvLogDir(ENV_LOG_DISK_DIR) : XTRM_LOG_DIR;
 const LOG_RETENTION_DAYS = Number(process.env.LOG_RETENTION_DAYS ?? DEFAULT_LOG_RETENTION_DAYS);
 
 const logger = createLoggerRuntime({
   diskDir: LOG_DISK_DIR,
-  fallbackDiskDir: "./logs",
   legacyLogDir: LOG_DISK_DIR === XTRM_LOG_DIR ? LEGACY_LOG_DIR : undefined,
   legacyLinkName: LOG_DISK_DIR === XTRM_LOG_DIR ? "legacy" : undefined,
   retentionDays: LOG_RETENTION_DAYS,
@@ -46,3 +46,7 @@ export function emitLogPath(): void {
 export function getLogDiskDir(): string { return logger.getLogDiskDir(); }
 
 export { LOG_DISK_DIR, LOG_RETENTION_DAYS };
+
+function resolveEnvLogDir(dir: string): string {
+  return isAbsolute(dir) ? dir : resolve(dir);
+}
