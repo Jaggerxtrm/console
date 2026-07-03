@@ -2,7 +2,7 @@ import { join } from "node:path";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import type { Database } from "bun:sqlite";
-import { createRuntimeHostDescriptor, type RuntimeHostDescriptor } from "../../../../packages/core/src/runtime/index.ts";
+import { createGitboardRuntimeLifecycle, createGitboardRuntimeLifecyclePlan, type RuntimeHostDescriptor } from "../../../../packages/core/src/runtime/index.ts";
 import { createGithubRouter } from "./routes/github.ts";
 import { createInternalDoltHealthRouter } from "./routes/internal-dolt-health.ts";
 import { createInternalLogsRouter } from "./routes/internal-logs.ts";
@@ -78,43 +78,28 @@ export function createApp(db: Database, xtrmDb?: Database): {
   currentRegistry = registry;
   const storeDb = xtrmDb ?? db;
   const datasetteDebugEnabled = process.env.EXPLORE_DATASETTE_DEBUG === "1";
-  const materializer = xtrmDb ? new Materializer(storeDb, registry) : null;
-  const runtimeHost = createRuntimeHostDescriptor({
+  const parityEnabled = process.env.GITBOARD_ENABLE_PARITY === "1";
+  const obsRepos = listRepos();
+  const lifecyclePlan = createGitboardRuntimeLifecyclePlan({
+    hasStateDatabase: Boolean(xtrmDb),
+    isDatasetteDebugEnabled: datasetteDebugEnabled,
+    isParityEnabled: parityEnabled,
+  });
+  const lifecycle = createGitboardRuntimeLifecycle(lifecyclePlan, {
     storeDb,
     stateDb: xtrmDb ?? null,
     registry,
-    materializer,
-    capabilities: [
-      "http-api",
-      "websocket",
-      "materializer",
-      "source-health",
-      "github-adapter",
-      "static-dashboard",
-      "internal-logs",
-    ],
-    mountedRoutes: [
-      "/api/github",
-      "/api/substrate",
-      "/api/specialists",
-      "/api/console/observability",
-      "/api/console/graph",
-      "/api/feed",
-      "/api/sources",
-      "/api/console/shell",
-      "/api/console/terminal",
-      "/api/console/explore",
-      "/api/internal",
-      ...(datasetteDebugEnabled ? ["/explore/sql"] : []),
-      "/health",
-      "/console",
-      "/gitboard",
-    ],
+    createMaterializer: (db, channelRegistry) => new Materializer(db, channelRegistry),
+    createScanner: (db, options) => new UnifiedScanner(db, options),
+    createBeadsWatcher: (activeMaterializer, db, channelRegistry) => new TriggerWatcher(activeMaterializer, db, channelRegistry),
+    createObservabilityWatcher: () => createObservabilityWatcher(obsRepos),
+    createBeadsParityHarness: (db, options) => createBeadsParityHarness(db, { enabled: options.enabled && process.env.NODE_ENV !== "test" }),
+    createObservabilityParityHarness,
   });
+  const { materializer, runtimeHost } = lifecycle;
   currentMaterializer = materializer;
-  const obsRepos = listRepos();
   currentUnifiedScanner?.stop();
-  currentUnifiedScanner = xtrmDb ? new UnifiedScanner(storeDb, { parityEnabled: process.env.GITBOARD_ENABLE_PARITY === "1" }) : null;
+  currentUnifiedScanner = lifecycle.scanner;
   currentUnifiedScanner?.start();
   if (materializer && xtrmDb) {
     for (const repo of obsRepos) {
@@ -135,22 +120,17 @@ export function createApp(db: Database, xtrmDb?: Database): {
   }
   const wsHandler = new WsHandler(registry);
   setRealtimePublisher(registry);
-  if (materializer && xtrmDb) currentWatcher = new TriggerWatcher(materializer, xtrmDb, registry);
+  currentWatcher?.stop();
+  currentWatcher = lifecycle.beadsWatcher;
   currentWatcher?.start();
   currentObservabilityWatcher?.stop();
-  currentObservabilityWatcher = createObservabilityWatcher(obsRepos);
+  currentObservabilityWatcher = lifecycle.observabilityWatcher;
   currentObservabilityWatcher.start();
-  // Parity harnesses are shadow-mode diagnostics for the P1/P2 validation
-  // window only. Default OFF in prod; set GITBOARD_ENABLE_PARITY=1 to enable.
-  // Both run on 30s timers and rebuild full-project diffs each cycle (Beads
-  // parity does a filesystem scan + reads up to 1000 issues per project),
-  // which OOM'd prod on first deploy (forge-eorh.47).
-  const parityEnabled = process.env.GITBOARD_ENABLE_PARITY === "1";
   currentObservabilityParityHarness?.stop();
-  currentObservabilityParityHarness = createObservabilityParityHarness(xtrmDb ?? null, { enabled: parityEnabled });
+  currentObservabilityParityHarness = lifecycle.observabilityParityHarness;
   if (parityEnabled) currentObservabilityParityHarness.start();
   currentBeadsParityHarness?.stop();
-  currentBeadsParityHarness = createBeadsParityHarness(xtrmDb ?? null, { enabled: parityEnabled && process.env.NODE_ENV !== "test" });
+  currentBeadsParityHarness = lifecycle.beadsParityHarness;
   if (parityEnabled) currentBeadsParityHarness.start();
 
   app.use("*", cors());

@@ -14,7 +14,10 @@ describe("gitboard runtime ownership map", () => {
     const surfacesById = new Map(ownership.surfaces.map((surface) => [surface.id, surface]));
 
     expect(surfacesById.get("xtrm-state-schema")?.knownHighRiskSymbols).toContain("createXtrmDatabase");
+    expect(surfacesById.get("runtime-host")?.state).toBe("core-owned");
+    expect(surfacesById.get("runtime-host")?.currentOwner).toBe("packages/core");
     expect(surfacesById.get("runtime-host")?.knownHighRiskSymbols).toContain("createApp");
+    expect(surfacesById.get("runtime-host")?.preserves).toContain("materializer lifecycle policy");
     expect(surfacesById.get("materializer-runtime")?.knownHighRiskSymbols).toContain("Materializer");
     expect(surfacesById.get("source-lifecycle")?.knownHighRiskSymbols[0]).toBe("ProjectScanner");
     expect(surfacesById.get("terminal-shell-boundary")?.knownHighRiskSymbols).toContain("TerminalBridge");
