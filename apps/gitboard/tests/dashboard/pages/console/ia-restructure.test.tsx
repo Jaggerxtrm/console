@@ -5,6 +5,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 
 vi.mock("../../../../src/dashboard/hooks/useRepoTree.ts", () => ({ useRepoTree: () => undefined }));
 vi.mock("../../../../src/dashboard/hooks/useGithubActivity.ts", () => ({ useGithubActivity: () => undefined }));
+vi.mock("../../../../src/dashboard/lib/client-log.ts", () => ({ logClientEvent: vi.fn() }));
 vi.mock("../../../../src/dashboard/components/github/GithubPanel.tsx", () => ({ GithubPanel: () => <div data-testid="github-panel" /> }));
 vi.mock("../../../../src/dashboard/components/shell/Sidebar.tsx", () => ({ Sidebar: () => <div data-testid="sidebar" /> }));
 vi.mock("../../../../src/dashboard/components/shell/MainPane.tsx", () => ({ MainPane: () => <div data-testid="main-pane" /> }));
@@ -36,14 +37,14 @@ afterEach(() => {
 });
 
 describe("Console IA restructure", () => {
-  it("renders 2 surfaces and 6 console tabs", () => {
+  it("renders console tabs with Issues as the worklist entry", () => {
     useShellStore.setState({ selection: { surface: "console", tab: "graph", repo: null } as never });
     render(<TopBar />);
 
     expect(screen.getAllByRole("tab")).toHaveLength(8);
     expect(screen.getByRole("tab", { name: "GitHub" })).toBeTruthy();
     expect(screen.getByRole("tab", { name: "Console" })).toBeTruthy();
-    for (const label of ["Feed", "Triage", "Memories", "Graph", "Observability", "Specialists"]) {
+    for (const label of ["Issues", "Graph", "Specialists", "Observability", "Triage", "Memories"]) {
       expect(screen.getByRole("tab", { name: label })).toBeTruthy();
     }
   });
@@ -53,6 +54,13 @@ describe("Console IA restructure", () => {
     render(<App />);
     expect(useShellStore.getState().selection.surface).toBe("console");
     expect(useShellStore.getState().selection.tab).toBe("triage");
+  });
+
+  it("maps /console and /console/issues to the Issues worklist", () => {
+    window.history.pushState({}, "", "/gitboard/console/issues");
+    render(<App />);
+    expect(useShellStore.getState().selection.surface).toBe("console");
+    expect(useShellStore.getState().selection.tab).toBe("feed");
   });
 
   it("keeps GitHub selected after using the shell surface switch", () => {

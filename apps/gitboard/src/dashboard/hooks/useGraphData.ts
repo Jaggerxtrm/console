@@ -5,7 +5,7 @@ import { useDashboardResource, useDashboardResourceInvalidation } from "../lib/r
 
 const CACHE_TTL_MS = 60_000;
 const STALE_RETRY_DELAY_MS = 750;
-const GRAPH_QUERY_MODE = "include_closed=true";
+const GRAPH_QUERY_MODE = "include_closed=false";
 
 export function useGraphData(projectId: string | null) {
   const key = useMemo(() => projectId ? `graph:${projectId}` : null, [projectId]);

@@ -62,7 +62,7 @@ describe("useGraphData", () => {
     renderHook(() => useGraphData("gitboard-ignore-2"));
     await act(async () => { await Promise.resolve(); });
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock.mock.calls[0][0]).toBe("/api/console/graph?project_id=gitboard-ignore-2&include_closed=true");
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/console/graph?project_id=gitboard-ignore-2&include_closed=false");
     wsHandlerByChannel.get("substrate:changes")?.({ type: "event", channel: "substrate:changes", event: "substrate:sync_hint", data: { reason: "global" } });
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -100,7 +100,7 @@ describe("useGraphData", () => {
     await act(async () => { vi.advanceTimersByTime(0); await Promise.resolve(); await Promise.resolve(); });
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls[1][0]).not.toContain("refresh=true");
-    expect(fetchMock.mock.calls[1][0]).toContain("include_closed=true");
+    expect(fetchMock.mock.calls[1][0]).toContain("include_closed=false");
   });
 
   it("refreshes when materializer sync hint names the selected project", async () => {

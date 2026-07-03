@@ -16,7 +16,7 @@ export default defineConfig({
     exclude: ["**/node_modules/**", "**/dist/**", "**/.worktrees/**"],
     reporters: [
       "default",
-      new VitestReporter("/home/dawid/dev/gitboard"),
+      new VitestReporter("/home/dawid/dev/console"),
     ],
     coverage: {
       provider: "v8",

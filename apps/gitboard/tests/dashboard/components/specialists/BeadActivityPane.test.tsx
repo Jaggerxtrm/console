@@ -48,6 +48,12 @@ describe("BeadActivityPane", () => {
     expect(logClientEvent).toHaveBeenCalledWith("bead_activity.mount", { beadId: "bead-1", jobIdHint: undefined });
     expect(logClientEvent).toHaveBeenCalledWith("bead_activity.result.rendered", expect.objectContaining({ beadId: "bead-1", jobId: "job-done", hasResult: true }));
 
+    fireEvent.click(screen.getByRole("button", { name: /collapse result/i }));
+    expect(screen.queryByText("fallback result")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /expand result/i }));
+    await waitFor(() => expect(screen.getByText("fallback result")).toBeTruthy());
+
     fireEvent.click(screen.getByRole("button", { name: /expand terminal feed/i }));
     await waitFor(() => expect(document.querySelectorAll(".terminal-stream")).toHaveLength(2));
     expect(document.querySelectorAll(".terminal-stream")).toHaveLength(2);

@@ -9,6 +9,6 @@ fi
 # --- END BEADS INTEGRATION v0.59.0 ---
 
 # [jaggers] chain-githooks
-if [ -x "/home/dawid/dev/gitboard/.githooks/pre-commit" ]; then
-    "/home/dawid/dev/gitboard/.githooks/pre-commit" "$@"
+if [ -x "/home/dawid/dev/console/.githooks/pre-commit" ]; then
+    "/home/dawid/dev/console/.githooks/pre-commit" "$@"
 fi

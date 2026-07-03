@@ -32,18 +32,18 @@ export const GITHUB_TABS: { id: GithubTab; label: string }[] = [
 ];
 
 export const BEADS_TABS: { id: BeadsTab; label: string }[] = [
-  { id: "feed",      label: "Feed" },
+  { id: "feed",      label: "Issues" },
   { id: "triage",    label: "Triage" },
   { id: "memories",  label: "Memories" },
 ];
 
 export const CONSOLE_TABS: { id: ConsoleTab; label: string }[] = [
-  { id: "feed",          label: "Feed" },
+  { id: "feed",          label: "Issues" },
+  { id: "graph",         label: "Graph" },
+  { id: "specialists",   label: "Specialists" },
+  { id: "observability", label: "Observability" },
   { id: "triage",        label: "Triage" },
   { id: "memories",      label: "Memories" },
-  { id: "graph",         label: "Graph" },
-  { id: "observability", label: "Observability" },
-  { id: "specialists",   label: "Specialists" },
 ];
 
 export const DEFAULT_TAB: Record<Surface, TabId> = {

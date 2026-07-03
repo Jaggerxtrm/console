@@ -81,6 +81,7 @@ export interface SubstrateStats {
 export interface SubstrateIssueFilters {
   status?: readonly string[];
   priority?: readonly number[];
+  issue_type?: readonly string[];
   search?: string;
   limit?: number;
 }
@@ -226,10 +227,10 @@ function mapIssueRow(row: Record<string, unknown>, projectId: string, dependenci
     priority: Number(row.priority ?? 2),
     issue_type: String(row.issue_type ?? "task"),
     owner: row.owner == null ? null : String(row.owner),
-    created_at: String(row.created_at ?? new Date(0).toISOString()),
+    created_at: normalizeTimestampText(row.created_at),
     created_by: null,
-    updated_at: String(row.updated_at ?? new Date(0).toISOString()),
-    closed_at: row.closed_at == null ? (row.deleted_at == null ? undefined : String(row.deleted_at)) : String(row.closed_at),
+    updated_at: normalizeTimestampText(row.updated_at),
+    closed_at: row.closed_at == null ? (row.deleted_at == null ? undefined : normalizeTimestampText(row.deleted_at)) : normalizeTimestampText(row.closed_at),
     close_reason: row.close_reason == null ? undefined : String(row.close_reason),
     project_id: projectId,
     dependencies,
@@ -237,6 +238,22 @@ function mapIssueRow(row: Record<string, unknown>, projectId: string, dependenci
     related_ids: parseJsonStringArray(row.related_ids),
     labels: parseJsonStringArray(row.labels),
   };
+}
+
+function normalizeTimestampText(value: unknown): string {
+  const fallback = new Date(0).toISOString();
+  if (value == null) return fallback;
+  const text = String(value).trim();
+  if (!text) return fallback;
+  if (text.startsWith("\"") && text.endsWith("\"")) {
+    try {
+      const parsed = JSON.parse(text) as unknown;
+      return parsed == null ? fallback : String(parsed);
+    } catch {
+      return text.slice(1, -1);
+    }
+  }
+  return text;
 }
 
 function applySubstrateIssueFilters(issues: SubstrateIssue[], filters: SubstrateIssueFilters): SubstrateIssue[] {
@@ -249,6 +266,10 @@ function applySubstrateIssueFilters(issues: SubstrateIssue[], filters: Substrate
     const wanted = new Set(filters.priority);
     filtered = filtered.filter((issue) => wanted.has(issue.priority));
   }
+  if (filters.issue_type?.length) {
+    const wanted = new Set(filters.issue_type);
+    filtered = filtered.filter((issue) => wanted.has(issue.issue_type));
+  }
   if (filters.search) {
     const search = filters.search.toLowerCase();
     filtered = filtered.filter((issue) =>
@@ -257,7 +278,7 @@ function applySubstrateIssueFilters(issues: SubstrateIssue[], filters: Substrate
       (issue.notes?.toLowerCase().includes(search) ?? false)
     );
   }
-  return filters.limit == null ? filtered : filtered.slice(0, filters.limit);
+  return filters.limit == null || filters.limit <= 0 ? filtered : filtered.slice(0, filters.limit);
 }
 
 function parseJsonStringArray(value: unknown): string[] {

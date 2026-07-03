@@ -15,7 +15,13 @@ const STATUS_PALETTE: Record<string, { fg: string; bg: string }> = {
 export function ChainListRow({ chain, issueContext }: { chain: ChainSummary; issueContext?: ChainIssueContext }) {
   const roles = chain.roles.map((item) => item.role).join(", ") || "unknown";
   const latestJob = chain.jobs[chain.jobs.length - 1];
+  const latestJobId = latestJob?.jobId ?? chain.chainId;
+  const latestModel = latestJob?.model ?? null;
+  const chainKinds = [...new Set(chain.jobs.map((job) => job.chainKind).filter(Boolean))].join(", ") || "chain";
   const palette = STATUS_PALETTE[chain.status] ?? STATUS_PALETTE.done;
+  const rootIssueTitle = issueContext?.touched.find((node) => node.id === chain.rootBeadId)?.title ?? issueContext?.touched[0]?.title;
+  const displayTitle = rootIssueTitle ?? chain.title;
+  const chainContextTitle = chain.title && chain.title !== displayTitle ? chain.title : null;
   const contextItems = issueContext ? [
     ...issueContext.touched.map((node) => ({ key: `touched:${node.id}`, node, relation: "touched" as const })),
     ...issueContext.related.map((item) => ({
@@ -31,16 +37,28 @@ export function ChainListRow({ chain, issueContext }: { chain: ChainSummary; iss
       <div className="console-specialists-chain-row-identity">
         <span className="console-specialists-chain-row-id">{chain.rootBeadId}</span>
         <span className="console-specialists-chain-row-sep">/</span>
-        <span className="console-specialists-chain-row-title">{chain.title}</span>
+        <span className="console-specialists-chain-row-title">{displayTitle}</span>
       </div>
+      {chainContextTitle ? <div className="console-specialists-chain-row-bead-title">{chainContextTitle}</div> : null}
       <div className="console-specialists-chain-row-meta">
+        <span className="console-specialists-chain-row-identity-chip" style={{ ["--chain-row-accent" as string]: palette.fg }}>
+          <span className="console-specialists-chain-row-roles">{roles}</span>
+          <span className="console-specialists-chain-row-chip-sep">/</span>
+          <span className="console-specialists-chain-row-job">{latestJobId}</span>
+          {latestModel ? (
+            <>
+              <span className="console-specialists-chain-row-chip-sep">/</span>
+              <span className="console-specialists-chain-row-model">{latestModel}</span>
+            </>
+          ) : null}
+        </span>
         <span className="console-specialists-chain-row-chip" style={{ color: palette.fg, background: palette.bg }}>
           <span className="console-specialists-chain-row-chip-dot" />
           <span>{chain.status}</span>
         </span>
-        <span className="console-specialists-chain-row-roles">{roles}</span>
+        <span className="console-specialists-chain-row-job">{chainKinds}</span>
         <span className="console-specialists-chain-row-sep">/</span>
-        <span className="console-specialists-chain-row-job">{latestJob?.jobId ?? chain.chainId}</span>
+        <span className="console-specialists-chain-row-job">{chain.jobs.length} job{chain.jobs.length === 1 ? "" : "s"}</span>
       </div>
       {contextItems.length > 0 ? (
         <div className="console-specialists-chain-row-context">

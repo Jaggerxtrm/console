@@ -23,6 +23,7 @@ import "@xyflow/react/dist/style.css";
 
 import { useShellStore, selectRepos, selectSelection } from "../../stores/shell.ts";
 import { logClientEvent } from "../../lib/client-log.ts";
+import { beadSideDrawer, useBeadSideDrawer } from "../../hooks/useBeadSideDrawer.ts";
 import { useGraphData } from "../../hooks/useGraphData.ts";
 import { partitionGraph, type BucketGroup, type ClusterGroup } from "./graph/clusters.ts";
 import { categoryFor, shortJobId, type AgentCategory } from "./graph/agent-roles.ts";
@@ -32,6 +33,7 @@ import { CustomEdge } from "./graph/edges/CustomEdge.tsx";
 import { EdgeMarkers } from "./graph/edges/EdgeMarkers.tsx";
 import { TYPE_CONFIG } from "../../lib/type-palette.ts";
 import type { GraphNode, GraphSpecialist } from "../../../types/graph.ts";
+import type { BeadIssue } from "../../../types/beads.ts";
 
 const NODE_TYPES = { beadNode: BeadNode };
 const EDGE_TYPES = { custom: CustomEdge };
@@ -280,26 +282,13 @@ const STATUS_TEXT: Record<string, string> = {
 };
 
 export function NodeChip({ node, specialist, wide }: { node: GraphNode; specialist: GraphSpecialist | null; wide?: boolean }) {
-  const openSidebar = useShellStore((state) => state.openSidebar);
   const isRunning = specialist?.status === "running";
   const typeColor = TYPE_COLOR[node.type] ?? "var(--text-muted)";
   const typeLabel = TYPE_LABEL[node.type] ?? node.type;
   const statusLabel = node.superseded_by ? "superseded" : STATUS_TEXT[node.status] ?? node.status;
   const agentCat: AgentCategory = categoryFor(specialist?.role);
   const classes = ["g-node", "g-node-inline", wide ? "g-node-wide" : "", isRunning ? "act" : ""].filter(Boolean).join(" ");
-  const handleClick = () => {
-    if (!specialist) return;
-    const previous = useShellStore.getState().sidebar;
-    logClientEvent("chip.click", { source: "graph_node", beadId: node.id, jobId: specialist.job_id ?? null });
-    openSidebar({ beadId: node.id, jobId: specialist.job_id ?? undefined });
-    logClientEvent("chip.sidebar.dispatched", {
-      source: "graph_node",
-      beadId: node.id,
-      jobId: specialist.job_id ?? null,
-      swap: Boolean(previous.open && previous.beadId !== node.id),
-      prevSidebar: previous.open ? { beadId: previous.beadId, jobId: previous.jobId } : null,
-    });
-  };
+  const handleClick = () => openGraphNode(node, specialist, "graph_node");
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
@@ -335,8 +324,15 @@ function OrphanRow({ node }: { node: GraphNode }) {
   const typeColor = TYPE_COLOR[node.type] ?? "var(--text-muted)";
   const typeLabel = TYPE_LABEL[node.type] ?? node.type;
   const statusLabel = node.superseded_by ? "superseded" : STATUS_TEXT[node.status] ?? node.status;
+  const handleClick = () => openGraphNode(node, null, "graph_orphan");
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      handleClick();
+    }
+  };
   return (
-    <div className="g-orow" data-p={node.priority} title={node.title}>
+    <div className="g-orow" data-p={node.priority} title={node.title} onClick={handleClick} onKeyDown={handleKeyDown} role="button" tabIndex={0} aria-label={`Open ${node.id} issue inspector`}>
       <div className="g-node-identity">
         <span className="g-id">{node.id}</span>
         <span className="g-sep">/</span>
@@ -349,6 +345,38 @@ function OrphanRow({ node }: { node: GraphNode }) {
       </div>
     </div>
   );
+}
+
+function openGraphNode(node: GraphNode, specialist: GraphSpecialist | null, source: "graph_node" | "graph_orphan") {
+  const issue = graphNodeToIssue(node);
+  const drawer = useBeadSideDrawer.getState();
+  drawer.setContext(drawer.projectId, new Map(drawer.issueById).set(node.id, issue));
+  logClientEvent("chip.click", { source, beadId: node.id, jobId: specialist?.job_id ?? null });
+  beadSideDrawer.open(node.id);
+  logClientEvent("chip.inspector.dispatched", {
+    source,
+    beadId: node.id,
+    jobId: specialist?.job_id ?? null,
+  });
+}
+
+function graphNodeToIssue(node: GraphNode): BeadIssue {
+  return {
+    id: node.id,
+    title: node.title,
+    description: null,
+    status: node.status,
+    priority: node.priority,
+    issue_type: node.type,
+    owner: null,
+    created_at: "",
+    created_by: null,
+    updated_at: "",
+    project_id: "",
+    dependencies: [],
+    related_ids: [],
+    labels: [],
+  };
 }
 
 // ============================================================================
