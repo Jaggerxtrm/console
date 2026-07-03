@@ -15,28 +15,31 @@ import { BeadSideDrawer } from "../../../../src/dashboard/pages/console/BeadSide
 beforeEach(() => {
   useBeadSideDrawer.setState({ beadId: null, projectId: "gitboard", issueById: new Map([["forge-b2", { id: "forge-b2", title: "Beta", priority: 1, issue_type: "task", status: "open", description: null, notes: null, labels: [], related_ids: [], dependencies: [], project_id: "gitboard" } as never]]), open: useBeadSideDrawer.getState().open, close: useBeadSideDrawer.getState().close, setContext: useBeadSideDrawer.getState().setContext } as never);
   useShellStore.setState({ selection: { surface: "console", tab: "graph", repo: "gitboard" } as never });
+  document.body.style.overflow = "";
 });
 
 describe("BeadSideDrawer", () => {
-  it("opens, closes, handles ESC, backdrop, and open in feed", async () => {
+  it("opens as a non-modal inspector, handles ESC, and opens in issues", async () => {
     vi.stubGlobal("CSS", { escape: (value: string) => value } as typeof CSS);
+    document.body.style.overflow = "auto";
 
     useBeadSideDrawer.getState().open("forge-b2");
     render(<BeadSideDrawer />);
 
-    expect(await screen.findByRole("dialog")).toBeTruthy();
+    expect(await screen.findByRole("complementary", { name: /issue inspector/i })).toBeTruthy();
+    expect(screen.getByLabelText("xtrm / issue / forge-b2")).toBeTruthy();
+    expect(document.body.style.overflow).toBe("auto");
     expect(screen.getByText("Beta")).toBeTruthy();
+
+    fireEvent.click(document.querySelector(".bead-side-drawer-backdrop") as Element);
+    expect(useBeadSideDrawer.getState().beadId).toBe("forge-b2");
+
     fireEvent.keyDown(document, { key: "Escape" });
     await waitFor(() => expect(useBeadSideDrawer.getState().beadId).toBeNull());
 
     useBeadSideDrawer.getState().open("forge-b2");
     render(<BeadSideDrawer />);
-    fireEvent.click(document.querySelector(".bead-side-drawer-backdrop") as Element);
-    await waitFor(() => expect(useBeadSideDrawer.getState().beadId).toBeNull());
-
-    useBeadSideDrawer.getState().open("forge-b2");
-    render(<BeadSideDrawer />);
-    fireEvent.click(screen.getAllByRole("button", { name: "Open in Feed" })[0]!);
+    fireEvent.click(screen.getAllByRole("button", { name: "Open in Issues" })[0]!);
     expect(useShellStore.getState().selection.tab).toBe("feed");
   });
 

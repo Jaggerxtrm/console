@@ -413,6 +413,7 @@ function parseIssueFilters(c: { req: { query(name: string): string | undefined }
   return {
     status: c.req.query("status")?.split(","),
     priority: c.req.query("priority")?.split(",").map(Number),
+    issue_type: c.req.query("issue_type")?.split(","),
     search: c.req.query("search") ?? undefined,
     limit: parseLimit(c.req.query("limit")),
   };

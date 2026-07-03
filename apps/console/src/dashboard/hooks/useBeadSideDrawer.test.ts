@@ -7,6 +7,7 @@ describe("useBeadSideDrawer", () => {
     useBeadSideDrawer.setState({
       beadId: null,
       jobId: null,
+      chainId: null,
       projectId: null,
       issueById: new Map(),
       fallbackIssue: null,
@@ -19,16 +20,17 @@ describe("useBeadSideDrawer", () => {
   it("opens a bead inspector target with optional job and fallback issue", () => {
     const issue = beadIssue("forge-one");
 
-    useBeadSideDrawer.getState().open({ beadId: issue.id, jobId: "job-1", issue });
+    useBeadSideDrawer.getState().open({ beadId: issue.id, jobId: "job-1", chainId: "chain-1", issue });
 
     expect(useBeadSideDrawer.getState().beadId).toBe("forge-one");
     expect(useBeadSideDrawer.getState().jobId).toBe("job-1");
+    expect(useBeadSideDrawer.getState().chainId).toBe("chain-1");
     expect(useBeadSideDrawer.getState().fallbackIssue?.title).toBe("Issue forge-one");
     expect(useBeadSideDrawer.getState().tab).toBe("overview");
   });
 
   it("preserves bead navigation history and restores previous targets", () => {
-    useBeadSideDrawer.getState().open({ beadId: "forge-one", jobId: "job-1", issue: beadIssue("forge-one") });
+    useBeadSideDrawer.getState().open({ beadId: "forge-one", jobId: "job-1", chainId: "chain-1", issue: beadIssue("forge-one") });
     useBeadSideDrawer.getState().setTab("activity");
     useBeadSideDrawer.getState().open({ beadId: "forge-two", issue: beadIssue("forge-two") });
 
@@ -40,6 +42,7 @@ describe("useBeadSideDrawer", () => {
 
     expect(useBeadSideDrawer.getState().beadId).toBe("forge-one");
     expect(useBeadSideDrawer.getState().jobId).toBe("job-1");
+    expect(useBeadSideDrawer.getState().chainId).toBe("chain-1");
     expect(useBeadSideDrawer.getState().backStack).toHaveLength(0);
   });
 

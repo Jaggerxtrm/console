@@ -236,11 +236,12 @@ function routeTab(path: string): TabId | null {
   if (path.includes("/beads/triage")) return "triage";
   if (path.includes("/beads/memories")) return "memories";
   if (path.includes("/beads/feed") || path.endsWith("/beads")) return "feed";
+  if (path.includes("/console/issues") || path.includes("/console/feed")) return "feed";
   if (path.includes("/console/graph")) return "graph";
   if (path.includes("/console/specialists")) return "specialists";
   if (path.includes("/console/operations")) return "operations";
   if (path.includes("/console/explore")) return "explore";
   if (path.includes("/console/observability")) return "observability";
-  if (path.endsWith("/console")) return "observability";
+  if (path.endsWith("/console")) return "feed";
   return null;
 }

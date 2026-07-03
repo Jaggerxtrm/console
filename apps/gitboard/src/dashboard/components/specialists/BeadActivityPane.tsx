@@ -153,6 +153,7 @@ export function BeadActivityPane({ beadId, jobIdHint }: BeadActivityPaneProps) {
 }
 
 function JobBlock({ job, expanded, onToggle, result, feed }: { job: SpecialistJob; expanded: boolean; onToggle: () => void; result?: ResultPayload; feed?: string; }) {
+  const [resultExpanded, setResultExpanded] = useState(true);
   const state = jobFeedState(job, expanded);
   const jobKey = job.jobId ?? job.beadId;
   const isRunning = state === "running";
@@ -200,7 +201,24 @@ function JobBlock({ job, expanded, onToggle, result, feed }: { job: SpecialistJo
               status={<TerminalStatus mode="history" role={role} status={feed ? "sp feed" : "snapshot"} detail={feedStatus} />}
             />
           ) : null}
-          {result ? <ResultMarkdown text={result.text} /> : null}
+          {result ? (
+            <section className="bead-activity-result">
+              <button
+                type="button"
+                className="bead-activity-toggle bead-activity-result-toggle"
+                onClick={() => setResultExpanded((value) => !value)}
+                aria-expanded={resultExpanded}
+                aria-label={`${resultExpanded ? "collapse" : "expand"} result for ${role} ${jobKey}`}
+              >
+                <span className="bead-activity-toggle-main">
+                  {resultExpanded ? <ChevronDownIcon size={12} aria-hidden="true" /> : <ChevronRightIcon size={12} aria-hidden="true" />}
+                  <span>result</span>
+                </span>
+                <span className="bead-activity-toggle-meta">{result.content_type ?? "markdown"}</span>
+              </button>
+              {resultExpanded ? <div className="bead-activity-result-body"><ResultMarkdown text={result.text} /></div> : null}
+            </section>
+          ) : null}
         </div>
       )}
     </article>

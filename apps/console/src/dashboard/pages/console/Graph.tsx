@@ -28,7 +28,7 @@ import { useGraphData } from "../../hooks/useGraphData.ts";
 import { partitionGraph, type BucketGroup, type ClusterGroup } from "./graph/clusters.ts";
 import { categoryFor, shortJobId, type AgentCategory } from "./graph/agent-roles.ts";
 import { buildClusterFlow } from "./graph/buildFlowGraph.ts";
-import { BeadNode } from "./graph/nodes/BeadNode.tsx";
+import { BeadNode, type BeadNodeData } from "./graph/nodes/BeadNode.tsx";
 import { CustomEdge } from "./graph/edges/CustomEdge.tsx";
 import { EdgeMarkers } from "./graph/edges/EdgeMarkers.tsx";
 import { TYPE_CONFIG } from "../../lib/type-palette.ts";
@@ -197,6 +197,10 @@ function ClusterPane({ cluster, specialists }: { cluster: ClusterGroup; speciali
             edges={flow.edges}
             nodeTypes={NODE_TYPES}
             edgeTypes={EDGE_TYPES}
+            onNodeClick={(_, node) => {
+              const data = node.data as BeadNodeData;
+              openGraphNode(data.node, data.specialist, "graph_node");
+            }}
             nodesDraggable={false}
             nodesConnectable={false}
             elementsSelectable={false}
@@ -288,15 +292,7 @@ export function NodeChip({ node, specialist, wide }: { node: GraphNode; speciali
   const statusLabel = node.superseded_by ? "superseded" : STATUS_TEXT[node.status] ?? node.status;
   const agentCat: AgentCategory = categoryFor(specialist?.role);
   const classes = ["g-node", "g-node-inline", wide ? "g-node-wide" : "", isRunning ? "act" : ""].filter(Boolean).join(" ");
-  const handleClick = () => {
-    logClientEvent("chip.click", { source: "graph_node", beadId: node.id, jobId: specialist?.job_id ?? null });
-    beadSideDrawer.open({ beadId: node.id, jobId: specialist?.job_id ?? null, issue: graphNodeToIssue(node) });
-    logClientEvent("chip.inspector.dispatched", {
-      source: "graph_node",
-      beadId: node.id,
-      jobId: specialist?.job_id ?? null,
-    });
-  };
+  const handleClick = () => openGraphNode(node, specialist, "graph_node");
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
@@ -328,6 +324,43 @@ export function NodeChip({ node, specialist, wide }: { node: GraphNode; speciali
   );
 }
 
+function OrphanRow({ node }: { node: GraphNode }) {
+  const typeColor = TYPE_COLOR[node.type] ?? "var(--text-muted)";
+  const typeLabel = TYPE_LABEL[node.type] ?? node.type;
+  const statusLabel = node.superseded_by ? "superseded" : STATUS_TEXT[node.status] ?? node.status;
+  const handleClick = () => openGraphNode(node, null, "graph_orphan");
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      handleClick();
+    }
+  };
+  return (
+    <div className="g-orow" data-p={node.priority} title={node.title} onClick={handleClick} onKeyDown={handleKeyDown} role="button" tabIndex={0} aria-label={`Open ${node.id} issue inspector`}>
+      <div className="g-node-identity">
+        <span className="g-id">{node.id}</span>
+        <span className="g-sep">/</span>
+        <span className="g-tt">{node.title}</span>
+      </div>
+      <div className="g-node-class">
+        <span className="g-pri" style={{ color: typeColor }}>P{node.priority}</span>
+        <span className="g-type" style={{ color: typeColor }}>{typeLabel}</span>
+        <span className="g-state">{statusLabel}</span>
+      </div>
+    </div>
+  );
+}
+
+function openGraphNode(node: GraphNode, specialist: GraphSpecialist | null, source: "graph_node" | "graph_orphan") {
+  logClientEvent("chip.click", { source, beadId: node.id, jobId: specialist?.job_id ?? null });
+  beadSideDrawer.open({ beadId: node.id, jobId: specialist?.job_id ?? null, issue: graphNodeToIssue(node) });
+  logClientEvent("chip.inspector.dispatched", {
+    source,
+    beadId: node.id,
+    jobId: specialist?.job_id ?? null,
+  });
+}
+
 function graphNodeToIssue(node: GraphNode): BeadIssue {
   return {
     id: node.id,
@@ -345,26 +378,6 @@ function graphNodeToIssue(node: GraphNode): BeadIssue {
     related_ids: [],
     labels: [],
   };
-}
-
-function OrphanRow({ node }: { node: GraphNode }) {
-  const typeColor = TYPE_COLOR[node.type] ?? "var(--text-muted)";
-  const typeLabel = TYPE_LABEL[node.type] ?? node.type;
-  const statusLabel = node.superseded_by ? "superseded" : STATUS_TEXT[node.status] ?? node.status;
-  return (
-    <div className="g-orow" data-p={node.priority} title={node.title}>
-      <div className="g-node-identity">
-        <span className="g-id">{node.id}</span>
-        <span className="g-sep">/</span>
-        <span className="g-tt">{node.title}</span>
-      </div>
-      <div className="g-node-class">
-        <span className="g-pri" style={{ color: typeColor }}>P{node.priority}</span>
-        <span className="g-type" style={{ color: typeColor }}>{typeLabel}</span>
-        <span className="g-state">{statusLabel}</span>
-      </div>
-    </div>
-  );
 }
 
 // ============================================================================

@@ -4,8 +4,12 @@
 // label using the same palette as TYPE_CONFIG in IssueFeed.tsx.
 
 import { Handle, Position, type NodeProps } from "@xyflow/react";
+import type { KeyboardEvent, MouseEvent } from "react";
 import type { GraphNode, GraphNodeType, GraphSpecialist } from "../../../../../types/graph.ts";
+import type { BeadIssue } from "../../../../../types/beads.ts";
 import { TYPE_CONFIG } from "../../../../lib/type-palette.ts";
+import { logClientEvent } from "../../../../lib/client-log.ts";
+import { beadSideDrawer } from "../../../../hooks/useBeadSideDrawer.ts";
 import { categoryFor, shortJobId, type AgentCategory } from "../agent-roles.ts";
 
 export interface BeadNodeData extends Record<string, unknown> {
@@ -60,8 +64,24 @@ export function BeadNode({ data }: NodeProps) {
   const statusLabel = node.superseded_by ? "superseded" : STATUS_TEXT[node.status] ?? node.status;
   const agentCat: AgentCategory = categoryFor(specialist?.role);
   const classes = ["g-node", isRunning ? "act" : ""].filter(Boolean).join(" ");
+  const handleOpen = () => {
+    logClientEvent("chip.click", { source: "graph_flow_node", beadId: node.id, jobId: specialist?.job_id ?? null });
+    beadSideDrawer.open({ beadId: node.id, jobId: specialist?.job_id ?? null, issue: graphNodeToIssue(node) });
+    logClientEvent("chip.inspector.dispatched", { source: "graph_flow_node", beadId: node.id, jobId: specialist?.job_id ?? null });
+  };
+  const handleClick = (event: MouseEvent<HTMLDivElement>) => {
+    event.stopPropagation();
+    handleOpen();
+  };
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      event.stopPropagation();
+      handleOpen();
+    }
+  };
   return (
-    <div className={classes} data-p={node.priority}>
+    <div className={classes} data-p={node.priority} onClick={handleClick} onKeyDown={handleKeyDown} role="button" tabIndex={0} aria-label={`Open ${node.id} issue inspector`}>
       <Handle id="lt" type="target" position={Position.Left} style={HANDLE_STYLE} />
       <Handle id="ls" type="source" position={Position.Left} style={HANDLE_STYLE} />
       <Handle id="tt" type="target" position={Position.Top} style={HANDLE_STYLE} />
@@ -91,4 +111,23 @@ export function BeadNode({ data }: NodeProps) {
       <Handle id="rs" type="source" position={Position.Right} style={HANDLE_STYLE} />
     </div>
   );
+}
+
+function graphNodeToIssue(node: GraphNode): BeadIssue {
+  return {
+    id: node.id,
+    title: node.title,
+    description: null,
+    status: node.status,
+    priority: node.priority,
+    issue_type: node.type,
+    owner: null,
+    created_at: "",
+    created_by: null,
+    updated_at: "",
+    project_id: "",
+    dependencies: [],
+    related_ids: [],
+    labels: [],
+  };
 }

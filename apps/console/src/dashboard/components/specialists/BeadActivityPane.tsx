@@ -11,15 +11,20 @@ import { groupJobsByChain, isFinished, jobFeedState, type ResultPayload } from "
 export type BeadActivityPaneProps = {
   beadId: string;
   jobIdHint?: string | null;
+  chainIdHint?: string | null;
 };
 
 type JobsResponse = {
   jobs: SpecialistJob[];
 };
 
+type ChainResponse = {
+  chain?: { jobs?: Array<Omit<SpecialistJob, "lastOutput"> & { lastOutput?: string | null; last_output?: string | null }> };
+};
+
 const ACTIVITY_POLL_MS = 5000;
 
-export function BeadActivityPane({ beadId, jobIdHint }: BeadActivityPaneProps) {
+export function BeadActivityPane({ beadId, jobIdHint, chainIdHint }: BeadActivityPaneProps) {
   const [jobs, setJobs] = useState<SpecialistJob[]>([]);
   const [headerIssue, setHeaderIssue] = useState<SpecialistJob | null>(null);
   const [results, setResults] = useState<Record<string, ResultPayload | undefined>>({});
@@ -32,14 +37,14 @@ export function BeadActivityPane({ beadId, jobIdHint }: BeadActivityPaneProps) {
   const expandedRef = useRef<Record<string, boolean>>({});
 
   useEffect(() => {
-    logClientEvent("bead_activity.mount", { beadId, jobIdHint });
+    logClientEvent("bead_activity.mount", { beadId, jobIdHint, chainIdHint });
     return () => {
       for (const [jobId, isExpanded] of Object.entries(expandedRef.current)) {
         if (isExpanded) logClientEvent("bead_activity.feed.collapse", { beadId, jobId, reason: "unmount" });
       }
-      logClientEvent("bead_activity.unmount", { beadId, jobIdHint });
+      logClientEvent("bead_activity.unmount", { beadId, jobIdHint, chainIdHint });
     };
-  }, [beadId, jobIdHint]);
+  }, [beadId, jobIdHint, chainIdHint]);
 
   useEffect(() => {
     let cancelled = false;
@@ -55,12 +60,15 @@ export function BeadActivityPane({ beadId, jobIdHint }: BeadActivityPaneProps) {
     expandedRef.current = {};
     async function loadJobs() {
       try {
-        const res = await fetch(`/api/specialists/jobs?bead_id=${encodeURIComponent(beadId)}`);
+        const res = await fetch(chainIdHint
+          ? `/api/specialists/chains/${encodeURIComponent(chainIdHint)}`
+          : `/api/specialists/jobs?bead_id=${encodeURIComponent(beadId)}`);
         if (!res.ok) throw new Error(`jobs ${res.status}`);
-        const data = await res.json() as JobsResponse;
+        const data = await res.json() as JobsResponse | ChainResponse;
         if (cancelled) return;
-        setJobs(data.jobs);
-        setHeaderIssue(data.jobs[0] ?? null);
+        const nextJobs = normalizeActivityJobs(data);
+        setJobs(nextJobs);
+        setHeaderIssue(nextJobs.find((job) => job.beadId === beadId) ?? nextJobs[0] ?? null);
       } catch (loadError) {
         if (!cancelled) setError(loadError instanceof Error ? loadError.message : String(loadError));
       } finally {
@@ -73,9 +81,9 @@ export function BeadActivityPane({ beadId, jobIdHint }: BeadActivityPaneProps) {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [beadId]);
+  }, [beadId, chainIdHint]);
 
-  const chains = useMemo(() => groupJobsByChain(jobs, jobIdHint), [jobIdHint, jobs]);
+  const chains = useMemo(() => groupJobsByChain(jobs, chainIdHint ?? jobIdHint), [chainIdHint, jobIdHint, jobs]);
 
   useEffect(() => {
     for (const job of jobs) {
@@ -153,6 +161,7 @@ export function BeadActivityPane({ beadId, jobIdHint }: BeadActivityPaneProps) {
 }
 
 function JobBlock({ job, expanded, onToggle, result, feed }: { job: SpecialistJob; expanded: boolean; onToggle: () => void; result?: ResultPayload; feed?: string; }) {
+  const [resultExpanded, setResultExpanded] = useState(false);
   const state = jobFeedState(job, expanded);
   const jobKey = job.jobId ?? job.beadId;
   const isRunning = state === "running";
@@ -162,18 +171,48 @@ function JobBlock({ job, expanded, onToggle, result, feed }: { job: SpecialistJo
   const output = terminalOutputForJob(job, result, feed);
   const lineCount = countLines(output[0]);
   const feedStatus = feed ? `${lineCount} lines` : result || job.lastOutput ? "fallback" : "loading";
+  const resultLineCount = countLines(result?.text);
+  const metrics = [
+    job.turns !== null ? `${job.turns} turns` : null,
+    job.tools !== null ? `${job.tools} tools` : null,
+    resultLineCount > 0 ? `${resultLineCount} result lines` : null,
+    updatedLabel,
+  ].filter(Boolean);
   return (
-    <article className="bead-activity-job">
+    <article className={`bead-activity-job bead-activity-job-${statusTone(job.status)}`}>
+      <span className={`bead-activity-job-rail bead-activity-job-rail-${statusTone(job.status)}`} aria-hidden="true" />
       <button type="button" className="bead-activity-job-row" onClick={onToggle} aria-expanded={expanded} aria-label={`${role} ${statusLabel} activity for ${job.beadId}`}>
-        <div className="bead-activity-job-main">
-          <span className={`bead-activity-status bead-activity-status-${statusClass(job.status)}`}>{statusLabel}</span>
-          <span className="bead-activity-role">{role}</span>
+        <div className="bead-activity-job-head">
+          <span className="bead-activity-id-chip">
+            <span className="bead-activity-role">{role}</span>
+            <span className="bead-activity-chip-sep">/</span>
+            <span className="bead-activity-chip-id">{jobKey}</span>
+            {job.model ? (
+              <>
+                <span className="bead-activity-chip-sep">/</span>
+                <span className="bead-activity-chip-model">{job.model}</span>
+              </>
+            ) : null}
+          </span>
+          <span className={`bead-activity-status-pill bead-activity-status-pill-${statusTone(job.status)}`}>
+            {isRunning ? <span className="bead-activity-live-dot" aria-hidden="true" /> : null}
+            <span>{statusLabel}</span>
+          </span>
+          {metrics.length > 0 ? (
+            <span className="bead-activity-job-metrics">
+              {metrics.map((metric, index) => (
+                <span key={metric}>
+                  {index > 0 ? <span className="bead-activity-metric-sep">·</span> : null}
+                  {metric}
+                </span>
+              ))}
+            </span>
+          ) : null}
         </div>
         <div className="bead-activity-job-meta">
           <span>{job.beadId}</span>
-          {jobKey !== job.beadId ? <span>{jobKey}</span> : null}
           {job.chainId ? <span>{job.chainId}</span> : null}
-          {updatedLabel ? <span>{updatedLabel}</span> : null}
+          {job.chainKind ? <span>{job.chainKind}</span> : null}
         </div>
       </button>
       {isRunning ? (
@@ -200,7 +239,24 @@ function JobBlock({ job, expanded, onToggle, result, feed }: { job: SpecialistJo
               status={<TerminalStatus mode="history" role={role} status={feed ? "sp feed" : "snapshot"} detail={feedStatus} />}
             />
           ) : null}
-          {result ? <ResultMarkdown text={result.text} /> : null}
+          {result ? (
+            <section className="bead-activity-result">
+              <button
+                type="button"
+                className="bead-activity-toggle bead-activity-result-toggle"
+                onClick={() => setResultExpanded((value) => !value)}
+                aria-expanded={resultExpanded}
+                aria-label={`${resultExpanded ? "collapse" : "expand"} result for ${role} ${jobKey}`}
+              >
+                <span className="bead-activity-toggle-main">
+                  {resultExpanded ? <ChevronDownIcon size={12} aria-hidden="true" /> : <ChevronRightIcon size={12} aria-hidden="true" />}
+                  <span>result</span>
+                </span>
+                <span className="bead-activity-toggle-meta">{result.content_type ?? "markdown"}</span>
+              </button>
+              {resultExpanded ? <div className="bead-activity-result-body"><ResultMarkdown text={result.text} /></div> : null}
+            </section>
+          ) : null}
         </div>
       )}
     </article>
@@ -220,6 +276,11 @@ function TerminalStatus({ mode, role, status, detail }: { mode: "live" | "histor
       <span>{detail}</span>
     </div>
   );
+}
+
+function normalizeActivityJobs(data: JobsResponse | ChainResponse): SpecialistJob[] {
+  if ("jobs" in data) return data.jobs;
+  return (data.chain?.jobs ?? []).map((job) => ({ ...job, lastOutput: job.lastOutput ?? job.last_output ?? null }));
 }
 
 async function loadFeed(job: SpecialistJob): Promise<string | undefined> {
@@ -267,6 +328,15 @@ function formatStatus(status: string): string {
 
 function statusClass(status: string): string {
   return status.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "unknown";
+}
+
+function statusTone(status: string): "run" | "pass" | "fail" | "warn" | "idle" {
+  const normalized = statusClass(status);
+  if (normalized === "running" || normalized === "starting") return "run";
+  if (normalized === "done" || normalized === "completed" || normalized === "success") return "pass";
+  if (normalized === "failed" || normalized === "error" || normalized === "cancelled") return "fail";
+  if (normalized === "waiting" || normalized === "blocked" || normalized === "partial") return "warn";
+  return "idle";
 }
 
 function formatUpdatedAt(value: string): string | null {

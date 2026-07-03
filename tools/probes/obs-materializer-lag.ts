@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite";
 
-const OBS = "/home/dawid/dev/gitboard/.specialists/db/observability.db";
+const OBS = "/home/dawid/dev/console/.specialists/db/observability.db";
 const XTRM = "/home/dawid/.agent-forge/xtrm.sqlite";
 const API = "http://100.113.49.52:3030/api/specialists/jobs/in-flight";
 const t0 = Date.now();

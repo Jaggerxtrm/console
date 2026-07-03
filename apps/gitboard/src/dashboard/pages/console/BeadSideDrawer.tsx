@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { XIcon } from "@primer/octicons-react";
 import type { BeadIssueDetail } from "../../../types/beads.ts";
@@ -9,15 +9,11 @@ import { useSpecialistOwnership } from "../../hooks/useSpecialistOwnership.ts";
 import { useSpecialistHistory } from "../../hooks/useSpecialistHistory.ts";
 import { IssueDossier } from "../../components/beads/IssueFeed.tsx";
 
-const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
-
 export function BeadSideDrawer({ onClose }: { onClose?: () => void } = {}) {
   const beadId = useBeadSideDrawer((s) => s.beadId);
   const projectId = useBeadSideDrawer((s) => s.projectId);
   const issueById = useBeadSideDrawer((s) => s.issueById);
   const close = useBeadSideDrawer((s) => s.close);
-  const panelRef = useRef<HTMLDivElement | null>(null);
-  const previouslyFocused = useRef<HTMLElement | null>(null);
   const issue = beadId ? issueById.get(beadId) ?? null : null;
   const ownership = useSpecialistOwnership(beadId);
   const history = useSpecialistHistory(beadId);
@@ -42,38 +38,23 @@ export function BeadSideDrawer({ onClose }: { onClose?: () => void } = {}) {
     return () => { cancelled = true; };
   }, [beadId, projectId]);
 
+  const handleClose = useCallback(() => {
+    onClose?.();
+    close();
+  }, [close, onClose]);
+
   const handleKey = useCallback((event: KeyboardEvent) => {
     if (event.key === "Escape") {
       event.preventDefault();
-      onClose?.();
-      close();
-      return;
+      handleClose();
     }
-    if (event.key !== "Tab" || !panelRef.current) return;
-    const items = panelRef.current.querySelectorAll<HTMLElement>(FOCUSABLE);
-    if (items.length === 0) return;
-    const first = items[0];
-    const last = items[items.length - 1];
-    if (event.shiftKey && document.activeElement === first) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault();
-      first.focus();
-    }
-  }, [close]);
+  }, [handleClose]);
 
   useEffect(() => {
     if (!beadId) return;
-    previouslyFocused.current = document.activeElement as HTMLElement | null;
     document.addEventListener("keydown", handleKey);
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    queueMicrotask(() => panelRef.current?.focus());
     return () => {
       document.removeEventListener("keydown", handleKey);
-      document.body.style.overflow = prevOverflow;
-      previouslyFocused.current?.focus?.();
     };
   }, [beadId, handleKey]);
 
@@ -88,14 +69,23 @@ export function BeadSideDrawer({ onClose }: { onClose?: () => void } = {}) {
   if (!beadId || !issue) return null;
 
   return createPortal(
-    <div className="bead-side-drawer-backdrop" onClick={() => { onClose?.(); close(); }}>
-      <aside className="bead-side-drawer" ref={panelRef} role="dialog" aria-modal="true" aria-labelledby="bead-side-drawer-title" tabIndex={-1} onClick={(event) => event.stopPropagation()}>
+    <div className="bead-side-drawer-backdrop" aria-hidden="false">
+      <aside className="bead-side-drawer" role="complementary" aria-label="Issue inspector">
         <header className="bead-side-drawer-header">
-          <div className="bead-side-drawer-headline">
-            <span className="bead-side-drawer-id">{issue.id}</span>
-            <span id="bead-side-drawer-title" className="bead-side-drawer-title">{issue.title}</span>
+          <div className="bead-side-drawer-header-main">
+            <div className="bead-side-drawer-breadcrumb" aria-label={`xtrm / issue / ${issue.id}`}>
+              <span>xtrm</span>
+              <span>/</span>
+              <span>issue</span>
+              <span>/</span>
+              <span>{issue.id}</span>
+            </div>
+            <div className="bead-side-drawer-headline">
+              <span className="bead-side-drawer-id">{issue.id}</span>
+              <span id="bead-side-drawer-title" className="bead-side-drawer-title">{issue.title}</span>
+            </div>
           </div>
-          <button type="button" className="bead-side-drawer-close" aria-label="close bead drawer" onClick={() => { onClose?.(); close(); }}><XIcon size={14} /></button>
+          <button type="button" className="bead-side-drawer-close" aria-label="close bead drawer" onClick={handleClose}><XIcon size={14} /></button>
         </header>
         <div className="bead-side-drawer-body">
           <div className="bead-dossier-meta-strip">
@@ -108,7 +98,7 @@ export function BeadSideDrawer({ onClose }: { onClose?: () => void } = {}) {
           <IssueDossier id={`bead-side-drawer-${issue.id}`} issue={issue} detail={detail} loading={loading} projectId={projectId} issueById={issueById} />
         </div>
         <footer className="bead-side-drawer-footer">
-          <button type="button" className="ide-btn" onClick={goToFeed}>Open in Feed</button>
+          <button type="button" className="ide-btn" onClick={goToFeed}>Open in Issues</button>
         </footer>
       </aside>
     </div>,

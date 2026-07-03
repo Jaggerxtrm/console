@@ -50,13 +50,14 @@ export const substrateApi = {
 
   async listIssues(
     projectId: string,
-    filters?: { status?: BeadIssue["status"][]; priority?: BeadIssue["priority"][]; search?: string; limit?: number },
+    filters?: { status?: BeadIssue["status"][]; priority?: BeadIssue["priority"][]; issue_type?: BeadIssue["issue_type"][]; search?: string; limit?: number },
   ): Promise<BeadIssue[]> {
     const params = new URLSearchParams();
     if (filters?.status) params.set("status", filters.status.join(","));
     if (filters?.priority) params.set("priority", filters.priority.map(String).join(","));
+    if (filters?.issue_type) params.set("issue_type", filters.issue_type.join(","));
     if (filters?.search) params.set("search", filters.search);
-    if (filters?.limit) params.set("limit", String(filters.limit));
+    if (filters?.limit != null) params.set("limit", String(filters.limit));
     const qs = params.toString();
     const data = await jsonFetch<{ issues?: BeadIssue[] }>(
       `/api/substrate/projects/${enc(projectId)}/issues${qs ? `?${qs}` : ""}`,

@@ -126,6 +126,23 @@ describe("substrate read model", () => {
     expect(readSubstrateIssues(db, "demo", { priority: [0, 1] }).map((issue) => issue.id).sort()).toEqual(["a", "b"]);
     expect(readSubstrateIssues(db, "demo", { search: "search" }).map((issue) => issue.id)).toEqual(["a"]);
     expect(readSubstrateIssues(db, "demo", { limit: 2 })).toHaveLength(2);
+    expect(readSubstrateIssues(db, "demo", { limit: 0 })).toHaveLength(3);
+    expect(readSubstrateIssues(db, "demo", { issue_type: ["task"] })).toHaveLength(3);
+  });
+
+  itWithBunSqlite("normalizes JSON-quoted timestamp fields from substrate rows", async () => {
+    const { Database } = await import("bun:sqlite");
+    const db = createSubstrateDb(Database);
+    db.exec(`
+      INSERT INTO substrate_issues (repo_slug, issue_id, title, state, issue_type, priority, created_at, updated_at, closed_at)
+      VALUES ('demo', 'quoted', 'Quoted', 'closed', 'task', 2, '"2026-01-01T01:00:00.000Z"', '"2026-01-02T02:00:00.000Z"', '"2026-01-03T03:00:00.000Z"');
+    `);
+
+    expect(readSubstrateIssues(db, "demo", { limit: 0 })[0]).toEqual(expect.objectContaining({
+      created_at: "2026-01-01T01:00:00.000Z",
+      updated_at: "2026-01-02T02:00:00.000Z",
+      closed_at: "2026-01-03T03:00:00.000Z",
+    }));
   });
 });
 

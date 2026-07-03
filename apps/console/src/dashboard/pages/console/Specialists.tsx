@@ -5,11 +5,13 @@ import { useChains, type ChainStatus } from "../../hooks/useChains.ts";
 import { useGraphData } from "../../hooks/useGraphData.ts";
 import { getSpecialistRepoScope } from "../../lib/specialist-scope.ts";
 import { selectRepos, selectSelection, useShellStore } from "../../stores/shell.ts";
+import { beadSideDrawer } from "../../hooks/useBeadSideDrawer.ts";
 import { ChainCard } from "./specialists/ChainCard.tsx";
-import { ChainDetailPane } from "./specialists/ChainDetailPane.tsx";
 import { FilterChips } from "./specialists/FilterChips.tsx";
 import { buildChainIssueContext } from "./specialists/chainIssueContext.ts";
 import { buildBeadActivitySwappedTelemetry, buildChainSelectedTelemetry, buildFirstPaintTelemetry, buildListRenderedTelemetry, deriveSelection, toggleFilter, type CockpitFilters } from "./specialists/cockpitSelection.ts";
+import type { GraphNode } from "../../../types/graph.ts";
+import type { BeadIssue } from "../../../types/beads.ts";
 
 export function Specialists() {
   const selectionState = useShellStore(selectSelection);
@@ -53,6 +55,22 @@ export function Specialists() {
     logClientEvent("cockpit.bead_activity.swapped", buildBeadActivitySwappedTelemetry(selection.selectedChain));
   }, [selection.selectedChain]);
 
+  const openChainInspector = (chainId: string) => {
+    setSelectedChainId(chainId);
+    const chain = selection.visibleChains.find((item) => item.chainId === chainId) ?? chains.find((item) => item.chainId === chainId);
+    if (!chain) return;
+    const latestJob = chain.jobs[chain.jobs.length - 1];
+    const context = issueContextByChain.get(chain.chainId);
+    const graphNode = context?.touched.find((node) => node.id === chain.rootBeadId) ?? context?.touched[0] ?? null;
+    beadSideDrawer.open({
+      beadId: chain.rootBeadId,
+      jobId: latestJob?.jobId ?? null,
+      chainId: chain.chainId,
+      issue: graphNode ? graphNodeToIssue(graphNode) : chainToIssue(chain.rootBeadId, chain.title),
+      tab: "activity",
+    });
+  };
+
   const noProject = !repoScope.repo;
   const empty = !loading && !error && !noProject && chains.length === 0;
   const filteredEmpty = !loading && !error && chains.length > 0 && selection.visibleChains.length === 0;
@@ -68,6 +86,7 @@ export function Specialists() {
           <div className="console-specialists-summary">
             <span>{chains.length} chains</span>
             <span>{selection.visibleChains.length} visible</span>
+            <span>drawer-first</span>
           </div>
         </header>
         <FilterChips active={filters} counts={statusCounts} onToggle={(status) => setFilters((current) => toggleFilter(current, status))} />
@@ -81,12 +100,9 @@ export function Specialists() {
           <div className="console-specialists-empty-state-message"><DotFillIcon size={10} /><span>No chains match the active filters</span></div>
         ) : (
           <div className="console-specialists-card-list">
-            {selection.visibleChains.map((chain) => <ChainCard key={chain.chainId} chain={chain} issueContext={issueContextByChain.get(chain.chainId)} selected={selection.selectedChain?.chainId === chain.chainId} onSelect={() => setSelectedChainId(chain.chainId)} />)}
+            {selection.visibleChains.map((chain) => <ChainCard key={chain.chainId} chain={chain} issueContext={issueContextByChain.get(chain.chainId)} selected={selection.selectedChain?.chainId === chain.chainId} onSelect={() => openChainInspector(chain.chainId)} />)}
           </div>
         )}
-      </div>
-      <div className="console-specialists-detail-pane">
-        <ChainDetailPane chain={selection.selectedChain} issueContext={selection.selectedChain ? issueContextByChain.get(selection.selectedChain.chainId) : undefined} graphLoading={graph.loading && !graph.data} projectId={graphProjectId} />
       </div>
     </section>
   );
@@ -96,4 +112,42 @@ function countByStatus(chains: Array<{ status: ChainStatus }>): Record<string, n
   const counts: Record<string, number> = {};
   for (const chain of chains) counts[chain.status] = (counts[chain.status] ?? 0) + 1;
   return counts;
+}
+
+function graphNodeToIssue(node: GraphNode): BeadIssue {
+  return {
+    id: node.id,
+    title: node.title,
+    description: null,
+    status: node.status,
+    priority: node.priority,
+    issue_type: node.type,
+    owner: null,
+    created_at: "",
+    created_by: null,
+    updated_at: "",
+    project_id: "",
+    dependencies: [],
+    related_ids: [],
+    labels: [],
+  };
+}
+
+function chainToIssue(id: string, title: string): BeadIssue {
+  return {
+    id,
+    title,
+    description: null,
+    status: "open",
+    priority: 2,
+    issue_type: "task",
+    owner: null,
+    created_at: "",
+    created_by: null,
+    updated_at: "",
+    project_id: "",
+    dependencies: [],
+    related_ids: [],
+    labels: [],
+  };
 }

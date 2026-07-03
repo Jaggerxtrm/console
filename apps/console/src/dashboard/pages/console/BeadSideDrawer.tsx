@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { ArrowLeftIcon, XIcon } from "@primer/octicons-react";
 import type { BeadDependency, BeadIssue, BeadIssueDetail, Memory } from "../../../types/beads.ts";
@@ -10,8 +10,6 @@ import { useSpecialistHistory } from "../../hooks/useSpecialistHistory.ts";
 import { BeadActivityPane } from "../../components/specialists/BeadActivityPane.tsx";
 import { IssueDossier } from "../../components/beads/IssueFeed.tsx";
 
-const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
-
 const TABS: Array<{ id: BeadInspectorTab; label: string }> = [
   { id: "overview", label: "Overview" },
   { id: "lineage", label: "Lineage" },
@@ -22,9 +20,14 @@ const TABS: Array<{ id: BeadInspectorTab; label: string }> = [
   { id: "followups", label: "Followups" },
 ];
 
+const DRAWER_MIN_WIDTH = 420;
+const DRAWER_MAX_WIDTH_RATIO = 0.78;
+const DRAWER_DEFAULT_WIDTH_RATIO = 0.5;
+
 export function BeadSideDrawer({ onClose }: { onClose?: () => void } = {}) {
   const beadId = useBeadSideDrawer((s) => s.beadId);
   const jobId = useBeadSideDrawer((s) => s.jobId);
+  const chainId = useBeadSideDrawer((s) => s.chainId);
   const projectId = useBeadSideDrawer((s) => s.projectId);
   const issueById = useBeadSideDrawer((s) => s.issueById);
   const fallbackIssue = useBeadSideDrawer((s) => s.fallbackIssue);
@@ -35,13 +38,12 @@ export function BeadSideDrawer({ onClose }: { onClose?: () => void } = {}) {
   const back = useBeadSideDrawer((s) => s.back);
   const setTab = useBeadSideDrawer((s) => s.setTab);
   const open = useBeadSideDrawer((s) => s.open);
-  const panelRef = useRef<HTMLDivElement | null>(null);
-  const previouslyFocused = useRef<HTMLElement | null>(null);
   const issue = beadId ? issueById.get(beadId) ?? fallbackIssue : null;
   const ownership = useSpecialistOwnership(beadId);
   const history = useSpecialistHistory(beadId);
   const [detail, setDetail] = useState<BeadIssueDetail | null>(null);
   const [loading, setLoading] = useState(false);
+  const [drawerWidth, setDrawerWidth] = useState(() => defaultDrawerWidth());
 
   useEffect(() => {
     let cancelled = false;
@@ -70,35 +72,38 @@ export function BeadSideDrawer({ onClose }: { onClose?: () => void } = {}) {
     if (event.key === "Escape") {
       event.preventDefault();
       handleClose();
-      return;
-    }
-    if (event.key !== "Tab" || !panelRef.current) return;
-    const items = panelRef.current.querySelectorAll<HTMLElement>(FOCUSABLE);
-    if (items.length === 0) return;
-    const first = items[0];
-    const last = items[items.length - 1];
-    if (event.shiftKey && document.activeElement === first) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault();
-      first.focus();
     }
   }, [handleClose]);
 
   useEffect(() => {
     if (!beadId) return;
-    previouslyFocused.current = document.activeElement as HTMLElement | null;
     document.addEventListener("keydown", handleKey);
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    queueMicrotask(() => panelRef.current?.focus());
     return () => {
       document.removeEventListener("keydown", handleKey);
-      document.body.style.overflow = prevOverflow;
-      previouslyFocused.current?.focus?.();
     };
   }, [beadId, handleKey]);
+
+  const startResize = useCallback((event: ReactPointerEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = drawerWidth;
+    const pointerId = event.pointerId;
+    try {
+      event.currentTarget.setPointerCapture(pointerId);
+    } catch {
+      // Document listeners below keep drag working when capture is unavailable.
+    }
+    const onMove = (moveEvent: PointerEvent) => {
+      const next = startWidth + startX - moveEvent.clientX;
+      setDrawerWidth(clampDrawerWidth(next));
+    };
+    const onUp = () => {
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onUp);
+    };
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onUp);
+  }, [drawerWidth]);
 
   const goToFeed = useCallback(() => {
     const shell = useShellStore.getState();
@@ -121,13 +126,23 @@ export function BeadSideDrawer({ onClose }: { onClose?: () => void } = {}) {
   });
 
   return createPortal(
-    <div className="bead-side-drawer-backdrop" onClick={handleClose}>
-      <aside className="bead-side-drawer" ref={panelRef} role="dialog" aria-modal="true" aria-labelledby="bead-side-drawer-title" tabIndex={-1} onClick={(event) => event.stopPropagation()}>
+    <div className="bead-side-drawer-backdrop" aria-hidden="false">
+      <aside className="bead-side-drawer" role="complementary" aria-label="Issue inspector" style={{ width: `${drawerWidth}px` }}>
+        <button type="button" className="bead-side-drawer-resizer" aria-label="resize bead inspector" onPointerDown={startResize} />
         <header className="bead-side-drawer-header">
-          <div className="bead-side-drawer-headline">
-            {backStack.length > 0 ? <button type="button" className="bead-side-drawer-back" aria-label="Back to previous bead" onClick={back}><ArrowLeftIcon size={14} /></button> : null}
-            <span className="bead-side-drawer-id">{issue.id}</span>
-            <span id="bead-side-drawer-title" className="bead-side-drawer-title">{issue.title}</span>
+          <div className="bead-side-drawer-header-main">
+            <div className="bead-side-drawer-breadcrumb" aria-label={`xtrm / issue / ${issue.id}`}>
+              <span>xtrm</span>
+              <span>/</span>
+              <span>issue</span>
+              <span>/</span>
+              <span>{issue.id}</span>
+            </div>
+            <div className="bead-side-drawer-headline">
+              {backStack.length > 0 ? <button type="button" className="bead-side-drawer-back" aria-label="Back to previous bead" onClick={back}><ArrowLeftIcon size={14} /></button> : null}
+              <span className="bead-side-drawer-id">{issue.id}</span>
+              <span id="bead-side-drawer-title" className="bead-side-drawer-title">{issue.title}</span>
+            </div>
           </div>
           <button type="button" className="bead-side-drawer-close" aria-label="close bead inspector" onClick={handleClose}><XIcon size={14} /></button>
         </header>
@@ -157,17 +172,31 @@ export function BeadSideDrawer({ onClose }: { onClose?: () => void } = {}) {
               memories: relatedMemories,
               history,
               jobId,
+              chainId,
               onOpenBead: (nextIssue) => open({ beadId: nextIssue.id, issue: nextIssue }),
+              onSelectActivity: () => setTab("activity"),
             })}
           </div>
         </div>
         <footer className="bead-side-drawer-footer">
-          <button type="button" className="ide-btn" onClick={goToFeed}>Open in Feed</button>
+          <button type="button" className="ide-btn" onClick={goToFeed}>Open in Issues</button>
         </footer>
       </aside>
     </div>,
     document.body,
   );
+}
+
+function defaultDrawerWidth(): number {
+  if (typeof window === "undefined") return 720;
+  return clampDrawerWidth(window.innerWidth * DRAWER_DEFAULT_WIDTH_RATIO);
+}
+
+function clampDrawerWidth(value: number): number {
+  if (typeof window === "undefined") return value;
+  const min = Math.min(DRAWER_MIN_WIDTH, window.innerWidth);
+  const max = Math.max(min, Math.floor(window.innerWidth * DRAWER_MAX_WIDTH_RATIO));
+  return Math.min(max, Math.max(min, Math.floor(value)));
 }
 
 function renderTab(tab: BeadInspectorTab, props: {
@@ -179,7 +208,9 @@ function renderTab(tab: BeadInspectorTab, props: {
   memories: Memory[];
   history: ReturnType<typeof useSpecialistHistory>;
   jobId: string | null;
+  chainId: string | null;
   onOpenBead: (issue: BeadIssue) => void;
+  onSelectActivity: () => void;
 }): ReactNode {
   switch (tab) {
     case "overview":
@@ -187,9 +218,9 @@ function renderTab(tab: BeadInspectorTab, props: {
     case "lineage":
       return <LineageTab issue={props.issue} detail={props.detail} issueById={props.issueById} onOpenBead={props.onOpenBead} />;
     case "activity":
-      return <BeadActivityPane key={`${props.issue.id}:${props.jobId ?? ""}`} beadId={props.issue.id} jobIdHint={props.jobId} />;
+      return <BeadActivityPane key={`${props.issue.id}:${props.chainId ?? ""}:${props.jobId ?? ""}`} beadId={props.issue.id} jobIdHint={props.jobId} chainIdHint={props.chainId} />;
     case "evidence":
-      return <EvidenceTab history={props.history} />;
+      return <EvidenceTab history={props.history} onSelectActivity={props.onSelectActivity} />;
     case "github":
       return <EmptyTab title="No linked GitHub evidence" body="PR, commit, and issue references will appear here when the materialized evidence refs include this bead." />;
     case "memories":
@@ -239,27 +270,47 @@ function FollowupsTab({ issue, detail, issueById, onOpenBead }: { issue: BeadIss
 function LineageButton({ dependency, issue, onOpenBead }: { dependency: BeadDependency; issue: BeadIssue | null; onOpenBead: (issue: BeadIssue) => void }) {
   const target = issue ?? issueFromDependency(dependency);
   return (
-    <button type="button" className="bead-inspector-link" onClick={() => onOpenBead(target)}>
-      <span className="bead-inspector-link-id">{dependency.id}</span>
-      <span className="bead-inspector-link-title">{target.title}</span>
-      <span className="bead-inspector-link-meta">{dependency.dependency_type} / {target.status}</span>
+    <button type="button" className="bead-inspector-link bead-inspector-issue-chip" onClick={() => onOpenBead(target)}>
+      <span className="bead-inspector-issue-identity">
+        <span className="bead-inspector-link-id">{dependency.id}</span>
+        <span className="identity-separator">/</span>
+        <span className="bead-inspector-link-title">{target.title}</span>
+      </span>
+      <span className="bead-inspector-link-meta">
+        <span>P{target.priority}</span>
+        <span>{String(target.issue_type)}</span>
+        <span>{target.status}</span>
+        <span>{dependency.dependency_type}</span>
+      </span>
     </button>
   );
 }
 
-function EvidenceTab({ history }: { history: ReturnType<typeof useSpecialistHistory> }) {
+function EvidenceTab({ history, onSelectActivity }: { history: ReturnType<typeof useSpecialistHistory>; onSelectActivity: () => void }) {
   if (history.loading) return <EmptyTab title="Loading evidence" body="Specialist history is loading." />;
   if (history.jobs.length === 0) return <EmptyTab title="No specialist evidence" body="Terminal feeds, run results, forensic events, and evidence refs will collect here as jobs land." />;
   return (
     <div className="bead-inspector-stack">
-      {history.jobs.map((job) => (
-        <article key={`${job.repoSlug}:${job.jobId ?? job.beadId}:${job.updatedAt}`} className="bead-inspector-evidence-row">
-          <span className="bead-inspector-link-id">{job.jobId ?? job.beadId}</span>
-          <span className="bead-inspector-link-title">{job.specialist ?? job.chainKind ?? "specialist"}</span>
-          <span className="bead-inspector-link-meta">{job.status} / {formatElapsed(job.updatedAt)}</span>
-          {job.lastOutput ? <p>{truncate(job.lastOutput, 220)}</p> : null}
-        </article>
-      ))}
+      {history.jobs.map((job) => {
+        const verdict = verdictForStatus(job.status);
+        return (
+          <article key={`${job.repoSlug}:${job.jobId ?? job.beadId}:${job.updatedAt}`} className="bead-inspector-evidence-row">
+            <div className="bead-inspector-evidence-head">
+              <span className="bead-inspector-evidence-kind">{job.chainKind ?? "run"} proof</span>
+              <span className={`bead-inspector-evidence-verdict ${statusToken(verdict)}`}>{verdict}</span>
+            </div>
+            <span className="bead-inspector-link-id">{job.jobId ?? job.beadId}</span>
+            <span className="bead-inspector-link-title">{job.specialist ?? job.chainKind ?? "specialist"}</span>
+            <div className="bead-inspector-evidence-meta">
+              <span>{job.status}</span>
+              <span>{formatElapsed(job.updatedAt)}</span>
+              {job.chainId ? <span>{job.chainId}</span> : null}
+            </div>
+            <p>{job.lastOutput ? truncate(job.lastOutput, 220) : "No result output captured yet; open Activity for the chronological run context."}</p>
+            <button type="button" className="bead-inspector-evidence-action" onClick={onSelectActivity}>View activity</button>
+          </article>
+        );
+      })}
     </div>
   );
 }
@@ -341,6 +392,18 @@ function formatElapsed(updatedAt: string): string {
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${hours}h`;
   return `${Math.floor(hours / 24)}d`;
+}
+
+function verdictForStatus(status: string): string {
+  const normalized = status.toLowerCase();
+  if (normalized === "done" || normalized === "success" || normalized === "completed") return "passed";
+  if (normalized === "failed" || normalized === "error" || normalized === "cancelled") return "failed";
+  if (normalized === "running" || normalized === "in_progress" || normalized === "queued") return "running";
+  return "observed";
+}
+
+function statusToken(value: string): string {
+  return `verdict-${value.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}`;
 }
 
 function truncate(value: string, max: number): string {
