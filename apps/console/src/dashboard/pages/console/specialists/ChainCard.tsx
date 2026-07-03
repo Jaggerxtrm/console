@@ -10,8 +10,19 @@ export function ChainCard({ chain, issueContext, selected, onSelect }: { chain: 
   ].filter(Boolean).join(" ");
 
   return (
-    <button type="button" className={classes} onClick={onSelect}>
+    <div
+      className={classes}
+      onClick={onSelect}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onSelect();
+        }
+      }}
+      role="button"
+      tabIndex={0}
+    >
       <ChainListRow chain={chain} issueContext={issueContext} />
-    </button>
+    </div>
   );
 }

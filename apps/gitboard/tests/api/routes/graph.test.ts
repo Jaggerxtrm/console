@@ -52,7 +52,7 @@ describe("GET /api/console/graph", () => {
     expect(json.repo_slug).toBe("gitboard");
     expect(json.freshness).toBe("fresh");
     expect(json.source_health).toEqual(expect.objectContaining({ source: "graph", status: "fresh" }));
-    expect(json.nodes.map((node) => node.id).sort()).toEqual(["gitboard-1", "gitboard-2", "gitboard-4", "gitboard-5"].sort());
+    expect(json.nodes.map((node) => node.id).sort()).toEqual(["gitboard-1", "gitboard-2", "gitboard-5"].sort());
     expect(json.edges).toHaveLength(3);
     expect(new Set(json.edges.map((edge) => edge.type))).toEqual(new Set(["blocks", "related", "tracks"]));
     expect(json.specialists.map((job) => job.bead_id)).toEqual(["gitboard-4", "gitboard-1"]);
@@ -99,7 +99,7 @@ describe("GET /api/console/graph", () => {
     const closedJson = await closedRes.json() as { nodes: Array<{ id: string; status: string }>; edges: Array<{ from: string; to: string }> };
 
     expect(closedJson.nodes.length).toBeGreaterThan(openJson.nodes.length);
-    expect(openJson.nodes.some((node) => node.id === "gitboard-4")).toBe(true);
+    expect(openJson.nodes.some((node) => node.id === "gitboard-4")).toBe(false);
     expect(closedJson.nodes.some((node) => node.id === "gitboard-6")).toBe(true);
     expect(closedJson.nodes.find((node) => node.id === "gitboard-6")?.status).toBe("closed");
   });
@@ -111,6 +111,20 @@ describe("GET /api/console/graph", () => {
 
     expect(json.edges.some((edge) => edge.from === "gitboard-3" && edge.to === "gitboard-4" && edge.type === "supersedes")).toBe(true);
     expect(json.nodes.find((node) => node.id === "gitboard-4")).toEqual(expect.objectContaining({ title: "D", status: "closed" }));
+  });
+
+  it("excludes JSON-quoted closed xtrm rows and closed dependency targets from the active graph", async () => {
+    const db = createXtrmGraphDb();
+    const dao = createGraphDao({ xtrmDb: db });
+    const active = await dao.getGraphSnapshotWarm("gitboard", false);
+    const historical = await dao.getGraphSnapshotWarm("gitboard", true);
+
+    expect(active.graph.nodes.map((node) => node.id)).toEqual(["gitboard-open"]);
+    expect(active.graph.edges).toEqual([]);
+    expect(historical.graph.nodes.map((node) => node.id).sort()).toEqual(["gitboard-closed", "gitboard-open"]);
+    expect(historical.graph.edges).toEqual([{ from: "gitboard-open", to: "gitboard-closed", type: "blocks" }]);
+
+    db.close();
   });
 
   it("reuses cached scan and issue data until explicit refresh", async () => {
@@ -259,4 +273,82 @@ async function seedProject(projectId = "gitboard"): Promise<void> {
     { issue_id: `${projectId}-2`, depends_on_id: `${projectId}-5`, type: "tracks" },
   ].map((row) => JSON.stringify(row)).join("\n"));
   await writeFile(join(beadsPath, "labels.jsonl"), "");
+}
+
+function createXtrmGraphDb(): Database {
+  const db = new Database(":memory:");
+  db.exec(`
+    CREATE TABLE sources (
+      source_key TEXT PRIMARY KEY,
+      kind TEXT NOT NULL,
+      path TEXT,
+      origin TEXT,
+      status TEXT,
+      discovered_at DATETIME,
+      last_seen_at DATETIME
+    );
+    CREATE TABLE substrate_issues (
+      repo_slug TEXT NOT NULL,
+      issue_id TEXT NOT NULL,
+      title TEXT,
+      body TEXT,
+      state TEXT,
+      priority INTEGER,
+      issue_type TEXT,
+      owner TEXT,
+      labels TEXT,
+      related_ids TEXT,
+      parent_id TEXT,
+      deleted_at TEXT,
+      closed_at TEXT,
+      close_reason TEXT,
+      notes TEXT,
+      runtime_kind TEXT,
+      formula_name TEXT,
+      template_name TEXT,
+      contract_kind TEXT,
+      contract_xml TEXT,
+      metadata_json TEXT,
+      created_at TEXT,
+      updated_at TEXT,
+      PRIMARY KEY (repo_slug, issue_id)
+    );
+    CREATE TABLE substrate_dependencies (
+      repo_slug TEXT NOT NULL,
+      issue_id TEXT NOT NULL,
+      dep_issue_id TEXT NOT NULL,
+      relation TEXT NOT NULL
+    );
+    CREATE TABLE specialist_jobs (
+      job_id TEXT PRIMARY KEY,
+      repo_slug TEXT NOT NULL,
+      bead_id TEXT NOT NULL,
+      chain_id TEXT,
+      epic_id TEXT,
+      chain_kind TEXT,
+      status TEXT NOT NULL,
+      updated_at TEXT,
+      specialist TEXT,
+      last_output TEXT
+    );
+    CREATE TABLE materialization_state (
+      source_key TEXT PRIMARY KEY,
+      cursor TEXT,
+      last_run_at DATETIME,
+      last_success_at DATETIME,
+      last_status TEXT,
+      last_error TEXT
+    );
+    INSERT INTO sources (source_key, kind, path, origin, status)
+    VALUES ('beads:gitboard', 'beads', '/tmp/gitboard/.beads', 'manual', 'active');
+    INSERT INTO substrate_issues (repo_slug, issue_id, title, state, issue_type, priority, created_at, updated_at)
+    VALUES
+      ('gitboard', 'gitboard-open', 'Open', 'open', 'task', 1, '2026-01-01', '2026-01-01'),
+      ('gitboard', 'gitboard-closed', 'Closed', '"closed"', 'bug', 2, '2026-01-01', '2026-01-01');
+    INSERT INTO substrate_dependencies (repo_slug, issue_id, dep_issue_id, relation)
+    VALUES ('gitboard', 'gitboard-open', 'gitboard-closed', 'blocks');
+    INSERT INTO materialization_state (source_key, last_status, last_success_at)
+    VALUES ('beads:gitboard', 'success', '2026-01-01T00:00:00.000Z');
+  `);
+  return db;
 }

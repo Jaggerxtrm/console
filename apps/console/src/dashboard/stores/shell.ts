@@ -242,6 +242,6 @@ export const selectSidebar = (s: ShellState) => s.sidebar;
 
 function syncConsolePath(selection: SidebarSelection): void {
   if (typeof window === "undefined" || selection.surface !== "console") return;
-  const path = selection.tab === "explore" ? "/console/explore/agentops" : `/console/${selection.tab}`;
+  const path = selection.tab === "feed" ? "/console/issues" : selection.tab === "explore" ? "/console/explore/agentops" : `/console/${selection.tab}`;
   if (window.location.pathname !== path) window.history.pushState({}, "", path);
 }

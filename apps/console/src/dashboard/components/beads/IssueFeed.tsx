@@ -14,7 +14,7 @@ import { useSpecialistHistory } from "../../hooks/useSpecialistHistory.ts";
 import type { SpecialistOwnershipJob } from "../../hooks/useSpecialistOwnership.ts";
 import { logClientEvent } from "../../lib/client-log.ts";
 import { beadSideDrawer } from "../../hooks/useBeadSideDrawer.ts";
-import { filterIssuesForFeed } from "./feedSearch.ts";
+import { filterIssuesForFeed, type FeedSearchMatch } from "./feedSearch.ts";
 
 export interface IssuePrLink {
   number: number;
@@ -46,6 +46,21 @@ const STATUS_LABELS: Record<string, string> = {
   closed: "Closed",
 };
 
+const FEED_SORTS = [
+  { value: "updated-desc", label: "updated newest" },
+  { value: "updated-asc", label: "updated oldest" },
+  { value: "created-desc", label: "created newest" },
+  { value: "created-asc", label: "created oldest" },
+  { value: "priority-asc", label: "priority high" },
+  { value: "priority-desc", label: "priority low" },
+  { value: "id-asc", label: "id" },
+] as const;
+
+type FeedSort = typeof FEED_SORTS[number]["value"];
+type FeedStatusFilter = "all" | "open" | "in_progress" | "blocked" | "in_review" | "deferred" | "closed";
+type FeedPriorityFilter = "all" | `${number}`;
+type FeedTypeFilter = "all" | string;
+
 export type FeedItem =
   | { kind: "empty" }
   | { kind: "in-progress-header"; count: number }
@@ -54,11 +69,11 @@ export type FeedItem =
   | { kind: "closed-header"; count: number }
   | { kind: "issue"; issue: BeadIssue; depth: number; childCount: number; relation: "parent" | "epic" | "blocked" };
 
-export function IssueFeed({ issues, closedIssues = [], selectedIssueId, selectedIssueDetail, loadingDetailId, onIssueSelect, onIssueOpen, getAgent, projectId, prByIssueId, specialistByIssueId }: IssueFeedProps) {
+export function IssueFeed({ issues, closedIssues = [], selectedIssueId, onIssueOpen, getAgent, projectId, prByIssueId, specialistByIssueId }: IssueFeedProps) {
   const handleSpecialistOpen = (beadId: string, specialistJob: SpecialistOwnershipJob | null) => {
     if (!specialistJob) return;
     logClientEvent("chip.click", { source: "feed_chip", beadId, jobId: specialistJob.jobId ?? null });
-    beadSideDrawer.open({ beadId, jobId: specialistJob.jobId, issue: issueById.get(beadId) ?? null });
+    beadSideDrawer.open({ beadId, jobId: specialistJob.jobId, issue: issueById.get(beadId) ?? null, tab: "activity" });
     logClientEvent("chip.inspector.dispatched", {
       source: "feed_chip",
       beadId,
@@ -72,12 +87,25 @@ export function IssueFeed({ issues, closedIssues = [], selectedIssueId, selected
   const [showOpen, setShowOpen] = useState(true);
   const [showClosed, setShowClosed] = useState(false);
   const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<FeedSort>("updated-desc");
+  const [statusFilter, setStatusFilter] = useState<FeedStatusFilter>("all");
+  const [priorityFilter, setPriorityFilter] = useState<FeedPriorityFilter>("all");
+  const [typeFilter, setTypeFilter] = useState<FeedTypeFilter>("all");
   const allIssues = useMemo(() => [...issues, ...closedIssues], [closedIssues, issues]);
   const issueById = useMemo(() => new Map(allIssues.map((issue) => [issue.id, issue])), [allIssues]);
   const searchOpen = useMemo(() => filterIssuesForFeed(issues, query), [issues, query]);
   const searchClosed = useMemo(() => filterIssuesForFeed(closedIssues, query), [closedIssues, query]);
-  const visibleIssues = searchOpen.issues;
-  const visibleClosedIssues = searchClosed.issues;
+  const searchMatchByIssueId = useMemo(
+    () => new Map([...searchOpen.matchByIssueId, ...searchClosed.matchByIssueId]),
+    [searchClosed.matchByIssueId, searchOpen.matchByIssueId],
+  );
+  const typeOptions = useMemo(() => buildTypeOptions(allIssues), [allIssues]);
+  const baseOpenIssues = useMemo(() => applyBaseFeedControls(searchOpen.issues, statusFilter, priorityFilter), [priorityFilter, searchOpen.issues, statusFilter]);
+  const baseClosedIssues = useMemo(() => applyBaseFeedControls(searchClosed.issues, statusFilter, priorityFilter), [priorityFilter, searchClosed.issues, statusFilter]);
+  const baseOpenParentByChild = useMemo(() => buildParentLookup(baseOpenIssues), [baseOpenIssues]);
+  const baseClosedParentByChild = useMemo(() => buildParentLookup(baseClosedIssues), [baseClosedIssues]);
+  const visibleIssues = useMemo(() => sortIssues(applyTypeFilter(baseOpenIssues, typeFilter, baseOpenParentByChild), sort), [baseOpenIssues, baseOpenParentByChild, sort, typeFilter]);
+  const visibleClosedIssues = useMemo(() => sortIssues(applyTypeFilter(baseClosedIssues, typeFilter, baseClosedParentByChild), sort), [baseClosedIssues, baseClosedParentByChild, sort, typeFilter]);
   const searchStats = useMemo(() => ({
     prefixMatchCount: searchOpen.prefixMatchCount + searchClosed.prefixMatchCount,
     titleMatchCount: searchOpen.titleMatchCount + searchClosed.titleMatchCount,
@@ -85,20 +113,19 @@ export function IssueFeed({ issues, closedIssues = [], selectedIssueId, selected
     durationMs: searchOpen.durationMs + searchClosed.durationMs,
   }), [allIssues.length, query, searchClosed.durationMs, searchClosed.prefixMatchCount, searchClosed.titleMatchCount, searchClosed.totalMatches, searchOpen.durationMs, searchOpen.prefixMatchCount, searchOpen.titleMatchCount, searchOpen.totalMatches]);
   const inProgressIssues = useMemo(
-    () => visibleIssues.filter((issue) => issue.status === "in_progress").sort((a, b) => String(b.updated_at ?? b.created_at).localeCompare(String(a.updated_at ?? a.created_at))),
+    () => visibleIssues.filter((issue) => issue.status === "in_progress"),
     [visibleIssues],
   );
   const openIssues = useMemo(() => visibleIssues.filter((issue) => issue.status !== "in_progress"), [visibleIssues]);
-  const blockingChildren = useMemo(() => groupChildrenByBlocker(openIssues, issueById), [issueById, openIssues]);
+  const activeParentByChild = useMemo(() => buildParentLookup(openIssues), [openIssues]);
+  const closedParentByChild = useMemo(() => buildParentLookup(visibleClosedIssues), [visibleClosedIssues]);
+  const blockingChildren = useMemo(() => groupChildrenByBlocker(openIssues, activeParentByChild), [activeParentByChild, openIssues]);
   const blockedChildIds = useMemo(() => getGroupedChildIds(blockingChildren), [blockingChildren]);
-  const activeChildren = useMemo(() => groupChildrenByParent(openIssues, issueById, blockedChildIds), [blockedChildIds, issueById, openIssues]);
-  const closedChildren = useMemo(() => groupChildrenByParent(visibleClosedIssues, issueById, new Set()), [issueById, visibleClosedIssues]);
-  const topLevelIssues = useMemo(() => openIssues.filter((issue) => !blockedChildIds.has(issue.id) && !getParentId(issue, issueById)), [blockedChildIds, issueById, openIssues]);
+  const activeChildren = useMemo(() => groupChildrenByParent(openIssues, activeParentByChild, blockedChildIds), [activeParentByChild, blockedChildIds, openIssues]);
+  const closedChildren = useMemo(() => groupChildrenByParent(visibleClosedIssues, closedParentByChild, new Set()), [closedParentByChild, visibleClosedIssues]);
+  const topLevelIssues = useMemo(() => openIssues.filter((issue) => !blockedChildIds.has(issue.id) && !getParentId(issue, activeParentByChild)), [activeParentByChild, blockedChildIds, openIssues]);
   const readyCount = useMemo(() => openIssues.filter((issue) => getDisplayStatus(issue) === "open").length, [openIssues]);
-  const completedIssues = useMemo(
-    () => visibleClosedIssues.filter((issue) => !getParentId(issue, issueById)).sort((a, b) => getCompletedAt(b).localeCompare(getCompletedAt(a))),
-    [issueById, visibleClosedIssues],
-  );
+  const completedIssues = useMemo(() => visibleClosedIssues.filter((issue) => !getParentId(issue, closedParentByChild)), [closedParentByChild, visibleClosedIssues]);
   const openDependencyCount = useMemo(() => visibleIssues.reduce((count, issue) => count + countDependencies(issue), 0), [visibleIssues]);
   const closedDependencyCount = useMemo(() => visibleClosedIssues.reduce((count, issue) => count + countDependencies(issue), 0), [visibleClosedIssues]);
 
@@ -145,6 +172,11 @@ export function IssueFeed({ issues, closedIssues = [], selectedIssueId, selected
     logClientEvent("feed.closed_history.auto_expanded", { closedIssues: visibleClosedIssues.length, dependencyCount: closedDependencyCount });
   }, [closedDependencyCount, openDependencyCount, showClosed, visibleClosedIssues.length]);
 
+  useEffect(() => {
+    if (statusFilter !== "closed") return;
+    setShowClosed(true);
+  }, [statusFilter]);
+
   const items = useMemo<FeedItem[]>(() => {
     const next: FeedItem[] = [{ kind: "in-progress-header", count: inProgressIssues.length }];
     if (inProgressIssues.length === 0) next.push({ kind: "in-progress-empty" });
@@ -172,7 +204,7 @@ export function IssueFeed({ issues, closedIssues = [], selectedIssueId, selected
       if (!item) return 52;
       if (item.kind === "in-progress-header" || item.kind === "open-header" || item.kind === "closed-header") return 28;
       if (item.kind === "in-progress-empty" || item.kind === "empty") return 32;
-      return item.issue.id === selectedIssueId ? 260 : 52;
+      return 52;
     },
     overscan: 8,
     measureElement: (el) => el?.getBoundingClientRect().height ?? 0,
@@ -192,7 +224,7 @@ export function IssueFeed({ issues, closedIssues = [], selectedIssueId, selected
             logClientEvent("feed.search.focused", { source: nextFocusSource.current });
             nextFocusSource.current = "tab";
           }}
-          placeholder="forge-id or title"
+          placeholder="Search id, title, description, notes, labels"
           aria-label="Search beads in this project"
         />
         {query ? (
@@ -209,6 +241,41 @@ export function IssueFeed({ issues, closedIssues = [], selectedIssueId, selected
             <XIcon size={12} />
           </button>
         ) : null}
+      </div>
+      <div className="feed-controls" aria-label="Feed filters">
+        <label>
+          <span>sort</span>
+          <select value={sort} onChange={(event) => setSort(event.currentTarget.value as FeedSort)} aria-label="Sort beads">
+            {FEED_SORTS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        </label>
+        <label>
+          <span>status</span>
+          <select value={statusFilter} onChange={(event) => setStatusFilter(event.currentTarget.value as FeedStatusFilter)} aria-label="Filter beads by status">
+            <option value="all">all</option>
+            <option value="open">ready</option>
+            <option value="in_progress">in progress</option>
+            <option value="blocked">blocked</option>
+            <option value="in_review">in review</option>
+            <option value="deferred">deferred</option>
+            <option value="closed">closed</option>
+          </select>
+        </label>
+        <label>
+          <span>priority</span>
+          <select value={priorityFilter} onChange={(event) => setPriorityFilter(event.currentTarget.value as FeedPriorityFilter)} aria-label="Filter beads by priority">
+            <option value="all">all</option>
+            {[0, 1, 2, 3, 4].map((priority) => <option key={priority} value={priority}>P{priority}</option>)}
+          </select>
+        </label>
+        <label>
+          <span>type</span>
+          <select value={typeFilter} onChange={(event) => setTypeFilter(event.currentTarget.value)} aria-label="Filter beads by type">
+            <option value="all">all</option>
+            {typeOptions.map((type) => <option key={type} value={type}>{type}</option>)}
+          </select>
+        </label>
+        <span className="feed-control-count">{visibleIssues.length + visibleClosedIssues.length}/{allIssues.length}</span>
       </div>
       <div className="module-list" style={{ height: rowVirtualizer.getTotalSize(), position: "relative" }}>
         {rowVirtualizer.getVirtualItems().map((vRow) => {
@@ -242,21 +309,18 @@ export function IssueFeed({ issues, closedIssues = [], selectedIssueId, selected
               ) : (
                 <IssueRow
                   issue={item.issue}
-                  detail={selectedIssueId === item.issue.id ? selectedIssueDetail : null}
-                  isExpanded={selectedIssueId === item.issue.id}
-                  isLoadingDetail={loadingDetailId === item.issue.id}
+                  selected={selectedIssueId === item.issue.id}
                   agent={getAgent?.(item.issue.id) ?? null}
                   dependencyCount={countDependencies(item.issue)}
                   childCount={item.childCount}
-                  onClick={() => onIssueSelect(item.issue)}
                   onOpen={() => onIssueOpen?.(item.issue)}
                   onSpecialistOpen={() => handleSpecialistOpen(item.issue.id, specialistByIssueId?.get(item.issue.id) ?? null)}
                   depth={item.depth}
                   relation={item.relation}
-                  projectId={projectId}
                   issueById={issueById}
                   prLink={prByIssueId?.get(item.issue.id) ?? null}
                   specialistJob={specialistByIssueId?.get(item.issue.id) ?? null}
+                  searchMatch={query.trim() ? searchMatchByIssueId.get(item.issue.id) ?? null : null}
                 />
               )}
             </div>
@@ -273,21 +337,22 @@ export function getFeedItemKey(item: FeedItem): string {
   return item.kind;
 }
 
-export function IssueRow({ issue, detail, isExpanded, isLoadingDetail, agent, dependencyCount, childCount, onClick, onOpen, onSpecialistOpen, depth = 0, relation = "parent", projectId, issueById, prLink = null, specialistJob = null }: { issue: BeadIssue; detail: BeadIssueDetail | null; isExpanded: boolean; isLoadingDetail: boolean; agent: string | null; dependencyCount: number; childCount: number; onClick: () => void; onOpen: () => void; onSpecialistOpen: () => void; depth?: number; relation?: "parent" | "epic" | "blocked"; projectId: string | null; issueById: Map<string, BeadIssue>; prLink?: IssuePrLink | null; specialistJob?: SpecialistOwnershipJob | null; }) {
+export function IssueRow({ issue, selected = false, agent, dependencyCount, childCount, onOpen, onSpecialistOpen, depth = 0, relation = "parent", issueById, prLink = null, specialistJob = null, searchMatch = null }: { issue: BeadIssue; selected?: boolean; agent: string | null; dependencyCount: number; childCount: number; onOpen: () => void; onSpecialistOpen: () => void; depth?: number; relation?: "parent" | "epic" | "blocked"; issueById: Map<string, BeadIssue>; prLink?: IssuePrLink | null; specialistJob?: SpecialistOwnershipJob | null; searchMatch?: FeedSearchMatch | null; }) {
   const isEpic = issue.issue_type === "epic";
   const displayStatus = getDisplayStatus(issue);
   const type = getTypeConfig(issue.issue_type);
   const statusLabel = (STATUS_LABELS[displayStatus] ?? displayStatus).toLowerCase();
 
   return (
-    <article data-bead-id={issue.id} className={`row ${displayStatus} ${isEpic ? "epic" : ""} ${isExpanded ? "is-expanded" : ""} ${depth > 0 ? "is-child" : ""} ${relation === "blocked" ? "is-blocked-child" : relation === "epic" ? "is-epic-child" : "is-parent-child"}`} style={{ "--bead-depth": depth } as CSSProperties}>
-      <button type="button" className="row-main" onClick={onClick} aria-expanded={isExpanded} aria-controls={`issue-dossier-${issue.id}`}>
+    <article data-bead-id={issue.id} className={`row ${displayStatus} ${selected ? "is-selected" : ""} ${isEpic ? "epic" : ""} ${depth > 0 ? "is-child" : ""} ${relation === "blocked" ? "is-blocked-child" : relation === "epic" ? "is-epic-child" : "is-parent-child"}`} style={{ "--bead-depth": depth } as CSSProperties}>
+      <button type="button" className="row-main" onClick={onOpen} aria-expanded={false} aria-label={`Open ${issue.id} issue inspector`}>
         <span className="issue-identity"><span className="id">{issue.id}</span><span className="identity-separator">/</span><span className="title">{issue.title}</span></span>
         <span className="issue-classification">
           <span className="priority-mark" style={{ color: type.color }}>P{issue.priority}</span>
           <span className="type-mark" style={{ color: type.color }}>{type.label}</span>
           <span className="state">{statusLabel}</span>
           <span className="meta-item">{formatCompactDate(issue.updated_at)}</span>
+          {searchMatch ? <><span className="identity-separator">/</span><span className={`feed-match-reason feed-match-${searchMatch.reason}`} title={searchMatch.snippet}>{formatSearchMatch(searchMatch)}</span></> : null}
           {childCount > 0 && <><span className="identity-separator">/</span><span className="meta-item">{childCount} children</span></>}
           {dependencyCount > 0 && renderRelationshipGroups(issue, dependencyCount, issueById)}
           {prLink && (
@@ -313,7 +378,6 @@ export function IssueRow({ issue, detail, isExpanded, isLoadingDetail, agent, de
       <button type="button" className="activity-btn" onClick={onOpen} aria-label={`Open ${issue.id} activity inspector`} title="Open activity inspector">
         <PulseIcon size={13} />
       </button>
-      {isExpanded && <IssueDossier id={`issue-dossier-${issue.id}`} detail={detail} issue={issue} loading={isLoadingDetail} projectId={projectId} issueById={issueById} />}
     </article>
   );
 }
@@ -578,7 +642,99 @@ function renderInline(text: string, key: string): ReactNode[] {
 
 function formatCompactDate(iso: string | undefined): string { if (!iso) return "—"; const date = new Date(iso); if (Number.isNaN(date.getTime())) return iso; return date.toLocaleDateString(undefined, { month: "short", day: "numeric" }); }
 
-function getCompletedAt(issue: BeadIssue): string { return issue.closed_at ?? issue.updated_at ?? issue.created_at; }
+function formatSearchMatch(match: FeedSearchMatch): string {
+  const snippet = truncateExcerpt(match.snippet);
+  return snippet ? `${match.label}: ${snippet}` : match.label;
+}
+
+function applyBaseFeedControls(issues: BeadIssue[], status: FeedStatusFilter, priority: FeedPriorityFilter): BeadIssue[] {
+  return issues.filter((issue) => {
+    if (status !== "all" && getDisplayStatus(issue) !== status) return false;
+    if (priority !== "all" && Number(issue.priority) !== Number(priority)) return false;
+    return true;
+  });
+}
+
+function buildTypeOptions(issues: BeadIssue[]): string[] {
+  const types = new Set<string>();
+  for (const issue of issues) {
+    if (issue.issue_type) types.add(issue.issue_type);
+    for (const dependency of issue.dependencies) {
+      if (dependency.issue_type) types.add(dependency.issue_type);
+    }
+  }
+  return [...types].sort();
+}
+
+function applyTypeFilter(issues: BeadIssue[], type: FeedTypeFilter, parentByChild: Map<string, string>): BeadIssue[] {
+  if (type === "all") return issues;
+  const issueById = new Map(issues.map((issue) => [issue.id, issue]));
+  return issues.filter((issue) => issue.issue_type === type || hasAncestorOfType(issue, type, issueById, parentByChild));
+}
+
+function hasAncestorOfType(issue: BeadIssue, type: string, issueById: Map<string, BeadIssue>, parentByChild: Map<string, string>): boolean {
+  if (issue.dependencies.some((dependency) => isParentRelation(dependency) && dependency.issue_type === type)) return true;
+  const seen = new Set<string>([issue.id]);
+  let parentId = parentByChild.get(issue.id);
+  while (parentId && !seen.has(parentId)) {
+    seen.add(parentId);
+    const parent = issueById.get(parentId);
+    if (!parent) return false;
+    if (parent.issue_type === type) return true;
+    parentId = parentByChild.get(parent.id);
+  }
+  return false;
+}
+
+function sortIssues(issues: BeadIssue[], sort: FeedSort): BeadIssue[] {
+  return [...issues].sort((a, b) => {
+    switch (sort) {
+      case "updated-asc":
+        return compareTimestamp(a.updated_at ?? a.created_at, b.updated_at ?? b.created_at) || a.id.localeCompare(b.id);
+      case "created-desc":
+        return compareTimestamp(b.created_at, a.created_at) || a.id.localeCompare(b.id);
+      case "created-asc":
+        return compareTimestamp(a.created_at, b.created_at) || a.id.localeCompare(b.id);
+      case "priority-asc":
+        return Number(a.priority) - Number(b.priority) || compareTimestamp(b.updated_at ?? b.created_at, a.updated_at ?? a.created_at) || a.id.localeCompare(b.id);
+      case "priority-desc":
+        return Number(b.priority) - Number(a.priority) || compareTimestamp(b.updated_at ?? b.created_at, a.updated_at ?? a.created_at) || a.id.localeCompare(b.id);
+      case "id-asc":
+        return a.id.localeCompare(b.id);
+      case "updated-desc":
+      default:
+        return compareTimestamp(b.updated_at ?? b.created_at, a.updated_at ?? a.created_at) || a.id.localeCompare(b.id);
+    }
+  });
+}
+
+function compareTimestamp(a: string | undefined, b: string | undefined): number {
+  const left = toTimestamp(a);
+  const right = toTimestamp(b);
+  if (!Number.isFinite(left) && !Number.isFinite(right)) return 0;
+  if (!Number.isFinite(left)) return -1;
+  if (!Number.isFinite(right)) return 1;
+  return left - right;
+}
+
+function toTimestamp(value: string | undefined): number {
+  if (!value) return Number.NaN;
+  const text = unquoteTimestamp(value);
+  const numeric = Number(text);
+  if (Number.isFinite(numeric)) return numeric < 10_000_000_000 ? numeric * 1000 : numeric;
+  return Date.parse(text);
+}
+
+function unquoteTimestamp(value: string): string {
+  const text = value.trim();
+  if (!text.startsWith("\"") || !text.endsWith("\"")) return text;
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    return parsed == null ? "" : String(parsed);
+  } catch {
+    return text.slice(1, -1);
+  }
+}
 
 function getDisplayStatus(issue: BeadIssue): string {
   if (issue.status !== "open") return issue.status;
@@ -601,15 +757,15 @@ function appendIssueTree(out: FeedItem[], issue: BeadIssue, childrenByParent: Ma
   const parentChildren = childrenByParent.get(issue.id) ?? [];
   const inEpicTree = relation === "epic" || issue.issue_type === "epic";
   out.push({ kind: "issue", issue, depth, relation, childCount: blockedChildren.length + parentChildren.length });
-  for (const child of [...blockedChildren].sort((a, b) => a.updated_at.localeCompare(b.updated_at))) {
+  for (const child of blockedChildren) {
     appendIssueTree(out, child, childrenByParent, childrenByBlocker, depth + 1, inEpicTree ? "epic" : "blocked", nextSeen);
   }
-  for (const child of [...parentChildren].sort((a, b) => a.updated_at.localeCompare(b.updated_at))) {
+  for (const child of parentChildren) {
     appendIssueTree(out, child, childrenByParent, childrenByBlocker, depth + 1, inEpicTree ? "epic" : "parent", nextSeen);
   }
 }
 
-function groupChildrenByBlocker(issues: BeadIssue[], issueById: Map<string, BeadIssue>): Map<string, BeadIssue[]> {
+function groupChildrenByBlocker(issues: BeadIssue[], parentByChild: Map<string, string>): Map<string, BeadIssue[]> {
   const visible = new Set(issues.map((issue) => issue.id));
   const groups = new Map<string, BeadIssue[]>();
   const activeById = new Map(issues.map((issue) => [issue.id, issue]));
@@ -624,7 +780,7 @@ function groupChildrenByBlocker(issues: BeadIssue[], issueById: Map<string, Bead
       )
       .map((dependency) => activeById.get(dependency.id))
       .filter((blocker): blocker is BeadIssue => Boolean(blocker));
-    const primary = choosePrimaryBlocker(issue, blockers, issueById);
+    const primary = choosePrimaryBlocker(issue, blockers, parentByChild);
     if (!primary) continue;
     const list = groups.get(primary.id) ?? [];
     if (!list.some((child) => child.id === issue.id)) list.push(issue);
@@ -633,12 +789,12 @@ function groupChildrenByBlocker(issues: BeadIssue[], issueById: Map<string, Bead
   return groups;
 }
 
-function choosePrimaryBlocker(issue: BeadIssue, blockers: BeadIssue[], issueById: Map<string, BeadIssue>): BeadIssue | null {
+function choosePrimaryBlocker(issue: BeadIssue, blockers: BeadIssue[], parentByChild: Map<string, string>): BeadIssue | null {
   if (blockers.length === 0) return null;
-  const issueParent = getParentId(issue, issueById);
+  const issueParent = getParentId(issue, parentByChild);
   return [...blockers].sort((a, b) => {
-    const aSameParent = issueParent && getParentId(a, issueById) === issueParent ? 1 : 0;
-    const bSameParent = issueParent && getParentId(b, issueById) === issueParent ? 1 : 0;
+    const aSameParent = issueParent && getParentId(a, parentByChild) === issueParent ? 1 : 0;
+    const bSameParent = issueParent && getParentId(b, parentByChild) === issueParent ? 1 : 0;
     if (aSameParent !== bSameParent) return bSameParent - aSameParent;
     if (a.priority !== b.priority) return Number(a.priority) - Number(b.priority);
     const byUpdated = String(b.updated_at ?? b.created_at).localeCompare(String(a.updated_at ?? a.created_at));
@@ -651,11 +807,11 @@ function getGroupedChildIds(groups: Map<string, BeadIssue[]>): Set<string> {
   return new Set([...groups.values()].flat().map((issue) => issue.id));
 }
 
-function groupChildrenByParent(issues: BeadIssue[], issueById: Map<string, BeadIssue>, blockedChildIds: Set<string>): Map<string, BeadIssue[]> {
+function groupChildrenByParent(issues: BeadIssue[], parentByChild: Map<string, string>, blockedChildIds: Set<string>): Map<string, BeadIssue[]> {
   const groups = new Map<string, BeadIssue[]>();
   for (const issue of issues) {
     if (blockedChildIds.has(issue.id)) continue;
-    const parent = getParentId(issue, issueById);
+    const parent = getParentId(issue, parentByChild);
     if (!parent) continue;
     const list = groups.get(parent) ?? [];
     list.push(issue);
@@ -664,13 +820,56 @@ function groupChildrenByParent(issues: BeadIssue[], issueById: Map<string, BeadI
   return groups;
 }
 
-function getParentId(issue: BeadIssue, issueById: Map<string, BeadIssue>): string | null {
-  if (issue.parent_id && issueById.has(issue.parent_id)) return issue.parent_id;
-  const parentDependency = issue.dependencies.find((dependency) =>
-    (dependency.dependency_type === "parent-child" || dependency.dependency_type === "parent")
-    && issueById.has(dependency.id),
-  );
-  return parentDependency?.id ?? null;
+function buildParentLookup(issues: BeadIssue[]): Map<string, string> {
+  const issueById = new Map(issues.map((issue) => [issue.id, issue]));
+  const parentByChild = new Map<string, string>();
+  const setParent = (childId: string, parentId: string, explicit = false) => {
+    if (childId === parentId || !issueById.has(childId) || !issueById.has(parentId)) return;
+    if (explicit || !parentByChild.has(childId)) parentByChild.set(childId, parentId);
+  };
+
+  for (const issue of issues) {
+    if (issue.parent_id) setParent(issue.id, issue.parent_id, true);
+  }
+
+  for (const issue of issues) {
+    const inferredParent = inferParentIdFromIssueId(issue.id, issueById);
+    if (inferredParent) setParent(issue.id, inferredParent);
+  }
+
+  for (const issue of issues) {
+    for (const dependency of issue.dependencies) {
+      if (!isParentRelation(dependency)) continue;
+      const related = issueById.get(dependency.id);
+      if (!related) continue;
+      if (dependency.dependency_type === "parent") {
+        setParent(issue.id, related.id);
+      } else if (related.parent_id === issue.id || issue.issue_type === "epic") {
+        setParent(related.id, issue.id);
+      } else {
+        setParent(issue.id, related.id);
+      }
+    }
+  }
+
+  return parentByChild;
+}
+
+function isParentRelation(dependency: BeadDependency): boolean {
+  return dependency.dependency_type === "parent-child" || dependency.dependency_type === "parent";
+}
+
+function inferParentIdFromIssueId(issueId: string, issueById: Map<string, BeadIssue>): string | null {
+  let cursor = issueId;
+  while (cursor.includes(".")) {
+    cursor = cursor.replace(/\.[^.]+$/, "");
+    if (issueById.has(cursor)) return cursor;
+  }
+  return null;
+}
+
+function getParentId(issue: BeadIssue, parentByChild: Map<string, string>): string | null {
+  return parentByChild.get(issue.id) ?? null;
 }
 
 function EmptyFeed() { return <div className="bead-empty-note">No issues</div>; }

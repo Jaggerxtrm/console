@@ -109,13 +109,10 @@ export function readXtrmGraphSnapshot(db: Database, projectId: string | null | u
 }
 
 function readXtrmGraphIssues(db: Database, projectId: string, includeClosed: boolean): GraphIssue[] {
-  const where = includeClosed
-    ? "repo_slug = ? AND (deleted_at IS NULL OR deleted_at = '')"
-    : "repo_slug = ? AND (deleted_at IS NULL OR deleted_at = '') AND state <> 'closed'";
   const rows = db.query(`
     SELECT issue_id, title, body, state, priority, issue_type, owner, labels, related_ids, parent_id, deleted_at, closed_at, close_reason, notes, created_at, updated_at
     FROM substrate_issues
-    WHERE ${where}
+    WHERE repo_slug = ? AND (deleted_at IS NULL OR deleted_at = '')
     ORDER BY priority ASC, created_at DESC, issue_id ASC
   `).all(projectId) as Array<Record<string, unknown>>;
   const dependencyTargets = db.query(`
@@ -132,7 +129,7 @@ function readXtrmGraphIssues(db: Database, projectId: string, includeClosed: boo
     list.push({
       id: dep.dep_issue_id,
       title: target == null ? "" : String(target.title ?? ""),
-      status: target == null ? "open" : String(target.state ?? "open"),
+      status: target == null ? "open" : normalizeTextValue(target.state, "open"),
       issue_type: target == null ? undefined : String(target.issue_type ?? "task"),
       dependency_type: dep.relation,
     });
@@ -144,7 +141,7 @@ function readXtrmGraphIssues(db: Database, projectId: string, includeClosed: boo
     title: String(row.title ?? ""),
     description: row.body == null ? null : String(row.body),
     notes: row.notes == null ? null : String(row.notes),
-    status: String(row.state ?? "open"),
+    status: normalizeTextValue(row.state, "open"),
     priority: Number(row.priority ?? 2),
     issue_type: String(row.issue_type ?? "task"),
     owner: row.owner == null ? null : String(row.owner),
@@ -158,7 +155,7 @@ function readXtrmGraphIssues(db: Database, projectId: string, includeClosed: boo
     parent_id: row.parent_id == null ? undefined : String(row.parent_id),
     related_ids: parseJsonStringArray(row.related_ids),
     labels: parseJsonStringArray(row.labels),
-  }));
+  })).filter((issue) => includeClosed || normalizeStatus(issue.status) !== "closed");
 }
 
 function readXtrmGraphSpecialists(db: Database, projectId: string): GraphSpecialistJob[] {
@@ -220,8 +217,15 @@ function buildGraph(source: XtrmGraphSource, issues: GraphIssue[], specialists: 
   for (const issue of issues) {
     if (includeClosed || issue.status !== "closed") visibleIds.add(issue.id);
   }
-  for (const id of supersededTargets) visibleIds.add(id);
-  for (const id of ghostNodes.keys()) visibleIds.add(id);
+  for (const id of supersededTargets) {
+    const issue = issueMap.get(id);
+    const ghost = ghostNodes.get(id);
+    const status = issue?.status ?? ghost?.status;
+    if (includeClosed || status !== "closed") visibleIds.add(id);
+  }
+  for (const [id, ghost] of ghostNodes) {
+    if (includeClosed || ghost.status !== "closed") visibleIds.add(id);
+  }
 
   const edges = allEdges.filter((edge) => visibleIds.has(edge.from) && visibleIds.has(edge.to));
   const nodes = [...visibleIds].map((id) => {
@@ -296,8 +300,9 @@ function normalizeNodeType(type: string): GraphNodeType {
 }
 
 function normalizeStatus(status: string): GraphNodeStatus {
-  if (status === "open" || status === "in_progress" || status === "blocked" || status === "closed" || status === "deferred") return status;
-  if (status === "in_review") return "in_progress";
+  const normalized = normalizeTextValue(status, "open");
+  if (normalized === "open" || normalized === "in_progress" || normalized === "blocked" || normalized === "closed" || normalized === "deferred") return normalized;
+  if (normalized === "in_review") return "in_progress";
   return "open";
 }
 
@@ -323,6 +328,21 @@ function parseJsonStringArray(value: unknown): string[] {
   } catch {
     return [];
   }
+}
+
+function normalizeTextValue(value: unknown, fallback: string): string {
+  if (value == null) return fallback;
+  const text = String(value).trim();
+  if (!text) return fallback;
+  if (text.startsWith("\"") && text.endsWith("\"")) {
+    try {
+      const parsed = JSON.parse(text) as unknown;
+      return parsed == null ? fallback : String(parsed);
+    } catch {
+      return text.slice(1, -1);
+    }
+  }
+  return text;
 }
 
 interface GraphDependency {

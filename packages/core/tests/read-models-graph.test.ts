@@ -70,6 +70,29 @@ describe("graph read model (xtrm path)", () => {
     expect(result.sourceHealth?.message).toContain("materialization failed");
   });
 
+  itWithBunSqlite("excludes closed dependency ghost nodes from the active graph", async () => {
+    const { Database } = await import("bun:sqlite");
+    const db = createGraphDb(Database);
+    db.exec(`
+      INSERT INTO substrate_issues (repo_slug, issue_id, title, state, issue_type, priority, created_at, updated_at)
+      VALUES
+        ('gitboard', 'g-1', 'Open bead', 'open', 'task', 1, '2026-01-01', '2026-01-01'),
+        ('gitboard', 'g-2', 'Closed bead', '"closed"', 'bug', 2, '2026-01-01', '2026-01-01');
+      INSERT INTO substrate_dependencies (repo_slug, issue_id, dep_issue_id, relation)
+      VALUES ('gitboard', 'g-1', 'g-2', 'blocks');
+      INSERT INTO materialization_state (source_key, last_status, last_success_at)
+      VALUES ('beads:gitboard', 'success', '2026-01-01T00:00:00.000Z');
+    `);
+
+    const active = readXtrmGraphSnapshot(db, "gitboard", false).graph;
+    expect(active.nodes.map((node) => node.id)).toEqual(["g-1"]);
+    expect(active.edges).toEqual([]);
+
+    const historical = readXtrmGraphSnapshot(db, "gitboard", true).graph;
+    expect(historical.nodes.map((node) => node.id).sort()).toEqual(["g-1", "g-2"]);
+    expect(historical.edges).toEqual([{ from: "g-1", to: "g-2", type: "blocks" }]);
+  });
+
   itWithBunSqlite("derives stale freshness when materialization has never succeeded", async () => {
     const { Database } = await import("bun:sqlite");
     const db = createGraphDb(Database);

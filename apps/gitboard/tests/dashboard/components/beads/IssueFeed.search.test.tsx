@@ -30,6 +30,16 @@ describe("IssueFeed search", () => {
     expect(result.titleMatchCount).toBe(1);
   });
 
+  it("matches description and notes text", () => {
+    const issues = [
+      { ...issue("forge-description", "Description issue", "open"), description: "Graph buckets need clearer hidden counts" },
+      { ...issue("forge-notes", "Notes issue", "open"), notes: "Retarget the drawer from specialists" },
+    ];
+
+    expect(filterIssuesForFeed(issues, "hidden counts").matchByIssueId.get("forge-description")?.reason).toBe("description");
+    expect(filterIssuesForFeed(issues, "specialists").matchByIssueId.get("forge-notes")?.reason).toBe("notes");
+  });
+
   it("returns full set for blank query", () => {
     const issues = [issue("forge-1", "Alpha", "open"), issue("forge-2", "Beta", "closed")];
 

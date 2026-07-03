@@ -29,7 +29,7 @@ export type ProviderPermission = "readonly" | "shell";
 
 export type ShellProviderKind = "specialist-feed" | "pty" | "tmux" | "ssh";
 
-const DEFAULT_CWD_ALLOWLIST = ["/home/dawid/dev/gitboard"];
+const DEFAULT_CWD_ALLOWLIST = ["/home/dawid/dev/console"];
 const DEFAULT_SHELL_ALLOWLIST = Array.from(new Set(["/bin/bash", "/bin/sh", "/bin/zsh", "/usr/bin/zsh", process.env.SHELL].filter((shell): shell is string => Boolean(shell))));
 const DEFAULT_ENV_SCRUB = ["AWS_SECRET_ACCESS_KEY", "GITHUB_TOKEN", "SSH_AUTH_SOCK", "SSH_AGENT_PID", "NPM_TOKEN"];
 

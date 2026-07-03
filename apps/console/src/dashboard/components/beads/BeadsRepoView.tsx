@@ -197,7 +197,7 @@ export function BeadsRepoView({ repo, tab }: { repo: RepoNode; tab: BeadsTab }) 
           return;
         }
         const [issuesResult, memoriesResult, interactionsResult] = await Promise.all([
-          substrateApi.listIssues(project.id, { status: ["open", "in_progress", "blocked", "in_review"], limit: 100 }).then((data) => data).catch(() => null as BeadIssue[] | null),
+          substrateApi.listIssues(project.id, { status: ["open", "in_progress", "blocked", "in_review", "deferred"], limit: 0 }).then((data) => data).catch(() => null as BeadIssue[] | null),
           substrateApi.listMemories(project.id).then((data) => data).catch(() => null as Memory[] | null),
           substrateApi.listInteractions(project.id).then((data) => data).catch(() => null as Interaction[] | null),
         ]);
@@ -392,6 +392,9 @@ export function BeadsRepoView({ repo, tab }: { repo: RepoNode; tab: BeadsTab }) 
 
   const onIssueOpen = useCallback((issue: BeadIssue) => {
     logClientEvent("beads.feed.row_open", { projectId: state.project?.id ?? null, beadId: issue.id });
+    setSelectedId(issue.id);
+    setDetail(null);
+    setLoadingDetailId(null);
     beadSideDrawer.open({ beadId: issue.id, issue });
   }, [state.project?.id]);
 

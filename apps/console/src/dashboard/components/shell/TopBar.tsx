@@ -1,12 +1,13 @@
 // TopBar (forge-7xu). Surface switch [GitHub | Console] on left,
 // tab strip on right.
 
-import { BookIcon, ColumnsIcon, DatabaseIcon, GearIcon, GraphIcon, ListUnorderedIcon, MarkGithubIcon, MoonIcon, PulseIcon, SearchIcon, ShareAndroidIcon, SunIcon } from "@primer/octicons-react";
+import { BookIcon, ColumnsIcon, DatabaseIcon, GearIcon, GraphIcon, ListUnorderedIcon, MarkGithubIcon, MoonIcon, PulseIcon, SearchIcon, ShareAndroidIcon, SidebarExpandIcon, SunIcon } from "@primer/octicons-react";
 import {
   useShellStore,
   selectSelection,
   selectTheme,
 } from "../../stores/shell.ts";
+import { useBeadSideDrawer } from "../../hooks/useBeadSideDrawer.ts";
 import type { ReactNode } from "react";
 import {
   CONSOLE_TABS,
@@ -21,6 +22,8 @@ export function TopBar() {
   const setSurface = useShellStore((s) => s.setSurface);
   const setTab = useShellStore((s) => s.setTab);
   const toggleTheme = useShellStore((s) => s.toggleTheme);
+  const lastInspectorTarget = useBeadSideDrawer((s) => s.lastTarget);
+  const reopenInspector = useBeadSideDrawer((s) => s.reopenLast);
 
   const tabs = selection.surface === "github" ? GITHUB_TABS : CONSOLE_TABS;
 
@@ -57,23 +60,35 @@ export function TopBar() {
           </button>
         ))}
       </nav>
-      <button
-        type="button"
-        className="ide-theme-toggle"
-        aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
-        title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
-        onClick={toggleTheme}
-      >
-        <span className="ide-theme-track" aria-hidden="true">
-          <span className="ide-theme-option ide-theme-option-light">
-            <SunIcon size={12} />
+      <div className="ide-topbar-actions">
+        <button
+          type="button"
+          className="ide-inspector-toggle"
+          aria-label="Open issue inspector"
+          title={lastInspectorTarget ? `Open inspector for ${lastInspectorTarget.beadId}` : "Open issue inspector"}
+          disabled={!lastInspectorTarget}
+          onClick={reopenInspector}
+        >
+          <SidebarExpandIcon size={13} />
+        </button>
+        <button
+          type="button"
+          className="ide-theme-toggle"
+          aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+          title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+          onClick={toggleTheme}
+        >
+          <span className="ide-theme-track" aria-hidden="true">
+            <span className="ide-theme-option ide-theme-option-light">
+              <SunIcon size={12} />
+            </span>
+            <span className="ide-theme-option ide-theme-option-dark">
+              <MoonIcon size={12} />
+            </span>
+            <span className="ide-theme-thumb" />
           </span>
-          <span className="ide-theme-option ide-theme-option-dark">
-            <MoonIcon size={12} />
-          </span>
-          <span className="ide-theme-thumb" />
-        </span>
-      </button>
+        </button>
+      </div>
     </header>
   );
 }

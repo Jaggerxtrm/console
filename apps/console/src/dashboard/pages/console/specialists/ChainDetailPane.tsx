@@ -82,6 +82,8 @@ export function ChainDetailPane({ chain, issueContext, graphLoading = false, pro
 
   const detailJobs = jobs.length > 0 ? jobs : chain.jobs;
   const roles = chain.roles.map((role) => role.role).join(", ") || "unknown";
+  const chainKinds = [...new Set(detailJobs.map((job) => job.chainKind).filter(Boolean))].join(", ") || "unknown";
+  const lastUsefulOutput = excerpt(detailJobs.findLast((job) => job.lastOutput?.trim())?.lastOutput ?? chain.lastMessage);
 
   return (
     <section className="console-specialists-detail">
@@ -89,16 +91,26 @@ export function ChainDetailPane({ chain, issueContext, graphLoading = false, pro
         <span className="console-specialists-detail-id">{chain.rootBeadId}</span>
         <span className="console-specialists-card-sep">/</span>
         <span className="console-specialists-detail-title">{chain.title}</span>
-        <button type="button" className="console-specialists-open-bead" onClick={() => openBead(chain.rootBeadId)}>[ activity ]</button>
+        <button type="button" className="console-specialists-open-bead" onClick={() => openBead(chain.rootBeadId, contract.issue)}>Open bead inspector</button>
       </div>
       <div className="console-specialists-detail-summary">
         <div className="console-specialists-detail-summary-row">
+          <span><b>Root bead</b>{chain.rootBeadId}</span>
           <span><b>Status</b>{chain.status}</span>
           <span><b>Jobs</b>{detailJobs.length}</span>
           <span><b>Updated</b>{formatElapsed(chain.lastUpdatedAt)}</span>
         </div>
         <div className="console-specialists-detail-summary-row">
           <span><b>Roles</b>{roles}</span>
+          <span><b>Kind</b>{chainKinds}</span>
+        </div>
+        {lastUsefulOutput ? (
+          <div className="console-specialists-detail-summary-row console-specialists-detail-output-row">
+            <span><b>Latest output</b>{lastUsefulOutput}</span>
+          </div>
+        ) : null}
+        <div className="console-specialists-detail-actions">
+          <button type="button" className="ide-btn" onClick={() => openBead(chain.rootBeadId, contract.issue)}>Open bead inspector</button>
         </div>
       </div>
       <BeadContractPanel issue={contract.issue} loading={contract.loading} error={contract.error} fallbackId={chain.rootBeadId} />
@@ -195,8 +207,8 @@ function EmptyState() {
   return <section className="console-specialists-detail console-specialists-detail-empty-state"><div className="console-specialists-empty-mark"><DotFillIcon size={10} /></div><div>Select a chain to see details</div></section>;
 }
 
-function openBead(beadId: string): void {
-  beadSideDrawer.open(beadId);
+function openBead(beadId: string, issue: BeadIssueDetail | null = null): void {
+  beadSideDrawer.open({ beadId, issue, tab: "activity" });
 }
 
 function JobBlock({ job }: { job: ChainJob }) {
@@ -544,4 +556,10 @@ function countLines(value: string): number {
 
 function stripAnsi(value: string): string {
   return value.replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, "");
+}
+
+function excerpt(value: string | null): string {
+  const text = (value ?? "").replace(/\s+/g, " ").trim();
+  if (text.length <= 120) return text;
+  return `${text.slice(0, 117)}...`;
 }
