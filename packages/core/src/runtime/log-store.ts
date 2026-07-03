@@ -1,11 +1,9 @@
 import { appendFile } from "node:fs/promises";
 import { existsSync, mkdirSync, readdirSync, statSync, symlinkSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
-import type { LogEntry, LogLevel } from "./logs.ts";
+import { LOG_DEFAULT_LEVEL, LOG_RETENTION_DAYS, LOG_RING_SIZE, type LogEntry, type LogLevel } from "./logs.ts";
 
-export const LOG_RING_SIZE = 5000;
-export const LOG_DEFAULT_LEVEL: LogLevel = "info";
-export const LOG_RETENTION_DAYS = 7;
+export { LOG_DEFAULT_LEVEL, LOG_RETENTION_DAYS, LOG_RING_SIZE };
 
 export type LogFilter = Partial<Pick<LogEntry, "level" | "component" | "event">>;
 export type LogListener = (entry: LogEntry) => void;

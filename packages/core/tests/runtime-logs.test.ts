@@ -2,7 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { existsSync, utimesSync } from "node:fs";
 import { join } from "node:path";
-import { createLoggerRuntime, LOG_RING_SIZE, type LogEntry } from "../src/runtime/index.ts";
+import { LOG_RING_SIZE, type LogEntry } from "../src/runtime/index.ts";
+import { createLoggerRuntime } from "../src/runtime/server.ts";
 
 const tmpRoot = join(process.cwd(), ".tmp-runtime-logs");
 

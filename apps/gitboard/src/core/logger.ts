@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import type { ChannelRegistry } from "../api/ws/channels.ts";
+import { createLoggerRuntime } from "../../../../packages/core/src/runtime/server.ts";
 import {
-  createLoggerRuntime,
   makeLogEntry,
   LOG_DEFAULT_LEVEL,
   LOG_RETENTION_DAYS as DEFAULT_LOG_RETENTION_DAYS,

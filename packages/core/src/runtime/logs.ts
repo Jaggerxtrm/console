@@ -1,4 +1,8 @@
 export type LogLevel = "debug" | "info" | "warn" | "error";
+
+export const LOG_RING_SIZE = 5000;
+export const LOG_DEFAULT_LEVEL: LogLevel = "info";
+export const LOG_RETENTION_DAYS = 7;
 export type LogComponent =
   | "poller"
   | "watcher"
