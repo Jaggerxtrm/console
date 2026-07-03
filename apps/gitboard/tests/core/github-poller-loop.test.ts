@@ -2,10 +2,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
-import { createDatabase } from "../../src/core/store.ts";
+import { createDatabase } from "../../../../packages/core/src/github/database.ts";
 import { GithubPoller } from "../../src/core/github-poller.ts";
 import { ChannelRegistry } from "../../src/api/ws/channels.ts";
-import { getIssues, getPrs, getRepoPollState } from "../../src/core/github-store.ts";
+import { getIssues, getPrs, getRepoPollState } from "../../../../packages/core/src/github/index.ts";
 
 const repo = "owner/repo";
 

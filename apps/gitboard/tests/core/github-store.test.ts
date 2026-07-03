@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
-import { createDatabase } from "../../src/core/store.ts";
+import { createDatabase } from "../../../../packages/core/src/github/database.ts";
 import {
   insertEvent,
   insertCommit,
@@ -20,7 +20,7 @@ import {
   type GithubEvent,
   type GithubCommit,
   type GithubRepo,
-} from "../../src/core/github-store.ts";
+} from "../../../../packages/core/src/github/index.ts";
 import {
   getEvents as getCoreEvents,
   insertEvent as insertCoreEvent,
@@ -70,7 +70,7 @@ const makeRepo = (overrides: Partial<GithubRepo> = {}): GithubRepo => ({
   ...overrides,
 });
 
-describe("github-store", () => {
+describe("github core store", () => {
   let db: ReturnType<typeof createDatabase>;
   let tmpDir: string;
 

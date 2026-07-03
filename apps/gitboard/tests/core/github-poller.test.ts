@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
-import { createDatabase } from "../../src/core/store.ts";
+import { createDatabase } from "../../../../packages/core/src/github/database.ts";
 import {
   getGithubToken,
   transformEvent,
@@ -11,7 +11,7 @@ import {
   type RawGithubEvent,
 } from "../../src/core/github-poller.ts";
 import { ChannelRegistry } from "../../src/api/ws/channels.ts";
-import { ensureRepo, getEvents, getCommits } from "../../src/core/github-store.ts";
+import { ensureRepo, getEvents, getCommits } from "../../../../packages/core/src/github/index.ts";
 
 const rawPushEvent: RawGithubEvent = {
   id: "raw-push-1",

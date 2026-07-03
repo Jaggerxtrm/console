@@ -3,7 +3,7 @@ import { existsSync, readdirSync, rmSync, renameSync } from "node:fs";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createDatabase } from "../../src/core/store.ts";
+import { createDatabase } from "../../../../packages/core/src/github/database.ts";
 import { createXtrmDatabase } from "../../src/core/xtrm-store.ts";
 import { foldGitboardSQLite } from "../../src/core/migrations/fold-gitboard-sqlite.ts";
 

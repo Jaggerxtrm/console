@@ -2,11 +2,11 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
-import { createDatabase } from "../../../src/core/store.ts";
-import { insertEvent, insertCommit, upsertRepo } from "../../../src/core/github-store.ts";
+import { createDatabase } from "../../../../../packages/core/src/github/database.ts";
+import { insertEvent, insertCommit, upsertRepo } from "../../../../../packages/core/src/github/index.ts";
 import { createApp } from "../../../src/api/server.ts";
 import type { Database } from "bun:sqlite";
-import type { GithubEvent, GithubCommit } from "../../../src/core/github-store.ts";
+import type { GithubEvent, GithubCommit } from "../../../../../packages/core/src/github/index.ts";
 
 let dir: string;
 let db: Database;

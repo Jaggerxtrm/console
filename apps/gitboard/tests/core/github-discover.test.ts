@@ -2,8 +2,8 @@ import { describe, it, expect, vi, beforeEach, afterEach, beforeAll, afterAll } 
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
-import { createDatabase } from "../../src/core/store.ts";
-import { getRepos } from "../../src/core/github-store.ts";
+import { createDatabase } from "../../../../packages/core/src/github/database.ts";
+import { getRepos } from "../../../../packages/core/src/github/index.ts";
 import {
   discoverViaGhCli,
   discoverViaApi,

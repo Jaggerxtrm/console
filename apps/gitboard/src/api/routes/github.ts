@@ -18,7 +18,7 @@ import {
   getIssues,
   getIssue,
   getReleases,
-} from "../../core/github-store.ts";
+} from "../../../../../packages/core/src/github/index.ts";
 import {
   getMarkdownFile,
   getPrDetailPayload,
@@ -27,8 +27,8 @@ import {
   isAllowedMarkdownPath,
   isAllowedReportFilename,
   isKnownGithubRepo,
-} from "../../core/github-store.ts";
-import { getGithubToken } from "../../core/github-store.ts";
+} from "../../../../../packages/core/src/github/index.ts";
+import { getGithubToken } from "../../../../../packages/core/src/github/index.ts";
 import type { ChannelRegistry } from "../ws/channels.ts";
 
 export function createGithubRouter(db: Database, registry: ChannelRegistry): Hono {

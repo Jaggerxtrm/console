@@ -5,9 +5,9 @@ import { join } from "node:path";
 import type { Database } from "bun:sqlite";
 import { ChannelRegistry } from "../../../src/api/ws/channels.ts";
 import { createGithubRouter } from "../../../src/api/routes/github.ts";
-import { createDatabase } from "../../../src/core/store.ts";
-import { upsertPr, upsertRepo } from "../../../src/core/github-store.ts";
-import { clearReadmeCache } from "../../../src/core/github-readme.ts";
+import { createDatabase } from "../../../../../packages/core/src/github/database.ts";
+import { upsertPr, upsertRepo } from "../../../../../packages/core/src/github/index.ts";
+import { clearReadmeCache } from "../../../../../packages/core/src/github/index.ts";
 
 let dir: string;
 let db: Database;
