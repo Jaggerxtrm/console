@@ -258,6 +258,9 @@ export function startServer(xtrmDb: Database, options: ServerOptions = {}): void
           }
           return terminalBridge.handleUpgrade(req, server, path, { isVerifiedAdmin });
         }
+        if (!isAllowedRealtimeWebSocketOrigin(req.url, req.headers.get("origin"), req.headers.get("host"), req.headers.get("x-gitboard-ws-token"), process.env)) {
+          return new Response(JSON.stringify({ error: "websocket origin denied" }), { status: 403, headers: { "Content-Type": "application/json" } });
+        }
         const upgraded = server.upgrade(req, { data: { path } } as never);
         if (!upgraded) {
           return new Response("WebSocket upgrade failed", { status: 400 });
@@ -315,6 +318,24 @@ export function startServer(xtrmDb: Database, options: ServerOptions = {}): void
   console.log(`[xtrm] Server running at http://${hostname}:${port}`);
   console.log(`[xtrm] - Gitboard: http://${hostname}:${port}/gitboard`);
   console.log(`[xtrm] - Console: http://${hostname}:${port}/console`);
+}
+
+export function isAllowedRealtimeWebSocketOrigin(url: string, origin: string | null, host: string | null, requestToken: string | null, env: NodeJS.ProcessEnv = process.env): boolean {
+  const configuredToken = env.GITBOARD_REALTIME_WS_TOKEN ?? "";
+  if (configuredToken.length > 0 && requestToken === configuredToken) return true;
+  if (!origin || !host) return false;
+
+  try {
+    const requestUrl = new URL(url);
+    const originUrl = new URL(origin);
+    return normalizeHost(host) === normalizeHost(requestUrl.host) && originUrl.protocol === requestUrl.protocol && normalizeHost(originUrl.host) === normalizeHost(requestUrl.host);
+  } catch {
+    return false;
+  }
+}
+
+function normalizeHost(host: string): string {
+  return host.toLowerCase().replace(/:80$/, "").replace(/:443$/, "");
 }
 
 function contentType(path: string): string {
