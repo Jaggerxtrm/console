@@ -43,6 +43,55 @@ describe("internal logs route", () => {
     expect(forbidden.status).toBe(403);
   });
 
+  it("accepts same-origin client logs, tags source, and broadcasts through realtime publisher", async () => {
+    vi.stubEnv("HOME", join(process.cwd(), ".tmp-internal-home"));
+    vi.stubEnv("LOG_DIR", "");
+    vi.stubEnv("GITBOARD_LOG_DIR", "");
+    const { logger, routes } = await loadModules();
+    const app = new Hono().route("/api/internal", routes.createInternalLogsRouter());
+    const registry = new ChannelRegistry();
+    const envelopes: unknown[] = [];
+
+    registry.subscribe("system", { id: "system-client", send: (message) => envelopes.push(message) });
+    logger.setRealtimePublisher(registry);
+    logger.setDiskEnabled(false);
+
+    const post = await app.request("http://localhost/api/internal/logs/client", {
+      method: "POST",
+      headers: {
+        host: "localhost:3000",
+        origin: "http://localhost:3000",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ event: "ui.clicked", data: { pane: "logs" } }),
+    });
+
+    expect(post.status).toBe(200);
+    expect(envelopes).toHaveLength(1);
+    expect(envelopes[0]).toMatchObject({
+      channel: "system",
+      event: "system:log",
+      data: {
+        component: "drawer",
+        event: "ui.clicked",
+        data: { pane: "logs", source: "dashboard-client" },
+      },
+    });
+
+    const logs = await app.request("http://localhost/api/internal/logs?component=drawer&event=ui.clicked&limit=1", {
+      headers: { host: "localhost:3000" },
+    });
+
+    expect(logs.status).toBe(200);
+    await expect(logs.json()).resolves.toEqual([
+      expect.objectContaining({
+        component: "drawer",
+        event: "ui.clicked",
+        data: expect.objectContaining({ pane: "logs", source: "dashboard-client" }),
+      }),
+    ]);
+  });
+
   it("lists jsonl files for localhost callers", async () => {
     const home = join(process.cwd(), ".tmp-internal-home");
     const dir = join(home, ".xtrm", "logs");
