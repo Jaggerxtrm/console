@@ -10,8 +10,9 @@ vi.mock("../../../../../src/dashboard/hooks/useGraphData.ts", () => ({
 
 import { Graph } from "../../../../../src/dashboard/pages/console/Graph.tsx";
 import { useShellStore } from "../../../../../src/dashboard/stores/shell.ts";
+import type { RepoNode } from "../../../../../src/types/shell.ts";
 
-const repo = {
+const repo: RepoNode = {
   fullName: "owner/gitboard",
   displayName: "gitboard",
   lastActivityAt: null,

@@ -32,8 +32,9 @@ if (typeof globalThis.DOMMatrixReadOnly === "undefined") {
 
 import { Graph } from "../../../../../src/dashboard/pages/console/Graph.tsx";
 import { useShellStore } from "../../../../../src/dashboard/stores/shell.ts";
+import type { RepoNode } from "../../../../../src/types/shell.ts";
 
-const repo = {
+const repo: RepoNode = {
   fullName: "owner/gitboard",
   displayName: "gitboard",
   lastActivityAt: null,
@@ -46,7 +47,7 @@ const repo = {
   beadsProjectId: "project-gitboard",
 };
 
-const degradedRepo = {
+const degradedRepo: RepoNode = {
   ...repo,
   fullName: "owner/gitboard-degraded",
   beadsProjectId: "project-gitboard-degraded",
