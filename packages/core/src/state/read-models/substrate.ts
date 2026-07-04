@@ -141,6 +141,14 @@ export function readSubstrateIssueDependents(db: Database | null | undefined, pr
   });
 }
 
+export function countSubstrateIssues(db: Database | null | undefined, projectId: string): number {
+  if (!db) return 0;
+  const row = db.query<{ count: number }, [string]>(
+    "SELECT COUNT(*) AS count FROM substrate_issues WHERE repo_slug = ?"
+  ).get(projectId);
+  return Number(row?.count ?? 0);
+}
+
 export function readSubstrateStats(db: Database | null | undefined, projectId: string): SubstrateStats {
   const issues = querySubstrateIssues(db, projectId);
   return issues.reduce<SubstrateStats>((acc, issue) => {

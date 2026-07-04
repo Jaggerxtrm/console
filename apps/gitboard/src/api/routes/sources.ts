@@ -4,7 +4,6 @@ import { UnifiedScanner, type UnifiedSource } from "../../core/unified-scanner.t
 import { isAllowedMutationRequest, isAllowedSourceKind, isLocalhost } from "./sources-policy.ts";
 import { canRefreshSources, createSourceRefreshState, formatSourceDisplayPath } from "./sources-policy.ts";
 import {
-  buildSourceKey as coreBuildSourceKey,
   getSourceRow as coreGetSourceRow,
   isMutableManualSource as coreIsMutableManualSource,
   listSources as coreListSources,

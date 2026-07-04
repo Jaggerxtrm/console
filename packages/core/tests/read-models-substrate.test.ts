@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  countSubstrateIssues,
   readSubstrateClosedIssues,
   readSubstrateIssueDependents,
   readSubstrateIssueDetail,
@@ -143,6 +144,23 @@ describe("substrate read model", () => {
       updated_at: "2026-01-02T02:00:00.000Z",
       closed_at: "2026-01-03T03:00:00.000Z",
     }));
+  });
+
+  itWithBunSqlite("counts substrate issues for a project", async () => {
+    const { Database } = await import("bun:sqlite");
+    const db = createSubstrateDb(Database);
+    expect(countSubstrateIssues(db, "demo")).toBe(0);
+    expect(countSubstrateIssues(null, "demo")).toBe(0);
+    db.exec(`
+      INSERT INTO substrate_issues (repo_slug, issue_id, title, state, issue_type, priority, created_at, updated_at)
+      VALUES
+        ('demo', 'a', 'A', 'open', 'task', 1, '2026-01-01', '2026-01-01'),
+        ('demo', 'b', 'B', 'closed', 'task', 2, '2026-01-01', '2026-01-01'),
+        ('other', 'c', 'C', 'open', 'task', 1, '2026-01-01', '2026-01-01');
+    `);
+    expect(countSubstrateIssues(db, "demo")).toBe(2);
+    expect(countSubstrateIssues(db, "other")).toBe(1);
+    expect(countSubstrateIssues(db, "missing")).toBe(0);
   });
 });
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildSourceKey,
+  getBeadsSourcePath,
   getSourceRow,
   hasHistoricalData,
   isAllowedSourceKind,
@@ -8,6 +9,7 @@ import {
   listSources,
   parseSourceKey,
   pinSource,
+  readSourceMaterializationState,
   unpinSource,
 } from "../src/state/index.ts";
 
@@ -68,6 +70,24 @@ describe("sources read model", () => {
     expect(hasHistoricalData(db, "observability:repo-a")).toBe(true);
 
     expect(hasHistoricalData(db, "unknown:kind")).toBe(false);
+  });
+
+  itWithBunSqlite("resolves a beads source path by project id", async () => {
+    const { Database } = await import("bun:sqlite");
+    const db = createSourcesDb(Database);
+    expect(getBeadsSourcePath(db, "demo")).toBeNull();
+    db.query("INSERT INTO sources (source_key, kind, path, origin, status) VALUES ('beads:demo', 'beads', '/repos/demo/.beads', 'manual', 'active')").run();
+    expect(getBeadsSourcePath(db, "demo")).toBe("/repos/demo/.beads");
+    expect(getBeadsSourcePath(null, "demo")).toBeNull();
+  });
+
+  itWithBunSqlite("reads single-source materialization state including last_error", async () => {
+    const { Database } = await import("bun:sqlite");
+    const db = createSourcesDb(Database);
+    expect(readSourceMaterializationState(db, "beads:demo")).toBeNull();
+    expect(readSourceMaterializationState(null, "beads:demo")).toBeNull();
+    db.query("INSERT INTO materialization_state (source_key, last_status, last_success_at, last_error) VALUES ('beads:demo', 'error', '2026-01-01', 'boom')").run();
+    expect(readSourceMaterializationState(db, "beads:demo")).toEqual({ last_status: "error", last_success_at: "2026-01-01", last_error: "boom" });
   });
 });
 
