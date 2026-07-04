@@ -48,3 +48,5 @@ apps/gitboard/design-mocks/static-complete-preview.png
 # Python caches from local skills
 __pycache__/
 *.py[cod]
+# xtrm worktrees
+.xtrm/worktrees/
