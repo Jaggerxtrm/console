@@ -1,3 +1,4 @@
+export * from "./beads-watcher.ts";
 export * from "./host.ts";
 export * from "./logs.ts";
 export * from "./ownership.ts";
