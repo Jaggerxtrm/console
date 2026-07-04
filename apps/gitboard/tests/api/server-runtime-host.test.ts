@@ -41,6 +41,13 @@ describe("gitboard runtime host compatibility", () => {
     expect(runtimeHost.mountedRoutes).toContain("/api/feed");
     expect(runtimeHost.mountedRoutes).toContain("/api/internal");
     expect(runtimeHost.mountedRoutes).not.toContain("/explore/sql");
+    expect(runtimeHost.staticServiceParity).toEqual([
+      expect.objectContaining({ route: "/console", state: "retained" }),
+      expect.objectContaining({ route: "/gitboard", state: "retained" }),
+      expect.objectContaining({ route: "/health", state: "retained" }),
+      expect.objectContaining({ route: "runtime-descriptor", state: "retained" }),
+    ]);
+    expect(runtimeHost.staticServiceParity.flatMap((route) => route.blockers).length).toBeGreaterThan(0);
 
     const response = await app.request("/health");
     expect(response.status).toBe(200);
