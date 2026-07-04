@@ -3,7 +3,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { NodeChip } from "../../../../src/dashboard/pages/console/Graph.tsx";
-import { useShellStore } from "../../../../src/dashboard/stores/shell.ts";
+import { useBeadSideDrawer } from "../../../../src/dashboard/hooks/useBeadSideDrawer.ts";
 import { logClientEvent } from "../../../../src/dashboard/lib/client-log.ts";
 import type { GraphNode, GraphSpecialist } from "../../../../src/types/graph.ts";
 
@@ -23,7 +23,7 @@ vi.mock("../../../../src/dashboard/lib/client-log.ts", () => ({
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
-  useShellStore.setState({ sidebar: { open: false, beadId: null, jobId: null, width: 480 } });
+  useBeadSideDrawer.setState({ beadId: null, jobId: null, projectId: null, issueById: new Map(), fallbackIssue: null, memories: [], tab: "overview", backStack: [] } as never);
 });
 
 describe("Graph specialist chip wiring", () => {
@@ -32,9 +32,9 @@ describe("Graph specialist chip wiring", () => {
 
     fireEvent.click(screen.getByRole("button"));
 
-    expect(useShellStore.getState().sidebar).toMatchObject({ open: true, beadId: "forge-graph", jobId: "job-graph" });
+    expect(useBeadSideDrawer.getState().beadId).toBe("forge-graph");
     expect(logClientEvent).toHaveBeenCalledWith("chip.click", { source: "graph_node", beadId: "forge-graph", jobId: "job-graph" });
-    expect(logClientEvent).toHaveBeenCalledWith("chip.sidebar.dispatched", expect.objectContaining({ source: "graph_node", beadId: "forge-graph", jobId: "job-graph", swap: false }));
+    expect(logClientEvent).toHaveBeenCalledWith("chip.inspector.dispatched", expect.objectContaining({ source: "graph_node", beadId: "forge-graph", jobId: "job-graph" }));
   });
 });
 

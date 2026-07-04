@@ -1,8 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import * as fs from "node:fs";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+const fsCalls = vi.hoisted(() => ({ readdirSync: 0 }));
+
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  return {
+    ...actual,
+    readdirSync: ((...args: Parameters<typeof actual.readdirSync>) => {
+      fsCalls.readdirSync += 1;
+      return actual.readdirSync(...args);
+    }) as typeof actual.readdirSync,
+  };
+});
 
 vi.mock("../../../src/server/observability/config.ts", () => ({
   getObservabilityConfig: vi.fn(),
@@ -23,6 +35,7 @@ describe("listRepos cache", () => {
 
   beforeEach(() => {
     now = Date.parse("2025-01-01T00:00:00.000Z");
+    fsCalls.readdirSync = 0;
     vi.spyOn(Date, "now").mockImplementation(() => now);
   });
 
@@ -38,11 +51,6 @@ describe("listRepos cache", () => {
 
     mockedConfig.mockReturnValue({ roots: [root] });
 
-    const actualReaddirSync = fs.readdirSync;
-    const readdirSpy = vi.spyOn(fs, "readdirSync").mockImplementation((path, options) => {
-      return actualReaddirSync(path, options as Parameters<typeof fs.readdirSync>[1]);
-    });
-
     const { listRepos } = await importRegistry();
 
     const first = listRepos();
@@ -51,7 +59,7 @@ describe("listRepos cache", () => {
 
     expect(first).toEqual(second);
     expect(second).toEqual(third);
-    expect(readdirSpy).toHaveBeenCalledTimes(1);
+    expect(fsCalls.readdirSync).toBe(1);
 
     rmSync(root, { recursive: true, force: true });
   });
@@ -64,21 +72,17 @@ describe("listRepos cache", () => {
 
     mockedConfig.mockReturnValue({ roots: [root] });
 
-    const actualReaddirSync = fs.readdirSync;
-    const readdirSpy = vi.spyOn(fs, "readdirSync").mockImplementation((path, options) => {
-      return actualReaddirSync(path, options as Parameters<typeof fs.readdirSync>[1]);
-    });
-
     const { listRepos } = await importRegistry();
 
     listRepos();
     now += 10_001;
     listRepos();
 
-    expect(readdirSpy).toHaveBeenCalledTimes(2);
+    expect(fsCalls.readdirSync).toBe(2);
 
     rmSync(root, { recursive: true, force: true });
   });
+
   it("discovers modern and legacy specialist database locations", async () => {
     const root = mkdtempSync(join(tmpdir(), "gitboard-observability-"));
     const modern = join(root, "modern-repo", ".specialists", "db");
@@ -121,5 +125,4 @@ describe("listRepos cache", () => {
 
     rmSync(root, { recursive: true, force: true });
   });
-
 });
