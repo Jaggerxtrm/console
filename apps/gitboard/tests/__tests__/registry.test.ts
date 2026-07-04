@@ -12,6 +12,7 @@ import { getObservabilityConfig } from "../../src/server/observability/config.ts
 const mockedConfig = getObservabilityConfig as unknown as { mockReturnValue: (value: { roots: string[] }) => void };
 
 async function importRegistry() {
+  vi.resetModules();
   const registry = await import("../../src/server/observability/registry.ts");
   registry.__resetObservabilityRegistryForTests();
   return registry;
@@ -19,6 +20,7 @@ async function importRegistry() {
 
 describe("listRepos", () => {
   afterEach(() => {
+    vi.doUnmock("node:fs");
     vi.restoreAllMocks();
   });
 
@@ -70,10 +72,15 @@ describe("listRepos", () => {
     mkdirSync(unreadable, { recursive: true });
     writeFileSync(join(unreadable, "observability.db"), "x");
 
-    const actualReaddirSync = fs.readdirSync;
-    const readdirSpy = vi.spyOn(fs, "readdirSync").mockImplementation((path, options) => {
-      if (path === unreadable) throw new Error("denied");
-      return actualReaddirSync(path, options as Parameters<typeof fs.readdirSync>[1]);
+    vi.doMock("node:fs", async () => {
+      const actual = await vi.importActual<typeof import("node:fs")>("node:fs");
+      return {
+        ...actual,
+        readdirSync: (path: Parameters<typeof fs.readdirSync>[0], options?: Parameters<typeof fs.readdirSync>[1]) => {
+          if (path === unreadable) throw new Error("denied");
+          return actual.readdirSync(path, options as Parameters<typeof actual.readdirSync>[1]);
+        },
+      };
     });
 
     mockedConfig.mockReturnValue({ roots: [root] });
@@ -82,6 +89,5 @@ describe("listRepos", () => {
     expect(() => listRepos()).not.toThrow();
 
     rmSync(root, { recursive: true, force: true });
-    readdirSpy.mockRestore();
   });
 });

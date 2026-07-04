@@ -13,7 +13,7 @@ export default defineConfig({
   test: {
     environment: "node",
     globals: true,
-    exclude: ["**/node_modules/**", "**/dist/**", "**/.worktrees/**"],
+    exclude: ["**/node_modules/**", "**/dist/**", "**/.worktrees/**", "tests/e2e/specialists-live-dependencies.spec.cjs"],
     reporters: [
       "default",
       new VitestReporter("/home/dawid/dev/console"),

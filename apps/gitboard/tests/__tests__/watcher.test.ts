@@ -2,12 +2,17 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { bump, get } from "../../src/server/observability/epoch.ts";
 import { createObservabilityWatcher } from "../../src/server/observability/watcher.ts";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const triggerMaterializer = vi.hoisted(() => vi.fn());
+
+vi.mock("../../src/api/server.ts", () => ({
+  getCurrentMaterializer: () => ({ trigger: triggerMaterializer }),
+}));
 
 afterEach(() => {
+  triggerMaterializer.mockReset();
   vi.restoreAllMocks();
 });
 
@@ -21,14 +26,12 @@ describe("createObservabilityWatcher", () => {
 
     const watcher = createObservabilityWatcher([
       { repoSlug: "alpha", repoPath, dbPath, mtimeMs: 0 },
-    ]);
+    ], { debounceMs: 10 });
 
     watcher.start();
     writeFileSync(dbPath, "next");
-    await sleep(50);
-    writeFileSync(dbPath, "next-2");
 
-    await expect(waitFor(() => get("alpha") > 0, 600)).resolves.toBe(true);
+    await expect(waitFor(() => triggerMaterializer.mock.calls.some(([reason]) => reason === "obs:alpha"), 1_000)).resolves.toBe(true);
 
     watcher.stop();
     rmSync(root, { recursive: true, force: true });
@@ -43,13 +46,13 @@ describe("createObservabilityWatcher", () => {
 
     const watcher = createObservabilityWatcher([
       { repoSlug: "beta", repoPath, dbPath, mtimeMs: 0 },
-    ]);
+    ], { debounceMs: 10 });
 
     watcher.start();
     rmSync(dbPath);
     writeFileSync(dbPath, "reborn");
 
-    await expect(waitFor(() => get("beta") > 0, 300)).resolves.toBe(true);
+    await expect(waitFor(() => triggerMaterializer.mock.calls.some(([reason]) => reason === "obs:beta"), 1_000)).resolves.toBe(true);
 
     watcher.stop();
     rmSync(root, { recursive: true, force: true });
@@ -64,14 +67,14 @@ describe("createObservabilityWatcher", () => {
 
     const watcher = createObservabilityWatcher([
       { repoSlug: "gamma", repoPath, dbPath, mtimeMs: 0 },
-    ]);
+    ], { debounceMs: 10 });
 
     watcher.start();
     watcher.stop();
     writeFileSync(dbPath, "next");
 
     await sleep(300);
-    expect(get("gamma")).toBe(0);
+    expect(triggerMaterializer).not.toHaveBeenCalled();
 
     rmSync(root, { recursive: true, force: true });
   });
