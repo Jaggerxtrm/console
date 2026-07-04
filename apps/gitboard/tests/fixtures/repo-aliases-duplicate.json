@@ -1,0 +1,103 @@
+[
+  {
+    "project": "terminalbeta",
+    "projectId": "073c25b8-6723-42b7-8bca-1bee1dbc1a3d",
+    "matches": [
+      "Jaggerxtrm/terminalbeta",
+      "mercuryintelligence/terminalbeta"
+    ]
+  },
+  {
+    "project": "quant",
+    "projectId": "1623d824-7065-48dc-8b4e-2e37ac8d20de",
+    "matches": [
+      "mercuryintelligence/quant",
+      "Jaggerxtrm/mercury-quant",
+      "goldmansachs/gs-quant",
+      "mercuryintelligence/mercury-quant"
+    ]
+  },
+  {
+    "project": "darth-feedor",
+    "projectId": "2b362682-2c1f-489d-8c2a-4fb9ed8da01d",
+    "matches": [
+      "Jaggerxtrm/darth_feedor",
+      "mercuryintelligence/darth-feedor"
+    ]
+  },
+  {
+    "project": "website",
+    "projectId": "4c485363-ae2d-4459-bfba-392a6e4b2247",
+    "matches": [
+      "mercuryintelligence/website",
+      "Jaggerxtrm/mercury-website"
+    ]
+  },
+  {
+    "project": "market-data",
+    "projectId": "6e4052d8-e321-41e7-86ed-a92df709982d",
+    "matches": [
+      "mercuryintelligence/market-data",
+      "Jaggerxtrm/mercury-market-data",
+      "mercuryintelligence/mercury-market-data"
+    ]
+  },
+  {
+    "project": "economic-data",
+    "projectId": "8a8492a0-25df-49d1-a1d4-7127c090e870",
+    "matches": [
+      "mercuryintelligence/economic-data",
+      "Jaggerxtrm/mercury-economic-data",
+      "mercuryintelligence/mercury-economic-data"
+    ]
+  },
+  {
+    "project": "platform",
+    "projectId": "8c6b774f-ee0e-4ad3-ab91-4adc3f34fcfd",
+    "matches": [
+      "Jaggerxtrm/platform",
+      "mercuryintelligence/platform"
+    ]
+  },
+  {
+    "project": "specialists",
+    "projectId": "8ee0c958-2ec7-46d3-b842-f87669a746d0",
+    "matches": [
+      "Jaggerxtrm/specialists",
+      "xtrm-dev/specialists"
+    ]
+  },
+  {
+    "project": "sierra-vps",
+    "projectId": "9159e8d4-622b-4932-845d-9eabafb4a536",
+    "matches": [
+      "Jaggerxtrm/sierra-vps",
+      "mercuryintelligence/sierra-vps"
+    ]
+  },
+  {
+    "project": "barchart-scraper",
+    "projectId": "99cf2503-1554-4065-a05b-03205d60349c",
+    "matches": [
+      "Jaggerxtrm/barchart-scraper",
+      "mercuryintelligence/barchart-scraper"
+    ]
+  },
+  {
+    "project": "infra",
+    "projectId": "d0e6ee1a-d7a9-48c3-a62b-7c0c1cc113f5",
+    "matches": [
+      "mercuryintelligence/infra",
+      "Jaggerxtrm/mercury-infra",
+      "mercuryintelligence/mercury-infra"
+    ]
+  },
+  {
+    "project": "xtrm",
+    "projectId": "e9c03835-a914-4f6e-8f06-2de126f1fddc",
+    "matches": [
+      "Jaggerxtrm/xtrm",
+      "xtrm-dev/xtrm"
+    ]
+  }
+]
