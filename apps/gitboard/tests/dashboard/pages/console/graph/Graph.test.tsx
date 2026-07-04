@@ -46,6 +46,12 @@ const repo = {
   beadsProjectId: "project-gitboard",
 };
 
+const degradedRepo = {
+  ...repo,
+  fullName: "owner/gitboard-degraded",
+  beadsProjectId: "project-gitboard-degraded",
+};
+
 beforeEach(() => {
   fetchMock.mockReset();
   fetchMock.mockResolvedValue({ ok: true, json: async () => fixture });
@@ -79,7 +85,7 @@ describe("Graph (React Flow viewport)", () => {
   });
 
   it("shows degraded source banner while preserving non-empty graph", async () => {
-    useShellStore.setState({ repos: [repo], selection: { surface: "console", tab: "graph", repo: repo.fullName } as never });
+    useShellStore.setState({ repos: [degradedRepo], selection: { surface: "console", tab: "graph", repo: degradedRepo.fullName } as never });
     fetchMock.mockResolvedValueOnce({
       ok: true,
       json: async () => ({
