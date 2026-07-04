@@ -6,6 +6,7 @@ import { RealtimeChannelRegistry, RealtimeConnectionHandler } from "../../../../
 
 type RouteHandler = (context: {
   req: {
+    url: string;
     header(name: string): string | undefined;
     query(name: string): string | undefined;
     json(): Promise<unknown>;
@@ -46,6 +47,7 @@ class FakeHono {
 
     return await route.handler({
       req: {
+        url: request.url,
         header: (name: string) => request.headers.get(name) ?? undefined,
         query: (name: string) => new URL(request.url).searchParams.get(name) ?? undefined,
         json: async () => await request.json(),
@@ -126,7 +128,7 @@ test("apps/gitboard websocket and internal log wrappers keep daemon/core parity"
   handler.handleMessage(connectionId, JSON.stringify({ action: "subscribe", channel: "system", version: String(REALTIME_PROTOCOL_VERSION) }));
   const app = new FakeHono().route("/api/internal", routes.createInternalLogsRouter() as unknown as FakeHono);
 
-  const post = await app.request("http://localhost/api/internal/logs/client", {
+  const post = await app.request("http://localhost:3000/api/internal/logs/client", {
     method: "POST",
     headers: {
       host: "localhost:3000",
@@ -148,7 +150,7 @@ test("apps/gitboard websocket and internal log wrappers keep daemon/core parity"
     },
   });
 
-  const logs = await app.request("http://localhost/api/internal/logs?component=drawer&event=ui.smoke&limit=1", {
+  const logs = await app.request("http://localhost:3000/api/internal/logs?component=drawer&event=ui.smoke&limit=1", {
     headers: { host: "localhost:3000" },
   });
 
