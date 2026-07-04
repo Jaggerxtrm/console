@@ -103,6 +103,7 @@ export class BeadsWatcherRuntime<TProject extends BeadsWatcherProject = BeadsWat
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
   private stopped = false;
   private watchers = new Map<string, FSWatcher>();
+  private debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private previous = new Map<string, BeadsWatcherSnapshot>();
   private lastCommitHash = new Map<string, string>();
   private queue: BeadsWatcherPendingEvent[] = [];
@@ -125,6 +126,8 @@ export class BeadsWatcherRuntime<TProject extends BeadsWatcherProject = BeadsWat
     this.stopped = true;
     if (this.timer) { clearTimeout(this.timer); this.timer = null; }
     this.clearFlushTimer();
+    for (const timer of this.debounceTimers.values()) clearTimeout(timer);
+    this.debounceTimers.clear();
     for (const watcher of this.watchers.values()) watcher.close();
     this.watchers.clear();
   }
@@ -164,10 +167,15 @@ export class BeadsWatcherRuntime<TProject extends BeadsWatcherProject = BeadsWat
   private ensureWatcher(project: TProject): void {
     if (this.watchers.has(project.id)) return;
     try {
-      let debounce: ReturnType<typeof setTimeout> | null = null;
       const watcher = watch(join(project.beadsPath, "issues.jsonl"), { persistent: false }, () => {
-        if (debounce) clearTimeout(debounce);
-        debounce = setTimeout(() => void this.poll(project), this.debounceMs);
+        const current = this.debounceTimers.get(project.id);
+        if (current) clearTimeout(current);
+        const timer = setTimeout(() => {
+          if (this.stopped) return;
+          this.debounceTimers.delete(project.id);
+          void this.poll(project);
+        }, this.debounceMs);
+        this.debounceTimers.set(project.id, timer);
       });
       this.watchers.set(project.id, watcher);
     } catch (error) {
@@ -177,6 +185,11 @@ export class BeadsWatcherRuntime<TProject extends BeadsWatcherProject = BeadsWat
 
   private async poll(project: TProject): Promise<void> {
     if (this.stopped) return;
+    const debounceTimer = this.debounceTimers.get(project.id);
+    if (debounceTimer) {
+      clearTimeout(debounceTimer);
+      this.debounceTimers.delete(project.id);
+    }
     if (this.ports.triggerMaterializer) {
       this.ports.triggerMaterializer(project);
       return;

@@ -1,3 +1,6 @@
+import { mkdtempSync, writeFileSync, appendFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   BeadsWatcherRuntime,
@@ -169,21 +172,33 @@ describe("BeadsWatcherRuntime", () => {
     expect(published.some((p) => p.event === "beads:batch")).toBe(false);
   });
 
-  it("stop clears pending timers and fs watchers without keeping the process alive", async () => {
-    const project = makeProject("p1");
+  it("stop clears pending debounce timer before it can poll after fs event", async () => {
+    const beadsPath = mkdtempSync(join(tmpdir(), "beads-watcher-stop-"));
+    const issuesPath = join(beadsPath, "issues.jsonl");
+    writeFileSync(issuesPath, "\n");
+    const project = { id: "p1", beadsPath };
+    let readSnapshotCalls = 0;
+    let pollReads = 0;
     const { ports } = makeHarness({
       projects: [project],
       readCommitHash: async () => "v1",
-      readSnapshot: async () => ({ issues: [issue("1", "open")], deps: [], memories: [], kv: [] }),
+      readSnapshot: async () => {
+        readSnapshotCalls += 1;
+        pollReads += 1;
+        return { issues: [issue("1", "open")], deps: [], memories: [], kv: [] };
+      },
     });
-    const runtime = new BeadsWatcherRuntime(ports, { activePollMs: 10, coalesceMs: 10_000 });
+    const runtime = new BeadsWatcherRuntime(ports, { activePollMs: 10_000, debounceMs: 200, coalesceMs: 10_000 });
     runtime.start();
-    await wait(5);
+    await wait(30);
+    appendFileSync(issuesPath, "x\n");
+    await wait(20);
     runtime.stop();
+    await wait(300);
 
     expect(runtime.isStopped()).toBe(true);
-    expect(runtime.getQueueLength()).toBeGreaterThanOrEqual(0);
-    // If stop left a pending timer/watcher, bun/vitest would hang on exit.
-    // Reaching this assertion proves the runtime drained its handles.
+    expect(readSnapshotCalls).toBe(1);
+    expect(pollReads).toBe(1);
+    rmSync(beadsPath, { recursive: true, force: true });
   });
 });
