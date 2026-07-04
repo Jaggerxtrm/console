@@ -47,3 +47,223 @@ export interface RealtimeRegistry {
   hasReplayGap(channel: RealtimeChannelName, sinceSeq: number, bootId: string): boolean;
   getBootId(): string;
 }
+
+export interface RealtimeConnection {
+  id: string;
+  raw: RealtimeRawConnection;
+  subscriptions: Set<RealtimeChannelName>;
+  subscriber?: RealtimeSubscriber;
+}
+
+export interface RealtimeRawConnection {
+  send(data: string): void;
+  close(code?: number): void;
+}
+
+export interface RealtimeConnectionHandlerOptions {
+  readonly onConnect?: (id: string) => void;
+  readonly onDisconnect?: (id: string) => void;
+  readonly onVersionMismatch?: (event: { readonly id: string; readonly channel: RealtimeChannelName; readonly version: unknown }) => void;
+}
+
+const RING_BUFFER_SIZE = 500;
+
+export class RealtimeChannelRegistry implements RealtimeRegistry {
+  private readonly channels = new Map<string, Set<RealtimeSubscriber>>();
+  private readonly buffers = new Map<string, RealtimeEnvelope[]>();
+  private readonly sequenceByChannel = new Map<string, number>();
+  private readonly bootId = crypto.randomUUID();
+
+  subscribe(channel: RealtimeChannelName, subscriber: RealtimeSubscriber): void {
+    const subscribers = this.channels.get(channel) ?? new Set<RealtimeSubscriber>();
+    subscribers.add(subscriber);
+    this.channels.set(channel, subscribers);
+  }
+
+  unsubscribe(channel: RealtimeChannelName, subscriber: RealtimeSubscriber): void {
+    this.channels.get(channel)?.delete(subscriber);
+  }
+
+  unsubscribeAll(subscriber: RealtimeSubscriber): void {
+    for (const subscribers of this.channels.values()) subscribers.delete(subscriber);
+  }
+
+  publish(channel: RealtimeChannelName, event: string, data: unknown, version?: string): RealtimeEnvelope {
+    const seq = (this.sequenceByChannel.get(channel) ?? 0) + 1;
+    this.sequenceByChannel.set(channel, seq);
+    const envelope: RealtimeEnvelope = {
+      type: "event",
+      channel,
+      event,
+      seq,
+      ts: new Date().toISOString(),
+      version: version ?? String(REALTIME_PROTOCOL_VERSION),
+      boot_id: this.bootId,
+      data,
+    };
+    this.appendToBuffer(channel, envelope);
+    this.publishToSubscribers(channel, envelope);
+    return envelope;
+  }
+
+  replay(channel: RealtimeChannelName, sinceSeq: number, bootId: string): RealtimeEnvelope[] {
+    if (bootId !== this.bootId) return [];
+    return (this.buffers.get(channel) ?? []).filter((envelope) => envelope.seq > sinceSeq);
+  }
+
+  hasReplayGap(channel: RealtimeChannelName, sinceSeq: number, bootId: string): boolean {
+    if (bootId !== this.bootId) return true;
+    const buffer = this.buffers.get(channel);
+    if (!buffer?.length) return sinceSeq > 0;
+    return sinceSeq < buffer[0].seq;
+  }
+
+  getBootId(): string {
+    return this.bootId;
+  }
+
+  subscriberCount(channel: RealtimeChannelName): number {
+    return this.channels.get(channel)?.size ?? 0;
+  }
+
+  private publishToSubscribers(channel: RealtimeChannelName, envelope: RealtimeEnvelope): void {
+    const subscribers = this.channels.get(channel);
+    if (!subscribers) return;
+    for (const subscriber of subscribers) {
+      try {
+        subscriber.send(envelope);
+      } catch {
+        subscribers.delete(subscriber);
+      }
+    }
+  }
+
+  private appendToBuffer(channel: RealtimeChannelName, envelope: RealtimeEnvelope): void {
+    const buffer = this.buffers.get(channel) ?? [];
+    buffer.push(envelope);
+    if (buffer.length > RING_BUFFER_SIZE) buffer.splice(0, buffer.length - RING_BUFFER_SIZE);
+    this.buffers.set(channel, buffer);
+  }
+}
+
+export class RealtimeConnectionHandler {
+  private readonly connections = new Map<string, RealtimeConnection>();
+  private nextId = 1;
+
+  constructor(
+    private readonly registry: RealtimeRegistry,
+    private readonly options: RealtimeConnectionHandlerOptions = {},
+  ) {}
+
+  connect(raw: RealtimeRawConnection): string {
+    const id = `ws-${this.nextId++}`;
+    const connection: RealtimeConnection = { id, raw, subscriptions: new Set() };
+    connection.subscriber = this.createSubscriber(connection);
+    this.connections.set(id, connection);
+    this.options.onConnect?.(id);
+    return id;
+  }
+
+  subscribe(connectionId: string, channel: RealtimeChannelName): void {
+    const connection = this.connections.get(connectionId);
+    if (!connection?.subscriber) return;
+    connection.subscriptions.add(channel);
+    this.registry.subscribe(channel, connection.subscriber);
+  }
+
+  unsubscribe(connectionId: string, channel: RealtimeChannelName): void {
+    const connection = this.connections.get(connectionId);
+    if (!connection?.subscriber) return;
+    connection.subscriptions.delete(channel);
+    this.registry.unsubscribe(channel, connection.subscriber);
+  }
+
+  resume(connectionId: string, channel: RealtimeChannelName, sinceSeq: number, bootId?: string): void {
+    const connection = this.connections.get(connectionId);
+    if (!connection?.subscriber) return;
+    if (this.registry.hasReplayGap(channel, sinceSeq, bootId ?? "")) {
+      connection.raw.send(JSON.stringify(createSyncHint(channel, sinceSeq)));
+      return;
+    }
+    for (const envelope of this.registry.replay(channel, sinceSeq, bootId ?? "")) connection.raw.send(JSON.stringify(envelope));
+  }
+
+  disconnect(connectionId: string): void {
+    const connection = this.connections.get(connectionId);
+    if (!connection?.subscriber) return;
+    this.registry.unsubscribeAll(connection.subscriber);
+    this.connections.delete(connectionId);
+    this.options.onDisconnect?.(connectionId);
+  }
+
+  handleMessage(connectionId: string, raw: string): void {
+    const message = parseClientMessage(raw);
+    if (!message) return;
+
+    if (message.action === "subscribe") {
+      if (message.version !== String(REALTIME_PROTOCOL_VERSION)) {
+        this.options.onVersionMismatch?.({ id: connectionId, channel: message.channel, version: message.version });
+        this.connections.get(connectionId)?.raw.close(4001);
+        return;
+      }
+      this.subscribe(connectionId, message.channel);
+      return;
+    }
+
+    if (message.action === "unsubscribe") {
+      this.unsubscribe(connectionId, message.channel);
+      return;
+    }
+
+    this.resume(connectionId, message.channel, message.since_seq ?? 0, message.boot_id);
+  }
+
+  connectionCount(): number {
+    return this.connections.size;
+  }
+
+  private createSubscriber(connection: RealtimeConnection): RealtimeSubscriber {
+    return {
+      id: connection.id,
+      send: (message) => {
+        try {
+          connection.raw.send(JSON.stringify(message));
+        } catch {
+          this.disconnect(connection.id);
+        }
+      },
+    };
+  }
+}
+
+type ClientMessage =
+  | { readonly action: "subscribe"; readonly channel: RealtimeChannelName; readonly version: unknown }
+  | { readonly action: "unsubscribe"; readonly channel: RealtimeChannelName }
+  | { readonly action: "resume"; readonly channel: RealtimeChannelName; readonly since_seq?: number; readonly boot_id?: string };
+
+function parseClientMessage(raw: string): ClientMessage | null {
+  let message: unknown;
+  try {
+    message = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (!isClientMessageObject(message)) return null;
+  if (message.action === "subscribe") return { action: "subscribe", channel: message.channel, version: message.version };
+  if (message.action === "unsubscribe") return { action: "unsubscribe", channel: message.channel };
+  if (message.action === "resume") {
+    const sinceSeq = typeof message.since_seq === "number" ? message.since_seq : undefined;
+    const bootId = typeof message.boot_id === "string" ? message.boot_id : undefined;
+    return { action: "resume", channel: message.channel, since_seq: sinceSeq, boot_id: bootId };
+  }
+  return null;
+}
+
+function isClientMessageObject(message: unknown): message is Record<string, unknown> & { channel: RealtimeChannelName; action: string } {
+  return typeof message === "object" && message !== null && "action" in message && "channel" in message;
+}
+
+function createSyncHint(channel: RealtimeChannelName, sinceSeq: number): RealtimeMessage {
+  const event = channel.startsWith("substrate:") ? "substrate:sync_hint" : channel.startsWith("specialists:") ? "specialists:sync_hint" : "github:sync_hint";
+  return { type: "event", channel, event, data: { reason: "buffer_miss", channel, since_seq: sinceSeq } };
+}
