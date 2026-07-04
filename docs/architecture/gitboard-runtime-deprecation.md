@@ -1,12 +1,16 @@
+---
+version: 1
+updated: 2026-07-04
+synced_at: ffe1e17
+---
+
 # Gitboard Runtime Deprecation Map
 
-Status: final migration plan for `forge-3dm4`, building on the completed
-`forge-6oae` safe deprecation wave.
+Status: runtime deprecation plan for `forge-3dm4`; `forge-6oae` closed the safe deprecation wave, but `apps/gitboard` still owns compatibility wrappers until bridge-retirement gates pass.
 
-`apps/gitboard` is still the live compatibility host. The target state is not to
-break its HTTP surface, but to remove runtime ownership from the app: database
-schema, materializer lifecycle, read-model SQL, source lifecycle, and durable
-GitHub adapter state move to `packages/core`.
+`apps/gitboard` is still the live compatibility host. Implemented now: thin HTTP compatibility surface, app startup glue, and the completed core-owned slices listed below. Target state: remove runtime ownership from the app so database schema, materializer lifecycle, read-model SQL, source lifecycle, and durable GitHub adapter state live in `packages/core`.
+
+Planning evidence for this map came from explorer jobs 6bf419, 9e9619, ef1241 and the closed `forge-3dm4`/`forge-6oae` notes. It does not claim failed Kimi prep jobs.
 
 The typed source of truth for this map is
 `packages/core/src/runtime/ownership.ts`.
@@ -64,11 +68,25 @@ Still app-owned in `apps/gitboard`:
 This slice does not broaden verified-admin, origin, cwd, shell, env, rate,
 TTL, or readonly specialist-feed behavior.
 
-### forge-3dm4.8 final cleanup gate
+### Lifecycle Summary
 
-No compatibility wrapper is removed in this slice. The bridge-retirement probe
-currently returns `ready: false`, `action: retain`, with missing daemon-served
-contracts:
+Implemented now:
+- `apps/gitboard` remains live compatibility host.
+- `forge-6oae` slices in this doc are complete.
+- `createGitboardRuntimeOwnershipMap` and `createGitboardFinalRuntimeMigrationPlan` define current ownership and next migration plan.
+
+Target state:
+- daemon-owned runtime, core-owned read models and adapters, and thin app wrapper only.
+
+Blocked:
+- wrapper deletion, static/socket/service retirement, and `ProjectScanner` extraction stay blocked until parity, smoke, and manual restart evidence exists.
+
+Bridge-retirement gate:
+- current probe is retain-only; it is not wrapper cleanup.
+
+### forge-3dm4.8 bridge-retirement gate
+
+No compatibility wrapper is removed in this gate. The bridge-retirement probe currently returns `ready: false`, `action: retain`, with missing daemon-served contracts:
 - `feed.rollups`
 - `graph.console-joins`
 - `source-health.freshness`
@@ -82,12 +100,9 @@ Retained wrappers:
 - host-local `gitboard.service` compatibility alias
 - durable GitHub adapter tables and route state
 
-This completes the final migration gate through `forge-3dm4.8` while preserving
-compatibility. Actual wrapper deletion requires daemon-served replacements,
-route/static/socket parity, smoke evidence, and manual production restart
-evidence.
+This documents the current bridge-retirement gate through `forge-3dm4.8` while preserving compatibility. Wrapper deletion requires daemon-served replacements, route/static/socket parity, smoke evidence, and manual production restart evidence.
 
-## Final Runtime Target
+## Target Runtime
 
 The replacement runtime owner is `@xtrm/core/runtime`, with `xt daemon` as the
 native service target for state/socket ownership. `apps/gitboard` remains only a
@@ -194,7 +209,7 @@ static, API, WebSocket/log, terminal, and materializer evidence.
 
 ## Wrapper Retirement Checklist
 
-Do not delete or collapse an app wrapper unless all of these are true:
+Current state: blocked. Do not delete or collapse an app wrapper unless all of these are true:
 
 - the current public route remains mounted or has a replacement route with
   parity tests;
