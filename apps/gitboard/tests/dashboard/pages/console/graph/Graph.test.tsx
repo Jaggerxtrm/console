@@ -33,10 +33,23 @@ if (typeof globalThis.DOMMatrixReadOnly === "undefined") {
 import { Graph } from "../../../../../src/dashboard/pages/console/Graph.tsx";
 import { useShellStore } from "../../../../../src/dashboard/stores/shell.ts";
 
+const repo = {
+  fullName: "owner/gitboard",
+  displayName: "gitboard",
+  lastActivityAt: null,
+  openBeadsCount: 1,
+  githubStats: { openPRs: 0, commitsToday: 0, openIssues: 0, releases: 0 },
+  beadsStats: { open: 1, inProgress: 0, blocked: 0, epics: 0 },
+  beadsSource: { label: "dolt", title: "Beads reading from Dolt", healthy: true },
+  hasGithub: true,
+  hasBeads: true,
+  beadsProjectId: "project-gitboard",
+};
+
 beforeEach(() => {
   fetchMock.mockReset();
   fetchMock.mockResolvedValue({ ok: true, json: async () => fixture });
-  useShellStore.setState({ selection: { surface: "console", tab: "graph", repo: "gitboard" } as never });
+  useShellStore.setState({ repos: [repo], selection: { surface: "console", tab: "graph", repo: repo.fullName } as never });
 });
 
 describe("Graph (React Flow viewport)", () => {
@@ -66,7 +79,7 @@ describe("Graph (React Flow viewport)", () => {
   });
 
   it("shows degraded source banner while preserving non-empty graph", async () => {
-    useShellStore.setState({ selection: { surface: "console", tab: "graph", repo: "gitboard-degraded" } as never });
+    useShellStore.setState({ repos: [repo], selection: { surface: "console", tab: "graph", repo: repo.fullName } as never });
     fetchMock.mockResolvedValueOnce({
       ok: true,
       json: async () => ({
