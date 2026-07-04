@@ -8,6 +8,9 @@ import { DoltClient } from "../../core/dolt-client.ts";
 import { formatSourceDisplayPath } from "./sources-policy.ts";
 import type { BeadDependency, BeadIssue, BeadIssueDetail, BeadsProject, Memory, Interaction } from "../../types/beads.ts";
 import {
+  countSubstrateIssues as coreCountSubstrateIssues,
+  getBeadsSourcePath as coreGetBeadsSourcePath,
+  readSourceMaterializationState as coreReadSourceMaterializationState,
   readSubstrateClosedIssues as coreReadSubstrateClosedIssues,
   readSubstrateIssueDependents as coreReadSubstrateIssueDependents,
   readSubstrateIssueDetail as coreReadSubstrateIssueDetail,
@@ -19,7 +22,6 @@ import {
   type SubstrateIssueFilters,
 } from "../../../../../packages/core/src/state/index.ts";
 
-let loggedSchemaColumns = false;
 const loggedProjectMemories = new Set<string>();
 const loggedProjectInteractions = new Set<string>();
 
@@ -49,7 +51,7 @@ function readProjects(db?: Database | null): BeadsProject[] {
   return rows.map((row) => {
     const id = row.source_key.replace(/^beads:/, "");
     const facts = readBeadsSourceFacts(row.path);
-    const state = readMaterializationState(db, row.source_key);
+    const state = coreReadSourceMaterializationState(db, row.source_key);
     const healthState = state?.last_status === "error" ? "degraded" : facts.doltPort ? "fresh" : "stale";
     return {
       id,
@@ -62,7 +64,7 @@ function readProjects(db?: Database | null): BeadsProject[] {
       sourcePriority: facts.doltPort ? ["dolt", "jsonl"] : ["jsonl"],
       status: facts.doltPort ? "active" : "idle",
       lastScanned: row.last_seen_at ?? facts.jsonlUpdatedAt ?? new Date(0).toISOString(),
-      issueCount: countIssues(db, id),
+      issueCount: coreCountSubstrateIssues(db, id),
       sourceHealth: [{ kind: facts.doltPort ? "dolt" : "jsonl", state: healthState, detail: state?.last_error ?? undefined }],
     } satisfies BeadsProject;
   });
@@ -86,7 +88,7 @@ function readIssueDetail(db: Database | null | undefined, projectId: string, iss
 }
 
 async function readMemories(db: Database | null | undefined, projectId: string): Promise<Memory[]> {
-  const beadsPath = getBeadsPath(db, projectId);
+  const beadsPath = coreGetBeadsSourcePath(db, projectId);
   if (!beadsPath) return [];
   const memories = await new BeadsReader(db as Database).getMemories(`${beadsPath}/knowledge.jsonl`);
   if (memories.length === 0) {
@@ -98,7 +100,7 @@ async function readMemories(db: Database | null | undefined, projectId: string):
 }
 
 async function readInteractions(db: Database | null | undefined, projectId: string, issueId?: string): Promise<Interaction[]> {
-  const beadsPath = getBeadsPath(db, projectId);
+  const beadsPath = coreGetBeadsSourcePath(db, projectId);
   if (!beadsPath) return [];
   const interactions = await new BeadsReader(db as Database).getInteractions(`${beadsPath}/interactions.jsonl`);
   const filtered = issueId ? interactions.filter((interaction) => interaction.issue_id === issueId) : interactions;
@@ -118,7 +120,7 @@ async function readConnection(db: Database | null | undefined, projectId: string
   const row = db.query("SELECT source_key, path FROM sources WHERE kind = 'beads' AND source_key = ?").get(`beads:${projectId}`) as { source_key: string; path: string } | undefined;
   if (!row) return { source: "none", status: "not_found", degraded: true, error: "Project not found" };
   const facts = readBeadsSourceFacts(row.path);
-  const state = readMaterializationState(db, row.source_key);
+  const state = coreReadSourceMaterializationState(db, row.source_key);
   const base = {
     port: facts.doltPort,
     database: facts.doltDatabase,
@@ -146,7 +148,7 @@ async function readConnection(db: Database | null | undefined, projectId: string
 
 async function readRepairActions(db: Database | null | undefined, projectId: string): Promise<{ projectId: string; status: string; actions: BeadsRepairAction[] }> {
   const connection = await readConnection(db, projectId);
-  const beadsPath = getBeadsPath(db, projectId);
+  const beadsPath = coreGetBeadsSourcePath(db, projectId);
   const facts = beadsPath ? readBeadsSourceFacts(beadsPath) : null;
   const projectRef = facts?.repoPath ? formatSourceDisplayPath(facts.repoPath) : "<repo>";
   const bd = `bd -C ${shellQuote(projectRef)} dolt`;
@@ -256,12 +258,6 @@ function toBeadDependency(dep: SubstrateDependency): BeadDependency {
   };
 }
 
-function getBeadsPath(db: Database | null | undefined, projectId: string): string | null {
-  if (!db) return null;
-  const row = db.query("SELECT path FROM sources WHERE kind = 'beads' AND source_key = ?").get(`beads:${projectId}`) as { path: string } | undefined;
-  return row?.path ?? null;
-}
-
 type BeadsSourceFacts = {
   repoPath: string;
   projectName: string;
@@ -304,10 +300,6 @@ function readBeadsSourceFacts(beadsPath: string): BeadsSourceFacts {
     sharedServerEnabled,
     jsonlUpdatedAt: mtimeIso(join(beadsPath, "issues.jsonl")),
   };
-}
-
-function readMaterializationState(db: Database, sourceKey: string): { last_status: string | null; last_success_at: string | null; last_error: string | null } | null {
-  return db.query("SELECT last_status, last_success_at, last_error FROM materialization_state WHERE source_key = ?").get(sourceKey) as { last_status: string | null; last_success_at: string | null; last_error: string | null } | null;
 }
 
 function readSharedServerPort(): number | undefined {
@@ -396,17 +388,6 @@ function logProjectDataOnce<T>(seen: Set<string>, event: string, projectId: stri
   if (seen.has(key)) return;
   seen.add(key);
   emit(makeLogEntry("api", event, "info", undefined, { projectId, path: beadsPath, count }));
-}
-
-function logSchemaColumnsOnce(db: Database): void {
-  if (loggedSchemaColumns) return;
-  loggedSchemaColumns = true;
-  const columns = db.query("PRAGMA table_info(substrate_issues)").all() as Array<{ name: string }>;
-  emit(makeLogEntry("api", "substrate.queryIssues", "info", undefined, { schema_columns: columns.map((column) => column.name) }));
-}
-
-function countIssues(db: Database, projectId: string): number {
-  return Number((db.query("SELECT COUNT(*) AS count FROM substrate_issues WHERE repo_slug = ?").get(projectId) as { count: number } | undefined)?.count ?? 0);
 }
 
 function parseIssueFilters(c: { req: { query(name: string): string | undefined } }): SubstrateIssueFilters {

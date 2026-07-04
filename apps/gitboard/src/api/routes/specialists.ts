@@ -190,52 +190,6 @@ export function createSpecialistsRouter(
   return router;
 }
 
-type FeedEventPayload = {
-  schema_version?: string | number;
-  timestamp?: string;
-  t_unix_ms?: number;
-  seq?: number;
-  severity?: string;
-  event_family?: string;
-  event_name?: string;
-  event_version?: number;
-  resource?: Record<string, unknown>;
-  correlation?: Record<string, unknown>;
-  body?: Record<string, unknown>;
-  redaction?: Record<string, unknown>;
-  trace?: Record<string, unknown>;
-  links?: Record<string, unknown>;
-  diagnostics?: Record<string, unknown>;
-};
-
-function isFeedEventPayload(value: unknown): value is Record<string, unknown> {
-  return Boolean(value && typeof value === "object");
-}
-
-function sanitizeFeedEventPayload(value: Record<string, unknown>): FeedEventPayload {
-  return {
-    schema_version: typeof value.schema_version === "string" || typeof value.schema_version === "number" ? value.schema_version : undefined,
-    timestamp: typeof value.timestamp === "string" ? value.timestamp : undefined,
-    t_unix_ms: typeof value.t_unix_ms === "number" ? value.t_unix_ms : undefined,
-    seq: typeof value.seq === "number" ? value.seq : undefined,
-    severity: typeof value.severity === "string" ? value.severity : undefined,
-    event_family: typeof value.event_family === "string" ? value.event_family : undefined,
-    event_name: typeof value.event_name === "string" ? value.event_name : undefined,
-    event_version: typeof value.event_version === "number" ? value.event_version : undefined,
-    resource: isRecord(value.resource) ? value.resource : undefined,
-    correlation: isRecord(value.correlation) ? value.correlation : undefined,
-    body: isRecord(value.body) ? value.body : undefined,
-    redaction: isRecord(value.redaction) ? value.redaction : undefined,
-    trace: isRecord(value.trace) ? value.trace : undefined,
-    links: isRecord(value.links) ? value.links : undefined,
-    diagnostics: isRecord(value.diagnostics) ? value.diagnostics : undefined,
-  };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value && typeof value === "object");
-}
-
 function sourceHealthFromCoverage(coverage: ObservabilityCoverage | undefined, fallback: ReturnType<typeof makeSourceHealth>) {
   if (!coverage || coverage.skipped.length === 0) return fallback;
   return makeSourceHealth("specialists", "degraded", { metadata: { coverage } });
@@ -295,16 +249,6 @@ function toSpecialistJob(row: SpecialistJobRow): SpecialistJob {
     model: row.model,
     tokenUsage: row.tokenUsage,
   };
-}
-
-function parseFeedEvent(payload: string | undefined): FeedEventPayload[] {
-  if (!payload) return [];
-  try {
-    const parsed = JSON.parse(payload) as unknown;
-    return isFeedEventPayload(parsed) ? [sanitizeFeedEventPayload(parsed)] : [];
-  } catch {
-    return [];
-  }
 }
 
 function logJobsByBeadResponse(beadId: string, jobs: SpecialistJob[], freshness: string, startedAt: number): void {

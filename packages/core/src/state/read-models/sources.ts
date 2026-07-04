@@ -100,3 +100,24 @@ export function unpinSource(db: Database | null | undefined, sourceKey: string):
   db.query("DELETE FROM sources WHERE source_key = ? AND origin = 'manual'").run(sourceKey);
   return { source_key: sourceKey, status: "deleted" };
 }
+
+export function getBeadsSourcePath(db: Database | null | undefined, projectId: string): string | null {
+  if (!db) return null;
+  const row = db.query<{ path: string }, [string]>(
+    "SELECT path FROM sources WHERE kind = 'beads' AND source_key = ? LIMIT 1"
+  ).get(`beads:${projectId}`);
+  return row?.path ?? null;
+}
+
+export interface SourceMaterializationState {
+  last_status: string | null;
+  last_success_at: string | null;
+  last_error: string | null;
+}
+
+export function readSourceMaterializationState(db: Database | null | undefined, sourceKey: string): SourceMaterializationState | null {
+  if (!db) return null;
+  return db.query<SourceMaterializationState, [string]>(
+    "SELECT last_status, last_success_at, last_error FROM materialization_state WHERE source_key = ? LIMIT 1"
+  ).get(sourceKey) ?? null;
+}
