@@ -1,0 +1,156 @@
+import { describe, expect, it } from "vitest";
+import { buildRepoNodes } from "../../../src/dashboard/hooks/useRepoTree.ts";
+import type { BeadsProject, BeadsStats } from "../../../src/types/beads.ts";
+import type { GithubRepo, RepoStat } from "../../../src/types/github.ts";
+
+const project = (name: string, id = `${name}-id`): BeadsProject => ({
+  id,
+  name,
+  path: `/tmp/${name}`,
+  beadsPath: `/tmp/${name}/.beads`,
+  issueCount: 0,
+  lastScanned: "2026-01-01T00:00:00.000Z",
+  status: "active",
+});
+
+const source = { label: "dolt" as const, title: "Dolt connected", healthy: true };
+
+const repo = (fullName: string): GithubRepo => ({
+  full_name: fullName,
+  display_name: null,
+  tracked: true,
+  group_name: null,
+  last_polled_at: null,
+  color: null,
+});
+
+const stat = (fullName: string, over: Partial<RepoStat> = {}): RepoStat => ({
+  full_name: fullName,
+  pushes: 0,
+  prs_open: 0,
+  prs_closed: 0,
+  issues_open: 0,
+  releases: 0,
+  last_event_at: null,
+  ...over,
+});
+
+const beadsStats = (over: Partial<BeadsStats> = {}): BeadsStats => ({
+  total: 0,
+  open: 0,
+  in_progress: 0,
+  blocked: 0,
+  closed: 0,
+  last_activity_at: null,
+  by_priority: {},
+  by_type: {},
+  ...over,
+});
+
+type BeadsSide = { project: BeadsProject; stats: BeadsStats | null; source: typeof source };
+
+function beadsMap(...entries: BeadsSide[]): Map<string, BeadsSide> {
+  return new Map(entries.map((entry) => [entry.project.name, entry]));
+}
+
+describe("buildRepoNodes alias canonicalization", () => {
+  it("collapses old/new-owner aliases for one Beads project into a single row", () => {
+    const nodes = buildRepoNodes(
+      [repo("Jaggerxtrm/terminalbeta"), repo("mercuryintelligence/terminalbeta")],
+      new Map([
+        ["Jaggerxtrm/terminalbeta", stat("Jaggerxtrm/terminalbeta", { prs_open: 2 })],
+        ["mercuryintelligence/terminalbeta", stat("mercuryintelligence/terminalbeta", { prs_open: 3 })],
+      ]),
+      beadsMap({ project: project("terminalbeta"), stats: beadsStats({ open: 4, in_progress: 1 }), source }),
+    );
+
+    expect(nodes).toHaveLength(1);
+    const [node] = nodes;
+    expect(node.hasGithub).toBe(true);
+    expect(node.hasBeads).toBe(true);
+    expect(node.beadsProjectId).toBe("terminalbeta-id");
+    expect(node.openBeadsCount).toBe(5);
+  });
+
+  it("aggregates GitHub counts (sum) and last_event_at (max) across aliases", () => {
+    const nodes = buildRepoNodes(
+      [repo("Jaggerxtrm/terminalbeta"), repo("mercuryintelligence/terminalbeta")],
+      new Map([
+        ["Jaggerxtrm/terminalbeta", stat("Jaggerxtrm/terminalbeta", { prs_open: 2, issues_open: 1, pushes: 4, releases: 1, last_event_at: "2026-06-01T00:00:00.000Z" })],
+        ["mercuryintelligence/terminalbeta", stat("mercuryintelligence/terminalbeta", { prs_open: 3, issues_open: 2, pushes: 5, releases: 0, last_event_at: "2026-07-01T00:00:00.000Z" })],
+      ]),
+      beadsMap({ project: project("terminalbeta"), stats: beadsStats({ last_activity_at: "2026-05-01T00:00:00.000Z" }), source }),
+    );
+
+    const [node] = nodes;
+    expect(node.githubStats).toEqual({ openPRs: 5, commitsToday: 9, openIssues: 3, releases: 1 });
+    expect(node.lastActivityAt).toBe("2026-07-01T00:00:00.000Z");
+  });
+
+  it("picks the alias whose tail matches the Beads project name as canonical fullName", () => {
+    const nodes = buildRepoNodes(
+      [
+        repo("mercuryintelligence/mercury-quant"),
+        repo("Jaggerxtrm/mercury-quant"),
+        repo("goldmansachs/gs-quant"),
+        repo("mercuryintelligence/quant"),
+      ],
+      new Map(),
+      beadsMap({ project: project("quant"), stats: null, source }),
+    );
+
+    expect(nodes).toHaveLength(1);
+    expect(nodes[0].fullName).toBe("mercuryintelligence/quant");
+    expect(nodes[0].beadsProjectName).toBe("quant");
+  });
+
+  it("keeps distinct Beads projects as separate canonical rows", () => {
+    const nodes = buildRepoNodes(
+      [repo("mercuryintelligence/website"), repo("Jaggerxtrm/mercury-website"), repo("Jaggerxtrm/xtrm"), repo("xtrm-dev/xtrm")],
+      new Map(),
+      beadsMap(
+        { project: project("website"), stats: null, source },
+        { project: project("xtrm"), stats: null, source },
+      ),
+    );
+
+    expect(nodes).toHaveLength(2);
+    expect(nodes.map((n) => n.beadsProjectName).sort()).toEqual(["website", "xtrm"]);
+    expect(nodes.find((n) => n.beadsProjectName === "website")?.fullName).toBe("mercuryintelligence/website");
+    expect(nodes.find((n) => n.beadsProjectName === "xtrm")?.fullName).toBe("Jaggerxtrm/xtrm");
+  });
+
+  it("preserves Beads-only orphans and unmatched GitHub repos", () => {
+    const nodes = buildRepoNodes(
+      [repo("someorg/untracked-repo")],
+      new Map([["someorg/untracked-repo", stat("someorg/untracked-repo", { prs_open: 7 })]]),
+      beadsMap({ project: project("orphan-only"), stats: beadsStats({ open: 2, blocked: 1 }), source }),
+    );
+
+    expect(nodes).toHaveLength(2);
+    const githubOnly = nodes.find((n) => n.fullName === "someorg/untracked-repo");
+    const beadsOnly = nodes.find((n) => n.fullName === "orphan-only");
+    expect(githubOnly?.hasGithub).toBe(true);
+    expect(githubOnly?.hasBeads).toBe(false);
+    expect(githubOnly?.githubStats.openPRs).toBe(7);
+    expect(beadsOnly?.hasGithub).toBe(false);
+    expect(beadsOnly?.hasBeads).toBe(true);
+    expect(beadsOnly?.openBeadsCount).toBe(3);
+  });
+
+  it("is deterministic for the same inputs regardless of alias order", () => {
+    const ordered = buildRepoNodes(
+      [repo("mercuryintelligence/quant"), repo("goldmansachs/gs-quant"), repo("Jaggerxtrm/mercury-quant")],
+      new Map(),
+      beadsMap({ project: project("quant"), stats: null, source }),
+    );
+    const reversed = buildRepoNodes(
+      [repo("Jaggerxtrm/mercury-quant"), repo("goldmansachs/gs-quant"), repo("mercuryintelligence/quant")],
+      new Map(),
+      beadsMap({ project: project("quant"), stats: null, source }),
+    );
+
+    expect(ordered[0].fullName).toBe(reversed[0].fullName);
+    expect(ordered[0].fullName).toBe("mercuryintelligence/quant");
+  });
+});

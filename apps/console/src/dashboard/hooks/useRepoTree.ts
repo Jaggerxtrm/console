@@ -6,6 +6,7 @@ import { substrateApi } from "../lib/beads.ts";
 import { useShellStore } from "../stores/shell.ts";
 import type { GithubChips, BeadsChips, BeadsSourceChip, RepoNode } from "../../types/shell.ts";
 import type { BeadsConnectionStatus, BeadsProject, BeadsStats } from "../../types/beads.ts";
+import type { GithubRepo, RepoStat } from "../../types/github.ts";
 
 const ZERO_GITHUB: GithubChips = { openPRs: 0, commitsToday: 0, openIssues: 0, releases: 0 };
 const ZERO_BEADS: BeadsChips = { open: 0, inProgress: 0, blocked: 0, epics: 0 };
@@ -64,6 +65,108 @@ function maxIso(a: string | null, b: string | null): string | null {
   return a > b ? a : b;
 }
 
+type BeadsSide = { project: BeadsProject; stats: BeadsStats | null; source: BeadsSourceChip };
+
+// Sums GitHub activity across all aliases that resolve to one Beads project so the
+// canonical row never drops counts when old-owner/new-owner aliases collapse.
+function aggregateGithubStats(aliases: GithubRepo[], repoStatsByName: Map<string, RepoStat>): { chips: GithubChips; lastEventAt: string | null } {
+  let openPRs = 0;
+  let commitsToday = 0;
+  let openIssues = 0;
+  let releases = 0;
+  let lastEventAt: string | null = null;
+  for (const repo of aliases) {
+    const stats = repoStatsByName.get(repo.full_name);
+    if (!stats) continue;
+    openPRs += stats.prs_open ?? 0;
+    commitsToday += stats.pushes ?? 0;
+    openIssues += stats.issues_open ?? 0;
+    releases += stats.releases ?? 0;
+    lastEventAt = maxIso(lastEventAt, stats.last_event_at ?? null);
+  }
+  return { chips: { openPRs, commitsToday, openIssues, releases }, lastEventAt };
+}
+
+// Deterministic canonical pick: prefer the alias whose tail matches the Beads project
+// name, otherwise the lexicographically smallest full_name for stable ordering.
+function canonicalAlias(aliases: GithubRepo[], projectName: string): GithubRepo {
+  const normalizedProject = normalizeProjectKey(projectName);
+  const exact = aliases.find((repo) => normalizeProjectKey(tailName(repo.full_name)) === normalizedProject);
+  if (exact) return exact;
+  return [...aliases].sort((a, b) => a.full_name.localeCompare(b.full_name))[0];
+}
+
+function makeGithubNode(canonical: GithubRepo, aliases: GithubRepo[], repoStatsByName: Map<string, RepoStat>, beadsSide: BeadsSide | null): RepoNode {
+  const { chips: githubStats, lastEventAt } = aggregateGithubStats(aliases, repoStatsByName);
+  const beadsStats = beadsChipsFromStats(beadsSide?.stats ?? null);
+  return {
+    fullName: canonical.full_name,
+    displayName: canonical.display_name ?? canonical.full_name,
+    groupName: canonical.group_name ?? null,
+    lastActivityAt: maxIso(lastEventAt, beadsSide?.stats?.last_activity_at ?? null),
+    openBeadsCount: beadsStats.open + beadsStats.inProgress + beadsStats.blocked,
+    githubStats,
+    beadsStats,
+    beadsSource: beadsSide?.source ?? null,
+    beadsProjectId: beadsSide?.project.id ?? null,
+    beadsProjectName: beadsSide?.project.name ?? null,
+    hasGithub: true,
+    hasBeads: Boolean(beadsSide),
+  };
+}
+
+// Builds the sidebar repo list, collapsing GitHub aliases that resolve to the same
+// Beads project into one canonical row while preserving aggregated GitHub metadata
+// and Beads counts/health. Unmatched GitHub repos and Beads-only orphans stay as-is.
+export function buildRepoNodes(repos: GithubRepo[], repoStatsByName: Map<string, RepoStat>, beadsByTail: Map<string, BeadsSide>): RepoNode[] {
+  const matched = new Set<string>();
+  const groups = new Map<string, GithubRepo[]>();
+  const unmatched: GithubRepo[] = [];
+
+  for (const repo of repos) {
+    const tail = tailName(repo.full_name);
+    const beadsSide = findBeadsSide(tail, beadsByTail);
+    if (!beadsSide) {
+      unmatched.push(repo);
+      continue;
+    }
+    matched.add(beadsSide.project.name);
+    const list = groups.get(beadsSide.project.name);
+    if (list) list.push(repo);
+    else groups.set(beadsSide.project.name, [repo]);
+  }
+
+  const nodes: RepoNode[] = [];
+  for (const repo of unmatched) {
+    nodes.push(makeGithubNode(repo, [repo], repoStatsByName, null));
+  }
+  for (const [projectName, aliases] of groups) {
+    const beadsSide = beadsByTail.get(projectName) ?? null;
+    nodes.push(makeGithubNode(canonicalAlias(aliases, projectName), aliases, repoStatsByName, beadsSide));
+  }
+
+  // Beads-only orphans
+  for (const [projectName, { project, stats, source }] of beadsByTail) {
+    if (matched.has(projectName)) continue;
+    const beadsStats = beadsChipsFromStats(stats);
+    nodes.push({
+      fullName: project.name,
+      displayName: project.name,
+      groupName: null,
+      lastActivityAt: stats?.last_activity_at ?? null,
+      openBeadsCount: beadsStats.open + beadsStats.inProgress + beadsStats.blocked,
+      githubStats: ZERO_GITHUB,
+      beadsStats,
+      beadsSource: source,
+      beadsProjectId: project.id,
+      beadsProjectName: project.name,
+      hasGithub: false,
+      hasBeads: true,
+    });
+  }
+  return nodes;
+}
+
 export function useRepoTree(): void {
   const setRepos = useShellStore((s) => s.setRepos);
 
@@ -96,58 +199,7 @@ export function useRepoTree(): void {
           beadsByTail.set(project.name, { project, stats, source: beadsSourceFromConnection(connection) });
         }
 
-        const matched = new Set<string>();
-        const nodes: RepoNode[] = [];
-
-        for (const repo of reposRes.data) {
-          const tail = tailName(repo.full_name);
-          const beadsSide = findBeadsSide(tail, beadsByTail);
-          if (beadsSide) matched.add(beadsSide.project.name);
-          const stats = repoStatsByName.get(repo.full_name);
-          const githubStats: GithubChips = {
-            openPRs: stats?.prs_open ?? 0,
-            commitsToday: stats?.pushes ?? 0,
-            openIssues: stats?.issues_open ?? 0,
-            releases: stats?.releases ?? 0,
-          };
-          const beadsStats = beadsChipsFromStats(beadsSide?.stats ?? null);
-          nodes.push({
-            fullName: repo.full_name,
-            displayName: repo.display_name ?? repo.full_name,
-            groupName: repo.group_name ?? null,
-            lastActivityAt: maxIso(stats?.last_event_at ?? null, beadsSide?.stats?.last_activity_at ?? null),
-            openBeadsCount: beadsStats.open + beadsStats.inProgress + beadsStats.blocked,
-            githubStats,
-            beadsStats,
-            beadsSource: beadsSide?.source ?? null,
-            beadsProjectId: beadsSide?.project.id ?? null,
-            beadsProjectName: beadsSide?.project.name ?? null,
-            hasGithub: true,
-            hasBeads: Boolean(beadsSide),
-          });
-        }
-
-        // Beads-only orphans
-        for (const [tail, { project, stats, source }] of beadsByTail) {
-          if (matched.has(tail)) continue;
-          const beadsStats = beadsChipsFromStats(stats);
-          nodes.push({
-            fullName: project.name,
-            displayName: project.name,
-            groupName: null,
-            lastActivityAt: stats?.last_activity_at ?? null,
-            openBeadsCount: beadsStats.open + beadsStats.inProgress + beadsStats.blocked,
-            githubStats: ZERO_GITHUB,
-            beadsStats,
-            beadsSource: source,
-            beadsProjectId: project.id,
-            beadsProjectName: project.name,
-            hasGithub: false,
-            hasBeads: true,
-          });
-        }
-
-        setRepos(nodes);
+        setRepos(buildRepoNodes(reposRes.data, repoStatsByName, beadsByTail));
       } catch (err) {
         console.warn("[useRepoTree] aggregation failed; preserving previous repo tree", err);
       }
