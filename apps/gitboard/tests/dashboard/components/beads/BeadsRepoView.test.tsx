@@ -94,7 +94,7 @@ describe("BeadsRepoView realtime updates", () => {
     render(<BeadsRepoView repo={{ fullName: "owner/repo-a", displayName: "repo-a", lastActivityAt: null, openBeadsCount: 1, githubStats: { openPRs: 0, commitsToday: 0, openIssues: 0, releases: 0 }, beadsStats: { open: 1, inProgress: 0, blocked: 0, epics: 0 }, beadsSource: { label: "dolt", title: "Beads reading from Dolt", healthy: true }, hasGithub: true, hasBeads: true }} tab="feed" />);
 
     expect(await screen.findByText("Initial issue")).toBeInTheDocument();
-    expect(substrateApi.listIssues).toHaveBeenCalledWith(project.id, { status: ["open", "in_progress", "blocked", "in_review"], limit: 100 });
+    expect(substrateApi.listIssues).toHaveBeenCalledWith(project.id, { status: ["open", "in_progress", "blocked", "in_review", "deferred"], limit: 0 });
     expect(substrateApi.listClosedIssues).toHaveBeenCalledWith(project.id, 3000);
 
     act(() => resolveClosed([{ ...issue, id: "GB-closed", title: "Closed issue", status: "closed" }]));
