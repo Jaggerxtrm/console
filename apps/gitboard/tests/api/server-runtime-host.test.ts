@@ -3,6 +3,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { createApp } from "../../src/api/server.ts";
+import { ChannelRegistry } from "../../src/api/ws/channels.ts";
+import { BeadsChangeWatcher } from "../../src/core/beads-change-watcher.ts";
+import { ProjectScanner } from "../../src/core/project-scanner.ts";
 import { createXtrmDatabase } from "../../src/core/xtrm-store.ts";
 
 const tempDirs: string[] = [];
@@ -16,6 +19,10 @@ afterEach(() => {
     if (dir) rmSync(dir, { recursive: true, force: true });
   }
 });
+
+class EmptyScanner extends ProjectScanner {
+  override async scanAll() { return []; }
+}
 
 describe("gitboard runtime host compatibility", () => {
   it("describes the app as a compatibility host while preserving mounted APIs", async () => {
@@ -47,5 +54,15 @@ describe("gitboard runtime host compatibility", () => {
     const { runtimeHost } = createApp(db, db);
 
     expect(runtimeHost.mountedRoutes).toContain("/explore/sql");
+  });
+
+  it("loads beads watcher compatibility adapter against core runtime boundary", () => {
+    const watcher = new BeadsChangeWatcher({
+      registry: new ChannelRegistry(),
+      scanner: new EmptyScanner(),
+    });
+
+    expect(() => watcher.start()).not.toThrow();
+    expect(() => watcher.stop()).not.toThrow();
   });
 });

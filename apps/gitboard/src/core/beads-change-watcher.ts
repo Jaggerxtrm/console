@@ -5,7 +5,7 @@ import { ProjectScanner } from "./project-scanner.ts";
 import { DoltClient } from "./dolt-client.ts";
 import { BeadsReader } from "./beads-reader.ts";
 import { emit } from "./logger.ts";
-import { BeadsWatcherRuntime, type BeadsWatcherSnapshot } from "../../../../packages/core/src/runtime/index.ts";
+import { BeadsWatcherRuntime, type BeadsWatcherSnapshot } from "../../../../packages/core/src/runtime/beads-watcher.ts";
 
 type OptionalDoltHealth = { isBreakerOpen?: () => boolean; getCommitHash?: () => Promise<string | null> };
 
