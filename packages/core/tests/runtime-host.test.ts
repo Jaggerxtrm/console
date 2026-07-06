@@ -22,6 +22,7 @@ describe("runtime host descriptor", () => {
     expect(runtimeHostHasCapability(host, "materializer")).toBe(true);
     expect(runtimeHostHasCapability(host, "github-adapter")).toBe(false);
     expect(host.mountedRoutes).toEqual(["/api/feed", "/api/substrate"]);
+    expect(host.staticServiceParity).toEqual([]);
   });
 
   it("owns gitboard lifecycle policy while app supplies concrete adapters", () => {
@@ -48,6 +49,12 @@ describe("runtime host descriptor", () => {
     expect(lifecycle.beadsWatcher).toMatchObject({ db: "state", registry: "registry" });
     expect(lifecycle.runtimeHost.mountedRoutes).toContain("/api/sources");
     expect(lifecycle.runtimeHost.capabilities).toContain("source-health");
+    expect(lifecycle.runtimeHost.staticServiceParity).toEqual([
+      expect.objectContaining({ route: "/console", state: "retained" }),
+      expect.objectContaining({ route: "/gitboard", state: "retained" }),
+      expect.objectContaining({ route: "/health", state: "retained" }),
+      expect.objectContaining({ route: "runtime-descriptor", state: "retained" }),
+    ]);
   });
 
   it("keeps degraded readable mode when state database is absent", () => {

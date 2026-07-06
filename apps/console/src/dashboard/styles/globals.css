@@ -6813,3 +6813,24 @@ body:has(.ide-shell[data-theme="light"]) { background: #fff !important; }
     border-bottom: 0;
   }
 }
+
+.bead-mutation-panel,
+.bead-new-issue-composer { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--surface-secondary); }
+.bead-inline-edit-row { display: grid; grid-template-columns: 100px minmax(0, 1fr) auto; align-items: center; gap: 8px; font-size: var(--text-xs); color: var(--text-secondary); }
+.bead-inline-edit-row input,
+.bead-inline-edit-row textarea,
+.bead-inline-edit-row select,
+.bead-new-issue-composer input,
+.bead-new-issue-composer textarea,
+.bead-new-issue-composer select { min-width: 0; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--surface-primary); color: var(--text-primary); font: inherit; padding: 6px 8px; }
+.bead-inline-edit-row textarea,
+.bead-new-issue-composer textarea { min-height: 64px; resize: vertical; }
+.bead-inline-edit-row button,
+.bead-new-issue-composer button { border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--surface-tertiary); color: var(--text-primary); cursor: pointer; font: inherit; padding: 6px 9px; }
+.bead-inline-edit-row button:disabled,
+.bead-new-issue-composer button:disabled { cursor: not-allowed; opacity: 0.55; }
+.bead-inline-edit-row small,
+.bead-inline-edit-row span:last-child,
+.bead-new-issue-composer p { grid-column: 2 / -1; color: var(--status-blocked); margin: 0; }
+.bead-inline-edit-danger { border-top: 1px solid var(--border-subtle); padding-top: 8px; }
+.bead-new-issue-composer > div { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; gap: 8px; }

@@ -30,7 +30,7 @@ describe("internal logs route", () => {
     logger.emit({ ts: "2026-05-19T00:00:00.000Z", level: "info", component: "api", event: "request.slow", msg: "slow", data: { ms: 501 } });
     logger.emit({ ts: "2026-05-19T00:00:01.000Z", level: "info", component: "api", event: "request.slow", msg: "slower", data: { ms: 777 } });
 
-    const res = await app.request("http://localhost/api/internal/logs?level=info&component=api&event=request.slow&since=2026-05-19T00:00:00.500Z&limit=1", { headers: { host: "localhost:3000" } });
+    const res = await app.request("http://localhost:3000/api/internal/logs?level=info&component=api&event=request.slow&since=2026-05-19T00:00:00.500Z&limit=1", { headers: { host: "localhost:3000" } });
 
     expect(res.status).toBe(200);
     const body = await res.json();
@@ -41,6 +41,99 @@ describe("internal logs route", () => {
 
     const forbidden = await app.request("http://example.com/api/internal/logs", { headers: { host: "example.com" } });
     expect(forbidden.status).toBe(403);
+
+    const forgedHost = await app.request("http://example.com/api/internal/logs", { headers: { host: "localhost:3000" } });
+    expect(forgedHost.status).toBe(403);
+  });
+
+  it("accepts same-origin client logs, tags source, and broadcasts through realtime publisher", async () => {
+    vi.stubEnv("HOME", join(process.cwd(), ".tmp-internal-home"));
+    vi.stubEnv("LOG_DIR", "");
+    vi.stubEnv("GITBOARD_LOG_DIR", "");
+    const { logger, routes } = await loadModules();
+    const app = new Hono().route("/api/internal", routes.createInternalLogsRouter());
+    const registry = new ChannelRegistry();
+    const envelopes: unknown[] = [];
+
+    registry.subscribe("system", { id: "system-client", send: (message) => envelopes.push(message) });
+    logger.setRealtimePublisher(registry);
+    logger.setDiskEnabled(false);
+
+    const post = await app.request("http://localhost:3000/api/internal/logs/client", {
+      method: "POST",
+      headers: {
+        host: "localhost:3000",
+        origin: "http://localhost:3000",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ event: "ui.clicked", data: { pane: "logs" } }),
+    });
+
+    expect(post.status).toBe(200);
+    expect(envelopes).toHaveLength(1);
+    expect(envelopes[0]).toMatchObject({
+      channel: "system",
+      event: "system:log",
+      data: {
+        component: "drawer",
+        event: "ui.clicked",
+        data: { pane: "logs", source: "dashboard-client" },
+      },
+    });
+
+    const logs = await app.request("http://localhost:3000/api/internal/logs?component=drawer&event=ui.clicked&limit=1", {
+      headers: { host: "localhost:3000" },
+    });
+
+    expect(logs.status).toBe(200);
+    await expect(logs.json()).resolves.toEqual([
+      expect.objectContaining({
+        component: "drawer",
+        event: "ui.clicked",
+        data: expect.objectContaining({ pane: "logs", source: "dashboard-client" }),
+      }),
+    ]);
+  });
+
+  it("rejects client log writes without same-origin proof or an internal logs token", async () => {
+    vi.stubEnv("HOME", join(process.cwd(), ".tmp-internal-home"));
+    vi.stubEnv("LOG_DIR", "");
+    vi.stubEnv("GITBOARD_LOG_DIR", "");
+    vi.stubEnv("GITBOARD_INTERNAL_LOGS_TOKEN", "secret");
+    const { routes } = await loadModules();
+    const app = new Hono().route("/api/internal", routes.createInternalLogsRouter());
+
+    const missingOrigin = await app.request("http://localhost:3000/api/internal/logs/client", {
+      method: "POST",
+      headers: {
+        host: "localhost:3000",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ event: "ui.clicked" }),
+    });
+    expect(missingOrigin.status).toBe(403);
+
+    const forgedHost = await app.request("http://example.com/api/internal/logs/client", {
+      method: "POST",
+      headers: {
+        host: "localhost:3000",
+        origin: "http://localhost:3000",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ event: "ui.clicked" }),
+    });
+    expect(forgedHost.status).toBe(403);
+
+    const token = await app.request("http://example.com/api/internal/logs/client", {
+      method: "POST",
+      headers: {
+        host: "example.com",
+        "x-gitboard-internal-logs-token": "secret",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ event: "ui.clicked" }),
+    });
+    expect(token.status).toBe(200);
   });
 
   it("lists jsonl files for localhost callers", async () => {
@@ -54,9 +147,12 @@ describe("internal logs route", () => {
     const { routes } = await loadModules();
     const app = new Hono().route("/api/internal", routes.createInternalLogsRouter());
 
-    const res = await app.request("http://localhost/api/internal/logs/files", { headers: { host: "localhost:3000" } });
+    const res = await app.request("http://localhost:3000/api/internal/logs/files", { headers: { host: "localhost:3000" } });
 
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual([{ name: "2026-05-19.jsonl", size: 18, date: "2026-05-19" }]);
+
+    const forgedHost = await app.request("http://example.com/api/internal/logs/files", { headers: { host: "localhost:3000" } });
+    expect(forgedHost.status).toBe(403);
   });
 });

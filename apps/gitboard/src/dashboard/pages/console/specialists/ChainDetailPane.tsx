@@ -10,6 +10,7 @@ import { beadSideDrawer, useBeadSideDrawer } from "../../../hooks/useBeadSideDra
 import type { ChainIssueContext } from "./chainIssueContext.ts";
 import { RELATIONSHIP_LABEL } from "./chainIssueContext.ts";
 import { IssueContextChip } from "./IssueContextChip.tsx";
+import { ChainControls } from "./ChainControls.tsx";
 
 const STATUS_ICON = {
   starting: ClockIcon,
@@ -93,6 +94,7 @@ export function ChainDetailPane({ chain, issueContext, graphLoading = false, pro
         <span className="console-specialists-detail-title">{chain.title}</span>
         <button type="button" className="console-specialists-open-bead" onClick={() => openBead(chain.rootBeadId, contract.issue)}>Open bead inspector</button>
       </div>
+      <ChainControls chainId={chain.chainId} jobId={detailJobs[detailJobs.length - 1]?.jobId ?? chain.chainId} status={chain.status} />
       <div className="console-specialists-detail-summary">
         <div className="console-specialists-detail-summary-row">
           <span><b>Root bead</b>{chain.rootBeadId}</span>

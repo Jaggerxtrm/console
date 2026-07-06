@@ -8,10 +8,12 @@ import { selectRepos, selectSelection, useShellStore } from "../../stores/shell.
 import { ChainCard } from "./specialists/ChainCard.tsx";
 import { ChainDetailPane } from "./specialists/ChainDetailPane.tsx";
 import { FilterChips } from "./specialists/FilterChips.tsx";
+import { SpecialistConfigEditor } from "./specialists/SpecialistConfigEditor.tsx";
 import { buildChainIssueContext } from "./specialists/chainIssueContext.ts";
 import { buildBeadActivitySwappedTelemetry, buildChainSelectedTelemetry, buildFirstPaintTelemetry, buildListRenderedTelemetry, deriveSelection, toggleFilter, type CockpitFilters } from "./specialists/cockpitSelection.ts";
 
 export function Specialists() {
+  const [subTab, setSubTab] = useState<"activity" | "config">("activity");
   const selectionState = useShellStore(selectSelection);
   const repos = useShellStore(selectRepos);
   const repoScope = useMemo(() => getSpecialistRepoScope(selectionState, repos), [repos, selectionState]);
@@ -58,7 +60,14 @@ export function Specialists() {
   const filteredEmpty = !loading && !error && chains.length > 0 && selection.visibleChains.length === 0;
 
   return (
-    <section className="console-specialists-shell">
+    <section>
+      <div className="console-specialist-subtabs" aria-label="Specialist cockpit sections">
+        <button type="button" className={subTab === "activity" ? "is-active" : ""} onClick={() => setSubTab("activity")}>Activity</button>
+        <button type="button" className={subTab === "config" ? "is-active" : ""} onClick={() => setSubTab("config")}>Config</button>
+      </div>
+      {subTab === "config" ? <SpecialistConfigEditor hostLabel="Host-wide specialist config" /> : null}
+      {subTab === "activity" ? (
+      <section className="console-specialists-shell">
       <div className="console-specialists-list-pane">
         <header className="console-specialists-header">
           <div>
@@ -89,6 +98,8 @@ export function Specialists() {
         <ChainDetailPane chain={selection.selectedChain} issueContext={selection.selectedChain ? issueContextByChain.get(selection.selectedChain.chainId) : undefined} graphLoading={graph.loading && !graph.data} projectId={graphProjectId} />
       </div>
     </section>
+      ) : null}
+  </section>
   );
 }
 

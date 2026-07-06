@@ -7,6 +7,15 @@ export type RuntimeHostCapability =
   | "static-dashboard"
   | "internal-logs";
 
+export type StaticServiceRetirementState = "retained" | "retired";
+
+export interface StaticServiceRouteParity {
+  route: string;
+  state: StaticServiceRetirementState;
+  parityProof: string;
+  blockers: readonly string[];
+}
+
 export interface RuntimeHostDescriptor<TDatabase = unknown, TRegistry = unknown, TMaterializer = unknown> {
   compatibilityHost: "apps/gitboard";
   storeDb: TDatabase;
@@ -15,6 +24,7 @@ export interface RuntimeHostDescriptor<TDatabase = unknown, TRegistry = unknown,
   materializer: TMaterializer | null;
   mountedRoutes: readonly string[];
   capabilities: readonly RuntimeHostCapability[];
+  staticServiceParity: readonly StaticServiceRouteParity[];
 }
 
 export interface GitboardRuntimeLifecyclePlan {
@@ -60,6 +70,7 @@ export interface RuntimeHostDescriptorOptions<TDatabase, TRegistry, TMaterialize
   materializer?: TMaterializer | null;
   mountedRoutes: readonly string[];
   capabilities: readonly RuntimeHostCapability[];
+  staticServiceParity?: readonly StaticServiceRouteParity[];
 }
 
 export function createRuntimeHostDescriptor<TDatabase, TRegistry, TMaterializer>(
@@ -73,6 +84,7 @@ export function createRuntimeHostDescriptor<TDatabase, TRegistry, TMaterializer>
     materializer: options.materializer ?? null,
     mountedRoutes: [...options.mountedRoutes],
     capabilities: [...options.capabilities],
+    staticServiceParity: [...(options.staticServiceParity ?? [])],
   };
 }
 
@@ -112,6 +124,35 @@ export function createGitboardRuntimeLifecyclePlan(options: GitboardRuntimeLifec
   };
 }
 
+export function createStaticServiceParityTable(): readonly StaticServiceRouteParity[] {
+  return [
+    {
+      route: "/console",
+      state: "retained",
+      parityProof: "production smoke must prove first-viewport Console assets load with HTTP 200 before app-host static serving can move",
+      blockers: ["daemon static asset host not deployed", "systemd gitboard.service still starts apps/gitboard/src/index.ts"],
+    },
+    {
+      route: "/gitboard",
+      state: "retained",
+      parityProof: "production smoke must prove legacy Gitboard bundle loads with HTTP 200 before compatibility shell removal",
+      blockers: ["legacy bundle remains public rollback path", "no replacement route has same deployment proof"],
+    },
+    {
+      route: "/health",
+      state: "retained",
+      parityProof: "systemd and deploy monitor require health HTTP 200 during restart windows",
+      blockers: ["service health check still targets app host", "daemon health descriptor not wired to production service"],
+    },
+    {
+      route: "runtime-descriptor",
+      state: "retained",
+      parityProof: "runtimeHost descriptor records mounted routes and capabilities for bridge-era verification",
+      blockers: ["final wrapper cleanup gate not satisfied", "bridge retirement readiness still depends on static/socket/API probes"],
+    },
+  ];
+}
+
 export function createGitboardRuntimeLifecycle<TDatabase, TRegistry, TMaterializer, TScanner, TBeadsWatcher, TObservabilityWatcher, TBeadsParityHarness, TObservabilityParityHarness>(
   plan: GitboardRuntimeLifecyclePlan,
   factory: GitboardRuntimeLifecycleFactory<TDatabase, TRegistry, TMaterializer, TScanner, TBeadsWatcher, TObservabilityWatcher, TBeadsParityHarness, TObservabilityParityHarness>,
@@ -137,6 +178,7 @@ export function createGitboardRuntimeLifecycle<TDatabase, TRegistry, TMaterializ
       materializer,
       capabilities: plan.capabilities,
       mountedRoutes: plan.mountedRoutes,
+      staticServiceParity: createStaticServiceParityTable(),
     }),
   };
 }

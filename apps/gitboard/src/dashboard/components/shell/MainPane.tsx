@@ -203,9 +203,15 @@ function useGithubRepoData(fullName: string, tab: GithubTab): GithubRepoData {
     if (!isDataTab(tab)) return;
 
     let cancelled = false;
-    const hasCachedData = cacheForRepo(fullName).loadedTabs[tab];
+    const cached = cacheForRepo(fullName);
+    const hasImmediateData = liveEvents.length > 0 || livePrs.length > 0 || liveIssues.length > 0 || liveReleases.length > 0;
+    const hasCachedData = cached.loadedTabs[tab] || hasImmediateData;
     setState(updateCache(fullName, (current) => ({
       ...current,
+      events: mergeEvents(current.events, liveEvents),
+      prs: mergePrs(current.prs, livePrs),
+      issues: mergeIssues(current.issues, liveIssues),
+      releases: mergeReleases(current.releases, liveReleases),
       error: null,
       loadingTabs: { ...current.loadingTabs, [tab]: true },
       loading: !hasCachedData,
@@ -216,12 +222,19 @@ function useGithubRepoData(fullName: string, tab: GithubTab): GithubRepoData {
       setState(updateCache(fullName, updater));
     };
 
-    const finishError = (err: unknown) => apply((current) => ({
-      ...current,
-      loading: false,
-      error: err instanceof Error ? err.message : String(err),
-      loadingTabs: { ...current.loadingTabs, [tab]: false },
-    }));
+    const finishError = (err: unknown) => apply((current) => {
+      const hasVisibleData =
+        (tab === "activity" && current.events.length > 0) ||
+        (tab === "prs" && current.prs.length > 0) ||
+        (tab === "issues" && current.issues.length > 0) ||
+        (tab === "releases" && current.releases.length > 0);
+      return {
+        ...current,
+        loading: false,
+        error: hasVisibleData ? null : err instanceof Error ? err.message : String(err),
+        loadingTabs: { ...current.loadingTabs, [tab]: false },
+      };
+    });
 
     if (tab === "activity") {
       apiClient.getEvents({ repos: [fullName], limit: 200 })
@@ -230,7 +243,10 @@ function useGithubRepoData(fullName: string, tab: GithubTab): GithubRepoData {
     }
     if (tab === "prs") {
       apiClient.getPrs({ repo: fullName, limit: 200 })
-        .then((response) => apply((current) => ({ ...current, loading: false, error: null, prs: mergePrs(current.prs, response.data ?? []), loadedTabs: { ...current.loadedTabs, prs: true }, loadingTabs: { ...current.loadingTabs, prs: false } })))
+        .then((response) => apply((current) => {
+          const liveNow = useGithubStore.getState().prs.filter((pr) => pr.repo === fullName);
+          return { ...current, loading: false, error: null, prs: mergePrs(mergePrs(current.prs, liveNow), response.data ?? []), loadedTabs: { ...current.loadedTabs, prs: true }, loadingTabs: { ...current.loadingTabs, prs: false } };
+        }))
         .catch(finishError);
     }
     if (tab === "issues") {

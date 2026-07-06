@@ -35,9 +35,9 @@ describe("GraphDao xtrm source", () => {
 
     expect(snapshot.freshness).toBe("fresh");
     expect(snapshot.sourceHealth).toEqual(expect.objectContaining({ source: "graph", status: "fresh" }));
-    expect(snapshot.graph.nodes.map((node) => node.id).sort()).toEqual(["A", "B", "C"]);
-    expect(snapshot.graph.nodes.find((node) => node.id === "C")).toEqual(expect.objectContaining({ title: "Closed", status: "closed", type: "feature" }));
-    expect(snapshot.graph.edges).toEqual(expect.arrayContaining([{ from: "A", to: "B", type: "blocks" }, { from: "A", to: "C", type: "tracks" }]));
+    expect(snapshot.graph.nodes.map((node) => node.id).sort()).toEqual(["A", "B"]);
+    expect(snapshot.graph.nodes.find((node) => node.id === "C")).toBeUndefined();
+    expect(snapshot.graph.edges).toEqual(expect.arrayContaining([{ from: "A", to: "B", type: "blocks" }]));
     expect(snapshot.graph.specialists).toEqual([expect.objectContaining({ bead_id: "A", job_id: "job-1", status: "running" })]);
 
     const includeClosed = createGraphDao({ xtrmDb: db }).getGraphSnapshot("repo-a", true);

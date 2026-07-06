@@ -5,7 +5,7 @@ import { basename, join } from "node:path";
 import type { Database } from "bun:sqlite";
 import { emit, makeLogEntry } from "./logger.ts";
 import { ProjectScanner } from "./project-scanner.ts";
-import { formatSourceDisplayPath, normalizeLegacySourceStatus, getMissingDiscoveredSourceKeys, summarizeSourceRefresh } from "../../../../packages/core/src/runtime/index.ts";
+import { SourceRefreshLifecycle, formatSourceDisplayPath, normalizeLegacySourceStatus, getMissingDiscoveredSourceKeys, summarizeSourceRefresh } from "../../../../packages/core/src/runtime/index.ts";
 import { getObservabilityConfig } from "../server/observability/config.ts";
 import { listRepos } from "../server/observability/registry.ts";
 
@@ -42,9 +42,7 @@ const OBSERVABILITY_DB_PATHS = [".specialists/db/observability.db", ".specialist
 export class UnifiedScanner {
   private readonly refreshIntervalMs: number;
   private readonly parityEnabled: boolean;
-  private timer: ReturnType<typeof setInterval> | null = null;
-  private running = false;
-  private refreshInFlight: Promise<UnifiedSource[]> | null = null;
+  private readonly lifecycle: SourceRefreshLifecycle<UnifiedSource[]>;
 
   constructor(
     private readonly db: Database,
@@ -52,32 +50,22 @@ export class UnifiedScanner {
   ) {
     this.refreshIntervalMs = config.refreshIntervalMs ?? DEFAULT_REFRESH_MS;
     this.parityEnabled = config.parityEnabled ?? process.env.GITBOARD_ENABLE_PARITY === "1";
+    this.lifecycle = new SourceRefreshLifecycle({
+      refreshIntervalMs: this.refreshIntervalMs,
+      refresh: () => this.runRefresh(),
+    });
   }
 
   start(): void {
-    if (this.running) return;
-    this.running = true;
-    void this.refresh();
-    this.timer = setInterval(() => {
-      void this.refresh();
-    }, this.refreshIntervalMs);
-    this.timer.unref?.();
+    this.lifecycle.start();
   }
 
   stop(): void {
-    this.running = false;
-    if (this.timer) clearInterval(this.timer);
-    this.timer = null;
+    this.lifecycle.stop();
   }
 
   async refresh(): Promise<UnifiedSource[]> {
-    if (this.refreshInFlight) return this.refreshInFlight;
-    this.refreshInFlight = this.runRefresh();
-    try {
-      return await this.refreshInFlight;
-    } finally {
-      this.refreshInFlight = null;
-    }
+    return this.lifecycle.refresh();
   }
 
   async getSources(): Promise<Array<{ source_key: string; kind: string; display_path: string; origin: string; status: string; discovered_at: string | null; last_seen_at: string | null }>> {

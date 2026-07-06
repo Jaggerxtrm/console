@@ -1,8 +1,9 @@
-import { Window } from "happy-dom";
+/** @vitest-environment happy-dom */
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act } from "react";
 import { createElement } from "react";
-import { fireEvent, render, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, waitFor, within } from "@testing-library/react";
 import { SourcesPanel } from "../../src/dashboard/components/settings/SourcesPanel.tsx";
 
 type SourceRow = {
@@ -15,59 +16,14 @@ type SourceRow = {
 
 describe("SourcesPanel e2e flow", () => {
   const originalFetch = globalThis.fetch;
-  const originalWindow = globalThis.window;
-  const originalDocument = globalThis.document;
-  const originalNavigator = globalThis.navigator;
-  const originalHTMLElement = globalThis.HTMLElement;
-  const originalSVGElement = globalThis.SVGElement;
-  const originalNode = globalThis.Node;
-  const originalEvent = globalThis.Event;
-  const originalMouseEvent = globalThis.MouseEvent;
-  const originalKeyboardEvent = globalThis.KeyboardEvent;
-  const originalCustomEvent = globalThis.CustomEvent;
-  const originalGetComputedStyle = globalThis.getComputedStyle;
-  const originalRequestAnimationFrame = globalThis.requestAnimationFrame;
-  const originalCancelAnimationFrame = globalThis.cancelAnimationFrame;
-  const originalSyntaxError = globalThis.SyntaxError;
   let sources: SourceRow[];
   let refreshCount: number;
 
-  const restoreGlobals = () => {
-    globalThis.fetch = originalFetch;
-    globalThis.window = originalWindow;
-    globalThis.document = originalDocument;
-    globalThis.navigator = originalNavigator;
-    globalThis.HTMLElement = originalHTMLElement;
-    globalThis.SVGElement = originalSVGElement;
-    globalThis.Node = originalNode;
-    globalThis.Event = originalEvent;
-    globalThis.MouseEvent = originalMouseEvent;
-    globalThis.KeyboardEvent = originalKeyboardEvent;
-    globalThis.CustomEvent = originalCustomEvent;
-    globalThis.getComputedStyle = originalGetComputedStyle;
-    globalThis.requestAnimationFrame = originalRequestAnimationFrame;
-    globalThis.cancelAnimationFrame = originalCancelAnimationFrame;
-    globalThis.SyntaxError = originalSyntaxError;
-  };
-
   beforeEach(() => {
-    const window = new Window();
-    Object.assign(window, { SyntaxError: originalSyntaxError, event: { type: "message" } });
-    Object.assign(globalThis, {
-      window,
-      document: window.document as unknown as Document,
-      navigator: window.navigator,
-      HTMLElement: window.HTMLElement,
-      SVGElement: window.SVGElement,
-      Node: window.Node,
-      Event: window.Event,
-      MouseEvent: window.MouseEvent,
-      KeyboardEvent: window.KeyboardEvent,
-      CustomEvent: window.CustomEvent,
-      getComputedStyle: window.getComputedStyle.bind(window),
-      requestAnimationFrame: window.requestAnimationFrame.bind(window),
-      cancelAnimationFrame: window.cancelAnimationFrame.bind(window),
-      SyntaxError: originalSyntaxError,
+    Object.defineProperty(globalThis, "event", {
+      configurable: true,
+      writable: true,
+      value: { type: "message" },
     });
     sources = [];
     refreshCount = 0;
@@ -115,7 +71,13 @@ describe("SourcesPanel e2e flow", () => {
   });
 
   afterEach(() => {
-    restoreGlobals();
+    cleanup();
+    globalThis.fetch = originalFetch;
+    Object.defineProperty(globalThis, "event", {
+      configurable: true,
+      writable: true,
+      value: undefined,
+    });
     vi.restoreAllMocks();
   });
 
@@ -126,7 +88,7 @@ describe("SourcesPanel e2e flow", () => {
     await waitFor(() => expect(queryByText("/workspace/project")).toBeNull());
 
     await act(async () => {
-      fireEvent.change(getByRole("textbox"), { target: { value: "/workspace/project" } });
+      fireEvent.input(getByRole("textbox"), { target: { value: "/workspace/project" } });
     });
     await waitFor(() => expect((getByRole("button", { name: "Add" }) as HTMLButtonElement).disabled).toBe(false));
     fireEvent.click(getByRole("button", { name: "Add" }));

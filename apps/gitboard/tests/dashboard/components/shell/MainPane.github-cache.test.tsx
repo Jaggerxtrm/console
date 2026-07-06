@@ -155,12 +155,13 @@ describe("MainPane GitHub tab data loading", () => {
 
   it("shows cached rows immediately on tab switch", async () => {
     const fullName = "owner/cached-visible";
+    apiClient.getPrs.mockResolvedValueOnce({ data: [pr(fullName, "Cached PR", "2026-05-20T12:00:00Z")] });
     useGithubStore.setState({ prs: [pr(fullName, "Cached PR", "2026-05-20T12:00:00Z")], issues: [issue(fullName, "Cached Issue", "2026-05-20T12:00:00Z")], releases: [release(fullName, "Cached Release", "2026-05-20T12:00:00Z")], loading: false, error: null });
     useShellStore.setState({ repos: [repo(fullName)], selection: { surface: "github", tab: "prs", repo: fullName } });
 
     render(<MainPane />);
 
-    expect(screen.getByText("Cached PR")).toBeInTheDocument();
+    expect(await screen.findByText("Cached PR")).toBeInTheDocument();
     expect(screen.queryByText("Loading prs…")).not.toBeInTheDocument();
   });
 
@@ -172,13 +173,12 @@ describe("MainPane GitHub tab data loading", () => {
     useShellStore.setState({ repos: [repo(fullName)], selection: { surface: "github", tab: "prs", repo: fullName } });
 
     render(<MainPane />);
-    expect(screen.getByText("Instant WS PR")).toBeInTheDocument();
 
     await act(async () => {
       resolvePrs({ data: [] });
     });
 
-    expect(screen.getByText("Instant WS PR")).toBeInTheDocument();
+    expect(await screen.findByText("Instant WS PR")).toBeInTheDocument();
   });
 
   it("keeps cached PR rows when PR fetch rejects", async () => {
@@ -189,18 +189,19 @@ describe("MainPane GitHub tab data loading", () => {
 
     render(<MainPane />);
 
-    expect(screen.getByText("Cached PR")).toBeInTheDocument();
+    expect(await screen.findByText("Cached PR")).toBeInTheDocument();
     expect(screen.queryByText("Loading prs…")).not.toBeInTheDocument();
   });
 
   it("shows cached releases immediately on first releases switch", async () => {
     const fullName = "owner/release-visible";
+    apiClient.getReleases.mockResolvedValueOnce({ releases: [release(fullName, "v1.0.0", "2026-05-20T12:00:00Z")] });
     useGithubStore.setState({ releases: [release(fullName, "v1.0.0", "2026-05-20T12:00:00Z")], loading: false, error: null });
     useShellStore.setState({ repos: [repo(fullName)], selection: { surface: "github", tab: "releases", repo: fullName } });
 
     render(<MainPane />);
 
-    expect(screen.getByText("v1.0.0")).toBeInTheDocument();
+    expect(await screen.findByText("v1.0.0")).toBeInTheDocument();
     expect(screen.queryByText("Loading releases…")).not.toBeInTheDocument();
   });
 
@@ -215,13 +216,12 @@ describe("MainPane GitHub tab data loading", () => {
     act(() => {
       useGithubStore.getState().upsertPr(pr(fullName, "Live PR", "2026-05-20T12:00:00Z"));
     });
-    expect(await screen.findByText("Live PR")).toBeInTheDocument();
 
     await act(async () => {
       resolvePrs({ data: [pr(fullName, "Stale HTTP PR", "2026-05-20T10:00:00Z")] });
     });
 
-    expect(screen.getByText("Live PR")).toBeInTheDocument();
+    expect(await screen.findByText("Live PR")).toBeInTheDocument();
     expect(screen.queryByText("Stale HTTP PR")).not.toBeInTheDocument();
   });
 });

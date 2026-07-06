@@ -1,6 +1,18 @@
+---
+version: 1
+updated: 2026-07-04
+synced_at: ffe1e17
+---
+
 # Daemon Read Model Contract
 
 Status: bridge-era contract for `forge-vtq4`.
+
+Claim labels:
+- implemented-now: live app/core behavior already shipped.
+- target-state: daemon/core ownership still migrating.
+- blocked: replacement or retirement not yet allowed.
+- gate-required: parity/readiness gate must pass first.
 
 The native runtime target remains `xt daemon` serving `~/.xtrm/state.db` over
 `~/.xtrm/state.sock`. Console continues to call HTTP APIs; it does not open
@@ -9,7 +21,7 @@ SQLite and does not own runtime writes.
 The typed source of truth for this contract is
 `packages/core/src/state/read-models.ts`.
 
-### forge-3dm4.3 source-lifecycle slice
+### forge-3dm4.3 source-lifecycle slice (implemented-now)
 
 Core now owns the source lifecycle policy helpers used by app adapters:
 - `formatSourceDisplayPath`
@@ -30,7 +42,7 @@ Core now owns the source lifecycle policy helpers used by app adapters:
 
 Public routes and DTOs are unchanged; only lifecycle decision helpers moved.
 
-### forge-3dm4.5 realtime/log runtime slice
+### forge-3dm4.5 realtime/log runtime slice (implemented-now)
 
 Core now owns the realtime and log delivery protocol contracts used by app
 adapters:
@@ -48,7 +60,7 @@ HTTP DTOs.
 This slice does not change read-model ownership or daemon bridge readiness; it
 removes app ownership of shared realtime/log protocol shapes and reusable logger runtime policy.
 
-### forge-3dm4.6 terminal/shell policy contract slice
+### forge-3dm4.6 terminal/shell policy contract slice (implemented-now)
 
 Core now owns the terminal shell safety policy contracts used by app adapters:
 - shell provider policy/status/access context types
@@ -63,7 +75,7 @@ process wiring, route DTOs, timers, and cleanup.
 This slice does not change read-model ownership or daemon bridge readiness; it
 only removes app ownership of pure terminal/shell policy decisions.
 
-### forge-3dm4.8 final cleanup gate
+### forge-3dm4.8 final cleanup gate (blocked, gate-required)
 
 Final wrapper retirement is blocked until bridge readiness is true. The current
 probe is:
@@ -84,17 +96,17 @@ No bridge table, route DTO adapter, `createApp`/`startServer` wrapper,
 `gitboard.service` alias, `/console`, `/gitboard`, WebSocket, terminal, or
 internal-log compatibility surface is retired by this slice.
 
-## Console Surfaces
+## Console Surfaces (implemented-now / target-state / gate-required)
 
-| Contract | Current routes | Replacement source |
-|---|---|---|
-| `substrate.issue-graph` | `/api/substrate/projects*` | Native issue and edge state, currently bridged by `substrate_*` tables |
-| `specialists.activity-evidence` | `/api/specialists/*` | Native specialist job/activity/evidence state, currently bridged by `specialist_*` plus forensic/evidence rows |
-| `feed.rollups` | `/api/feed` | Core-owned bridge read model via `@xtrm/core/state` `readFeedPage`; future daemon source is derived rollups over native domain events; raw envelopes stay behind drilldown pointers |
-| `graph.console-joins` | `/api/console/graph` | Derived graph projection joining issues, edges, and specialist activity |
-| `source-health.freshness` | `/api/sources`, connection, graph, specialists health | Native source freshness with degraded-but-readable semantics |
+| Contract | State | Current routes | Replacement source |
+|---|---|---|---|
+| `substrate.issue-graph` | target-state, gate-required | `/api/substrate/projects*` | Native issue and edge state, currently bridged by `substrate_*` tables |
+| `specialists.activity-evidence` | target-state, gate-required | `/api/specialists/*` | Native specialist job/activity/evidence state, currently bridged by `specialist_*` plus forensic/evidence rows |
+| `feed.rollups` | implemented-now, target-state | `/api/feed` | Core-owned bridge read model via `@xtrm/core/state` `readFeedPage`; future daemon source is derived rollups over native domain events; raw envelopes stay behind drilldown pointers |
+| `graph.console-joins` | target-state, gate-required | `/api/console/graph` | Derived graph projection joining issues, edges, and specialist activity |
+| `source-health.freshness` | implemented-now, gate-required | `/api/sources`, connection, graph, specialists health | Native source freshness with degraded-but-readable semantics |
 
-## Final Migration Requirement
+## Final Migration Requirement (gate-required)
 
 `forge-3dm4` makes the remaining read-model extraction explicit: substrate,
 specialists, graph, and source-health query services move into
@@ -118,7 +130,7 @@ graph and specialists.
 - Bridge fields may be dropped only after their replacement contract is served
   by the daemon and current API contract tests stay green.
 
-## Retirement Gate
+## Retirement Gate (blocked)
 
 `packages/core/src/state/bridge-retirement.ts` is the current cleanup gate.
 It intentionally returns `retain` until all required Console contracts are
@@ -149,14 +161,14 @@ For `forge-3dm4`, wrapper retirement also requires the runtime smoke gates in
 smoke, GitHub poller-enabled smoke or classified credential unavailability, and
 manual production restart smoke evidence.
 
-## Current State
+## Current State (implemented-now)
 
 | Contract | Core owner | App wrapper | Bridge state still retained |
 |---|---|---|---|
 | `feed.rollups` | `packages/core/src/state/feed-read-model.ts` owns row selection, severity/redaction normalization, drilldown pointers, and opaque cursor encoding by `(t_unix_ms, seq, id)` | `apps/gitboard/src/api/routes/feed.ts` parses HTTP query parameters and returns the existing `{ rows, cursor }` DTO | `xtrm_forensic_events`, `xtrm_evidence_refs`, `substrate_issues`, and `github_events` remain the bridge/durable adapter inputs until daemon-native rollups are served |
 | `source-health.freshness` | `packages/core/src/state/source-health.ts` owns the canonical health vocabulary, helper, and freshness mapping; `packages/core/src/runtime/source-lifecycle.ts` defines discovery/health service contracts | `apps/gitboard/src/types/source-health.ts` is a compatibility re-export; app scanner/watcher implementations and source route projection still own runtime reads | `sources`, `materialization_state`, scanner attach/skip logs, and existing degraded-but-readable DTOs remain retained until source lifecycle services move behind parity tests |
 
-## Non-Retirable Until Daemon Served
+## Non-Retirable Until Daemon Served (blocked)
 
 These bridge surfaces remain non-retirable during the final `apps/gitboard`
 host migration unless `evaluateBridgeRetirementReadiness` returns ready for

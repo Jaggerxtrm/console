@@ -19,6 +19,7 @@ interface BeadCardProps {
   agent?: string | null;
   isExpanded?: boolean;
   prLink?: BeadCardPrLink | null;
+  onStatusChange?: (status: BeadIssue["status"]) => void;
 }
 
 const TYPE_CONFIG: Record<string, { label: string; icon: typeof IssueOpenedIcon; color: string }> = {
@@ -37,7 +38,7 @@ const PRIORITY_COLORS: Record<string, string> = {
   "4": "var(--text-disabled)",
 };
 
-export function BeadCard({ issue, onClick, agent, isExpanded = false, prLink = null }: BeadCardProps) {
+export function BeadCard({ issue, onClick, agent, isExpanded = false, prLink = null, onStatusChange }: BeadCardProps) {
   const type = TYPE_CONFIG[String(issue.issue_type)] ?? { label: String(issue.issue_type), icon: IssueOpenedIcon, color: "var(--text-muted)" };
   const TypeIcon = type.icon;
   const priorityColor = PRIORITY_COLORS[String(issue.priority)] ?? "var(--text-muted)";
@@ -84,6 +85,17 @@ export function BeadCard({ issue, onClick, agent, isExpanded = false, prLink = n
         {agent && <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}><DependabotIcon size={11} />{agent}</span>}
         {issue.dependencies.length > 0 && <span>{issue.dependencies.length} deps</span>}
         {issue.labels.length > 0 && <span>{issue.labels.length} labels</span>}
+        {onStatusChange ? (
+          <select
+            aria-label={`Move ${issue.id}`}
+            value={issue.status}
+            onClick={(e) => e.stopPropagation()}
+            onChange={(e) => { e.stopPropagation(); onStatusChange(e.target.value as BeadIssue["status"]); }}
+            style={{ background: "var(--surface-tertiary)", border: "1px solid var(--border-subtle)", color: "var(--text-primary)", font: "inherit" }}
+          >
+            {["open", "in_progress", "blocked", "in_review", "deferred", "closed"].map((status) => <option key={status} value={status}>{status}</option>)}
+          </select>
+        ) : null}
         {prLink && (
           <a
             href={prLink.url ?? `https://github.com/${prLink.repo}/pull/${prLink.number}`}

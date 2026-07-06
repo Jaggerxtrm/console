@@ -45,34 +45,62 @@ describe("graph route xtrm source", () => {
     db.close();
   });
 
-  it("protects POST invalidate and triggers materializer for allowed local origins", async () => {
+  it("protects POST invalidate and accepts primary token with legacy fallback", async () => {
+    const originalPrimaryToken = process.env.CONSOLE_WRITE_ADMIN_TOKEN;
+    const originalLegacyToken = process.env.GITBOARD_SOURCES_ADMIN_TOKEN;
     const db = createXtrmDatabase(":memory:");
     const triggered: Array<string | null | undefined> = [];
     const app = new Hono();
     app.route("/api/console/graph", createGraphRouter(createGraphDao({ xtrmDb: db, triggerMaterialization: (projectId) => triggered.push(projectId) })));
 
-    const forbidden = await app.fetch(new Request("http://localhost/api/console/graph/invalidate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", host: "localhost" },
-      body: JSON.stringify({ project_id: "repo-a" }),
-    }));
-    expect(forbidden.status).toBe(403);
+    try {
+      const forbidden = await app.fetch(new Request("http://localhost/api/console/graph/invalidate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", host: "localhost" },
+        body: JSON.stringify({ project_id: "repo-a" }),
+      }));
+      expect(forbidden.status).toBe(403);
 
-    const allowed = await app.fetch(new Request("http://localhost/api/console/graph/invalidate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", host: "localhost", origin: "http://localhost" },
-      body: JSON.stringify({ project_id: "repo-a" }),
-    }));
-    expect(allowed.status).toBe(200);
-    expect(triggered).toEqual(["repo-a"]);
+      process.env.CONSOLE_WRITE_ADMIN_TOKEN = "primary-secret";
+      delete process.env.GITBOARD_SOURCES_ADMIN_TOKEN;
+      const primaryAllowed = await app.fetch(new Request("http://localhost/api/console/graph/invalidate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", host: "localhost", "x-console-write-token": "primary-secret" },
+        body: JSON.stringify({ project_id: "repo-a" }),
+      }));
+      expect(primaryAllowed.status).toBe(200);
 
-    const cooldown = await app.fetch(new Request("http://localhost/api/console/graph/invalidate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", host: "localhost", origin: "http://localhost" },
-      body: JSON.stringify({ project_id: "repo-a" }),
-    }));
-    expect(cooldown.status).toBe(429);
+      delete process.env.CONSOLE_WRITE_ADMIN_TOKEN;
+      process.env.GITBOARD_SOURCES_ADMIN_TOKEN = "legacy-secret";
+      const legacyAllowed = await app.fetch(new Request("http://localhost/api/console/graph/invalidate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", host: "localhost", "x-gitboard-sources-admin-token": "legacy-secret" },
+        body: JSON.stringify({ project_id: "repo-b" }),
+      }));
+      expect(legacyAllowed.status).toBe(200);
 
-    db.close();
+      delete process.env.CONSOLE_WRITE_ADMIN_TOKEN;
+      delete process.env.GITBOARD_SOURCES_ADMIN_TOKEN;
+      const sameOriginAllowed = await app.fetch(new Request("http://localhost/api/console/graph/invalidate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", host: "localhost", origin: "http://localhost" },
+        body: JSON.stringify({ project_id: "repo-c" }),
+      }));
+      expect(sameOriginAllowed.status).toBe(200);
+      expect(triggered).toEqual(["repo-a", "repo-b", "repo-c"]);
+
+      const cooldown = await app.fetch(new Request("http://localhost/api/console/graph/invalidate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", host: "localhost", origin: "http://localhost" },
+        body: JSON.stringify({ project_id: "repo-c" }),
+      }));
+      expect(cooldown.status).toBe(429);
+    } finally {
+      if (originalPrimaryToken === undefined) delete process.env.CONSOLE_WRITE_ADMIN_TOKEN;
+      else process.env.CONSOLE_WRITE_ADMIN_TOKEN = originalPrimaryToken;
+      if (originalLegacyToken === undefined) delete process.env.GITBOARD_SOURCES_ADMIN_TOKEN;
+      else process.env.GITBOARD_SOURCES_ADMIN_TOKEN = originalLegacyToken;
+      db.close();
+    }
   });
 });

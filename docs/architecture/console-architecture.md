@@ -1,3 +1,9 @@
+---
+version: 1
+updated: 2026-07-04
+synced_at: ffe1e17
+---
+
 # Console Architecture
 
 Status: current bridge-era architecture reference. Single source of truth for
@@ -511,6 +517,9 @@ guards.
   stays in `apps/gitboard` only as a disposable pre-daemon bridge; future state
   and materializer infrastructure moves toward `packages/core/state` and
   `packages/core/materializer`.
+- `forge-5a7f`: bridge gates for gitboard-hosted runtime surfaces. Treat
+  `apps/gitboard` as current bridge-era backend host only; do not infer wrapper
+  retirement or final runtime ownership from this document.
 - `forge-benk.6`: normalized runtime environment names and port defaults
   without changing these ownership boundaries. Closed.
 - `forge-benk.7`: refreshed stale backend docs so they describe this boundary

@@ -20,7 +20,7 @@ export function createGraphRouter(dao = getDefaultDao()): Hono {
   });
 
   app.post("/invalidate", async (c) => {
-    if (!isAllowedMutationRequest(c.req.url, c.req.header("host") ?? "", c.req.header("origin") ?? null, c.req.header("x-gitboard-sources-admin-token") ?? null)) {
+    if (!isAllowedMutationRequest(c.req.url, c.req.header("host") ?? "", c.req.header("origin") ?? null, c.req.header("x-console-write-token") ?? c.req.header("x-gitboard-sources-admin-token") ?? null)) {
       return c.json({ error: "forbidden" }, 403);
     }
     const body = await c.req.json().catch(() => ({})) as { project_id?: string | null };

@@ -4,7 +4,6 @@ import { UnifiedScanner, type UnifiedSource } from "../../core/unified-scanner.t
 import { isAllowedMutationRequest, isAllowedSourceKind, isLocalhost } from "./sources-policy.ts";
 import { canRefreshSources, createSourceRefreshState, formatSourceDisplayPath } from "./sources-policy.ts";
 import {
-  buildSourceKey as coreBuildSourceKey,
   getSourceRow as coreGetSourceRow,
   isMutableManualSource as coreIsMutableManualSource,
   listSources as coreListSources,
@@ -32,7 +31,7 @@ export function createSourcesRouter(xtrmDb: Database | null, scanner: UnifiedSca
   });
 
   routes.post("/pin", async (c) => {
-    if (!xtrmDb || !isAllowedMutationRequest(c.req.url, c.req.header("host") ?? "", c.req.header("origin") ?? null, c.req.header("x-gitboard-sources-admin-token") ?? null)) return c.json({ error: "forbidden" }, 403);
+    if (!xtrmDb || !isAllowedMutationRequest(c.req.url, c.req.header("host") ?? "", c.req.header("origin") ?? null, c.req.header("x-console-write-token") ?? c.req.header("x-gitboard-sources-admin-token") ?? null)) return c.json({ error: "forbidden" }, 403);
     const body = (await c.req.json<Partial<PinRequestBody>>().catch(() => null)) as Partial<PinRequestBody> | null;
     const path = body?.path?.trim();
     const kind = body?.kind?.trim();
@@ -43,7 +42,7 @@ export function createSourcesRouter(xtrmDb: Database | null, scanner: UnifiedSca
   });
 
   routes.delete("/pin/:source_key", (c) => {
-    if (!xtrmDb || !isAllowedMutationRequest(c.req.url, c.req.header("host") ?? "", c.req.header("origin") ?? null, c.req.header("x-gitboard-sources-admin-token") ?? null)) return c.json({ error: "forbidden" }, 403);
+    if (!xtrmDb || !isAllowedMutationRequest(c.req.url, c.req.header("host") ?? "", c.req.header("origin") ?? null, c.req.header("x-console-write-token") ?? c.req.header("x-gitboard-sources-admin-token") ?? null)) return c.json({ error: "forbidden" }, 403);
     const sourceKey = c.req.param("source_key");
     const row = coreGetSourceRow(xtrmDb, sourceKey);
     if (!coreIsMutableManualSource(row)) return c.json({ error: "source not manual" }, 409);
@@ -51,7 +50,7 @@ export function createSourcesRouter(xtrmDb: Database | null, scanner: UnifiedSca
   });
 
   routes.post("/refresh", async (c) => {
-    if (!isAllowedMutationRequest(c.req.url, c.req.header("host") ?? "", c.req.header("origin") ?? null, c.req.header("x-gitboard-sources-admin-token") ?? null)) return c.json({ error: "forbidden" }, 403);
+    if (!isAllowedMutationRequest(c.req.url, c.req.header("host") ?? "", c.req.header("origin") ?? null, c.req.header("x-console-write-token") ?? c.req.header("x-gitboard-sources-admin-token") ?? null)) return c.json({ error: "forbidden" }, 403);
     if (!scanner) return c.json({ error: "sources refresh unavailable" }, 503);
     const gate = canRefreshSources(Date.now(), sourceRefreshState);
     if (!gate.ok) return c.json(gate.body, gate.status);

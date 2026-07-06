@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { existsSync, symlinkSync, utimesSync } from "node:fs";
 import { join } from "node:path";
-import { LOG_RING_SIZE, type LogEntry } from "../src/runtime/index.ts";
+import { LOG_RING_SIZE, RealtimeChannelRegistry, type LogEntry } from "../src/runtime/index.ts";
 import { createLoggerRuntime } from "../src/runtime/server.ts";
 
 const tmpRoot = join(process.cwd(), ".tmp-runtime-logs");
@@ -130,5 +130,21 @@ describe("logger runtime", () => {
 
     expect(logger.getRing()).toHaveLength(LOG_RING_SIZE);
     expect(logger.getRing()[0].event).toBe("e1");
+  });
+
+  it("publishes append events through realtime registry", () => {
+    const registry = new RealtimeChannelRegistry();
+    const sent: unknown[] = [];
+    registry.subscribe("system", { id: "system-client", send: (message) => sent.push(message) });
+    const logger = createLoggerRuntime({
+      diskDir: join(tmpRoot, "logs"),
+      publisher: (item) => registry.publish("system", "system:log", item, item.ts),
+    });
+    logger.setDiskEnabled(false);
+
+    logger.emit(entry("2026-05-19T00:00:00.000Z", "info", "hello"));
+
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({ channel: "system", event: "system:log", version: "2026-05-19T00:00:00.000Z", data: { event: "hello" } });
   });
 });

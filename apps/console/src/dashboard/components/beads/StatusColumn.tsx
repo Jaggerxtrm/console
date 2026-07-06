@@ -14,6 +14,7 @@ interface StatusColumnProps {
   issues: BeadIssue[];
   selectedId: string | null;
   onSelect: (issue: BeadIssue) => void;
+  onStatusChange?: (issue: BeadIssue, status: BeadIssue["status"]) => void;
   getAgent?: (issueId: string) => string | null;
   prByIssueId?: Map<string, OpenPr>;
 }
@@ -26,7 +27,7 @@ const STATUS_CONFIG: Record<string, { color: string; icon: typeof CircleIcon }> 
   closed: { color: "var(--status-closed)", icon: CheckCircleIcon },
 };
 
-export function StatusColumn({ title, description, status, issues, selectedId, onSelect, getAgent, prByIssueId }: StatusColumnProps) {
+export function StatusColumn({ title, description, status, issues, selectedId, onSelect, onStatusChange, getAgent, prByIssueId }: StatusColumnProps) {
   const config = STATUS_CONFIG[String(status)] ?? { color: "var(--text-muted)", icon: CircleIcon };
   const StatusIcon = config.icon;
   const epicCount = issues.filter((issue) => issue.issue_type === "epic").length;
@@ -57,6 +58,7 @@ export function StatusColumn({ title, description, status, issues, selectedId, o
               agent={getAgent?.(issue.id)}
               isExpanded={selectedId === issue.id}
               prLink={prByIssueId?.get(issue.id) ?? null}
+              onStatusChange={onStatusChange ? (nextStatus) => onStatusChange(issue, nextStatus) : undefined}
             />
           ))
         )}

@@ -1,86 +1,17 @@
-import { REALTIME_PROTOCOL_VERSION, type RealtimeChannelName, type RealtimeEnvelope, type RealtimeMessage, type RealtimeSubscriber } from "../../../../../packages/core/src/runtime/index.ts";
+import {
+  RealtimeChannelRegistry,
+  type RealtimeChannelName,
+  type RealtimeEnvelope,
+  type RealtimeMessage,
+  type RealtimeSubscriber,
+} from "../../../../../packages/core/src/runtime/index.ts";
 
 export type ChannelName = RealtimeChannelName;
-
 export interface WsMessage extends RealtimeMessage {}
-
 export interface Subscriber extends RealtimeSubscriber {}
 
-const RING_BUFFER_SIZE = 500;
-
-export class ChannelRegistry {
-  private channels = new Map<string, Set<Subscriber>>();
-  private buffers = new Map<string, RealtimeEnvelope[]>();
-  private sequenceByChannel = new Map<string, number>();
-  private bootId = crypto.randomUUID();
-
-  subscribe(channel: ChannelName, subscriber: Subscriber): void {
-    if (!this.channels.has(channel)) {
-      this.channels.set(channel, new Set());
-    }
-    this.channels.get(channel)!.add(subscriber);
-  }
-
-  unsubscribe(channel: ChannelName, subscriber: Subscriber): void {
-    this.channels.get(channel)?.delete(subscriber);
-  }
-
-  unsubscribeAll(subscriber: Subscriber): void {
-    for (const subscribers of this.channels.values()) {
-      subscribers.delete(subscriber);
-    }
-  }
-
+export class ChannelRegistry extends RealtimeChannelRegistry {
   publish(channel: ChannelName, event: string, data: unknown, version?: string): RealtimeEnvelope {
-    const seq = (this.sequenceByChannel.get(channel) ?? 0) + 1;
-    this.sequenceByChannel.set(channel, seq);
-    const envelope: RealtimeEnvelope = {
-      type: "event",
-      channel,
-      event,
-      seq,
-      ts: new Date().toISOString(),
-      version: version ?? String(REALTIME_PROTOCOL_VERSION),
-      boot_id: this.bootId,
-      data,
-    };
-    this.appendToBuffer(channel, envelope);
-    const subscribers = this.channels.get(channel);
-    if (!subscribers) return envelope;
-    for (const sub of subscribers) {
-      try {
-        sub.send(envelope);
-      } catch {
-        subscribers.delete(sub);
-      }
-    }
-    return envelope;
-  }
-
-  replay(channel: ChannelName, sinceSeq: number, bootId: string): RealtimeEnvelope[] {
-    if (bootId !== this.bootId) return [];
-    return (this.buffers.get(channel) ?? []).filter((envelope) => envelope.seq > sinceSeq);
-  }
-
-  getBootId(): string {
-    return this.bootId;
-  }
-
-  private appendToBuffer(channel: ChannelName, envelope: RealtimeEnvelope): void {
-    const buffer = this.buffers.get(channel) ?? [];
-    buffer.push(envelope);
-    if (buffer.length > RING_BUFFER_SIZE) buffer.splice(0, buffer.length - RING_BUFFER_SIZE);
-    this.buffers.set(channel, buffer);
-  }
-
-  hasReplayGap(channel: ChannelName, sinceSeq: number, bootId: string): boolean {
-    if (bootId !== this.bootId) return true;
-    const buffer = this.buffers.get(channel);
-    if (!buffer?.length) return sinceSeq > 0;
-    return sinceSeq < buffer[0].seq;
-  }
-
-  subscriberCount(channel: ChannelName): number {
-    return this.channels.get(channel)?.size ?? 0;
+    return super.publish(channel, event, data, version);
   }
 }

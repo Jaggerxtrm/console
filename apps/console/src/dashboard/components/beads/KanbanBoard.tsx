@@ -7,6 +7,8 @@ import type { Interaction, BeadIssue, BeadIssueDetail } from "../../../types/bea
 import { StatusColumn } from "./StatusColumn";
 import { IssueOverlay } from "./IssueOverlay.tsx";
 import { substrateApi as api } from "../../lib/beads.ts";
+import { logClientEvent } from "../../lib/client-log.ts";
+import { NewIssueComposer } from "./inline/BeadInlineEdit.tsx";
 
 import type { OpenPr } from "../../lib/beads.ts";
 
@@ -59,6 +61,21 @@ export function KanbanBoard({ issues, projectId, interactions, getAgent, prByIss
     }
   }
 
+  async function createIssue(input: Parameters<typeof api.createIssue>[1]) {
+    if (!projectId) return;
+    const issue = await api.createIssue(projectId, input);
+    logClientEvent("bead.create", { projectId, issueId: issue.id });
+    window.dispatchEvent(new CustomEvent("beads:mutated", { detail: { projectId, issueId: issue.id } }));
+    await openIssue(issue);
+  }
+
+  async function moveIssue(issue: BeadIssue, status: BeadIssue["status"]) {
+    if (!projectId || status === issue.status) return;
+    const next = await api.updateIssue(projectId, issue.id, { status });
+    logClientEvent("bead.status", { projectId, issueId: issue.id, status });
+    window.dispatchEvent(new CustomEvent("beads:mutated", { detail: { projectId, issueId: next.id } }));
+  }
+
   const selectedIssue = selectedId ? issueById.get(selectedId) ?? null : null;
 
   return (
@@ -71,6 +88,7 @@ export function KanbanBoard({ issues, projectId, interactions, getAgent, prByIss
           </div>
           <span style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)", border: "1px solid var(--border-subtle)", borderRadius: "var(--radius-sm)", padding: "3px 8px", background: "var(--surface-tertiary)" }}>{issues.length} issues</span>
         </div>
+        {projectId ? <NewIssueComposer onCreate={createIssue} /> : null}
       </div>
 
       <div style={{ display: "flex", gap: 8, minHeight: 0, flex: 1, overflowX: "auto", padding: 10 }}>
@@ -85,6 +103,7 @@ export function KanbanBoard({ issues, projectId, interactions, getAgent, prByIss
             selectedId={selectedId}
             onSelect={openIssue}
             prByIssueId={prByIssueId}
+            onStatusChange={(issue, status) => void moveIssue(issue, status)}
           />
         ))}
       </div>
