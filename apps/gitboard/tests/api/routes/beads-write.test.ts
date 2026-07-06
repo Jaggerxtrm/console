@@ -101,6 +101,25 @@ describe("beads write routes", () => {
     db.close();
   });
 
+  it("rejects malformed JSON without running bd", async () => {
+    const db = createDb(tmpDir);
+    const runBdCommand = vi.fn();
+    const app = createBeadsWriteRouter(db, { runBdCommand });
+    const headers = { "Content-Type": "application/json", host: "localhost", "x-console-write-token": "primary-secret" };
+
+    const responses = await Promise.all([
+      app.fetch(new Request("http://localhost/projects/demo/issues", { method: "POST", headers, body: "{" })),
+      app.fetch(new Request("http://localhost/projects/demo/issues/forge-123", { method: "PATCH", headers, body: "{" })),
+      app.fetch(new Request("http://localhost/projects/demo/issues/forge-123/comments", { method: "POST", headers, body: "{" })),
+      app.fetch(new Request("http://localhost/projects/demo/issues/forge-123/dependencies", { method: "POST", headers, body: "{" })),
+      app.fetch(new Request("http://localhost/projects/demo/issues/forge-123/priority", { method: "POST", headers, body: "{" })),
+    ]);
+
+    expect(responses.map((response) => response.status)).toEqual([400, 400, 400, 400, 400]);
+    expect(runBdCommand).not.toHaveBeenCalled();
+    db.close();
+  });
+
   it("rejects empty update patches without running bd", async () => {
     const db = createDb(tmpDir);
     const runBdCommand = vi.fn();

@@ -441,7 +441,11 @@ function assertWriteAllowed(url: string, host: string, origin: string | null, re
 async function safeJson<T>(request: Request): Promise<T | null> {
   const text = await request.text();
   if (!text.trim()) return null;
-  return JSON.parse(text) as T;
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    return null;
+  }
 }
 
 function parseJson(value: string): unknown {
