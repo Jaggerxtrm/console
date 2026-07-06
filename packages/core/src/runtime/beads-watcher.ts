@@ -7,13 +7,14 @@ import {
   decideBeadsSourceRead,
 } from "./source-lifecycle-policy.ts";
 
-// forge-h830: the 2s interval was hammering Dolt with getCommitHash + readSnapshot
-// for every tracked project (25 × every 2s = 12 qps just for this watcher),
-// causing slow-query / circuit-breaker cascades on the shared 3308 server and
-// generating ~50 WS batches/sec of mostly redundant events. fs.watch on each
-// project's issues.jsonl (see ensureWatcher) already provides ~1s-latency real-
-// time signal for actual changes; the interval is just a backup heartbeat and
-// can run much less often without hurting user-visible freshness.
+// forge-h830 / forge-izbt.4: the 2s interval was hammering Dolt with
+// getCommitHash + readSnapshot for every tracked project (25 × every 2s = 12
+// qps just for this watcher), causing slow-query / circuit-breaker cascades on
+// the shared 3308 server and generating ~50 WS batches/sec of mostly redundant
+// events. fs.watch on each project's issues.jsonl (see ensureWatcher) is the
+// primary bd-write re-projection signal: after bd touches issues.jsonl, the
+// watcher debounces for BEADS_WATCHER_DEBOUNCE_MS (1s), then triggers the
+// existing materializer. The interval is only a backup heartbeat.
 export const BEADS_WATCHER_ACTIVE_POLL_MS = 30_000;
 export const BEADS_WATCHER_IDLE_POLL_MS = 60_000;
 export const BEADS_WATCHER_DEBOUNCE_MS = 1_000;
