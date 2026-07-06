@@ -29,8 +29,12 @@ export interface OpenPr {
 
 const API_BASE = import.meta.env.VITE_SUBSTRATE_API_URL || "";
 
-async function jsonFetch<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`);
+type WriteRequestOptions = {
+  adminToken?: string;
+};
+
+async function jsonFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, init);
   if (!res.ok) {
     throw new Error(`substrate-api ${path} → ${res.status} ${res.statusText}`);
   }
@@ -41,6 +45,12 @@ async function jsonFetch<T>(path: string): Promise<T> {
 // to avoid client-side path/query/fragment confusion from reserved characters
 // (forge-bvq security-auditor finding).
 const enc = encodeURIComponent;
+
+function writeInit(body: unknown, options?: WriteRequestOptions): RequestInit {
+  const headers = new Headers({ "Content-Type": "application/json" });
+  if (options?.adminToken) headers.set("x-console-write-token", options.adminToken);
+  return { method: "POST", headers, body: JSON.stringify(body) };
+}
 
 export const substrateApi = {
   async listProjects(): Promise<BeadsProject[]> {
@@ -115,6 +125,49 @@ export const substrateApi = {
   async getRepairActions(projectId: string): Promise<BeadsRepairActionsResponse> {
     return await jsonFetch<BeadsRepairActionsResponse>(
       `/api/substrate/projects/${enc(projectId)}/repair-actions`,
+    );
+  },
+
+  async createIssue(projectId: string, input: { title: string; description?: string | null; priority?: number; type?: string; assignee?: string | null; labels?: string[] }, options?: WriteRequestOptions): Promise<BeadIssue> {
+    const data = await jsonFetch<{ issue: BeadIssue }>(
+      `/api/substrate/projects/${enc(projectId)}/issues`,
+      writeInit(input, options),
+    );
+    return data.issue;
+  },
+
+  async updateIssue(projectId: string, issueId: string, input: { title?: string; description?: string | null; priority?: number; status?: string; type?: string; assignee?: string | null; labels?: { add?: string[]; remove?: string[]; set?: string[] } }, options?: WriteRequestOptions): Promise<BeadIssue> {
+    const headers = new Headers({ "Content-Type": "application/json" });
+    if (options?.adminToken) headers.set("x-console-write-token", options.adminToken);
+    const data = await jsonFetch<{ issue: BeadIssue }>(
+      `/api/substrate/projects/${enc(projectId)}/issues/${enc(issueId)}`,
+      { method: "PATCH", headers, body: JSON.stringify(input) },
+    );
+    return data.issue;
+  },
+
+  async closeIssue(projectId: string, issueId: string, input: { reason?: string | null } = {}, options?: WriteRequestOptions): Promise<BeadIssue> {
+    const data = await jsonFetch<{ issue: BeadIssue }>(
+      `/api/substrate/projects/${enc(projectId)}/issues/${enc(issueId)}/close`,
+      writeInit(input, options),
+    );
+    return data.issue;
+  },
+
+  async reopenIssue(projectId: string, issueId: string, options?: WriteRequestOptions): Promise<BeadIssue> {
+    const data = await jsonFetch<{ issue: BeadIssue }>(
+      `/api/substrate/projects/${enc(projectId)}/issues/${enc(issueId)}/reopen`,
+      writeInit({}, options),
+    );
+    return data.issue;
+  },
+
+  async deleteIssue(projectId: string, issueId: string, options?: WriteRequestOptions): Promise<{ ok: true; issueId: string; projectId: string }> {
+    const headers = new Headers();
+    if (options?.adminToken) headers.set("x-console-write-token", options.adminToken);
+    return await jsonFetch<{ ok: true; issueId: string; projectId: string }>(
+      `/api/substrate/projects/${enc(projectId)}/issues/${enc(issueId)}`,
+      { method: "DELETE", headers },
     );
   },
 };

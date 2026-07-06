@@ -18,6 +18,7 @@ import { createFeedRouter } from "./routes/feed.ts";
 import { createGraphDao } from "../core/graph-dao.ts";
 import { createShellRouter } from "./routes/shell.ts";
 import { createSourcesRouter } from "./routes/sources.ts";
+import { createBeadsWriteRouter } from "./routes/beads-write.ts";
 import { createTerminalRouter } from "./routes/terminal.ts";
 import { createExploreAgentopsRouter } from "./routes/explore-agentops.ts";
 import { createExploreSqlRouter } from "./routes/explore-sql.ts";
@@ -164,6 +165,7 @@ export function createApp(db: Database, xtrmDb?: Database): {
   // API routes
   app.route("/api/github", createGithubRouter(storeDb, registry));
   app.route("/api/substrate", createSubstrateRouter(xtrmDb ?? null));
+  app.route("/api/substrate", createBeadsWriteRouter(xtrmDb ?? null));
   app.route("/api/specialists", createSpecialistsRouter(undefined, xtrmDb));
   app.route("/api/console/observability", createObservabilityRouter(undefined, xtrmDb));
   app.route("/api/console/graph", createGraphRouter(xtrmDb ? createGraphDao({

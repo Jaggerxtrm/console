@@ -135,6 +135,13 @@ export async function readSubstrateProjectRepairActions(db: Database | null | un
   };
 }
 
+export function resolveBeadsProjectRepoPath(db: Database | null | undefined, projectId: string): string | null {
+  if (!db) return null;
+  const row = db.query("SELECT path FROM sources WHERE kind = 'beads' AND source_key = ? LIMIT 1").get(`beads:${projectId}`) as { path: string } | undefined;
+  if (!row?.path) return null;
+  return row.path.endsWith("/.beads") ? dirname(row.path) : row.path;
+}
+
 export function readBeadsSourceFacts(beadsPath: string): BeadsSourceFacts {
   const repoPath = beadsPath.endsWith("/.beads") ? dirname(beadsPath) : beadsPath;
   const projectName = repoPath.split("/").filter(Boolean).at(-1) ?? beadsPath;
