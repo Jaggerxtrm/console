@@ -197,13 +197,24 @@ function isWriteAllowed(c: { req: { url: string; raw: Request } }): boolean {
 
 function isLocalConfigHost(url: string, host: string): boolean {
   try {
+    const allowedHosts = new Set(["localhost", "127.0.0.1", "::1"]);
+    const configuredHost = normalizeConfigHost(process.env.HOST);
+    if (configuredHost && configuredHost !== "0.0.0.0") allowedHosts.add(configuredHost);
+
     const requestUrl = new URL(url);
-    const hostname = requestUrl.hostname === "[::1]" ? "::1" : requestUrl.hostname;
-    const hostName = new URL(host.includes("://") ? host : `http://${host}`).hostname;
-    return ["localhost", "127.0.0.1", "::1"].includes(hostname) && ["localhost", "127.0.0.1", "::1"].includes(hostName);
+    const hostname = normalizeConfigHost(requestUrl.hostname);
+    const hostName = normalizeConfigHost(new URL(host.includes("://") ? host : `http://${host}`).hostname);
+    return Boolean(hostname && hostName && allowedHosts.has(hostname) && allowedHosts.has(hostName));
   } catch {
     return false;
   }
+}
+
+function normalizeConfigHost(host: string | undefined | null): string | null {
+  if (!host) return null;
+  const trimmed = host.trim();
+  if (!trimmed) return null;
+  return trimmed === "[::1]" ? "::1" : trimmed;
 }
 
 function defaultRunCommand(command: string, args: string[], cwd?: string) {

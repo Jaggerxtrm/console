@@ -40,8 +40,8 @@ describe("SpecialistConfigEditor", () => {
     render(<SpecialistConfigEditor hostLabel="Host-wide specialist config" apiBasePath="/api/specialists/config" />);
 
     expect(screen.getByTestId("specialist-config-editor")).toBeTruthy();
-    await waitFor(() => expect(screen.getByText("Host-wide specialist config")).toBeTruthy());
-    expect(screen.getByText("Console repo registry")).toBeTruthy();
+    expect(screen.getByText("Host-wide specialist config")).toBeTruthy();
+    await waitFor(() => expect(screen.getByText("Console repo registry")).toBeTruthy());
     expect(screen.getByText("execution.model")).toBeTruthy();
     expect(screen.getByDisplayValue("console")).toBeTruthy();
     expect(screen.getByDisplayValue("/work/console")).toBeTruthy();

@@ -8,11 +8,13 @@ import { createSpecialistsConfigRouter } from "../../../src/api/routes/specialis
 let dir: string;
 const originalHome = process.env.HOME;
 const originalToken = process.env.CONSOLE_WRITE_ADMIN_TOKEN;
+const originalHost = process.env.HOST;
 
 beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), "gitboard-specialists-config-"));
   process.env.HOME = dir;
   process.env.CONSOLE_WRITE_ADMIN_TOKEN = "secret";
+  process.env.HOST = "100.113.49.52";
   await mkdir(join(dir, ".config/specialists"), { recursive: true });
   await writeFile(join(dir, ".config/specialists/user.json"), JSON.stringify({ debugger: { execution: { model: "gpt-4" }, skills: { paths: [] }, beads_write_notes: null } }, null, 2));
   await writeFile(join(dir, ".config/specialists/console.json"), JSON.stringify({ schema_version: 1, base_dirs: [], repos: [] }, null, 2));
@@ -23,6 +25,8 @@ afterEach(async () => {
   else process.env.HOME = originalHome;
   if (originalToken === undefined) delete process.env.CONSOLE_WRITE_ADMIN_TOKEN;
   else process.env.CONSOLE_WRITE_ADMIN_TOKEN = originalToken;
+  if (originalHost === undefined) delete process.env.HOST;
+  else process.env.HOST = originalHost;
   await rm(dir, { recursive: true, force: true });
 });
 
@@ -40,6 +44,12 @@ describe("specialists config router", () => {
   it("allows same-origin local reads without a token", async () => {
     const app = createApp();
     const res = await app.request("/api/specialists/config", { headers: { host: "localhost" } });
+    expect(res.status).toBe(200);
+  });
+
+  it("allows configured tailnet host reads without a token", async () => {
+    const app = createApp();
+    const res = await app.request("http://100.113.49.52:3030/api/specialists/config", { headers: { host: "100.113.49.52:3030" } });
     expect(res.status).toBe(200);
   });
 
