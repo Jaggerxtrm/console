@@ -5419,6 +5419,36 @@ body:has(.ide-shell[data-theme="light"]) { background: #fff !important; }
 .console-specialists-job-output-empty { color: var(--text-muted); font-style: italic; }
 .console-specialists-empty-state-message { display: flex; align-items: center; gap: 6px; color: var(--text-muted); padding: 12px; }
 .console-specialists-empty { display: flex; align-items: center; gap: 6px; color: var(--text-muted); padding: 8px 12px; }
+.console-specialist-subtabs { display: flex; gap: 8px; margin: 0 0 12px; }
+.console-specialist-subtabs button,
+.console-specialist-config-header button,
+.console-specialist-config-row button,
+.console-specialist-config-inline-form button,
+.console-specialist-config-chip-row button,
+.console-specialist-config-repo-row button { background: var(--surface-2); border: 1px solid var(--border-subtle); color: var(--text-primary); cursor: pointer; font: inherit; padding: 6px 10px; }
+.console-specialist-subtabs button.is-active { border-color: var(--accent); }
+.console-specialist-config { display: grid; gap: 12px; }
+.console-specialist-config-header { align-items: center; border-bottom: 1px solid var(--border-subtle); display: flex; justify-content: space-between; padding-bottom: 10px; }
+.console-specialist-config-meta { align-items: center; color: var(--text-muted); display: flex; gap: 8px; }
+.console-specialist-config-grid { display: grid; gap: 12px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.console-specialist-config-panel { background: var(--surface-1); border: 1px solid var(--border-subtle); display: grid; gap: 10px; padding: 12px; }
+.console-specialist-config-file { color: var(--text-muted); font-family: var(--font-mono); font-size: 10px; }
+.console-specialist-config-picker,
+.console-specialist-config-row { display: grid; gap: 6px; }
+.console-specialist-config-row { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto; align-items: center; }
+.console-specialist-config-row span { color: var(--text-secondary); font-family: var(--font-mono); font-size: 10px; }
+.console-specialist-config-row input,
+.console-specialist-config-row select,
+.console-specialist-config-picker select,
+.console-specialist-config-inline-form input,
+.console-specialist-config-repo-row input { background: var(--surface-2); border: 1px solid var(--border-subtle); color: var(--text-primary); font: inherit; min-width: 0; padding: 6px 8px; }
+.console-specialist-config-fields,
+.console-specialist-config-console,
+.console-specialist-config-list { display: grid; gap: 8px; }
+.console-specialist-config-inline-form,
+.console-specialist-config-repo-row,
+.console-specialist-config-chip-row { display: grid; gap: 8px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; align-items: center; }
+.console-specialist-config-chip-row { grid-template-columns: minmax(0, 1fr) auto; }
 @media (max-width: 980px) {
   .console-specialists-shell { flex-direction: column; overflow: auto; }
   .console-specialists-list-pane,

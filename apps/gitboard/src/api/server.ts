@@ -15,6 +15,7 @@ import { createSpecialistsRouter } from "./routes/specialists.ts";
 import { createSpecialistsControlRouter } from "./routes/specialists-control.ts";
 import { createObservabilityRouter } from "./routes/observability.ts";
 import { createGraphRouter } from "./routes/graph.ts";
+import { createSpecialistsConfigRouter } from "./routes/specialists-config.ts";
 import { createFeedRouter } from "./routes/feed.ts";
 import { createGraphDao } from "../core/graph-dao.ts";
 import { createShellRouter } from "./routes/shell.ts";
@@ -169,6 +170,7 @@ export function createApp(db: Database, xtrmDb?: Database): {
   app.route("/api/substrate", createBeadsWriteRouter(xtrmDb ?? null));
   app.route("/api/specialists", createSpecialistsRouter(undefined, xtrmDb));
   app.route("/api/console/specialists", createSpecialistsControlRouter(xtrmDb ?? null));
+  app.route("/api/specialists/config", createSpecialistsConfigRouter());
   app.route("/api/console/observability", createObservabilityRouter(undefined, xtrmDb));
   app.route("/api/console/graph", createGraphRouter(xtrmDb ? createGraphDao({
     xtrmDb,
