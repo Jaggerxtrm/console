@@ -148,7 +148,8 @@ describe("beads write routes", () => {
     const runBdCommand = vi.fn(async (_repoPath: string, command: string[]) => {
       const op = command[7];
       if (op === "delete") return { stdout: JSON.stringify({ ok: true }), stderr: "", exitCode: 0 };
-      return { stdout: JSON.stringify({ issue: makeIssue({ id: "forge-123", title: op, status: op === "close" ? "closed" : "open", priority: op === "priority" ? 1 : 2 }) }), stderr: "", exitCode: 0 };
+      const dependencies = op === "dep" ? [{ id: "forge-456", title: "Blocker", status: "open", dependency_type: "blocks" as const }] : [];
+      return { stdout: JSON.stringify({ issue: makeIssue({ id: "forge-123", title: op, status: op === "close" ? "closed" : "open", priority: op === "priority" ? 1 : 2, dependencies }) }), stderr: "", exitCode: 0 };
     });
     const app = createBeadsWriteRouter(db, { runBdCommand });
 
@@ -203,6 +204,7 @@ describe("beads write routes", () => {
       ["-C", join(tmpDir, "demo"), "--json", "--actor", "console", "--dolt-auto-commit", "on", "priority", "forge-123", "1"],
       ["-C", join(tmpDir, "demo"), "--json", "--actor", "console", "--dolt-auto-commit", "on", "delete", "forge-123"],
     ]);
+    expect(await dependencyResponse.json()).toEqual({ issue: makeIssue({ id: "forge-123", title: "dep", dependencies: [{ id: "forge-456", title: "Blocker", status: "open", dependency_type: "blocks" }] }) });
     expect(await priorityResponse.json()).toEqual({ issue: makeIssue({ id: "forge-123", title: "priority", priority: 1 }) });
     expect(await deleteResponse.json()).toEqual({ ok: true, issueId: "forge-123", projectId: "demo" });
     db.close();

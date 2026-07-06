@@ -3,7 +3,7 @@ import { dirname } from "node:path";
 import { spawn } from "node:child_process";
 import { Hono } from "hono";
 import { emit, makeLogEntry } from "../../core/logger.ts";
-import type { BeadIssue } from "../../types/beads.ts";
+import type { BeadDependency, BeadIssue } from "../../types/beads.ts";
 import { isAllowedConsoleWriteRequest } from "./sources-policy.ts";
 import { resolveBeadsProjectRepoPath } from "../services/substrate-project-service.ts";
 
@@ -363,7 +363,7 @@ function extractIssue(value: unknown, projectId: string): BeadIssue | null {
     closed_at: typeof record.closed_at === "string" ? record.closed_at : undefined,
     close_reason: typeof record.close_reason === "string" ? record.close_reason : undefined,
     project_id: typeof record.project_id === "string" ? record.project_id : projectId,
-    dependencies: Array.isArray(record.dependencies) ? [] : [],
+    dependencies: parseDependencies(record.dependencies),
     parent_id: typeof record.parent_id === "string" ? record.parent_id : undefined,
     related_ids: Array.isArray(record.related_ids) ? record.related_ids.filter((item): item is string => typeof item === "string") : [],
     labels: Array.isArray(record.labels) ? record.labels.filter((item): item is string => typeof item === "string") : [],
@@ -407,7 +407,7 @@ function createIssueReader(db?: Database | null): IssueReader {
       closed_at: row.closed_at == null ? undefined : String(row.closed_at),
       close_reason: row.close_reason == null ? undefined : String(row.close_reason),
       project_id: projectId,
-      dependencies: [],
+      dependencies: readSubstrateDependencies(db, projectId, issueId),
       parent_id: row.parent_id == null ? undefined : String(row.parent_id),
       related_ids: parseStringList(row.related_ids),
       labels: parseStringList(row.labels),
@@ -449,6 +449,43 @@ function parseJson(value: string): unknown {
     return JSON.parse(value);
   } catch {
     return null;
+  }
+}
+
+function parseDependencies(value: unknown): BeadDependency[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry): BeadDependency[] => {
+    if (!entry || typeof entry !== "object") return [];
+    const record = entry as Record<string, unknown>;
+    const id = record.id ?? record.dep_issue_id ?? record.to_issue;
+    if (typeof id !== "string" || id === "") return [];
+    return [{
+      id,
+      title: typeof record.title === "string" ? record.title : "",
+      status: typeof record.status === "string" ? record.status : "open",
+      issue_type: typeof record.issue_type === "string" ? record.issue_type : undefined,
+      dependency_type: typeof record.dependency_type === "string" ? record.dependency_type : typeof record.relation === "string" ? record.relation : "related",
+    }];
+  });
+}
+
+function readSubstrateDependencies(db: Database, projectId: string, issueId: string): BeadDependency[] {
+  try {
+    const rows = db.query(`
+      SELECT d.dep_issue_id, d.relation, i.title, i.state, i.issue_type
+      FROM substrate_dependencies d
+      LEFT JOIN substrate_issues i ON i.repo_slug = d.repo_slug AND i.issue_id = d.dep_issue_id
+      WHERE d.repo_slug = ? AND d.issue_id = ?
+    `).all(projectId, issueId) as Array<Record<string, unknown>>;
+    return rows.map((row) => ({
+      id: String(row.dep_issue_id),
+      title: row.title == null ? "" : String(row.title),
+      status: row.state == null ? "open" : String(row.state),
+      issue_type: row.issue_type == null ? undefined : String(row.issue_type),
+      dependency_type: row.relation == null ? "related" : String(row.relation),
+    }));
+  } catch {
+    return [];
   }
 }
 
