@@ -37,6 +37,12 @@ describe("specialists config router", () => {
     expect(json.consoleConfig.content.repos).toEqual([]);
   });
 
+  it("allows same-origin local reads without a token", async () => {
+    const app = createApp();
+    const res = await app.request("/api/specialists/config", { headers: { host: "localhost" } });
+    expect(res.status).toBe(200);
+  });
+
   it("rejects unauthenticated cross-origin reads", async () => {
     const app = createApp();
     const res = await app.request("/api/specialists/config", { headers: { host: "localhost", origin: "https://evil.example" } });

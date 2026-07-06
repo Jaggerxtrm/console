@@ -82,7 +82,7 @@ export function createSpecialistsConfigRouter(options: SpecialistsConfigRouterOp
   const catalogPath = options.catalogPath ?? CATALOG_PATH;
 
   router.get("/", async (c) => {
-    if (!isWriteAllowed(c)) return c.json({ error: "forbidden" }, 403);
+    if (!isReadAllowed(c)) return c.json({ error: "forbidden" }, 403);
     const specialists = readSpecialistsCatalog(catalogPath, runCommand);
     const userPath = getSpecialistsConfigPath(USER_CONFIG_FILENAME);
     const consolePath = getSpecialistsConfigPath(CONSOLE_CONFIG_FILENAME);
@@ -179,6 +179,13 @@ export function createSpecialistsConfigRouter(options: SpecialistsConfigRouterOp
   return router;
 }
 
+function isReadAllowed(c: { req: { url: string; raw: Request } }): boolean {
+  const host = c.req.raw.headers.get("host") ?? "";
+  const origin = c.req.raw.headers.get("origin");
+  if (!origin) return isLocalConfigHost(c.req.url, host);
+  return isWriteAllowed(c);
+}
+
 function isWriteAllowed(c: { req: { url: string; raw: Request } }): boolean {
   return isAllowedConsoleWriteRequest(
     c.req.url,
@@ -186,6 +193,17 @@ function isWriteAllowed(c: { req: { url: string; raw: Request } }): boolean {
     c.req.raw.headers.get("origin"),
     c.req.raw.headers.get("x-console-write-token") ?? c.req.raw.headers.get("x-gitboard-sources-admin-token"),
   );
+}
+
+function isLocalConfigHost(url: string, host: string): boolean {
+  try {
+    const requestUrl = new URL(url);
+    const hostname = requestUrl.hostname === "[::1]" ? "::1" : requestUrl.hostname;
+    const hostName = new URL(host.includes("://") ? host : `http://${host}`).hostname;
+    return ["localhost", "127.0.0.1", "::1"].includes(hostname) && ["localhost", "127.0.0.1", "::1"].includes(hostName);
+  } catch {
+    return false;
+  }
 }
 
 function defaultRunCommand(command: string, args: string[], cwd?: string) {

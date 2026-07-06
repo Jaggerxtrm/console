@@ -153,7 +153,8 @@ export function createBeadsWriteRouter(xtrmDb?: Database | null, options: BeadsW
     const authError = assertWriteAllowed(c.req.url, c.req.header("host") ?? "", c.req.header("origin") ?? null, c.req.header("x-console-write-token") ?? c.req.header("x-gitboard-sources-admin-token") ?? null, xtrmDb);
     if (authError) return c.json({ error: authError }, 403);
 
-    const body = await safeJson<CloseIssueBody>(c.req.raw).catch(() => null);
+    const body = await safeJson<CloseIssueBody>(c.req.raw);
+    if (body === undefined) return writeError(c, "close", "invalid", "Invalid JSON body", 400);
     if (body && body.reason != null && typeof body.reason !== "string") return writeError(c, "close", "invalid", "reason must be string|null", 400);
 
     const projectId = c.req.param("projectId");
@@ -438,13 +439,13 @@ function assertWriteAllowed(url: string, host: string, origin: string | null, re
   return isAllowedConsoleWriteRequest(url, host, origin, requestToken, process.env) ? null : "forbidden";
 }
 
-async function safeJson<T>(request: Request): Promise<T | null> {
+async function safeJson<T>(request: Request): Promise<T | null | undefined> {
   const text = await request.text();
   if (!text.trim()) return null;
   try {
     return JSON.parse(text) as T;
   } catch {
-    return null;
+    return undefined;
   }
 }
 
