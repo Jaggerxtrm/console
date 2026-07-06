@@ -10,9 +10,12 @@ describe("sources routes", () => {
   let tmpDir: string;
   let dbPath: string;
   let originalAdminToken: string | undefined;
+  let originalPrimaryAdminToken: string | undefined;
 
   beforeEach(async () => {
     originalAdminToken = process.env.GITBOARD_SOURCES_ADMIN_TOKEN;
+    originalPrimaryAdminToken = process.env.CONSOLE_WRITE_ADMIN_TOKEN;
+    delete process.env.CONSOLE_WRITE_ADMIN_TOKEN;
     process.env.GITBOARD_SOURCES_ADMIN_TOKEN = "secret";
     tmpDir = await mkdtemp(join(tmpdir(), "gitboard-sources-"));
     dbPath = join(tmpDir, "xtrm.sqlite");
@@ -21,6 +24,8 @@ describe("sources routes", () => {
   afterEach(async () => {
     if (originalAdminToken === undefined) delete process.env.GITBOARD_SOURCES_ADMIN_TOKEN;
     else process.env.GITBOARD_SOURCES_ADMIN_TOKEN = originalAdminToken;
+    if (originalPrimaryAdminToken === undefined) delete process.env.CONSOLE_WRITE_ADMIN_TOKEN;
+    else process.env.CONSOLE_WRITE_ADMIN_TOKEN = originalPrimaryAdminToken;
     await rm(tmpDir, { recursive: true, force: true });
   });
 
@@ -93,6 +98,28 @@ describe("sources routes", () => {
     const row = db.query<{ origin: string; status: string }, []>("SELECT origin, status FROM sources WHERE source_key = 'beads:/repo'").get();
     expect(row?.origin).toBe("manual");
     expect(row?.status).toBe("active");
+
+    db.close();
+  });
+
+  it("accepts primary console write token for live mutations", async () => {
+    delete process.env.GITBOARD_SOURCES_ADMIN_TOKEN;
+    process.env.CONSOLE_WRITE_ADMIN_TOKEN = "primary-secret";
+    const db = createXtrmDatabase(dbPath);
+    const app = createSourcesRouter(db, { refresh: async () => [] } as never);
+
+    const pin = await app.fetch(new Request("http://localhost/pin", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", host: "localhost", "x-console-write-token": "primary-secret" },
+      body: JSON.stringify({ path: "/repo-primary", kind: "beads" }),
+    }));
+    expect(pin.status).toBe(200);
+
+    const refresh = await app.fetch(new Request("http://localhost/refresh", {
+      method: "POST",
+      headers: { host: "localhost", "x-console-write-token": "primary-secret" },
+    }));
+    expect(refresh.status).toBe(200);
 
     db.close();
   });
