@@ -49,6 +49,9 @@ export type BeadsWriteRouterOptions = {
 
 const MUTATION_PREFIX = ["--json", "--actor", "console", "--dolt-auto-commit", "on"] as const;
 const BD_BIN = process.env.GITBOARD_BD_BIN || "bd";
+const SAFE_IDENTIFIER_PATTERN = /^(?!-)[^\s/\\\x00-\x1F\x7F]+$/;
+const SAFE_ENUM_TOKEN_PATTERN = /^(?!-)[A-Za-z0-9_]+$/;
+const MAX_BD_DIAGNOSTIC_LENGTH = 160;
 
 export function createBeadsWriteRouter(xtrmDb?: Database | null, options: BeadsWriteRouterOptions = {}): Hono {
   const router = new Hono();
@@ -65,8 +68,10 @@ export function createBeadsWriteRouter(xtrmDb?: Database | null, options: BeadsW
     if (body.labels != null && !isStringArray(body.labels)) return writeError(c, "create", "invalid", "labels must be string[]", 400);
     if (body.assignee != null && typeof body.assignee !== "string") return writeError(c, "create", "invalid", "assignee must be string|null", 400);
     if (body.description != null && typeof body.description !== "string") return writeError(c, "create", "invalid", "description must be string|null", 400);
+    if (body.type != null && !isSafeCliToken(body.type)) return writeError(c, "create", "invalid", "type must be safe token", 400);
 
     const projectId = c.req.param("projectId");
+    if (!isSafeCliIdentifier(projectId)) return writeError(c, "create", "invalid", "invalid projectId", 400);
     const repoPath = resolveBeadsProjectRepoPath(xtrmDb, projectId);
     if (!repoPath) return writeError(c, "create", "not_found", "Project not found", 404, { projectId });
 
@@ -89,13 +94,15 @@ export function createBeadsWriteRouter(xtrmDb?: Database | null, options: BeadsW
     if (body.title != null && !isNonEmptyString(body.title)) return writeError(c, "update", "invalid", "title must be non-empty string", 400);
     if (body.description != null && typeof body.description !== "string") return writeError(c, "update", "invalid", "description must be string|null", 400);
     if (body.priority != null && !isPriority(body.priority)) return writeError(c, "update", "invalid", "priority must be integer 0-4", 400);
-    if (body.status != null && !isNonEmptyString(body.status)) return writeError(c, "update", "invalid", "status must be non-empty string", 400);
-    if (body.type != null && !isNonEmptyString(body.type)) return writeError(c, "update", "invalid", "type must be non-empty string", 400);
+    if (body.status != null && !isSafeCliToken(body.status)) return writeError(c, "update", "invalid", "status must be safe token", 400);
+    if (body.type != null && !isSafeCliToken(body.type)) return writeError(c, "update", "invalid", "type must be safe token", 400);
     if (body.assignee != null && typeof body.assignee !== "string") return writeError(c, "update", "invalid", "assignee must be string|null", 400);
     if (body.labels && !isLabelPatch(body.labels)) return writeError(c, "update", "invalid", "labels must be {add?: string[], remove?: string[], set?: string[]}", 400);
 
-    const issueId = c.req.param("issueId");
     const projectId = c.req.param("projectId");
+    if (!isSafeCliIdentifier(projectId)) return writeError(c, "update", "invalid", "invalid projectId", 400);
+    const issueId = c.req.param("issueId");
+    if (!isSafeCliIdentifier(issueId)) return writeError(c, "update", "invalid", "invalid issueId", 400);
     const repoPath = resolveBeadsProjectRepoPath(xtrmDb, projectId);
     if (!repoPath) return writeError(c, "update", "not_found", "Project not found", 404, { projectId, issueId });
 
@@ -149,8 +156,10 @@ export function createBeadsWriteRouter(xtrmDb?: Database | null, options: BeadsW
     const body = await safeJson<CloseIssueBody>(c.req.raw).catch(() => null);
     if (body && body.reason != null && typeof body.reason !== "string") return writeError(c, "close", "invalid", "reason must be string|null", 400);
 
-    const issueId = c.req.param("issueId");
     const projectId = c.req.param("projectId");
+    if (!isSafeCliIdentifier(projectId)) return writeError(c, "close", "invalid", "invalid projectId", 400);
+    const issueId = c.req.param("issueId");
+    if (!isSafeCliIdentifier(issueId)) return writeError(c, "close", "invalid", "invalid issueId", 400);
     const repoPath = resolveBeadsProjectRepoPath(xtrmDb, projectId);
     if (!repoPath) return writeError(c, "close", "not_found", "Project not found", 404, { projectId, issueId });
 
@@ -163,8 +172,10 @@ export function createBeadsWriteRouter(xtrmDb?: Database | null, options: BeadsW
     const authError = assertWriteAllowed(c.req.url, c.req.header("host") ?? "", c.req.header("origin") ?? null, c.req.header("x-console-write-token") ?? c.req.header("x-gitboard-sources-admin-token") ?? null, xtrmDb);
     if (authError) return c.json({ error: authError }, 403);
 
-    const issueId = c.req.param("issueId");
     const projectId = c.req.param("projectId");
+    if (!isSafeCliIdentifier(projectId)) return writeError(c, "reopen", "invalid", "invalid projectId", 400);
+    const issueId = c.req.param("issueId");
+    if (!isSafeCliIdentifier(issueId)) return writeError(c, "reopen", "invalid", "invalid issueId", 400);
     const repoPath = resolveBeadsProjectRepoPath(xtrmDb, projectId);
     if (!repoPath) return writeError(c, "reopen", "not_found", "Project not found", 404, { projectId, issueId });
 
@@ -176,8 +187,10 @@ export function createBeadsWriteRouter(xtrmDb?: Database | null, options: BeadsW
     const authError = assertWriteAllowed(c.req.url, c.req.header("host") ?? "", c.req.header("origin") ?? null, c.req.header("x-console-write-token") ?? c.req.header("x-gitboard-sources-admin-token") ?? null, xtrmDb);
     if (authError) return c.json({ error: authError }, 403);
 
-    const issueId = c.req.param("issueId");
     const projectId = c.req.param("projectId");
+    if (!isSafeCliIdentifier(projectId)) return writeError(c, "delete", "invalid", "invalid projectId", 400);
+    const issueId = c.req.param("issueId");
+    if (!isSafeCliIdentifier(issueId)) return writeError(c, "delete", "invalid", "invalid issueId", 400);
     const repoPath = resolveBeadsProjectRepoPath(xtrmDb, projectId);
     if (!repoPath) return writeError(c, "delete", "not_found", "Project not found", 404, { projectId, issueId });
 
@@ -186,12 +199,18 @@ export function createBeadsWriteRouter(xtrmDb?: Database | null, options: BeadsW
     try {
       const result = await runBdCommand(repoPath, args, "delete");
       if (result.exitCode !== 0) {
-        return writeError(c, "delete", "error", result.stderr || result.stdout || "bd delete failed", 502, { projectId, issueId, exitCode: result.exitCode }, startedAt);
+        const metadata: Record<string, unknown> = { projectId, issueId, exitCode: result.exitCode };
+        const diagnostic = sanitizeBdDiagnostic(result.stderr || result.stdout);
+        if (diagnostic) metadata.diagnostic = diagnostic;
+        return writeError(c, "delete", "error", "bd delete failed", 502, metadata, startedAt);
       }
       logWrite("delete", "success", startedAt, { projectId, issueId });
       return c.json({ ok: true, issueId, projectId });
     } catch (error) {
-      return writeError(c, "delete", "error", error instanceof Error ? error.message : String(error), 502, { projectId, issueId }, startedAt);
+      const metadata: Record<string, unknown> = { projectId, issueId };
+      const diagnostic = sanitizeBdDiagnostic(error instanceof Error ? error.message : String(error));
+      if (diagnostic) metadata.diagnostic = diagnostic;
+      return writeError(c, "delete", "error", "bd delete failed", 502, metadata, startedAt);
     }
   });
 
@@ -202,8 +221,10 @@ export function createBeadsWriteRouter(xtrmDb?: Database | null, options: BeadsW
     const body = await safeJson<CommentIssueBody>(c.req.raw);
     if (!body || !isNonEmptyString(body.text)) return writeError(c, "comment", "invalid", "text is required", 400);
 
-    const issueId = c.req.param("issueId");
     const projectId = c.req.param("projectId");
+    if (!isSafeCliIdentifier(projectId)) return writeError(c, "comment", "invalid", "invalid projectId", 400);
+    const issueId = c.req.param("issueId");
+    if (!isSafeCliIdentifier(issueId)) return writeError(c, "comment", "invalid", "invalid issueId", 400);
     const repoPath = resolveBeadsProjectRepoPath(xtrmDb, projectId);
     if (!repoPath) return writeError(c, "comment", "not_found", "Project not found", 404, { projectId, issueId });
 
@@ -218,8 +239,10 @@ export function createBeadsWriteRouter(xtrmDb?: Database | null, options: BeadsW
     const body = await safeJson<CommentIssueBody>(c.req.raw);
     if (!body || !isNonEmptyString(body.text)) return writeError(c, "note", "invalid", "text is required", 400);
 
-    const issueId = c.req.param("issueId");
     const projectId = c.req.param("projectId");
+    if (!isSafeCliIdentifier(projectId)) return writeError(c, "note", "invalid", "invalid projectId", 400);
+    const issueId = c.req.param("issueId");
+    if (!isSafeCliIdentifier(issueId)) return writeError(c, "note", "invalid", "invalid issueId", 400);
     const repoPath = resolveBeadsProjectRepoPath(xtrmDb, projectId);
     if (!repoPath) return writeError(c, "note", "not_found", "Project not found", 404, { projectId, issueId });
 
@@ -233,9 +256,12 @@ export function createBeadsWriteRouter(xtrmDb?: Database | null, options: BeadsW
 
     const body = await safeJson<AddDependencyBody>(c.req.raw);
     if (!body || !isNonEmptyString(body.dependsOnIssueId)) return writeError(c, "dep-add", "invalid", "dependsOnIssueId is required", 400);
+    if (!isSafeCliIdentifier(body.dependsOnIssueId)) return writeError(c, "dep-add", "invalid", "invalid dependsOnIssueId", 400);
 
-    const issueId = c.req.param("issueId");
     const projectId = c.req.param("projectId");
+    if (!isSafeCliIdentifier(projectId)) return writeError(c, "dep-add", "invalid", "invalid projectId", 400);
+    const issueId = c.req.param("issueId");
+    if (!isSafeCliIdentifier(issueId)) return writeError(c, "dep-add", "invalid", "invalid issueId", 400);
     const repoPath = resolveBeadsProjectRepoPath(xtrmDb, projectId);
     if (!repoPath) return writeError(c, "dep-add", "not_found", "Project not found", 404, { projectId, issueId });
 
@@ -250,8 +276,10 @@ export function createBeadsWriteRouter(xtrmDb?: Database | null, options: BeadsW
     const body = await safeJson<SetPriorityBody>(c.req.raw);
     if (!body || body.priority == null || !isPriority(body.priority)) return writeError(c, "priority", "invalid", "priority must be integer 0-4", 400);
 
-    const issueId = c.req.param("issueId");
     const projectId = c.req.param("projectId");
+    if (!isSafeCliIdentifier(projectId)) return writeError(c, "priority", "invalid", "invalid projectId", 400);
+    const issueId = c.req.param("issueId");
+    if (!isSafeCliIdentifier(issueId)) return writeError(c, "priority", "invalid", "invalid issueId", 400);
     const repoPath = resolveBeadsProjectRepoPath(xtrmDb, projectId);
     if (!repoPath) return writeError(c, "priority", "not_found", "Project not found", 404, { projectId, issueId });
 
@@ -285,7 +313,10 @@ async function runIssueMutation({
   try {
     const result = await runBdCommand(repoPath, args, op);
     if (result.exitCode !== 0) {
-      return writeError(c, op, "error", result.stderr || result.stdout || `bd ${op} failed`, 502, { projectId, issueId, exitCode: result.exitCode }, startedAt);
+      const metadata: Record<string, unknown> = { projectId, issueId, exitCode: result.exitCode };
+      const diagnostic = sanitizeBdDiagnostic(result.stderr || result.stdout);
+      if (diagnostic) metadata.diagnostic = diagnostic;
+      return writeError(c, op, "error", `bd ${op} failed`, 502, metadata, startedAt);
     }
     const resolvedIssue = resolveIssueFromBdOutput(result.stdout, projectId, issueId, readIssue);
     if (!resolvedIssue) {
@@ -294,7 +325,10 @@ async function runIssueMutation({
     logWrite(op, "success", startedAt, { projectId, issueId: resolvedIssue.id });
     return c.json({ issue: resolvedIssue });
   } catch (error) {
-    return writeError(c, op, "error", error instanceof Error ? error.message : String(error), 502, { projectId, issueId }, startedAt);
+    const metadata: Record<string, unknown> = { projectId, issueId };
+    const diagnostic = sanitizeBdDiagnostic(error instanceof Error ? error.message : String(error));
+    if (diagnostic) metadata.diagnostic = diagnostic;
+    return writeError(c, op, "error", `bd ${op} failed`, 502, metadata, startedAt);
   }
 }
 
@@ -437,6 +471,14 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
 
+function isSafeCliIdentifier(value: unknown): value is string {
+  return typeof value === "string" && SAFE_IDENTIFIER_PATTERN.test(value);
+}
+
+function isSafeCliToken(value: unknown): value is string {
+  return typeof value === "string" && SAFE_ENUM_TOKEN_PATTERN.test(value);
+}
+
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === "string" && item.length > 0);
 }
@@ -444,6 +486,13 @@ function isStringArray(value: unknown): value is string[] {
 function isLabelPatch(value: UpdateIssueBody["labels"]): value is NonNullable<UpdateIssueBody["labels"]> {
   if (!value || typeof value !== "object") return false;
   return [value.add, value.remove, value.set].every((entry) => entry == null || isStringArray(entry));
+}
+
+function sanitizeBdDiagnostic(value: string): string | undefined {
+  const collapsed = value.replace(/[\x00-\x1F\x7F]+/g, " ").replace(/\s+/g, " ").trim();
+  if (!collapsed) return undefined;
+  const redacted = collapsed.replace(/\b(?:[A-Za-z]:)?[\\/][^\s]+/g, "[path]");
+  return redacted.length > MAX_BD_DIAGNOSTIC_LENGTH ? `${redacted.slice(0, MAX_BD_DIAGNOSTIC_LENGTH - 3)}...` : redacted;
 }
 
 function writeError(

@@ -118,6 +118,31 @@ describe("beads write routes", () => {
     db.close();
   });
 
+  it("rejects hyphen-prefixed issue identifiers before running bd", async () => {
+    const db = createDb(tmpDir);
+    const runBdCommand = vi.fn();
+    const app = createBeadsWriteRouter(db, { runBdCommand });
+    const headers = { "Content-Type": "application/json", host: "localhost", "x-console-write-token": "primary-secret" };
+
+    const updateResponse = await app.fetch(new Request("http://localhost/projects/demo/issues/-forge-123", {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify({ status: "blocked" }),
+    }));
+    const dependencyResponse = await app.fetch(new Request("http://localhost/projects/demo/issues/forge-123/dependencies", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ dependsOnIssueId: "-forge-456" }),
+    }));
+
+    expect(updateResponse.status).toBe(400);
+    expect(await updateResponse.json()).toEqual({ error: "invalid issueId" });
+    expect(dependencyResponse.status).toBe(400);
+    expect(await dependencyResponse.json()).toEqual({ error: "invalid dependsOnIssueId" });
+    expect(runBdCommand).not.toHaveBeenCalled();
+    db.close();
+  });
+
   it("closes, reopens, comments, notes, adds dependency, sets priority, and deletes with correct templates", async () => {
     const db = createDb(tmpDir);
     const runBdCommand = vi.fn(async (_repoPath: string, command: string[]) => {
@@ -198,6 +223,26 @@ describe("beads write routes", () => {
 
     expect(responses.map((response) => response.status)).toEqual([400, 400, 400, 400]);
     expect(runBdCommand).not.toHaveBeenCalled();
+    db.close();
+  });
+
+  it("sanitizes bd failure responses", async () => {
+    const db = createDb(tmpDir);
+    const runBdCommand = vi.fn(async () => ({
+      stdout: "stdout token /tmp/secret-output.json",
+      stderr: "stderr secret-token /tmp/demo/.beads/store.db",
+      exitCode: 1,
+    }));
+    const app = createBeadsWriteRouter(db, { runBdCommand });
+
+    const response = await app.fetch(new Request("http://localhost/projects/demo/issues/forge-123/close", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", host: "localhost", "x-console-write-token": "primary-secret" },
+      body: JSON.stringify({ reason: "done" }),
+    }));
+
+    expect(response.status).toBe(502);
+    expect(await response.json()).toEqual({ error: "bd close failed" });
     db.close();
   });
 });
