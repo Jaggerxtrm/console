@@ -101,6 +101,23 @@ describe("beads write routes", () => {
     db.close();
   });
 
+  it("rejects empty update patches without running bd", async () => {
+    const db = createDb(tmpDir);
+    const runBdCommand = vi.fn();
+    const app = createBeadsWriteRouter(db, { runBdCommand });
+
+    const response = await app.fetch(new Request("http://localhost/projects/demo/issues/forge-123", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", host: "localhost", "x-console-write-token": "primary-secret" },
+      body: JSON.stringify({ labels: {} }),
+    }));
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "No update fields provided" });
+    expect(runBdCommand).not.toHaveBeenCalled();
+    db.close();
+  });
+
   it("closes, reopens, comments, notes, adds dependency, sets priority, and deletes with correct templates", async () => {
     const db = createDb(tmpDir);
     const runBdCommand = vi.fn(async (_repoPath: string, command: string[]) => {

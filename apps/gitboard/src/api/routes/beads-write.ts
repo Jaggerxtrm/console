@@ -100,16 +100,44 @@ export function createBeadsWriteRouter(xtrmDb?: Database | null, options: BeadsW
     if (!repoPath) return writeError(c, "update", "not_found", "Project not found", 404, { projectId, issueId });
 
     const args = ["-C", repoPath, ...MUTATION_PREFIX, "update", issueId];
-    if (body.title) args.push("--title", body.title);
-    if (body.description != null) args.push("--description", body.description);
-    if (body.priority != null) args.push("--priority", String(body.priority));
-    if (body.status) args.push("--status", body.status);
-    if (body.type) args.push("--type", body.type);
-    if (body.assignee != null) args.push("--assignee", body.assignee);
-    for (const label of body.labels?.add ?? []) args.push("--add-label", label);
-    for (const label of body.labels?.remove ?? []) args.push("--remove-label", label);
-    for (const label of body.labels?.set ?? []) args.push("--label", label);
-    if (args.length === 8) return writeError(c, "update", "invalid", "No update fields provided", 400, { projectId, issueId });
+    let hasUpdates = false;
+    if (body.title) {
+      args.push("--title", body.title);
+      hasUpdates = true;
+    }
+    if (body.description != null) {
+      args.push("--description", body.description);
+      hasUpdates = true;
+    }
+    if (body.priority != null) {
+      args.push("--priority", String(body.priority));
+      hasUpdates = true;
+    }
+    if (body.status) {
+      args.push("--status", body.status);
+      hasUpdates = true;
+    }
+    if (body.type) {
+      args.push("--type", body.type);
+      hasUpdates = true;
+    }
+    if (body.assignee != null) {
+      args.push("--assignee", body.assignee);
+      hasUpdates = true;
+    }
+    for (const label of body.labels?.add ?? []) {
+      args.push("--add-label", label);
+      hasUpdates = true;
+    }
+    for (const label of body.labels?.remove ?? []) {
+      args.push("--remove-label", label);
+      hasUpdates = true;
+    }
+    for (const label of body.labels?.set ?? []) {
+      args.push("--label", label);
+      hasUpdates = true;
+    }
+    if (!hasUpdates) return writeError(c, "update", "invalid", "No update fields provided", 400, { projectId, issueId });
 
     return await runIssueMutation({ c, projectId, issueId, op: "update", repoPath, args, runBdCommand, readIssue });
   });
