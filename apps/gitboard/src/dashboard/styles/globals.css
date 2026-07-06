@@ -5123,6 +5123,12 @@ body:has(.ide-shell[data-theme="light"]) { background: #fff !important; }
 .console-specialists-detail-summary-row { align-items: center; display: flex; flex-wrap: wrap; gap: 10px 16px; min-height: 20px; }
 .console-specialists-detail-summary span { align-items: baseline; color: var(--text-primary); display: inline-flex; flex: 0 1 auto; font-family: var(--font-mono); font-size: 11px; font-weight: 600; gap: 6px; min-width: 0; }
 .console-specialists-detail-summary b { color: var(--text-muted); font-family: var(--font-ui); font-size: 9px; font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase; }
+.console-specialists-chain-controls { display: grid; gap: 8px; margin: 0 0 8px; }
+.console-specialists-control-row { align-items: center; display: flex; flex-wrap: wrap; gap: 8px; }
+.console-specialists-control-error { color: var(--graph-priority-0); font-size: 10px; }
+.console-specialists-steer-box { background: var(--surface-2); border: 1px solid var(--border-subtle); display: grid; gap: 8px; padding: 10px; }
+.console-specialists-steer-box-label { color: var(--text-muted); font-size: 10px; font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase; }
+.console-specialists-steer-box-input { background: var(--surface-0); border: 1px solid var(--border-subtle); color: var(--text-primary); font: inherit; min-height: 78px; padding: 8px; resize: vertical; }
 .console-specialists-section-label { align-items: center; color: var(--text-muted); display: flex; font-size: 9.5px; font-weight: 700; gap: 8px; letter-spacing: 0.08em; margin: 8px 0 5px; text-transform: none; }
 .console-specialists-section-label::after { background: rgba(255,255,255,0.035); content: ""; flex: 1; height: 1px; }
 .console-specialists-contract { margin: 0 0 6px; }

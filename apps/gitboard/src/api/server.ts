@@ -12,6 +12,7 @@ import { createInternalParityRouter } from "./routes/internal-parity.ts";
 import { setRealtimePublisher, emit, makeLogEntry } from "../core/logger.ts";
 import { createSubstrateRouter } from "./routes/substrate.ts";
 import { createSpecialistsRouter } from "./routes/specialists.ts";
+import { createSpecialistsControlRouter } from "./routes/specialists-control.ts";
 import { createObservabilityRouter } from "./routes/observability.ts";
 import { createGraphRouter } from "./routes/graph.ts";
 import { createFeedRouter } from "./routes/feed.ts";
@@ -167,6 +168,7 @@ export function createApp(db: Database, xtrmDb?: Database): {
   app.route("/api/substrate", createSubstrateRouter(xtrmDb ?? null));
   app.route("/api/substrate", createBeadsWriteRouter(xtrmDb ?? null));
   app.route("/api/specialists", createSpecialistsRouter(undefined, xtrmDb));
+  app.route("/api/console/specialists", createSpecialistsControlRouter(xtrmDb ?? null));
   app.route("/api/console/observability", createObservabilityRouter(undefined, xtrmDb));
   app.route("/api/console/graph", createGraphRouter(xtrmDb ? createGraphDao({
     xtrmDb,
