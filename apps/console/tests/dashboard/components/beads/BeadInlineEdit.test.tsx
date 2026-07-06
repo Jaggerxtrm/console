@@ -67,8 +67,10 @@ describe("bead inline editors", () => {
     vi.stubGlobal("fetch", fetchMock);
     window.fetch = fetchMock as never;
     Object.defineProperty(navigator, "sendBeacon", { value: vi.fn(), configurable: true });
-    render(<BeadMutationPanel projectId="console" issue={issue} onIssueChange={onIssueChange} onDeleted={onDeleted} />);
+    const { container } = render(<BeadMutationPanel projectId="console" issue={issue} onIssueChange={onIssueChange} onDeleted={onDeleted} />);
 
+    expect(container.querySelector("details")?.hasAttribute("open")).toBe(false);
+    fireEvent.click(screen.getByText("Edit bead"));
     fireEvent.change(screen.getByLabelText("Title for forge-1"), { target: { value: "Edited" } });
     fireEvent.click(screen.getAllByText("Save")[0]!);
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/substrate/projects/console/issues/forge-1", expect.objectContaining({ method: "PATCH" })));
