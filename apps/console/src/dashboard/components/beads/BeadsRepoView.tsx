@@ -274,6 +274,12 @@ export function BeadsRepoView({ repo, tab }: { repo: RepoNode; tab: BeadsTab }) 
     }
   }, []);
 
+  useEffect(() => {
+    const onMutation = () => scheduleCoalescedRefetch();
+    window.addEventListener("beads:mutated", onMutation);
+    return () => window.removeEventListener("beads:mutated", onMutation);
+  }, [scheduleCoalescedRefetch]);
+
   const handleBeadsMessage = useCallback((msg: WsMessage) => {
     if (!state.project) return;
     const data = getMessageData(msg);

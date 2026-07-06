@@ -9,6 +9,7 @@ import { useSpecialistOwnership } from "../../hooks/useSpecialistOwnership.ts";
 import { useSpecialistHistory } from "../../hooks/useSpecialistHistory.ts";
 import { BeadActivityPane } from "../../components/specialists/BeadActivityPane.tsx";
 import { IssueDossier } from "../../components/beads/IssueFeed.tsx";
+import { BeadMutationPanel } from "../../components/beads/inline/BeadMutationPanel.tsx";
 
 const TABS: Array<{ id: BeadInspectorTab; label: string }> = [
   { id: "overview", label: "Overview" },
@@ -38,7 +39,9 @@ export function BeadSideDrawer({ onClose }: { onClose?: () => void } = {}) {
   const back = useBeadSideDrawer((s) => s.back);
   const setTab = useBeadSideDrawer((s) => s.setTab);
   const open = useBeadSideDrawer((s) => s.open);
-  const issue = beadId ? issueById.get(beadId) ?? fallbackIssue : null;
+  const baseIssue = beadId ? issueById.get(beadId) ?? fallbackIssue : null;
+  const [localIssue, setLocalIssue] = useState<BeadIssue | null>(null);
+  const issue = localIssue?.id === baseIssue?.id ? localIssue : baseIssue;
   const ownership = useSpecialistOwnership(beadId);
   const history = useSpecialistHistory(beadId);
   const [detail, setDetail] = useState<BeadIssueDetail | null>(null);
@@ -47,6 +50,7 @@ export function BeadSideDrawer({ onClose }: { onClose?: () => void } = {}) {
 
   useEffect(() => {
     let cancelled = false;
+    setLocalIssue(null);
     if (!beadId || !projectId) {
       setDetail(null);
       setLoading(false);
@@ -174,6 +178,8 @@ export function BeadSideDrawer({ onClose }: { onClose?: () => void } = {}) {
               jobId,
               chainId,
               onOpenBead: (nextIssue) => open({ beadId: nextIssue.id, issue: nextIssue }),
+              onIssueChange: setLocalIssue,
+              onDeleted: handleClose,
               onSelectActivity: () => setTab("activity"),
             })}
           </div>
@@ -204,6 +210,8 @@ function renderTab(tab: BeadInspectorTab, props: {
   detail: BeadIssueDetail | null;
   loading: boolean;
   projectId: string | null;
+  onIssueChange: (issue: BeadIssue) => void;
+  onDeleted: (issueId: string) => void;
   issueById: Map<string, BeadIssue>;
   memories: Memory[];
   history: ReturnType<typeof useSpecialistHistory>;
@@ -214,7 +222,7 @@ function renderTab(tab: BeadInspectorTab, props: {
 }): ReactNode {
   switch (tab) {
     case "overview":
-      return <IssueDossier id={`bead-side-drawer-${props.issue.id}`} issue={props.issue} detail={props.detail} loading={props.loading} projectId={props.projectId} issueById={props.issueById} />;
+      return <div className="bead-inspector-stack">{props.projectId ? <BeadMutationPanel projectId={props.projectId} issue={props.issue} onIssueChange={props.onIssueChange} onDeleted={props.onDeleted} /> : null}<IssueDossier id={`bead-side-drawer-${props.issue.id}`} issue={props.issue} detail={props.detail} loading={props.loading} projectId={props.projectId} issueById={props.issueById} /></div>;
     case "lineage":
       return <LineageTab issue={props.issue} detail={props.detail} issueById={props.issueById} onOpenBead={props.onOpenBead} />;
     case "activity":
