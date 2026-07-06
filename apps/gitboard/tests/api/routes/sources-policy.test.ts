@@ -34,6 +34,16 @@ describe("sources policy helpers", () => {
     expect(isAllowedConsoleWriteRequest("http://localhost/pin", "localhost", "http://localhost", null, process.env)).toBe(true);
   });
 
+  it("accepts normalized bracketed ipv6 localhost requests", () => {
+    expect(isAllowedConsoleWriteRequest("http://[::1]/pin", "[::1]", "http://[::1]", null, process.env)).toBe(true);
+  });
+
+  it("rejects hostile localhost-prefix hostnames", () => {
+    expect(isAllowedConsoleWriteRequest("http://localhost/pin", "localhost.attacker.tld", "http://localhost", null, process.env)).toBe(false);
+    expect(isAllowedConsoleWriteRequest("http://localhost/pin", "127.0.0.1.attacker.tld", "http://localhost", null, process.env)).toBe(false);
+    expect(isAllowedConsoleWriteRequest("http://[::1]/pin", "[::1].attacker.tld", "http://[::1]", null, process.env)).toBe(false);
+  });
+
   it("rejects remote host even with origin token", () => {
     process.env.CONSOLE_WRITE_ADMIN_TOKEN = "secret";
     expect(isAllowedConsoleWriteRequest("http://localhost/pin", "evil.com", "http://localhost", "secret", process.env)).toBe(false);

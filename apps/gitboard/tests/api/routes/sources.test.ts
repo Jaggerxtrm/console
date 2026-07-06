@@ -163,6 +163,13 @@ describe("sources routes", () => {
     }));
     expect(crossOrigin.status).toBe(403);
 
+    const hostileLocalhostPrefix = await app.fetch(new Request("http://localhost/pin", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", host: "localhost.attacker.tld", origin: "http://localhost" },
+      body: JSON.stringify({ path: "/repo", kind: "beads" }),
+    }));
+    expect(hostileLocalhostPrefix.status).toBe(403);
+
     db.close();
   });
 
