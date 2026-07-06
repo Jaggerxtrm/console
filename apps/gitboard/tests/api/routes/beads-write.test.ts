@@ -91,8 +91,8 @@ describe("beads write routes", () => {
       "--json", "--actor", "console", "--dolt-auto-commit", "on",
       "update", "forge-123",
       "--title", "Updated",
-      "--status", "blocked",
       "--priority", "0",
+      "--status", "blocked",
       "--add-label", "p1",
       "--remove-label", "old",
     ], "update");
@@ -101,12 +101,12 @@ describe("beads write routes", () => {
     db.close();
   });
 
-  it("closes, reopens, and deletes with correct templates", async () => {
+  it("closes, reopens, comments, notes, adds dependency, sets priority, and deletes with correct templates", async () => {
     const db = createDb(tmpDir);
     const runBdCommand = vi.fn(async (_repoPath: string, command: string[]) => {
       const op = command[7];
       if (op === "delete") return { stdout: JSON.stringify({ ok: true }), stderr: "", exitCode: 0 };
-      return { stdout: JSON.stringify({ issue: makeIssue({ id: "forge-123", title: op === "close" ? "Closed" : "Reopened", status: op === "close" ? "closed" : "open" }) }), stderr: "", exitCode: 0 };
+      return { stdout: JSON.stringify({ issue: makeIssue({ id: "forge-123", title: op, status: op === "close" ? "closed" : "open", priority: op === "priority" ? 1 : 2 }) }), stderr: "", exitCode: 0 };
     });
     const app = createBeadsWriteRouter(db, { runBdCommand });
 
@@ -120,6 +120,26 @@ describe("beads write routes", () => {
       headers: { "Content-Type": "application/json", host: "localhost", "x-console-write-token": "primary-secret" },
       body: "{}",
     }));
+    const commentResponse = await app.fetch(new Request("http://localhost/projects/demo/issues/forge-123/comments", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", host: "localhost", "x-console-write-token": "primary-secret" },
+      body: JSON.stringify({ text: "ship it" }),
+    }));
+    const noteResponse = await app.fetch(new Request("http://localhost/projects/demo/issues/forge-123/notes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", host: "localhost", "x-console-write-token": "primary-secret" },
+      body: JSON.stringify({ text: "kept note" }),
+    }));
+    const dependencyResponse = await app.fetch(new Request("http://localhost/projects/demo/issues/forge-123/dependencies", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", host: "localhost", "x-console-write-token": "primary-secret" },
+      body: JSON.stringify({ dependsOnIssueId: "forge-456" }),
+    }));
+    const priorityResponse = await app.fetch(new Request("http://localhost/projects/demo/issues/forge-123/priority", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", host: "localhost", "x-console-write-token": "primary-secret" },
+      body: JSON.stringify({ priority: 1 }),
+    }));
     const deleteResponse = await app.fetch(new Request("http://localhost/projects/demo/issues/forge-123", {
       method: "DELETE",
       headers: { host: "localhost", "x-console-write-token": "primary-secret" },
@@ -127,13 +147,40 @@ describe("beads write routes", () => {
 
     expect(closeResponse.status).toBe(200);
     expect(reopenResponse.status).toBe(200);
+    expect(commentResponse.status).toBe(200);
+    expect(noteResponse.status).toBe(200);
+    expect(dependencyResponse.status).toBe(200);
+    expect(priorityResponse.status).toBe(200);
     expect(deleteResponse.status).toBe(200);
     expect(runBdCommand.mock.calls.map((call) => call[1])).toEqual([
       ["-C", join(tmpDir, "demo"), "--json", "--actor", "console", "--dolt-auto-commit", "on", "close", "forge-123", "--reason", "done"],
       ["-C", join(tmpDir, "demo"), "--json", "--actor", "console", "--dolt-auto-commit", "on", "reopen", "forge-123"],
+      ["-C", join(tmpDir, "demo"), "--json", "--actor", "console", "--dolt-auto-commit", "on", "comment", "forge-123", "ship it"],
+      ["-C", join(tmpDir, "demo"), "--json", "--actor", "console", "--dolt-auto-commit", "on", "note", "forge-123", "kept note"],
+      ["-C", join(tmpDir, "demo"), "--json", "--actor", "console", "--dolt-auto-commit", "on", "dep", "add", "forge-123", "forge-456"],
+      ["-C", join(tmpDir, "demo"), "--json", "--actor", "console", "--dolt-auto-commit", "on", "priority", "forge-123", "1"],
       ["-C", join(tmpDir, "demo"), "--json", "--actor", "console", "--dolt-auto-commit", "on", "delete", "forge-123"],
     ]);
+    expect(await priorityResponse.json()).toEqual({ issue: makeIssue({ id: "forge-123", title: "priority", priority: 1 }) });
     expect(await deleteResponse.json()).toEqual({ ok: true, issueId: "forge-123", projectId: "demo" });
+    db.close();
+  });
+
+  it("rejects invalid comment, note, dependency, and priority payloads", async () => {
+    const db = createDb(tmpDir);
+    const runBdCommand = vi.fn();
+    const app = createBeadsWriteRouter(db, { runBdCommand });
+    const headers = { "Content-Type": "application/json", host: "localhost", "x-console-write-token": "primary-secret" };
+
+    const responses = await Promise.all([
+      app.fetch(new Request("http://localhost/projects/demo/issues/forge-123/comments", { method: "POST", headers, body: JSON.stringify({ text: "" }) })),
+      app.fetch(new Request("http://localhost/projects/demo/issues/forge-123/notes", { method: "POST", headers, body: JSON.stringify({ text: "" }) })),
+      app.fetch(new Request("http://localhost/projects/demo/issues/forge-123/dependencies", { method: "POST", headers, body: JSON.stringify({ dependsOnIssueId: "" }) })),
+      app.fetch(new Request("http://localhost/projects/demo/issues/forge-123/priority", { method: "POST", headers, body: JSON.stringify({ priority: 9 }) })),
+    ]);
+
+    expect(responses.map((response) => response.status)).toEqual([400, 400, 400, 400]);
+    expect(runBdCommand).not.toHaveBeenCalled();
     db.close();
   });
 });

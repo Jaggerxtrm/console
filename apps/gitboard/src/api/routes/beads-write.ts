@@ -35,6 +35,9 @@ type UpdateIssueBody = {
 };
 
 type CloseIssueBody = { reason?: string | null };
+type CommentIssueBody = { text?: string | null };
+type AddDependencyBody = { dependsOnIssueId?: string | null };
+type SetPriorityBody = { priority?: number | null };
 
 type BdRunner = (repoPath: string, command: string[], op: string) => Promise<BdRunResult>;
 type IssueReader = (projectId: string, issueId: string) => BeadIssue | null;
@@ -162,6 +165,70 @@ export function createBeadsWriteRouter(xtrmDb?: Database | null, options: BeadsW
     } catch (error) {
       return writeError(c, "delete", "error", error instanceof Error ? error.message : String(error), 502, { projectId, issueId }, startedAt);
     }
+  });
+
+  router.post("/projects/:projectId/issues/:issueId/comments", async (c) => {
+    const authError = assertWriteAllowed(c.req.url, c.req.header("host") ?? "", c.req.header("origin") ?? null, c.req.header("x-console-write-token") ?? c.req.header("x-gitboard-sources-admin-token") ?? null, xtrmDb);
+    if (authError) return c.json({ error: authError }, 403);
+
+    const body = await safeJson<CommentIssueBody>(c.req.raw);
+    if (!body || !isNonEmptyString(body.text)) return writeError(c, "comment", "invalid", "text is required", 400);
+
+    const issueId = c.req.param("issueId");
+    const projectId = c.req.param("projectId");
+    const repoPath = resolveBeadsProjectRepoPath(xtrmDb, projectId);
+    if (!repoPath) return writeError(c, "comment", "not_found", "Project not found", 404, { projectId, issueId });
+
+    const args = ["-C", repoPath, ...MUTATION_PREFIX, "comment", issueId, body.text];
+    return await runIssueMutation({ c, projectId, issueId, op: "comment", repoPath, args, runBdCommand, readIssue });
+  });
+
+  router.post("/projects/:projectId/issues/:issueId/notes", async (c) => {
+    const authError = assertWriteAllowed(c.req.url, c.req.header("host") ?? "", c.req.header("origin") ?? null, c.req.header("x-console-write-token") ?? c.req.header("x-gitboard-sources-admin-token") ?? null, xtrmDb);
+    if (authError) return c.json({ error: authError }, 403);
+
+    const body = await safeJson<CommentIssueBody>(c.req.raw);
+    if (!body || !isNonEmptyString(body.text)) return writeError(c, "note", "invalid", "text is required", 400);
+
+    const issueId = c.req.param("issueId");
+    const projectId = c.req.param("projectId");
+    const repoPath = resolveBeadsProjectRepoPath(xtrmDb, projectId);
+    if (!repoPath) return writeError(c, "note", "not_found", "Project not found", 404, { projectId, issueId });
+
+    const args = ["-C", repoPath, ...MUTATION_PREFIX, "note", issueId, body.text];
+    return await runIssueMutation({ c, projectId, issueId, op: "note", repoPath, args, runBdCommand, readIssue });
+  });
+
+  router.post("/projects/:projectId/issues/:issueId/dependencies", async (c) => {
+    const authError = assertWriteAllowed(c.req.url, c.req.header("host") ?? "", c.req.header("origin") ?? null, c.req.header("x-console-write-token") ?? c.req.header("x-gitboard-sources-admin-token") ?? null, xtrmDb);
+    if (authError) return c.json({ error: authError }, 403);
+
+    const body = await safeJson<AddDependencyBody>(c.req.raw);
+    if (!body || !isNonEmptyString(body.dependsOnIssueId)) return writeError(c, "dep-add", "invalid", "dependsOnIssueId is required", 400);
+
+    const issueId = c.req.param("issueId");
+    const projectId = c.req.param("projectId");
+    const repoPath = resolveBeadsProjectRepoPath(xtrmDb, projectId);
+    if (!repoPath) return writeError(c, "dep-add", "not_found", "Project not found", 404, { projectId, issueId });
+
+    const args = ["-C", repoPath, ...MUTATION_PREFIX, "dep", "add", issueId, body.dependsOnIssueId];
+    return await runIssueMutation({ c, projectId, issueId, op: "dep-add", repoPath, args, runBdCommand, readIssue });
+  });
+
+  router.post("/projects/:projectId/issues/:issueId/priority", async (c) => {
+    const authError = assertWriteAllowed(c.req.url, c.req.header("host") ?? "", c.req.header("origin") ?? null, c.req.header("x-console-write-token") ?? c.req.header("x-gitboard-sources-admin-token") ?? null, xtrmDb);
+    if (authError) return c.json({ error: authError }, 403);
+
+    const body = await safeJson<SetPriorityBody>(c.req.raw);
+    if (!body || body.priority == null || !isPriority(body.priority)) return writeError(c, "priority", "invalid", "priority must be integer 0-4", 400);
+
+    const issueId = c.req.param("issueId");
+    const projectId = c.req.param("projectId");
+    const repoPath = resolveBeadsProjectRepoPath(xtrmDb, projectId);
+    if (!repoPath) return writeError(c, "priority", "not_found", "Project not found", 404, { projectId, issueId });
+
+    const args = ["-C", repoPath, ...MUTATION_PREFIX, "priority", issueId, String(body.priority)];
+    return await runIssueMutation({ c, projectId, issueId, op: "priority", repoPath, args, runBdCommand, readIssue });
   });
 
   return router;

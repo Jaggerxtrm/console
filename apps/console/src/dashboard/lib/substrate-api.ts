@@ -33,6 +33,16 @@ type WriteRequestOptions = {
   adminToken?: string;
 };
 
+type UpdateIssueInput = {
+  title?: string;
+  description?: string | null;
+  priority?: number;
+  status?: string;
+  type?: string;
+  assignee?: string | null;
+  labels?: { add?: string[]; remove?: string[]; set?: string[] };
+};
+
 async function jsonFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, init);
   if (!res.ok) {
@@ -136,12 +146,42 @@ export const substrateApi = {
     return data.issue;
   },
 
-  async updateIssue(projectId: string, issueId: string, input: { title?: string; description?: string | null; priority?: number; status?: string; type?: string; assignee?: string | null; labels?: { add?: string[]; remove?: string[]; set?: string[] } }, options?: WriteRequestOptions): Promise<BeadIssue> {
-    const headers = new Headers({ "Content-Type": "application/json" });
-    if (options?.adminToken) headers.set("x-console-write-token", options.adminToken);
+  async updateIssue(projectId: string, issueId: string, input: UpdateIssueInput, options?: WriteRequestOptions): Promise<BeadIssue> {
     const data = await jsonFetch<{ issue: BeadIssue }>(
       `/api/substrate/projects/${enc(projectId)}/issues/${enc(issueId)}`,
-      { method: "PATCH", headers, body: JSON.stringify(input) },
+      { ...writeInit(input, options), method: "PATCH" },
+    );
+    return data.issue;
+  },
+
+  async commentIssue(projectId: string, issueId: string, text: string, options?: WriteRequestOptions): Promise<BeadIssue> {
+    const data = await jsonFetch<{ issue: BeadIssue }>(
+      `/api/substrate/projects/${enc(projectId)}/issues/${enc(issueId)}/comments`,
+      writeInit({ text }, options),
+    );
+    return data.issue;
+  },
+
+  async noteIssue(projectId: string, issueId: string, text: string, options?: WriteRequestOptions): Promise<BeadIssue> {
+    const data = await jsonFetch<{ issue: BeadIssue }>(
+      `/api/substrate/projects/${enc(projectId)}/issues/${enc(issueId)}/notes`,
+      writeInit({ text }, options),
+    );
+    return data.issue;
+  },
+
+  async addIssueDependency(projectId: string, issueId: string, dependsOnIssueId: string, options?: WriteRequestOptions): Promise<BeadIssue> {
+    const data = await jsonFetch<{ issue: BeadIssue }>(
+      `/api/substrate/projects/${enc(projectId)}/issues/${enc(issueId)}/dependencies`,
+      writeInit({ dependsOnIssueId }, options),
+    );
+    return data.issue;
+  },
+
+  async setIssuePriority(projectId: string, issueId: string, priority: number, options?: WriteRequestOptions): Promise<BeadIssue> {
+    const data = await jsonFetch<{ issue: BeadIssue }>(
+      `/api/substrate/projects/${enc(projectId)}/issues/${enc(issueId)}/priority`,
+      writeInit({ priority }, options),
     );
     return data.issue;
   },
