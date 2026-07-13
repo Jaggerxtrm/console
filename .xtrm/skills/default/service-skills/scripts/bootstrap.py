@@ -5,23 +5,17 @@ Bootstrap module for Service Skill Trinity.
 Provides root-discovery and registry CRUD operations shared across all
 service-skill workflow scripts. All scripts in the trinity import from here.
 
-Path model: the canonical home for service skills + registry is under .xtrm
-(``.xtrm/skills/user/packs/<pack>/...``). ``.claude/skills`` is a Claude-Code
-VIEW only — kept solely as a legacy READ fallback for pre-migration installs.
-No code path EMITS a ``.claude/skills`` path for cross-tool consumption; use the
-resolver helpers (get_service_skill_dir / get_service_skill_path_str) instead.
+Path model: the canonical home for service skills + registry is under
+``.xtrm/skills/<pack>/``. ``.claude/skills`` is a Claude-Code VIEW only — kept
+solely as a legacy READ fallback for pre-migration installs.
 
 Registry resolution order:
   1) $SERVICE_REGISTRY_PATH override
   2) <root>/service-registry.json
-  3) <root>/.claude/skills/service-registry.json   (legacy Claude-view read; back-compat)
-  4) <root>/.xtrm/skills/user/packs/*/service-registry.json
+  3) <root>/.claude/skills/service-registry.json (legacy view)
+  4) <root>/.xtrm/skills/*/service-registry.json
 
-For pack glob, first hit wins after disambiguation:
-- If active pack discoverable, matching pack registry preferred
-- Else lexicographically first registry used with stderr warning
-
-Skills location: .xtrm/skills/user/packs/<pack>/<service-id>/
+Skills location: .xtrm/skills/<pack>/service-skills/services/<service-id>/
 """
 
 import json
@@ -29,12 +23,12 @@ import os
 import re
 import subprocess  # nosec B404
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 SERVICE_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-_]{0,63}$")
-PACKS_ROOT_SUFFIX = Path(".xtrm") / "skills" / "user" / "packs"
+SKILLS_ROOT_SUFFIX = Path(".xtrm") / "skills"
+RESERVED_PACK_NAMES = {"default", "optional", "user", "active", "local-legacy"}
 
 
 class BootstrapError(Exception):
@@ -72,10 +66,20 @@ def get_skills_root(project_root: str | None = None) -> Path:
     return Path(project_root) / ".claude" / "skills"
 
 
+def resolveRepoPackRoot(project_root: str, pack_name: str) -> Path:
+    if not SERVICE_ID_PATTERN.fullmatch(pack_name) or pack_name in RESERVED_PACK_NAMES:
+        raise RootResolutionError(f"Invalid or reserved pack name: {pack_name}")
+    return (Path(project_root) / SKILLS_ROOT_SUFFIX / pack_name).resolve(strict=False)
+
+
+def resolve_repo_pack_root(project_root: str, pack_name: str) -> Path:
+    return resolveRepoPackRoot(project_root, pack_name)
+
+
 def _packs_root(project_root: str | None = None) -> Path:
     if project_root is None:
         project_root = get_project_root()
-    return Path(project_root) / PACKS_ROOT_SUFFIX
+    return Path(project_root) / SKILLS_ROOT_SUFFIX
 
 
 def _ensure_within_root(candidate: Path, root: Path, label: str) -> Path:
@@ -95,16 +99,24 @@ def get_pack_path(project_root: str | None = None) -> Path | None:
     packs_root = _packs_root(project_root)
     env_pack = os.environ.get("XTRM_PACK")
 
+    legacy_packs_root = packs_root / "user" / "packs"
     if env_pack:
         pack_path = Path(env_pack)
         if not pack_path.is_absolute():
             pack_path = packs_root / env_pack
-        return _ensure_within_root(pack_path, packs_root, "XTRM_PACK path")
+            if not pack_path.exists():
+                pack_path = legacy_packs_root / env_pack
+        validation_root = packs_root if pack_path.parent == packs_root else legacy_packs_root
+        return _ensure_within_root(pack_path, validation_root, "XTRM_PACK path")
 
-    if not packs_root.exists():
-        return None
-
-    pack_dirs = [path for path in packs_root.iterdir() if path.is_dir()]
+    pack_dirs = []
+    for candidate_root in (packs_root, legacy_packs_root):
+        if not candidate_root.exists():
+            continue
+        pack_dirs.extend(
+            path for path in candidate_root.iterdir()
+            if path.is_dir() and path.name not in RESERVED_PACK_NAMES
+        )
     if len(pack_dirs) == 1:
         return pack_dirs[0].resolve()
 
@@ -115,8 +127,8 @@ def get_service_skill_dir(service_id: str, project_root: str | None = None) -> P
     """Resolve a service's skill-package directory (absolute, under .xtrm — never .claude).
 
     Single source of truth for *where a service skill lives*. Today that is
-    ``<pack>/<service_id>`` under ``.xtrm/skills/user/packs``. Child .4 (layout
-    migrator) re-points this to ``<pack>/service-skills/services/<service_id>``;
+    ``<pack>/<service_id>`` under ``.xtrm/skills``. Service skills live under
+    ``<pack>/service-skills/services/<service_id>``;
     every emitter (scaffolder bodies, activator/cataloger fallbacks, registry
     skill_path) routes through here, so they all follow automatically — no
     emitter hardcodes a path.
@@ -155,9 +167,15 @@ def get_umbrella_dir(project_root: str | None = None) -> Path | None:
 def _select_pack_registry(pack_registries: list[Path], project_root: str) -> Path:
     active_pack = get_pack_path(project_root)
     if active_pack is not None:
-        active_candidate = active_pack / "service-registry.json"
-        if active_candidate in pack_registries:
-            return active_candidate
+        active_resolved = active_pack.resolve()
+        # Match either the umbrella layout (<pack>/service-skills/service-registry.json)
+        # or the pre-umbrella flat layout (<pack>/service-registry.json).
+        for candidate in pack_registries:
+            try:
+                if active_resolved in candidate.resolve().parents:
+                    return candidate
+            except OSError:
+                continue
 
     chosen = sorted(pack_registries)[0]
     if len(pack_registries) > 1:
@@ -188,11 +206,11 @@ def get_registry_path(project_root: str | None = None) -> Path:
     #   2) flat pack-root registry           (pre-migration .xtrm layout)
     #   3) <root>/service-registry.json      (legacy back-compat)
     #   4) .claude/skills/service-registry.json  (legacy Claude-view back-compat)
-    umbrella_registries = sorted(root.glob(".xtrm/skills/user/packs/*/service-skills/service-registry.json"))
+    umbrella_registries = sorted(root.glob(".xtrm/skills/*/service-skills/service-registry.json"))
     if umbrella_registries:
         return _select_pack_registry(umbrella_registries, project_root)
 
-    pack_registries = sorted(root.glob(".xtrm/skills/user/packs/*/service-registry.json"))
+    pack_registries = sorted(root.glob(".xtrm/skills/*/service-registry.json"))
     if pack_registries:
         return _select_pack_registry(pack_registries, project_root)
 
@@ -240,12 +258,20 @@ def register_service(
     registry = load_registry(project_root)
     if "services" not in registry:
         registry["services"] = {}
+    # Registration is CATALOGUING, not a verified sync. Deliberately do NOT stamp
+    # ``last_sync`` here: claiming "synced as of now" without auditing the SKILL.md
+    # against code is the exact "timestamp-only sync without evidence" anti-pattern the
+    # librarian's own prompt forbids — and when done in bulk it set every service's
+    # last_sync=now with no last_sync_ref, so the drift scan's mtime pre-filter returned
+    # 0 candidates and masked real drift (xtrm-008tr). Only a verified audit
+    # (drift_detector.update_sync_time) may stamp last_sync, and it stamps last_sync_ref
+    # atomically alongside. A catalogued-but-never-synced service is surfaced as drift by
+    # scan_drift (needs initial verified sync) rather than appearing falsely clean.
     registry["services"][service_id] = {
         "name": name,
         "territory": territory,
         "skill_path": skill_path,
         "description": description,
-        "last_sync": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
     }
     save_registry(registry, project_root)
 
@@ -311,26 +337,92 @@ if __name__ == "__main__":
         sys.exit(1)
 
 def _gitnexus_repo_name(project_root: str | None = None) -> str:
+    """Resolve the repo label gitnexus indexed under — the MAIN worktree's basename.
+
+    In a linked git worktree ``get_project_root()`` returns the worktree dir, whose basename
+    (e.g. ``market-data-uh1r-service-skills-sync``) gitnexus has NOT indexed; injecting it as
+    ``--repo`` makes every gitnexus call fail → drift silently degrades to mtime-only tiering.
+    The service-skills-sync librarian ALWAYS runs in such an auto-provisioned worktree, so it
+    would otherwise never get semantic enrichment. ``git rev-parse --git-common-dir`` points at
+    the shared (main) ``.git``; its parent is the indexed checkout (xtrm-vvhfs). Falls back to the
+    local basename on any git failure. ``GITNEXUS_REPO`` still wins when explicitly set.
+    """
+    env = os.environ.get("GITNEXUS_REPO")
+    if env:
+        return env
     root = Path(project_root or get_project_root())
-    return os.environ.get("GITNEXUS_REPO") or root.name
+    try:
+        result = subprocess.run(  # nosec B603 B607
+            ["git", "-C", str(root), "rev-parse", "--git-common-dir"],
+            capture_output=True, text=True, check=True, timeout=5,
+        )
+        common = result.stdout.strip()
+        if common:
+            common_path = Path(common)
+            if not common_path.is_absolute():
+                common_path = root / common_path
+            main_root = common_path.resolve().parent
+            if main_root.name:
+                return main_root.name
+    except (subprocess.SubprocessError, OSError):
+        pass
+    return root.name
 
 
 def _gitnexus_tool_name(args: list[str]) -> str | None:
     return args[0] if args and args[0] in {"detect_changes", "impact", "query", "context"} else None
 
 
-def run_gitnexus_json(args: list[str], timeout: float = 2.0, repo_name: str | None = None) -> dict[str, Any] | list[Any] | None:
+def _kill_process_tree(proc: "subprocess.Popen") -> None:
+    """Reap the WHOLE process group started by Popen(start_new_session=True), then wait.
+
+    `npx gitnexus` spawns a child `node` that loads the repo graph into memory; a plain
+    subprocess kill only signals the direct `npx` pid, leaving the `node` grandchild
+    orphaned and still resident. Over an unbounded candidate set those orphans OOM the
+    host (xtrm-08i0b). Killing the session/process group guarantees nothing lingers.
+    """
+    import os
+    import signal
     try:
-        cmd = ["npx", "gitnexus", *args]
-        tool_name = _gitnexus_tool_name(args)
-        if tool_name and "--repo" not in args:
-            cmd.extend(["--repo", repo_name or _gitnexus_repo_name()])
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=False)
+        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+    except (ProcessLookupError, PermissionError, OSError):
+        try:
+            proc.kill()
+        except Exception:
+            pass
+    try:
+        proc.wait(timeout=2)
+    except Exception:
+        pass
+
+
+def run_gitnexus_json(args: list[str], timeout: float = 2.0, repo_name: str | None = None) -> dict[str, Any] | list[Any] | None:
+    cmd = ["npx", "gitnexus", *args]
+    tool_name = _gitnexus_tool_name(args)
+    if tool_name and "--repo" not in args:
+        cmd.extend(["--repo", repo_name or _gitnexus_repo_name()])
+    # Run in its own session (process group) so a timeout — or any failure — lets us reap
+    # the full tree, not just the npx pid (xtrm-08i0b). Without this, a slow/hung gitnexus
+    # leaves a resident node process behind on every call.
+    proc = None
+    stdout = ""
+    try:
+        proc = subprocess.Popen(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, start_new_session=True
+        )
+        try:
+            stdout, _ = proc.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            _kill_process_tree(proc)
+            return None
+        if proc.returncode != 0:
+            return None
     except Exception:
         return None
-    if result.returncode != 0:
-        return None
-    stdout = result.stdout.strip()
+    finally:
+        if proc is not None and proc.poll() is None:
+            _kill_process_tree(proc)
+    stdout = (stdout or "").strip()
     if not stdout:
         return {}
     try:

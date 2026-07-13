@@ -28,9 +28,10 @@ GREEN  = "\033[0;32m"
 YELLOW = "\033[1;33m"
 NC     = "\033[0m"
 
-MARKER_DOC       = "# [jaggers] doc-reminder"
-MARKER_STALENESS = "# [jaggers] skill-staleness"
-MARKER_CHAIN     = "# [jaggers] chain-githooks"
+MARKER_DOC        = "# [jaggers] doc-reminder"
+MARKER_STALENESS  = "# [jaggers] skill-staleness"
+MARKER_DRIFT_SWEEP = "# [jaggers] drift-sweep"
+MARKER_CHAIN      = "# [jaggers] chain-githooks"
 
 
 def get_project_root() -> Path:
@@ -47,11 +48,13 @@ def install_git_hooks(project_root: Path) -> None:
     print("\n── Git hooks ───────────────────────────")
     doc_script      = GIT_HOOKS / "doc_reminder.py"
     staleness_script = GIT_HOOKS / "skill_staleness.py"
+    drift_script    = GIT_HOOKS / "post_merge_drift_sweep.py"
 
     pre_commit = project_root / ".githooks" / "pre-commit"
     pre_push   = project_root / ".githooks" / "pre-push"
+    post_merge = project_root / ".githooks" / "post-merge"
 
-    for hp in (pre_commit, pre_push):
+    for hp in (pre_commit, pre_push, post_merge):
         if not hp.exists():
             hp.parent.mkdir(parents=True, exist_ok=True)
             hp.write_text("#!/usr/bin/env bash\n", encoding="utf-8")
@@ -62,6 +65,11 @@ def install_git_hooks(project_root: Path) -> None:
          f"\n{MARKER_DOC}\nif command -v python3 &>/dev/null && [ -f \"{doc_script}\" ]; then\n    python3 \"{doc_script}\" || true\nfi\n"),
         (pre_push, MARKER_STALENESS,
          f"\n{MARKER_STALENESS}\nif command -v python3 &>/dev/null && [ -f \"{staleness_script}\" ]; then\n    python3 \"{staleness_script}\" || true\nfi\n"),
+        # post-merge drift sweep (xtrm-jcmub): on a default-branch merge, scan for
+        # service-skills drift since each service's last_sync_ref and surface it +
+        # drop a pending marker. Non-blocking; the script self-gates on branch/registry.
+        (post_merge, MARKER_DRIFT_SWEEP,
+         f"\n{MARKER_DRIFT_SWEEP}\nif command -v python3 &>/dev/null && [ -f \"{drift_script}\" ]; then\n    python3 \"{drift_script}\" || true\nfi\n"),
     ]
 
     for hook_path, marker, snippet in snippets:
@@ -92,7 +100,7 @@ def install_git_hooks(project_root: Path) -> None:
 
     for hooks_dir in activation_targets:
         hooks_dir.mkdir(parents=True, exist_ok=True)
-        for name, source_hook in (("pre-commit", pre_commit), ("pre-push", pre_push)):
+        for name, source_hook in (("pre-commit", pre_commit), ("pre-push", pre_push), ("post-merge", post_merge)):
             target_hook = hooks_dir / name
             if not target_hook.exists():
                 target_hook.write_text("#!/usr/bin/env bash\n", encoding="utf-8")
@@ -114,15 +122,28 @@ def install_git_hooks(project_root: Path) -> None:
     print(f"{GREEN}  ✓{NC} activated in .git/hooks/")
 
 
+RESERVED_PACK_NAMES = {"default", "optional", "user", "active", "local-legacy"}
+
+
+def _pack_roots(project_root: Path) -> list[Path]:
+    skills_root = project_root / ".xtrm" / "skills"
+    return [skills_root, skills_root / "user" / "packs"]
+
+
 def _packs_with_registry(project_root: Path) -> list[Path]:
-    """Packs that carry a service registry (umbrella or legacy flat location)."""
-    packs_root = project_root / ".xtrm" / "skills" / "user" / "packs"
-    if not packs_root.exists():
-        return []
-    out = []
-    for pack in sorted(p for p in packs_root.iterdir() if p.is_dir()):
-        if (pack / "service-skills" / "service-registry.json").exists() or (pack / "service-registry.json").exists():
-            out.append(pack)
+    """Packs that carry a service registry; v2 root wins over v1 shim."""
+    out: list[Path] = []
+    seen: set[Path] = set()
+    for packs_root in _pack_roots(project_root):
+        if not packs_root.exists():
+            continue
+        for pack in sorted(p for p in packs_root.iterdir() if p.is_dir() and p.name not in RESERVED_PACK_NAMES):
+            resolved = pack.resolve()
+            if resolved in seen:
+                continue
+            if (pack / "service-skills" / "service-registry.json").exists() or (pack / "service-registry.json").exists():
+                seen.add(resolved)
+                out.append(pack)
     return out
 
 
@@ -200,15 +221,13 @@ def generate_umbrellas(project_root: Path) -> None:
     Idempotent — prints only when a file actually changes."""
     print("\n── Umbrella ────────────────────────────")
     generator = project_root / ".claude" / "skills" / "service-skills" / "scripts" / "umbrella_generator.py"
-    packs_root = project_root / ".xtrm" / "skills" / "user" / "packs"
-    if not generator.exists() or not packs_root.exists():
+    packs = _packs_with_registry(project_root)
+    if not generator.exists() or not packs:
         print(f"{YELLOW}  ○{NC} nothing to generate (no generator or packs)")
         return
     repo_name = project_root.name
     wrote = 0
-    for pack in sorted(p for p in packs_root.iterdir() if p.is_dir()):
-        if not (pack / "service-registry.json").exists() and not (pack / "service-skills" / "service-registry.json").exists():
-            continue
+    for pack in packs:
         env = {**os.environ, "XTRM_PACK": pack.name}
         r = subprocess.run(["python3", str(generator), repo_name],
                            cwd=str(project_root), env=env, capture_output=True, text=True, check=False)
@@ -221,6 +240,15 @@ def generate_umbrellas(project_root: Path) -> None:
 
 def main() -> None:
     project_root = get_project_root()
+
+    # `--hooks-only`: wire the service-skills git hooks (incl. the post-merge drift
+    # sweep) and exit. This is the entry point `xt update`/`ensureServiceSkills` calls
+    # so the post-merge drift automation (xtrm-jcmub) auto-installs on the foolproof
+    # path, without running the full migration again.
+    if "--hooks-only" in sys.argv[1:]:
+        install_git_hooks(project_root)
+        return
+
     print(f"Installing into: {project_root}")
 
     # Skills are delivered by `xt update`; Claude hooks ship via the global

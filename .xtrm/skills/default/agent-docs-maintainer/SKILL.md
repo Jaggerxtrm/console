@@ -27,21 +27,31 @@ Run the bundled audit script from the repo root or against explicit repos:
 
 ```bash
 python3 .xtrm/skills/default/agent-docs-maintainer/scripts/audit_agent_docs.py . --format md
-python3 .xtrm/skills/default/agent-docs-maintainer/scripts/audit_agent_docs.py ~/dev/specialists ~/projects/mercury/darth-feedor --format json
+python3 .xtrm/skills/default/agent-docs-maintainer/scripts/audit_agent_docs.py <repo-a> <repo-b> --format json
 ```
 
 If the skill is not installed in the target repo, run the script from its source path and pass repo paths explicitly.
 
 The audit highlights:
+- repo-identity presence before managed workflow boilerplate
+- split size budget: repo-identity prose vs routing/managed boilerplate
 - line/character counts
 - code fence and table density
-- likely CLI manual dumps
+- likely CLI manual dumps, excluding concise operational-entry sections
 - managed xtrm/GitNexus/beads blocks
-- stale project-name hints
+- stale project-name hints, including per-repo `.xtrm/agent-docs.toml` extensions
 - service registry presence
 - rewrite recommendations
 
-### 2. Classify content
+### 2. Check repo identity first
+
+Before trimming anything, ask whether a fresh agent can learn what the repo is from the first 20-30 lines.
+
+Good agent docs start with a short project summary or a substantive Stack Overview / Repo Identity section before managed `xtrm:start`, GitNexus, or beads blocks. If the file opens with generic managed workflow boilerplate, add repo identity instead of reporting it as clean.
+
+Use `references/stack-overview-template.md` when the repo needs more than a 2-5 line summary. A 100-150 line current stack overview can be correct when it explains role, services, public surface, sibling stacks, entry points, data flow, and what belongs elsewhere.
+
+### 3. Classify content
 
 Keep only session-critical guidance in agent docs.
 
@@ -53,37 +63,37 @@ Keep only session-critical guidance in agent docs.
 | skill routing table | copied project wiki/tutorial content |
 | compact project map | code examples, SQL snippets, migration tutorials |
 | active gotchas, max 10 | stale warnings, completed fixes, archaeology |
-| service-skill routing | full service registry dumps |
+| canonical service-skills routing for docs/project/service context | full service registry dumps |
 
-### 3. Keep a tiny essential command surface
+### 4. Keep a tiny essential command surface
 
 Do not remove every command. Keep the commands an agent needs to safely start, inspect, claim, delegate, validate, and close work without loading another manual.
 
 Good essentials include:
-- Whether runtime-local task planning is encouraged, and the rule that it is ephemeral while beads remains authoritative.
+- Whether runtime-local task planning is required before proceeding on non-trivial/multi-step work, and the rule that it must be used alongside normal beads operations while beads remains authoritative.
 - `bd ready`, `bd list --status=in_progress`, `bd show <id>`, `bd update <id> --claim`, memory ack + `bd close`.
-- `sp list`, `sp ps`, `sp feed <job-id>`, `sp result <job-id>` when specialists are part of the repo workflow.
+- `sp --help`, `sp list`, `sp ps`, `sp feed <job-id>`, `sp result <job-id>` when specialists are part of the repo workflow.
 - Mandatory GitNexus tool calls such as `gitnexus_impact(...)` before symbol edits and `gitnexus_detect_changes(...)` before commit.
 - Project validation commands such as build, targeted tests, registry/policy generation.
 
-### 4. Prefer pointers over manuals
+### 5. Prefer pointers over manuals
 
 Use pointers like these instead of copying full command references:
 
 ```md
 For beads commands, run `bd --help` or `bd <cmd> --help`.
 For xtrm workflow details, load `/using-xtrm`.
-For specialist orchestration, load the latest available `/using-specialists-*` skill, preferring `/using-specialists-v3` when present.
+For specialist orchestration, load the latest available `/using-specialists-*` skill, preferring `/using-specialists` when present.
 For GitNexus debugging/refactor/impact workflows, load the matching `/gitnexus-*` skill.
 ```
 
-### 5. Separate runtime-specific docs
+### 6. Separate runtime-specific docs
 
 `CLAUDE.md` may include Claude Code specifics:
-- Serena symbol tools
 - GitNexus MCP requirements
 - Claude hook behavior
 - Claude-only skill invocation notes
+- canonical service-skills routing for project/service context
 
 `AGENTS.md` should stay runtime-neutral or Pi-friendly:
 - xtrm workflow summary
@@ -91,7 +101,7 @@ For GitNexus debugging/refactor/impact workflows, load the matching `/gitnexus-*
 - no Claude-only tool assumptions
 - pointers to skills/CLI help for details
 
-### 6. Preserve managed blocks carefully
+### 7. Preserve managed blocks carefully
 
 Before rewriting, identify managed blocks:
 
@@ -101,9 +111,9 @@ Before rewriting, identify managed blocks:
 <!-- BEGIN BEADS INTEGRATION --> ...
 ```
 
-If a block is generated by xtrm, prefer updating the source template (`.xtrm/config/instructions/*.md`) instead of only editing the generated copy. If editing a local project doc, keep operator-owned local sections unless they are stale or duplicated.
+If a block is generated by xtrm, do not treat edits to generated `CLAUDE.md` / `AGENTS.md` blocks as durable. Update the canonical xtrm instruction templates for the current installation/package, then run `xt update --apply` to regenerate project copies. The exact template source location depends on installation mode, so avoid hard-coding machine-specific paths in user-facing docs. The GitNexus block is regenerated separately by GitNexus hooks, so do not treat local edits to that block as durable.
 
-### 7. Rewrite to the compact template
+### 8. Rewrite to the compact template
 
 Use the templates in `references/`:
 - `references/claude-template.md` for Claude Code
@@ -115,7 +125,7 @@ Target size:
 - soft maximum: 500 lines
 - any doc above 500 lines should be treated as bloated unless there is a project-specific reason
 
-### 8. Validate after editing
+### 9. Validate after editing
 
 Run the audit again and check:
 - no duplicated managed blocks
@@ -130,7 +140,7 @@ Run the audit again and check:
 Before finishing, verify:
 
 - [ ] The first 30 lines explain the project and critical rules.
-- [ ] If the runtime supports local task planning, the doc says how to use it alongside beads without replacing beads.
+- [ ] If the runtime supports local task planning, the doc requires it before proceeding on non-trivial/multi-step work and says how to use it alongside normal beads operations without replacing beads.
 - [ ] Full command references are replaced by a tiny essential command surface plus `--help` or skill pointers.
 - [ ] Specialist guidance points to latest `/using-specialists-*`, preferring v3.
 - [ ] Service skills are mentioned if `.claude/service-registry.json` or service skills exist.
@@ -152,12 +162,12 @@ Run `bd prime` at session start, claim with `bd update <id> --claim` before edit
 
 ```md
 ## Specialists
-For substantial implementation, review, debugging, test generation, or orchestration, load the latest available `/using-specialists-*` skill. Prefer `/using-specialists-v3` when present. Use `specialists --help` / `sp --help` for CLI syntax.
+For substantial implementation, review, debugging, test generation, or orchestration, load the latest available `/using-specialists-*` skill. Prefer `/using-specialists` when present. Check `sp --help` and `sp list` / `specialists list` before choosing a role.
 ```
 
 **Service wiki → service-skill routing**
 
 ```md
 ## Services
-This repo has service-specific operational knowledge. Use `/scope "<task>"` or load `/using-service-skills` before touching service code. Keep detailed runbooks in service skills or docs, not in this always-loaded guide.
+This repo has service-specific operational knowledge. Use `/scope "<task>"` or load `/using-service-skills` for service/documentation/project context before touching service code. Keep detailed runbooks in the canonical service-skills skill set or docs, not in this always-loaded guide.
 ```

@@ -3,12 +3,16 @@
 ```md
 # <Project> — Claude Code Guide
 
-## Project summary
+## Project summary / Stack overview
 <2-5 lines: what this repo is, main runtime/language/package, current architecture in plain terms.>
+
+If a short summary is not enough for a fresh agent to understand the repo, add a Stack Overview before managed blocks. Use `references/stack-overview-template.md` for role, what runs here, public surface, sibling stacks, operational entry points, data flow, and what is not in this repo.
 
 ## Non-negotiable rules
 - Claim a bead before edits: `bd update <id> --claim`.
-- Use Claude Code task planning features for ephemeral step tracking on multi-step work when useful; beads remains authoritative for ownership/closure.
+- Before proceeding on non-trivial/multi-step work, use Claude Code task planning features (TaskCreate/TodoWrite-style when available) alongside normal bead operations; beads remains authoritative for ownership/closure.
+- At session start, check handoff beads/recent reports/closed PRs and `bd list --status=in_progress`; run `/issue-triage` if board state is unclear.
+- For specialist work, check `sp --help` and `sp list` / `specialists list` before choosing a role.
 - Before editing existing functions/classes/methods, run GitNexus impact analysis.
 - Close the bead and satisfy the memory gate before committing.
 - Run targeted quality gates after edits.
@@ -18,19 +22,17 @@
 | Need | Load/use |
 |---|---|
 | xtrm workflow / beads gates | `/using-xtrm`; CLI details: `bd --help`, `xt --help` |
-| Specialist orchestration | latest `/using-specialists-*`, prefer `/using-specialists-v3` |
+| Specialist orchestration | latest `/using-specialists-*`, prefer `/using-specialists` |
 | GitNexus impact/debug/refactor | `/gitnexus-impact-analysis`, `/gitnexus-debugging`, `/gitnexus-refactoring` |
-| Service routing | `/scope`, `/using-service-skills` when service registry/skills exist |
+| Service routing and docs/project context | `/scope`, `/using-service-skills` when service registry/skills exist |
 | Release/session close | `/releasing`, `/xt-end`, `/session-close-report` |
-Must use bd, gitnexus, specialists in smart ways. Before running any particular command - use the --help/help for each tool.
-
 ## Project map
 - `<path>` — <purpose>
 - `<path>` — <purpose>
 - `<path>` — <purpose>
 
 ## Claude Code notes
-- Use Serena symbol tools for code navigation and symbol edits.
+- Use the canonical service-skills skill set as the project/service documentation substrate; note stale/missing service skills before relying on them.
 - Use GitNexus before changing existing symbols.
 - Prefer targeted reads over full-file dumps.
 

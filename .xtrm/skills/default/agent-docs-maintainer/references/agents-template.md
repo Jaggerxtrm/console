@@ -3,12 +3,15 @@
 ```md
 # <Project> — Agent Guide
 
-## Project summary
+## Project summary / Stack overview
 <2-5 lines for any agent/runtime. Avoid Claude-only tool names here.>
+
+If a short summary is not enough for a fresh agent to understand the repo, add a Stack Overview before managed blocks. Use `references/stack-overview-template.md` for role, what runs here, public surface, sibling stacks, operational entry points, data flow, and what is not in this repo.
 
 ## Operating rules
 - Use beads as the authoritative issue tracker; claim before edits and close before commit.
-- Use runtime-local task planning only as ephemeral step tracking when useful; it does not replace beads.
+- Before proceeding on non-trivial/multi-step work, use runtime-local task planning when the runtime supports it; it must run alongside beads and does not replace beads.
+- At session start, check handoff beads/recent reports/closed PRs and `bd list --status=in_progress`; run `/issue-triage` if board state is unclear.
 - Ask before destructive or production-impacting actions.
 - Use project quality gates after edits.
 - Prefer project skills and CLI `--help` over copied manuals.
@@ -17,10 +20,9 @@
 | Need | Use |
 |---|---|
 | xtrm/beads workflow | `/using-xtrm`, `bd --help`, `xt --help` |
-| Specialists | latest `/using-specialists-*`, prefer `/using-specialists-v3`; `sp --help` |
-| Service expertise | `/scope`, `/using-service-skills` if service skills are present |
+| Specialists | latest `/using-specialists-*`, prefer `/using-specialists`; check `sp --help` and `sp list` |
+| Service expertise and docs/project context | `/scope`, `/using-service-skills` if service skills are present |
 | Planning/tests/docs | `/planning`, `/test-planning`, `/sync-docs` |
-Must use bd, gitnexus, specialists in smart ways. Before running any particular command - use the --help/help for each tool.
 ## Project map
 - `<path>` — <purpose>
 - `<path>` — <purpose>
@@ -28,13 +30,13 @@ Must use bd, gitnexus, specialists in smart ways. Before running any particular 
 
 ## Runtime notes
 - Pi: use process tool for long-running commands.
-- Generic agents: do not assume Claude-only Serena tools; use available code navigation tools.
+- Generic agents: use available code navigation tools, but route project/service context through the canonical service-skills skill set.
 
 ## Essential commands
 List only the handful needed every session: bd inspect/claim/close, specialist discovery/status if relevant, mandatory GitNexus calls, and project validation commands. For full syntax, use `--help`.
 
 ## Services
-If service registry or service skills exist, route service tasks through `/scope` before touching service code.
+If service registry or service skills exist, route service tasks through `/scope` before touching service code; note stale/missing service skills before relying on them.
 
 ## Current gotchas
 Max 5-10 active, current gotchas. No history.

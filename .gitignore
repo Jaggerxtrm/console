@@ -50,3 +50,6 @@ __pycache__/
 *.py[cod]
 # xtrm worktrees
 .xtrm/worktrees/
+
+# Beads / Dolt files (added by bd init)
+.beads/proxieddb/

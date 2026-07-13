@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "1",
+  "schemaVersion": "2",
   "enabledPacks": {
     "claude": [
       "ui-ux"
@@ -7,6 +7,22 @@
     "pi": [
       "ui-ux"
     ]
+  },
+  "managedLinks": {
+    "claude": {
+      "vercel-react-best-practices": ".xtrm/skills/ui-ux/react-best-practices",
+      "react-components": ".xtrm/skills/ui-ux/react-components",
+      "vercel-react-native-skills": ".xtrm/skills/ui-ux/react-native-skills",
+      "ui-pro-max": ".xtrm/skills/ui-ux/ui-pro-max",
+      "vercel-react": ".xtrm/skills/ui-ux/vercel-react"
+    },
+    "pi": {
+      "vercel-react-best-practices": ".xtrm/skills/ui-ux/react-best-practices",
+      "react-components": ".xtrm/skills/ui-ux/react-components",
+      "vercel-react-native-skills": ".xtrm/skills/ui-ux/react-native-skills",
+      "ui-pro-max": ".xtrm/skills/ui-ux/ui-pro-max",
+      "vercel-react": ".xtrm/skills/ui-ux/vercel-react"
+    }
   }
 }
 
