@@ -1,77 +1,81 @@
 # XTRM Agent Workflow
 
-> Full reference: [XTRM-GUIDE.md](XTRM-GUIDE.md) | Session manual: `/using-xtrm` skill
-> Run `bd prime` at session start (or after `/compact`) for live beads workflow context.
-> For command syntax, prefer `--help` (e.g. `bd --help`, `bv --help`, `xt --help`, `sp --help`) over copied tables.
+> Full reference: `XTRM-GUIDE.md` | Session manual: `/using-xtrm` skill.
+> This is a compact managed block. Use CLI `--help` and skills for details; do not paste full manuals here.
 
-## Session Start
+## Session start
 
-1. `bd prime` — load workflow context and active claims
-2. `bv --robot-triage` — ranked picks (or `bd ready` for raw queue)
-3. `bd update <id> --claim` — claim before any file edit
+1. `bd prime` — load workflow context and active claims.
+2. `bd memories <topic>` / `bd recall <key>` — retrieve durable context before answering questions or changing workflow-sensitive code.
+3. Catch up on recent work: check handoff/next-session beads, latest `xt report` handoffs, recent merged/closed PRs, and `bd list --status=in_progress`.
+4. `bv --robot-triage --format toon` or `bv --robot-next` — choose work when needed. Never run bare `bv`.
+5. If board state is unclear, run `/issue-triage` or the robot triage/plan commands before editing.
+6. For service/docs/project context, run `/scope` or `/using-service-skills`; note stale/missing service skills before relying on them.
+7. `bd ready` / `bd show <id>` / `bd update <id> --claim` — inspect and claim before edits.
+8. For non-trivial work, use Claude Code task planning features (TaskCreate/TodoWrite-style when available) before proceeding; keep the plan synchronized with the active bead.
 
-## Execution Interaction Policy
+## Operating rules
 
-- Proceed by default on standard implementation tasks once scope is clear.
-- Do **not** ask repetitive "Proceed?" confirmations.
-- Ask for confirmation only when actions are destructive, irreversible, or high-risk (e.g. `rm`, history rewrite, mass deletes, credential rotation, prod-impacting ops).
-- Prefer concise clarifying questions only when requirements are genuinely ambiguous.
+- Beads is authoritative for ownership, dependencies, memory gates, and closure.
+- Claude-local task plans are required for non-trivial/multi-step work but are ephemeral execution tracking only.
+- Close beads and satisfy memory ack before commit: `bd remember` when useful, then `bd kv set memory-acked:<id> saved:<key>` or `nothing novel:<reason>`, then `bd close <id> --reason="..."`.
+- Ask before destructive, irreversible, production-impacting, or history-rewriting actions.
+- Do not ask repetitive “Proceed?” confirmations for normal implementation once scope is clear.
 
-## Active Gates (hooks enforce these — not optional)
+## Code restraint (when implementing directly)
 
-| Gate | Trigger | Required action |
-|------|---------|-----------------|
-| **Edit** | Write/Edit without active claim | `bd update <id> --claim` |
-| **Commit** | `git commit` while claim is open | `bd close <id>` first, then commit |
-| **Stop** | Session end with unclosed claim | `bd close <id>` |
-| **Memory** | `bd close <id>` without issue ack | `bd remember "<insight>"` (or decide nothing novel), then `bd kv set "memory-acked:<id>" "saved:<key>"` (or `"nothing novel:<reason>"`), then retry `bd close <id> --reason="..."` |
+- YAGNI first. Lazy solution that actually works: reuse existing → stdlib → native → one line → minimum. Prefer deletion. No unrequested abstractions. Match existing project conventions; never invent a new style mid-file.
+- Never simplify away: input validation at trust boundaries, error handling preventing data loss, security, accessibility, explicitly requested behavior. Never lazy about understanding the problem.
+- Mark deliberate shortcuts `// SIMPLIFIED: <ceiling>. upgrade when <trigger>.` Unmarked shortcuts silently rot.
 
-## Essential commands
+## Essential command surface
 
-Tiny surface — for full syntax use `--help`.
+Use these as the minimal operational surface; use `--help` for full syntax.
 
-- **Work**: `bd ready`, `bd list --status=in_progress`, `bd show <id>`, `bd update <id> --claim`, `bd close <id> --reason="…"`
-- **Triage**: `bv --robot-triage` (use only `--robot-*` flags — bare `bv` opens a TUI that blocks the session)
-- **Memory**: `bd remember "<insight>"`, `bd memories <kw>`, `bd recall <key>`
-- **Specialists**: `sp list`, `sp ps`, `sp feed <job>`, `sp result <job>` — load `/using-specialists-v3` (or latest `/using-specialists-*`) for orchestration
-- **Worktrees**: `xt claude` (new session), `xt end` (commit / push / PR / cleanup)
-
-## Git Workflow
-
-Strict: one branch per issue.
-
-```bash
-git checkout -b feature/<issue-id>-<slug>
-bd update <id> --claim
-# ... edit ...
-bd close <id> --reason="..."
-xt end
-```
-
-Never continue new work on a previously-shipped branch.
-
-## Code Intelligence (mandatory before edits)
-
-- **Serena** (`/using-serena-lsp`): symbol-aware reads and edits. Never grep-read-sed when symbolic tools are available.
-- **GitNexus** MCP — required before touching any symbol:
-  - `gitnexus_impact({target, direction: "upstream"})` — blast radius
-  - `gitnexus_detect_changes()` — verify scope before commit
-  - Stop and warn the user on HIGH/CRITICAL risk.
-  - For deeper workflows: `/gitnexus-impact-analysis`, `/gitnexus-debugging`, `/gitnexus-refactoring`.
-
-## Quality Gates (automatic on every edit, via PostToolUse hooks)
-
-- TS/JS: ESLint + tsc
-- Python: ruff + mypy
-
-Fix failures before committing.
+- `bd prime`, `bd ready`, `bd list --status=in_progress`, `bd show <id>`
+- `bd update <id> --claim`, `bd remember "<insight>"`, `bd close <id> --reason="..."`
+- `bd set-state <id> <dim>=<val> --reason="..."`, `bd state <id> <dim>` — operational state labels (e.g. `contract=ready`, `patrol=muted`, `health=healthy`)
+- `bd ready --claim` — atomic claim-on-ready; `bd ready --explain` — why an issue is ready/blocked
+- `bd create --graph <plan.json> --dry-run` — issue-graph decomposition; `--waits-for <id> --waits-for-gate all-children|any-children` for fan-in/out; `--spec-id`/`--skills` to link specs/required skills
+- `bv --robot-triage --format toon`, `bv --robot-next` — never bare `bv`
+- `xt report list` / latest report file, `xt update --apply`, `xt end`
+- `xt worktree --help` — PR/branch/restart audit primitives (`audit-prs`, `branch-gc`, `restart-audit`); pair with specialists `doctor --pr-drift` / `doctor --reap-dead-jobs`. Details: `/using-xtrm`.
+- `gh pr list --state merged --limit 5` or equivalent host CLI when PR context matters
+- `sp --help`, `sp list` / `specialists list`, `sp ps`, `sp feed <job-id>`, `sp result <job-id>`
 
 ## Skill routing
 
-| Need | Load |
-|------|------|
-| xtrm workflow / gates | `/using-xtrm` |
-| Specialist orchestration | `/using-specialists-v3` (or latest available) |
-| GitNexus impact / debug / refactor | `/gitnexus-impact-analysis`, `/gitnexus-debugging`, `/gitnexus-refactoring` |
-| Service-scoped tasks | `/scope`, `/using-service-skills` |
-| Release / session close | `/releasing`, `/xt-end`, `/session-close-report` |
+| Need | Use |
+|---|---|
+| xtrm/beads workflow | `/using-xtrm`; `bd --help`; `xt --help` |
+| Specialist orchestration | latest `/using-specialists-*`, prefer `/using-specialists`; check `sp --help` + `sp list` first |
+| Service/docs/project context | canonical service-skills skill set: `/scope`, `/using-service-skills` |
+| Planning/tests/docs | `/planning`, `/test-planning`, `/sync-docs` |
+| Board unclear/backlog messy | `/issue-triage`; `bv --robot-triage --format toon`; `bv --robot-plan` |
+| Release/session close | `/releasing`, `/xt-end`, `/session-close-report`, `/xt-merge` |
+| Hook/skill work | `/hook-development`, `/skill-creator` |
+
+## Code intelligence and edits
+
+- Before editing an existing function/class/method, run GitNexus impact analysis.
+- Warn before proceeding if impact risk is HIGH or CRITICAL.
+- For unfamiliar code, query GitNexus execution flows before broad grep-heavy reads.
+- Before commit or handoff, run `gitnexus_detect_changes()` to verify affected scope.
+- Prefer targeted symbol/file reads and precise edits over whole-tree dumps.
+- When Serena is available, prefer symbolic tools (`find_symbol` → `get_symbols_overview` → `replace_symbol_body`; `find_referencing_symbols`/`rename_symbol` for LSP-accurate references) over grep-read-sed for code reads and edits.
+
+## Context and output management
+
+- Use context-mode automatically to keep command/file output compact: `ctx_execute` for logs, tests, large command output, and structured data processing; `ctx_execute_file` for deriving facts from files without dumping contents; `ctx_batch_execute` for multi-command research; `ctx_search` for previously indexed material.
+- Use normal read/edit tools only when exact file text is needed for a patch. Do not `cat`/dump large outputs into the conversation when a context-mode tool can summarize or index them.
+
+## Quality gates
+
+- Run targeted tests/build/typecheck relevant to changed files.
+- Fix quality failures before commit.
+
+## Worktree sessions
+
+- `xt claude` — launch Claude Code in a sandboxed worktree.
+- `xt claude --role <specialist>` — spawn an interactive specialist session (e.g. `chain-coordinator` for tracking epic chains, `pr-reviewer`, `sre-triage`). Coordination and escalation live in `/multiplexing` Pattern 7 and `/using-specialists`.
+- `xt end` — close session: commit / push / PR / cleanup when appropriate.

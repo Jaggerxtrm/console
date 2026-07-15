@@ -50,3 +50,11 @@ __pycache__/
 *.py[cod]
 # xtrm worktrees
 .xtrm/worktrees/
+
+# Beads / Dolt files (added by bd init)
+.beads/proxieddb/
+
+# xtrm runtime state (per-machine, do not track)
+.xtrm/skills/state.json
+.pi/skills/
+.xtrm/cache/
