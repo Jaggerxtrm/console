@@ -143,6 +143,28 @@ describe("realtime runtime", () => {
     expect(handler.connectionCount()).toBe(1);
   });
 
+  it("stops replay after backpressure and removes subscriber", () => {
+    const registry = new RealtimeChannelRegistry();
+    const backpressure: unknown[] = [];
+    const handler = new RealtimeConnectionHandler(registry, { onBackpressure: (event) => backpressure.push(event) });
+    const raw = makeRaw(-1);
+    const connectionId = handler.connect(raw);
+    registry.publish("system", "system:log", { marker: "first" });
+    registry.publish("system", "system:log", { marker: "second" });
+    registry.publish("system", "system:log", { marker: "third" });
+
+    handler.resume(connectionId, "system", 1, registry.getBootId());
+
+    expect(raw.sent).toHaveLength(1);
+    expect(raw.sent[0]).toContain("second");
+    expect(raw.sent[0]).not.toContain("first");
+    expect(raw.sent[0]).not.toContain("third");
+    expect(raw.close).toHaveBeenCalledWith(1013);
+    expect(handler.connectionCount()).toBe(0);
+    expect(registry.subscriberCount("system")).toBe(0);
+    expect(backpressure).toEqual([expect.objectContaining({ channel: "system", status: "backpressure", bytes: expect.any(Number) })]);
+  });
+
   it("sync-hints instead of sending an oversized replay batch", () => {
     const registry = new RealtimeChannelRegistry();
     const handler = new RealtimeConnectionHandler(registry);

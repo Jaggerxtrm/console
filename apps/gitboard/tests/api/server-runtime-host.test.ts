@@ -84,6 +84,45 @@ describe("gitboard runtime host compatibility", () => {
     }
   });
 
+  it("does not start stale watcher after a newer app lifecycle replaces it", async () => {
+    const root = mkdtempSync(join(tmpdir(), "gitboard-runtime-host-stale-lifecycle-"));
+    tempDirs.push(root);
+    const db = createXtrmDatabase(join(root, "xtrm.sqlite"));
+    const refreshes: Array<Promise<never[]>> = [];
+    const releases: Array<(value: never[]) => void> = [];
+    let watcherStarts = 0;
+    const scannerStart = vi.spyOn(UnifiedScanner.prototype, "start").mockImplementation(() => undefined);
+    const scannerRefresh = vi.spyOn(UnifiedScanner.prototype, "refresh").mockImplementation(() => {
+      const refresh = new Promise<never[]>((resolve) => { releases.push(resolve); });
+      refreshes.push(refresh);
+      return refresh;
+    });
+    const watcherStart = vi.spyOn(TriggerWatcher.prototype, "start").mockImplementation(() => { watcherStarts += 1; });
+
+    try {
+      createApp(db, db);
+      createApp(db, db);
+      expect(scannerRefresh).toHaveBeenCalledTimes(2);
+
+      releases[0]([]);
+      await refreshes[0];
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(watcherStarts).toBe(0);
+
+      releases[1]([]);
+      await refreshes[1];
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(watcherStarts).toBe(1);
+    } finally {
+      scannerStart.mockRestore();
+      scannerRefresh.mockRestore();
+      watcherStart.mockRestore();
+      db.close();
+    }
+  });
+
   it("publishes Datasette SQL proxy only when explicit debug flag is enabled", () => {
     const root = mkdtempSync(join(tmpdir(), "gitboard-runtime-host-debug-"));
     tempDirs.push(root);

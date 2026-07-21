@@ -75,6 +75,7 @@ describe("ProjectScanner", () => {
     const originalScanAll = scannerWithPrivateMethods.scanAll;
     const originalScanPath = scannerWithPrivateMethods.scanPath;
     let scanCallers = 0;
+    let completedScans = 0;
     let rootTraversals = 0;
     let releaseTraversal!: () => void;
     let secondCaller!: () => void;
@@ -94,15 +95,63 @@ describe("ProjectScanner", () => {
     };
     const materializer = { register: () => undefined, trigger: () => undefined } as unknown as Materializer;
     const watcher = new TriggerWatcher(materializer, db, new ChannelRegistry(), scanner);
+    let allScansDone!: () => void;
+    const scansDone = new Promise<void>((resolve) => { allScansDone = resolve; });
+    scannerWithPrivateMethods.scanAll = async () => {
+      scanCallers += 1;
+      if (scanCallers === 2) secondCaller();
+      const result = await originalScanAll.call(scanner);
+      completedScans += 1;
+      if (completedScans === 2) allScansDone();
+      return result;
+    };
 
-    watcher.start();
-    await secondCallerReady;
-    releaseTraversal();
-    await new Promise<void>((resolve) => setTimeout(resolve, 30));
-    watcher.stop();
+    try {
+      watcher.start();
+      await secondCallerReady;
+      releaseTraversal();
+      await scansDone;
+    } finally {
+      watcher.stop();
+      db.close();
+    }
 
     expect(scanCallers).toBe(2);
     expect(rootTraversals).toBe(1);
-    db.close();
+  });
+
+  it("clears in-flight traversal after resolve and reject", async () => {
+    const scanner = new ProjectScanner({ scanPaths: [tmpDir], excludePatterns: ["node_modules", ".git"], maxDepth: 5 });
+    const scannerWithPrivateMethods = scanner as unknown as {
+      scanAll: () => Promise<unknown[]>;
+      scanPath: (path: string, depth: number) => Promise<unknown[]>;
+    };
+    const originalScanPath = scannerWithPrivateMethods.scanPath;
+    let rootTraversals = 0;
+    scannerWithPrivateMethods.scanPath = async (path, depth) => {
+      if (depth === 0) rootTraversals += 1;
+      return originalScanPath.call(scanner, path, depth);
+    };
+
+    await scanner.scanAll();
+    await scanner.scanAll();
+    expect(rootTraversals).toBe(2);
+
+    const rejectingScanner = new ProjectScanner({ scanPaths: [tmpDir], excludePatterns: ["node_modules", ".git"], maxDepth: 5 });
+    const rejectingScannerWithPrivateMethods = rejectingScanner as unknown as {
+      scanPath: (path: string, depth: number) => Promise<unknown[]>;
+    };
+    const rejectingOriginalScanPath = rejectingScannerWithPrivateMethods.scanPath;
+    let reject = true;
+    rejectingScannerWithPrivateMethods.scanPath = async (path, depth) => {
+      if (reject) {
+        reject = false;
+        throw new Error("synthetic scan failure");
+      }
+      return rejectingOriginalScanPath.call(rejectingScanner, path, depth);
+    };
+
+    await expect(rejectingScanner.scanAll()).rejects.toThrow("synthetic scan failure");
+    await expect(rejectingScanner.scanAll()).resolves.toHaveLength(1);
   });
 });

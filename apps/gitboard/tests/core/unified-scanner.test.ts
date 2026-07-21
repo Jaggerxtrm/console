@@ -3,6 +3,7 @@ import { mkdtemp, rm, mkdir, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 import { createXtrmDatabase } from "../../src/core/xtrm-store.ts";
+import { getRing } from "../../src/core/logger.ts";
 import { normalizeLegacySourceStatus, UnifiedScanner } from "../../src/core/unified-scanner.ts";
 
 describe("UnifiedScanner", () => {
@@ -149,6 +150,31 @@ describe("UnifiedScanner", () => {
     scanner.stop();
 
     expect(scans).toBe(1);
+    db.close();
+  });
+
+  it("records non-missing probe failures as structured warnings", () => {
+    const db = createXtrmDatabase(dbPath);
+    const scannerWithPrivateMethods = new UnifiedScanner(db, { beadsSearchPath: tmpDir, observabilityRoots: [tmpDir], parityEnabled: false }) as unknown as {
+      logProbeFailure: (stage: string, path: string, error: unknown) => void;
+    };
+    const before = getRing().length;
+    const error = Object.assign(new Error("permission denied"), { code: "EACCES" });
+
+    scannerWithPrivateMethods.logProbeFailure("beads scan", "/isolated/denied", error);
+
+    expect(getRing().slice(before)).toEqual([
+      expect.objectContaining({
+        component: "system",
+        event: "scanner.probe",
+        level: "warn",
+        data: expect.objectContaining({
+          stage: "beads scan",
+          path: "/isolated/denied",
+          error: "Error: permission denied",
+        }),
+      }),
+    ]);
     db.close();
   });
 
