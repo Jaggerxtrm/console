@@ -61,7 +61,7 @@ describe("observability verifier", () => {
       JSON.stringify({ ts: "2026-05-24T00:00:01.000Z", level: "error", component: "api", event: "request", data: { duration_ms: 20, outcome: "error" } }),
     ].join("\n") + "\n");
     const verifier = new Verifier({ dir });
-    const result = verifier.verify("2026-05-24T00:00:00.000Z", "2026-05-24T00:10:00.000Z");
+    const result = await verifier.verify("2026-05-24T00:00:00.000Z", "2026-05-24T00:10:00.000Z");
     expect(result.error_count).toBe(1);
     const router = createInternalVerifyRouter();
     const app = new Hono().route("/api/internal", router);
