@@ -1,10 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
-import { REALTIME_PROTOCOL_VERSION, RealtimeChannelRegistry, RealtimeConnectionHandler, type RealtimeSubscriber } from "../src/runtime/index.ts";
+import { REALTIME_PROTOCOL_VERSION, RealtimeChannelRegistry, RealtimeConnectionHandler, type RealtimeSendResult, type RealtimeSubscriber } from "../src/runtime/index.ts";
 
-function makeRaw() {
+function makeRaw(sendResult: RealtimeSendResult = undefined) {
   const sent: string[] = [];
   return {
-    send: (data: string) => sent.push(data),
+    send: (data: string) => {
+      sent.push(data);
+      return sendResult;
+    },
     close: vi.fn(),
     sent,
   };
@@ -78,6 +81,66 @@ describe("realtime runtime", () => {
     handler.handleMessage(connectionId, JSON.stringify({ action: "resume", channel: "github:activity", since_seq: 1, boot_id: "other" }));
 
     expect(JSON.parse(raw.sent[0])).toMatchObject({ event: "github:sync_hint", data: { reason: "buffer_miss", since_seq: 1 } });
+  });
+
+  it("replays buffered envelopes in sequence order without crossing channels", () => {
+    const registry = new RealtimeChannelRegistry();
+    const handler = new RealtimeConnectionHandler(registry);
+    const raw = makeRaw();
+    const connectionId = handler.connect(raw);
+    handler.subscribe(connectionId, "system");
+    handler.subscribe(connectionId, "github:activity");
+    registry.publish("system", "system:log", { source: "system-only" });
+    registry.publish("github:activity", "github:event.append", { source: "github-only" });
+    registry.publish("system", "system:log", { source: "system-second" });
+    registry.publish("system", "system:log", { source: "system-third" });
+    raw.sent.length = 0;
+
+    handler.resume(connectionId, "system", 1, registry.getBootId());
+
+    expect(raw.sent.map((message) => JSON.parse(message))).toEqual([
+      expect.objectContaining({ channel: "system", seq: 2, data: { source: "system-second" } }),
+      expect.objectContaining({ channel: "system", seq: 3, data: { source: "system-third" } }),
+    ]);
+    expect(raw.sent.some((message) => message.includes("github-only"))).toBe(false);
+  });
+
+  it.each([
+    { label: "false", result: false as const, status: "backpressure" as const },
+    { label: "zero", result: 0 as const, status: "dropped" as const },
+  ])("disconnects and reports $label send results", ({ result, status }) => {
+    const registry = new RealtimeChannelRegistry();
+    const backpressure: unknown[] = [];
+    const handler = new RealtimeConnectionHandler(registry, { onBackpressure: (event) => backpressure.push(event) });
+    const raw = makeRaw(result);
+    const connectionId = handler.connect(raw);
+    handler.subscribe(connectionId, "system");
+
+    registry.publish("system", "system:log", { secret: "must-not-enter-telemetry" });
+
+    expect(raw.close).toHaveBeenCalledWith(1013);
+    expect(handler.connectionCount()).toBe(0);
+    expect(registry.subscriberCount("system")).toBe(0);
+    expect(backpressure).toEqual([expect.objectContaining({ channel: "system", status, bytes: expect.any(Number) })]);
+    expect(JSON.stringify(backpressure)).not.toContain("must-not-enter-telemetry");
+  });
+
+  it.each([
+    { label: "void", result: undefined },
+    { label: "true", result: true },
+    { label: "positive number", result: 1 },
+  ])("keeps $label send results compatible", ({ result }) => {
+    const registry = new RealtimeChannelRegistry();
+    const handler = new RealtimeConnectionHandler(registry);
+    const raw = makeRaw(result);
+    const connectionId = handler.connect(raw);
+    handler.subscribe(connectionId, "system");
+
+    registry.publish("system", "system:log", { event: "delivered" });
+
+    expect(raw.sent).toHaveLength(1);
+    expect(raw.close).not.toHaveBeenCalled();
+    expect(handler.connectionCount()).toBe(1);
   });
 
   it("sync-hints instead of sending an oversized replay batch", () => {

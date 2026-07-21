@@ -1,11 +1,15 @@
 import { describe, it, expect, vi } from "vitest";
 import { ChannelRegistry } from "../../../src/api/ws/channels.ts";
 import { WsHandler } from "../../../src/api/ws/handler.ts";
+import { getRing, setDiskEnabled } from "../../../src/core/logger.ts";
 
-function makeRaw() {
+function makeRaw(sendResult?: boolean | number) {
   const sent: string[] = [];
   return {
-    send: (data: string) => sent.push(data),
+    send: (data: string) => {
+      sent.push(data);
+      return sendResult;
+    },
     close: vi.fn(),
     sent,
   };
@@ -105,5 +109,36 @@ describe("WsHandler", () => {
     expect(() =>
       handler.handleMessage("nonexistent", JSON.stringify({ action: "subscribe", channel: "system", version: "1" }))
     ).not.toThrow();
+  });
+
+  it("disconnects backpressured channel without cross-channel or payload leakage", () => {
+    setDiskEnabled(false);
+    const before = getRing().length;
+    const reg = new ChannelRegistry();
+    const handler = new WsHandler(reg);
+    const slow = makeRaw(-1);
+    const healthy = makeRaw();
+    const slowId = handler.connect(slow);
+    const healthyId = handler.connect(healthy);
+    handler.subscribe(slowId, "system");
+    handler.subscribe(healthyId, "github:activity");
+
+    reg.publish("github:activity", "github:event.append", { marker: "github-only" });
+    expect(healthy.sent).toHaveLength(1);
+    expect(slow.sent).toHaveLength(0);
+    reg.publish("system", "system:log", { marker: "secret-log-body" });
+
+    expect(slow.close).toHaveBeenCalledWith(1013);
+    expect(handler.connectionCount()).toBe(1);
+    const backpressureLogs = getRing().slice(before).filter((entry) => entry.event === "ws.publish.backpressure");
+    expect(backpressureLogs).toEqual([
+      expect.objectContaining({
+        component: "ws",
+        level: "warn",
+        data: expect.objectContaining({ channel: "system", status: "backpressure", bytes: expect.any(Number) }),
+      }),
+    ]);
+    expect(JSON.stringify(backpressureLogs)).not.toContain("secret-log-body");
+    expect(JSON.stringify(backpressureLogs)).not.toContain("github-only");
   });
 });
