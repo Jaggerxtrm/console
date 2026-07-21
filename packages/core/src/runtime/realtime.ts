@@ -56,7 +56,7 @@ export interface RealtimeConnection {
 }
 
 export interface RealtimeRawConnection {
-  send(data: string): void;
+  send(data: string): RealtimeSendResult;
   close(code?: number): void;
 }
 
@@ -64,9 +64,15 @@ export interface RealtimeConnectionHandlerOptions {
   readonly onConnect?: (id: string) => void;
   readonly onDisconnect?: (id: string) => void;
   readonly onVersionMismatch?: (event: { readonly id: string; readonly channel: RealtimeChannelName; readonly version: unknown }) => void;
+  readonly onBackpressure?: (event: { readonly id: string; readonly channel: RealtimeChannelName; readonly bytes: number; readonly status: "backpressure" | "dropped" }) => void;
 }
 
+export type RealtimeSendResult = void | boolean | number;
+
 const RING_BUFFER_SIZE = 500;
+const MAX_REPLAY_BYTES = 1024 * 1024;
+const BACKPRESSURE_CLOSE_CODE = 1013;
+const textEncoder = new TextEncoder();
 
 export class RealtimeChannelRegistry implements RealtimeRegistry {
   private readonly channels = new Map<string, Set<RealtimeSubscriber>>();
@@ -182,10 +188,26 @@ export class RealtimeConnectionHandler {
     const connection = this.connections.get(connectionId);
     if (!connection?.subscriber) return;
     if (this.registry.hasReplayGap(channel, sinceSeq, bootId ?? "")) {
-      connection.raw.send(JSON.stringify(createSyncHint(channel, sinceSeq)));
+      this.send(connection, JSON.stringify(createSyncHint(channel, sinceSeq)), channel);
       return;
     }
-    for (const envelope of this.registry.replay(channel, sinceSeq, bootId ?? "")) connection.raw.send(JSON.stringify(envelope));
+
+    const replay = this.registry.replay(channel, sinceSeq, bootId ?? "");
+    const serialized: string[] = [];
+    let replayBytes = 0;
+    for (const envelope of replay) {
+      const message = JSON.stringify(envelope);
+      const bytes = byteLength(message);
+      if (replayBytes + bytes > MAX_REPLAY_BYTES) {
+        this.send(connection, JSON.stringify(createSyncHint(channel, sinceSeq, "replay_overload")), channel);
+        return;
+      }
+      serialized.push(message);
+      replayBytes += bytes;
+    }
+    for (const message of serialized) {
+      if (!this.send(connection, message, channel)) return;
+    }
   }
 
   disconnect(connectionId: string): void {
@@ -226,14 +248,34 @@ export class RealtimeConnectionHandler {
     return {
       id: connection.id,
       send: (message) => {
-        try {
-          connection.raw.send(JSON.stringify(message));
-        } catch {
-          this.disconnect(connection.id);
-        }
+        this.send(connection, JSON.stringify(message), message.channel);
       },
     };
   }
+
+  private send(connection: RealtimeConnection, message: string, channel: RealtimeChannelName): boolean {
+    const bytes = byteLength(message);
+    try {
+      const result = connection.raw.send(message);
+      if (result === false || (typeof result === "number" && result <= 0)) {
+        try {
+          connection.raw.close(BACKPRESSURE_CLOSE_CODE);
+        } catch {}
+        this.disconnect(connection.id);
+        const status = result === 0 ? "dropped" : "backpressure";
+        this.options.onBackpressure?.({ id: connection.id, channel, bytes, status });
+        return false;
+      }
+      return true;
+    } catch {
+      this.disconnect(connection.id);
+      return false;
+    }
+  }
+}
+
+function byteLength(message: string): number {
+  return textEncoder.encode(message).byteLength;
 }
 
 type ClientMessage =
@@ -263,7 +305,7 @@ function isClientMessageObject(message: unknown): message is Record<string, unkn
   return typeof message === "object" && message !== null && "action" in message && "channel" in message;
 }
 
-function createSyncHint(channel: RealtimeChannelName, sinceSeq: number): RealtimeMessage {
+function createSyncHint(channel: RealtimeChannelName, sinceSeq: number, reason = "buffer_miss"): RealtimeMessage {
   const event = channel.startsWith("substrate:") ? "substrate:sync_hint" : channel.startsWith("specialists:") ? "specialists:sync_hint" : "github:sync_hint";
-  return { type: "event", channel, event, data: { reason: "buffer_miss", channel, since_seq: sinceSeq } };
+  return { type: "event", channel, event, data: { reason, channel, since_seq: sinceSeq } };
 }

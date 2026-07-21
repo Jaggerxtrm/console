@@ -79,4 +79,41 @@ describe("realtime runtime", () => {
 
     expect(JSON.parse(raw.sent[0])).toMatchObject({ event: "github:sync_hint", data: { reason: "buffer_miss", since_seq: 1 } });
   });
+
+  it("sync-hints instead of sending an oversized replay batch", () => {
+    const registry = new RealtimeChannelRegistry();
+    const handler = new RealtimeConnectionHandler(registry);
+    const raw = makeRaw();
+    const connectionId = handler.connect(raw);
+    const payload = { blob: "x".repeat(600_000) };
+    registry.publish("github:activity", "github:event.append", payload);
+    registry.publish("github:activity", "github:event.append", payload);
+    registry.publish("github:activity", "github:event.append", payload);
+
+    handler.resume(connectionId, "github:activity", 1, registry.getBootId());
+
+    expect(raw.sent).toHaveLength(1);
+    expect(JSON.parse(raw.sent[0])).toMatchObject({ event: "github:sync_hint", data: { reason: "replay_overload" } });
+  });
+
+  it("disconnects slow raw connections across reconnect cycles", () => {
+    const registry = new RealtimeChannelRegistry();
+    const backpressure = [] as Array<{ id: string; channel: string; bytes: number; status: string }>;
+    const handler = new RealtimeConnectionHandler(registry, { onBackpressure: (event) => backpressure.push(event) });
+
+    for (let cycle = 0; cycle < 20; cycle += 1) {
+      const close = vi.fn();
+      const raw = { send: vi.fn(() => -1), close };
+      const connectionId = handler.connect(raw);
+      handler.subscribe(connectionId, "system");
+      registry.publish("system", "system:log", { event: `slow-client-${cycle}` });
+
+      expect(close).toHaveBeenCalledWith(1013);
+      expect(handler.connectionCount()).toBe(0);
+    }
+
+    expect(registry.subscriberCount("system")).toBe(0);
+    expect(backpressure).toHaveLength(20);
+    expect(backpressure.every((event) => event.bytes > 0 && event.status === "backpressure")).toBe(true);
+  });
 });

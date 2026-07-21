@@ -276,6 +276,8 @@ export function startServer(xtrmDb: Database, options: ServerOptions = {}): void
       return app.fetch(req);
     },
     websocket: {
+      backpressureLimit: 1024 * 1024,
+      closeOnBackpressureLimit: true,
       open(ws) {
         const path = (ws.data as { path?: string } | undefined)?.path ?? "";
         if (path.startsWith("/api/console/terminal/ws")) {
@@ -286,7 +288,7 @@ export function startServer(xtrmDb: Database, options: ServerOptions = {}): void
         }
         const id = wsHandler.connect({
           send: (data) => ws.send(data),
-          close: () => ws.close(),
+          close: (code) => ws.close(code),
         });
         (ws as typeof ws & { connId: string }).connId = id;
         ws.send(JSON.stringify({ type: "connected", id }));
