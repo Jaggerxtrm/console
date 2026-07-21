@@ -73,7 +73,7 @@ describe("createAttachPool", () => {
     expect(String(warn.mock.calls[0]?.[0])).toContain("schema_version");
   });
 
-  it("accepts v0 db with required observability tables", () => {
+  it("accepts v0 db with required observability tables", async () => {
     const root = mkdtempSync(join(tmpdir(), "gitboard-attach-pool-"));
     roots.push(root);
     const dbPath = join(root, "observability.db");
@@ -81,6 +81,7 @@ describe("createAttachPool", () => {
     const pool = createAttachPool([
       { repoSlug: "repo-b", repoPath: root, dbPath, mtimeMs: 0 },
     ]);
+    await pool.ready;
 
     const jobs = pool.withAttached((db) => db.prepare("SELECT count(*) AS count FROM repo_repo_b_0.specialist_jobs").get() as { count: number });
 

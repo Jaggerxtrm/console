@@ -73,6 +73,17 @@ describe("logger runtime", () => {
     expect(existsSync(oldFile)).toBe(false);
   });
 
+  it("flush waits for every queued disk write", async () => {
+    const dir = join(tmpRoot, "queued");
+    const logger = createLoggerRuntime({ diskDir: dir });
+
+    logger.emit(entry("2026-05-19T00:00:00.000Z", "info", "first"));
+    logger.emit(entry("2026-05-19T00:00:01.000Z", "warn", "second"));
+    await logger.flush();
+
+    expect((await readFile(join(dir, "2026-05-19.jsonl"), "utf8")).trim().split("\n").map((line) => JSON.parse(line).event)).toEqual(["first", "second"]);
+  });
+
   it("does not fall back to cwd logs when storage init fails", async () => {
     const blockedParent = join(tmpRoot, "blocked-parent");
     await mkdir(tmpRoot, { recursive: true });

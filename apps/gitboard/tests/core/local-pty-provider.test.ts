@@ -51,6 +51,7 @@ function createProvider(factory?: PtyFactory, overrides: Partial<NodeJS.ProcessE
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.unstubAllEnvs();
 });
 
 describe("LocalPtyProvider", () => {
@@ -97,6 +98,19 @@ describe("LocalPtyProvider", () => {
     expect(capturedEnv?.LANG).toBe(process.env.LANG);
     expect(capturedEnv?.USER).toBeDefined();
     expect(capturedEnv?.PWD).toBe(root);
+  });
+
+  it("inherits runtime LANG without requiring machine locale", () => {
+    vi.stubEnv("LANG", "C.UTF-8");
+    let capturedEnv: NodeJS.ProcessEnv | undefined;
+    const root = mkdtempSync(join(tmpdir(), "pty-root-"));
+    mkdirSync(join(root, "allowed"), { recursive: true });
+    const provider = createProvider({ create: (options) => { capturedEnv = options.env; return new MockPty(); } }, {}, root);
+
+    provider.createSession({ cwd: "allowed", shell: "/bin/bash" });
+
+    expect(capturedEnv?.LANG).toBe("C.UTF-8");
+    provider.dispose();
   });
 
   it("rejects cwd outside allowlist, non-existent cwd, and shell outside allowlist", () => {
