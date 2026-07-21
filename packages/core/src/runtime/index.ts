@@ -5,4 +5,3 @@ export * from "./realtime.ts";
 export * from "./source-lifecycle-policy.ts";
 export * from "./source-lifecycle.ts";
 export * from "./source-refresh-lifecycle.ts";
-export * from "./verifier.ts";

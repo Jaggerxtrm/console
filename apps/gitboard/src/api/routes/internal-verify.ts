@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { Verifier } from "../../core/observability/verifier.ts";
+import { Verifier } from "../../../../../packages/core/src/runtime/verifier.ts";
 import { emit, makeLogEntry } from "../../core/logger.ts";
 
 export function createInternalVerifyRouter(): Hono {

@@ -50,6 +50,10 @@ export function createLoggerRuntime(options: LoggerRuntimeOptions) {
     publisher = nextPublisher;
   }
 
+  function flush(): Promise<void> {
+    return writeChain;
+  }
+
   function emit(entry: LogEntry): void {
     pushRing(entry);
     if (diskEnabled) queueDiskWrite(entry);
@@ -164,7 +168,7 @@ export function createLoggerRuntime(options: LoggerRuntimeOptions) {
     } catch {}
   }
 
-  return { emit, getRing, subscribe, setDiskEnabled, setLogLevel, setRealtimePublisher, ensureLogStorage, getLogDiskDir };
+  return { emit, flush, getRing, subscribe, setDiskEnabled, setLogLevel, setRealtimePublisher, ensureLogStorage, getLogDiskDir };
 }
 
 type LogPaths = {

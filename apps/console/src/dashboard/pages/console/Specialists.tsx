@@ -3,6 +3,7 @@ import { AlertIcon, DotFillIcon } from "@primer/octicons-react";
 import { logClientEvent } from "../../lib/client-log.ts";
 import { useChains, type ChainStatus } from "../../hooks/useChains.ts";
 import { useGraphData } from "../../hooks/useGraphData.ts";
+import { beadSideDrawer } from "../../hooks/useBeadSideDrawer.ts";
 import { getSpecialistRepoScope } from "../../lib/specialist-scope.ts";
 import { selectRepos, selectSelection, useShellStore } from "../../stores/shell.ts";
 import { ChainCard } from "./specialists/ChainCard.tsx";
@@ -90,7 +91,15 @@ export function Specialists() {
           <div className="console-specialists-empty-state-message"><DotFillIcon size={10} /><span>No chains match the active filters</span></div>
         ) : (
           <div className="console-specialists-card-list">
-            {selection.visibleChains.map((chain) => <ChainCard key={chain.chainId} chain={chain} issueContext={issueContextByChain.get(chain.chainId)} selected={selection.selectedChain?.chainId === chain.chainId} onSelect={() => setSelectedChainId(chain.chainId)} />)}
+            {selection.visibleChains.map((chain) => <ChainCard key={chain.chainId} chain={chain} issueContext={issueContextByChain.get(chain.chainId)} selected={selection.selectedChain?.chainId === chain.chainId} onSelect={() => {
+              setSelectedChainId(chain.chainId);
+              beadSideDrawer.open({
+                beadId: chain.rootBeadId,
+                jobId: chain.jobs.at(-1)?.jobId ?? null,
+                chainId: chain.chainId,
+                tab: "activity",
+              });
+            }} />)}
           </div>
         )}
       </div>
