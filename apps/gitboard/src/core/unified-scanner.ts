@@ -271,10 +271,7 @@ export class UnifiedScanner {
 
   private logProbeFailure(stage: string, path: string, error: unknown): void {
     const code = error instanceof Error && "code" in error ? String((error as { code?: unknown }).code ?? "") : "";
-    if (code === "ENOENT" || code === "ENOTDIR" || code === "EACCES") {
-      console.debug(`[scanner] ${stage} miss ${path}: ${error instanceof Error ? `${error.name}: ${error.message}` : String(error)}`);
-      return;
-    }
+    if (code === "ENOENT" || code === "ENOTDIR") return;
     const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
     emit(makeLogEntry("system", "scanner.probe", "warn", undefined, { stage, path, error: message }));
   }

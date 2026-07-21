@@ -104,6 +104,7 @@ export function createApp(db: Database, xtrmDb?: Database): {
   currentUnifiedScanner?.stop();
   currentUnifiedScanner = lifecycle.scanner;
   currentUnifiedScanner?.start();
+  const startupScannerRefresh = currentUnifiedScanner?.refresh();
   if (materializer && xtrmDb) {
     for (const repo of obsRepos) {
       const sourceKey = `obs:${repo.repoSlug}`;
@@ -127,7 +128,15 @@ export function createApp(db: Database, xtrmDb?: Database): {
   setRealtimePublisher(registry);
   currentWatcher?.stop();
   currentWatcher = lifecycle.beadsWatcher;
-  currentWatcher?.start();
+  const watcher = currentWatcher;
+  if (startupScannerRefresh && watcher) {
+    void startupScannerRefresh.then(
+      () => { if (currentWatcher === watcher && currentUnifiedScanner === lifecycle.scanner) watcher.start(); },
+      () => { if (currentWatcher === watcher && currentUnifiedScanner === lifecycle.scanner) watcher.start(); },
+    );
+  } else {
+    watcher?.start();
+  }
   currentObservabilityWatcher?.stop();
   currentObservabilityWatcher = lifecycle.observabilityWatcher;
   currentObservabilityWatcher.start();

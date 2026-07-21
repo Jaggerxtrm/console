@@ -1,11 +1,13 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "../../src/api/server.ts";
 import { ChannelRegistry } from "../../src/api/ws/channels.ts";
 import { BeadsChangeWatcher } from "../../src/core/beads-change-watcher.ts";
 import { ProjectScanner } from "../../src/core/project-scanner.ts";
+import { UnifiedScanner } from "../../src/core/unified-scanner.ts";
+import { TriggerWatcher } from "../../src/server/beads/trigger-watcher.ts";
 import { createXtrmDatabase } from "../../src/core/xtrm-store.ts";
 
 const tempDirs: string[] = [];
@@ -51,6 +53,35 @@ describe("gitboard runtime host compatibility", () => {
 
     const response = await app.request("/health");
     expect(response.status).toBe(200);
+  });
+
+  it("starts beads discovery after unified startup refresh completes", async () => {
+    const root = mkdtempSync(join(tmpdir(), "gitboard-runtime-host-sequencing-"));
+    tempDirs.push(root);
+    const db = createXtrmDatabase(join(root, "xtrm.sqlite"));
+    const events: string[] = [];
+    let releaseRefresh!: () => void;
+    const refresh = new Promise<never[]>((resolve) => { releaseRefresh = () => resolve([]); });
+    const scannerStart = vi.spyOn(UnifiedScanner.prototype, "start").mockImplementation(() => { events.push("scanner.start"); });
+    const scannerRefresh = vi.spyOn(UnifiedScanner.prototype, "refresh").mockReturnValue(refresh);
+    const watcherStart = vi.spyOn(TriggerWatcher.prototype, "start").mockImplementation(() => { events.push("watcher.start"); });
+
+    try {
+      createApp(db, db);
+      expect(events).toEqual(["scanner.start"]);
+
+      releaseRefresh();
+      await refresh;
+      await Promise.resolve();
+
+      expect(events).toEqual(["scanner.start", "watcher.start"]);
+      expect(scannerRefresh).toHaveBeenCalledTimes(1);
+    } finally {
+      scannerStart.mockRestore();
+      scannerRefresh.mockRestore();
+      watcherStart.mockRestore();
+      db.close();
+    }
   });
 
   it("publishes Datasette SQL proxy only when explicit debug flag is enabled", () => {

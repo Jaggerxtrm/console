@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtemp, rm, mkdir, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
@@ -119,6 +119,48 @@ describe("UnifiedScanner", () => {
     const [first, second] = await Promise.all([scanner.refresh(), scanner.refresh()]);
     expect(first.length).toBe(second.length);
 
+    db.close();
+  });
+
+  it("shares startup refresh with explicit refresh", async () => {
+    const db = createXtrmDatabase(dbPath);
+    const scanner = new UnifiedScanner(db, { beadsSearchPath: tmpDir, observabilityRoots: [tmpDir], parityEnabled: false });
+    const scannerWithPrivateMethods = scanner as unknown as {
+      scan: () => Promise<unknown[]>;
+    };
+    const originalScan = scannerWithPrivateMethods.scan;
+    let scans = 0;
+    let releaseScan!: () => void;
+    let scanStarted!: () => void;
+    const started = new Promise<void>((resolve) => { scanStarted = resolve; });
+    const release = new Promise<void>((resolve) => { releaseScan = resolve; });
+    scannerWithPrivateMethods.scan = async () => {
+      scans += 1;
+      scanStarted();
+      await release;
+      return originalScan.call(scanner);
+    };
+
+    scanner.start();
+    await started;
+    const explicitRefresh = scanner.refresh();
+    releaseScan();
+    await explicitRefresh;
+    scanner.stop();
+
+    expect(scans).toBe(1);
+    db.close();
+  });
+
+  it("keeps expected missing probes out of debug logs", async () => {
+    const db = createXtrmDatabase(dbPath);
+    const debug = vi.spyOn(console, "debug").mockImplementation(() => undefined);
+    const scanner = new UnifiedScanner(db, { beadsSearchPath: tmpDir, observabilityRoots: [tmpDir], parityEnabled: false });
+
+    await scanner.refresh();
+
+    expect(debug).not.toHaveBeenCalled();
+    debug.mockRestore();
     db.close();
   });
 });
