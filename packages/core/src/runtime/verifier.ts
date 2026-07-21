@@ -27,6 +27,17 @@ type VerificationBucket = {
   durations_ms: number[];
 };
 
+type MutableBucket = DurationSampler & {
+  count: number;
+  error_count: number;
+};
+
+type DurationSampler = {
+  values: number[];
+  seen: number;
+  state: number;
+};
+
 export type VerificationResult = {
   by_component: Record<string, VerificationBucket>;
   by_event: Record<string, VerificationBucket>;
@@ -55,9 +66,9 @@ export type VerifierOptions = {
 };
 
 type SummaryAccumulator = {
-  readonly by_component: Record<string, VerificationBucket>;
-  readonly by_event: Record<string, VerificationBucket>;
-  readonly allDurations: number[];
+  readonly by_component: Record<string, MutableBucket>;
+  readonly by_event: Record<string, MutableBucket>;
+  readonly allDurations: DurationSampler;
   error_count: number;
 };
 
@@ -95,7 +106,7 @@ export class Verifier {
       metrics.error_count = accumulator.error_count;
       return buildResult(accumulator, loadThresholds(this.options.thresholdsPath));
     } finally {
-      this.options.onMetrics?.({ ...metrics, duration_ms: Math.round(performance.now() - startedAt) });
+      reportMetrics(this.options.onMetrics, { ...metrics, duration_ms: Math.round(performance.now() - startedAt) });
     }
   }
 
@@ -175,7 +186,7 @@ async function readLogFile(path: string, sinceMs: number, untilMs: number, accum
 }
 
 function createAccumulator(): SummaryAccumulator {
-  return { by_component: {}, by_event: {}, allDurations: [], error_count: 0 };
+  return { by_component: {}, by_event: {}, allDurations: createSampler(), error_count: 0 };
 }
 
 function addEntry(accumulator: SummaryAccumulator, entry: Record<string, unknown>): void {
@@ -189,32 +200,68 @@ function addEntry(accumulator: SummaryAccumulator, entry: Record<string, unknown
 
   bump(accumulator.by_component, component, duration, isError);
   bump(accumulator.by_event, `${component}.${event}`, duration, isError);
-  if (typeof duration === "number" && accumulator.allDurations.length < MAX_DURATION_SAMPLES) accumulator.allDurations.push(duration);
+  if (typeof duration === "number") addSample(accumulator.allDurations, duration);
   if (isError) accumulator.error_count += 1;
 }
 
 function buildResult(accumulator: SummaryAccumulator, thresholds: readonly Threshold[]): VerificationResult {
   const breaches = thresholds.flatMap((threshold) => {
-    const observed = percentile(accumulator.by_event[`${threshold.component}.${threshold.event}`]?.durations_ms ?? [], 95);
+    const observed = percentile(accumulator.by_event[`${threshold.component}.${threshold.event}`]?.values ?? [], 95);
     return observed > threshold.p95_ms ? [{ component: threshold.component, event: threshold.event, threshold: threshold.p95_ms, observed, severity: threshold.severity }] : [];
   }).sort((a, b) => severityRank(b.severity) - severityRank(a.severity) || a.component.localeCompare(b.component) || a.event.localeCompare(b.event));
 
   return {
-    by_component: accumulator.by_component,
-    by_event: accumulator.by_event,
+    by_component: toPublicBuckets(accumulator.by_component),
+    by_event: toPublicBuckets(accumulator.by_event),
     error_count: accumulator.error_count,
-    p50_ms: percentile(accumulator.allDurations, 50),
-    p95_ms: percentile(accumulator.allDurations, 95),
-    p99_ms: percentile(accumulator.allDurations, 99),
+    p50_ms: percentile(accumulator.allDurations.values, 50),
+    p95_ms: percentile(accumulator.allDurations.values, 95),
+    p99_ms: percentile(accumulator.allDurations.values, 99),
     breaches,
   };
 }
 
-function bump(bucket: Record<string, VerificationBucket>, key: string, duration: number | undefined, isError: boolean): void {
-  bucket[key] ??= { count: 0, error_count: 0, durations_ms: [] };
+function bump(bucket: Record<string, MutableBucket>, key: string, duration: number | undefined, isError: boolean): void {
+  bucket[key] ??= { count: 0, error_count: 0, values: [], seen: 0, state: 0x9e3779b9 };
   bucket[key].count += 1;
   if (isError) bucket[key].error_count += 1;
-  if (typeof duration === "number" && bucket[key].durations_ms.length < MAX_DURATION_SAMPLES) bucket[key].durations_ms.push(duration);
+  if (typeof duration === "number") {
+    addSample(bucket[key], duration);
+  }
+}
+
+function toPublicBuckets(buckets: Record<string, MutableBucket>): Record<string, VerificationBucket> {
+  return Object.fromEntries(Object.entries(buckets).map(([key, bucket]) => [key, {
+    count: bucket.count,
+    error_count: bucket.error_count,
+    durations_ms: bucket.values,
+  }]));
+}
+
+function createSampler(): DurationSampler {
+  return { values: [], seen: 0, state: 0x9e3779b9 };
+}
+
+function addSample(sampler: DurationSampler, value: number): void {
+  const seen = sampler.seen;
+  sampler.seen += 1;
+  if (sampler.values.length < MAX_DURATION_SAMPLES) {
+    sampler.values.push(value);
+    return;
+  }
+  sampler.state = (Math.imul(1664525, sampler.state) + 1013904223) >>> 0;
+  const candidate = Math.floor((sampler.state / 0x1_0000_0000) * sampler.seen);
+  if (candidate < MAX_DURATION_SAMPLES) sampler.values[candidate] = value;
+}
+
+function reportMetrics(callback: ((metrics: VerifierMetrics) => void) | undefined, metrics: VerifierMetrics): void {
+  if (!callback) return;
+  try {
+    callback(metrics);
+  } catch (error) {
+    // Telemetry is observer-only; sink failures must not alter verification outcome.
+    void error;
+  }
 }
 
 function percentile(values: readonly number[], pct: number): number {
