@@ -11,10 +11,6 @@ function entry(ts: string, level: LogEntry["level"], event: string): LogEntry {
   return { ts, level, component: "system", event };
 }
 
-function waitForWriteQueue(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 20));
-}
-
 afterEach(async () => {
   vi.restoreAllMocks();
   await rm(tmpRoot, { recursive: true, force: true });
@@ -69,12 +65,23 @@ describe("logger runtime", () => {
     utimesSync(oldFile, new Date("2026-05-01T00:00:00.000Z"), new Date("2026-05-01T00:00:00.000Z"));
     const logger = createLoggerRuntime({ diskDir: dir, retentionDays: 7 });
     logger.emit(entry("2026-05-19T00:00:00.000Z", "info", "hello"));
-    await waitForWriteQueue();
+    await logger.flush();
 
     const current = join(dir, "2026-05-19.jsonl");
     expect(existsSync(current)).toBe(true);
     expect(await readFile(current, "utf8")).toContain('"event":"hello"');
     expect(existsSync(oldFile)).toBe(false);
+  });
+
+  it("flush waits for every queued disk write", async () => {
+    const dir = join(tmpRoot, "queued");
+    const logger = createLoggerRuntime({ diskDir: dir });
+
+    logger.emit(entry("2026-05-19T00:00:00.000Z", "info", "first"));
+    logger.emit(entry("2026-05-19T00:00:01.000Z", "warn", "second"));
+    await logger.flush();
+
+    expect((await readFile(join(dir, "2026-05-19.jsonl"), "utf8")).trim().split("\n").map((line) => JSON.parse(line).event)).toEqual(["first", "second"]);
   });
 
   it("does not fall back to cwd logs when storage init fails", async () => {
@@ -86,7 +93,7 @@ describe("logger runtime", () => {
     const logger = createLoggerRuntime({ diskDir: join(blockedParent, "logs"), onWriteError: (error) => errors.push(error) });
 
     logger.emit(entry("2026-05-19T00:00:00.000Z", "info", "hello"));
-    await waitForWriteQueue();
+    await logger.flush();
 
     expect(errors).toHaveLength(1);
     expect(existsSync(join(process.cwd(), "logs"))).toBe(false);
@@ -104,7 +111,7 @@ describe("logger runtime", () => {
     const logger = createLoggerRuntime({ diskDir: dir, retentionDays: 7 });
 
     logger.emit(entry("2026-05-19T00:00:00.000Z", "info", "hello"));
-    await waitForWriteQueue();
+    await logger.flush();
 
     expect(existsSync(link)).toBe(true);
     expect(await readFile(target, "utf8")).toBe("outside\n");
@@ -116,7 +123,7 @@ describe("logger runtime", () => {
     logger.setDiskEnabled(false);
 
     logger.emit(entry("2026-05-19T00:00:00.000Z", "info", "hello"));
-    await waitForWriteQueue();
+    await logger.flush();
 
     expect(existsSync(dir)).toBe(false);
     expect(logger.getRing()).toHaveLength(1);
