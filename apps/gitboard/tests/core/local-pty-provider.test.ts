@@ -41,7 +41,6 @@ function createProvider(factory?: PtyFactory, overrides: Partial<NodeJS.ProcessE
     HOME: "/home/tester",
     PATH: "/usr/local/bin:/usr/bin",
     TERM: "xterm-256color",
-    LANG: "en_US.UTF-8",
     SECRET_TOKEN: "shh",
     ...overrides,
   } as NodeJS.ProcessEnv;
@@ -95,7 +94,7 @@ describe("LocalPtyProvider", () => {
     expect(capturedEnv?.PATH).toBeUndefined();
     expect(capturedEnv?.HOME).toBeUndefined();
     expect(capturedEnv?.TERM).toBeDefined();
-    expect(capturedEnv?.LANG).toBe("en_US.UTF-8");
+    expect(capturedEnv?.LANG).toBe(process.env.LANG);
     expect(capturedEnv?.USER).toBeDefined();
     expect(capturedEnv?.PWD).toBe(root);
   });

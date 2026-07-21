@@ -68,9 +68,19 @@ describe("Console Specialists drawer routing", () => {
       useShellStore.getState().setSurface("console");
       useShellStore.getState().setRepo("owner/repo-a");
     });
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/specialists/chains/")) {
+        return new Response(JSON.stringify({ chain: { jobs: [] } }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      return new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } });
+    }));
   });
 
-  afterEach(() => cleanup());
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
 
   it("opens the bead drawer with chain context", async () => {
     const { Specialists } = await import("../../../../src/dashboard/pages/console/Specialists.tsx");

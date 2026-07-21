@@ -40,7 +40,7 @@ export function createAttachPool(entries: readonly RepoEntry[], options: PoolOpt
   let aliasCounter = 0;
   let warmPromise: Promise<void> | null = null;
 
-  void warmAttachPool();
+  const ready = warmAttachPool();
 
   function withAttached<T>(fn: (db: Database, attached: ReadonlyArray<{ alias: string; slug: string }>) => T): T {
     const list = Array.from(attached.values()).map((entry) => ({ alias: entry.alias, slug: entry.repoSlug }));
@@ -166,7 +166,7 @@ export function createAttachPool(entries: readonly RepoEntry[], options: PoolOpt
     lru.set(dbPath, entry);
   }
 
-  return { withAttached, getCoverage };
+  return { withAttached, getCoverage, ready };
 }
 
 function clampMaxAttached(value: number): number {

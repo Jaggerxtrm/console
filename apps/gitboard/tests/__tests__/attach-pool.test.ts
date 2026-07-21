@@ -98,7 +98,7 @@ describe("createAttachPool", () => {
     });
 
     const pool = createAttachPool(repos, { logger: { warn } });
-    await new Promise((resolve) => setTimeout(resolve, 25));
+    await pool.ready;
     const coverage = pool.getCoverage();
 
     expect(coverage.totalDiscovered).toBe(11);
