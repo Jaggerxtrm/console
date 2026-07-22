@@ -246,6 +246,11 @@ function walkFiles(root: string): { files: string[]; findings: GuardFinding[] } 
     try {
       entries = readdirSync(dir);
     } catch {
+      // Fail closed: an unreadable directory prevents complete classification,
+      // so it is an exact-path unsafe finding rather than a silent skip.
+      findings.push(
+        makeFinding("unsafe-fs-entry", relative(root, dir) || ".", 1, "unreadable directory; guard cannot list entries for classification"),
+      );
       return;
     }
     for (const entry of entries) {
@@ -257,6 +262,11 @@ function walkFiles(root: string): { files: string[]; findings: GuardFinding[] } 
         // cycles are not recursed and symlinked files are not read.
         stats = lstatSync(absolute);
       } catch {
+        // Fail closed: an unstatable entry (unreadable, or deleted mid-scan)
+        // cannot be classified. Name-ignored entries stay ignored; everything
+        // else is an exact-path unsafe finding rather than a silent skip.
+        if (shouldIgnoreDir(entry, relPath)) continue;
+        findings.push(makeFinding("unsafe-fs-entry", relPath, 1, "unstatable fs entry; guard cannot classify path"));
         continue;
       }
       if (stats.isSymbolicLink()) {
@@ -323,7 +333,13 @@ export function scanTree(root: string): { findings: GuardFinding[]; scannedFiles
     const scanner = classifyFile(relPath);
     if (!scanner) continue;
     const content = readCandidateBounded(join(root, relPath));
-    if (content === null) continue;
+    if (content === null) {
+      // Fail closed: open/fstat/read/decode failure on a classified candidate
+      // prevents complete classification, so it is an exact-path unsafe finding
+      // rather than a silent skip.
+      findings.push(makeFinding("unsafe-fs-entry", relPath, 1, "unreadable candidate; guard cannot read classified file"));
+      continue;
+    }
     if (content === "oversized") {
       findings.push(
         makeFinding(
@@ -337,7 +353,13 @@ export function scanTree(root: string): { findings: GuardFinding[]; scannedFiles
     }
     findings.push(...scanner(relPath, content));
   }
-  return { findings, scannedFiles: files.length };
+  const seen = new Set<string>();
+  const deduped = findings.filter((finding) => {
+    if (seen.has(finding.fingerprint)) return false;
+    seen.add(finding.fingerprint);
+    return true;
+  });
+  return { findings: deduped, scannedFiles: files.length };
 }
 
 export function loadBaseline(baselinePath: string): Set<string> {

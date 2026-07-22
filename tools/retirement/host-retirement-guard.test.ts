@@ -176,26 +176,44 @@ describe("host-retirement-guard", () => {
     }
   });
 
-  test("skips an unreadable classified file (chmod 000) without crashing", () => {
+  test("fails closed on an unreadable classified file (chmod 000) with an exact-path unsafe finding", () => {
     const root = mkdtempSync(join(tmpdir(), "console-host-retirement-unreadable-"));
+    const secretRel = join("apps", "console", "src", "secret.ts");
     try {
       mkdirSync(join(root, "apps", "console", "src"), { recursive: true });
-      const secret = join(root, "apps", "console", "src", "secret.ts");
+      const secret = join(root, secretRel);
       writeFileSync(secret, 'import legacy from "apps/gitboard/src/index.ts";\n');
       chmodSync(secret, 0o000);
 
       const { findings } = scanTree(root);
-      // The unreadable file is skipped (readCandidateBounded returns null),
-      // so no production-import finding is emitted and no crash occurs.
+      // The unreadable classified file fails closed: no production-import
+      // finding (content never read) but an exact-path unsafe-fs-entry finding.
       expect(findings.filter((f) => f.category === "production-import")).toHaveLength(0);
+      const unsafe = findings.filter((f) => f.category === "unsafe-fs-entry");
+      expect(unsafe).toHaveLength(1);
+      expect(unsafe[0]).toMatchObject({ category: "unsafe-fs-entry", file: secretRel, line: 1 });
+
+      // strict mode FAILS on the unsafe finding.
+      const strict = evaluate({ mode: "strict", root });
+      expect(strict.pass).toBe(false);
+      expect(strict.verdict).toBe("FAIL");
+      expect(strict.findings.some((f) => f.category === "unsafe-fs-entry" && f.file === secretRel)).toBe(true);
+
+      // no-new-regressions FAILS with an empty baseline (unsafe finding is new).
+      const baselinePath = join(root, "baseline.json");
+      writeFileSync(baselinePath, JSON.stringify({ deprecatedHost: DEPRECATED_HOST_PATH, fingerprints: [] }));
+      const noNew = evaluate({ mode: "no-new-regressions", root, baselinePath });
+      expect(noNew.pass).toBe(false);
+      expect(noNew.verdict).toBe("FAIL");
+      expect(noNew.newRegressions.some((f) => f.category === "unsafe-fs-entry" && f.file === secretRel)).toBe(true);
     } finally {
       // Restore permissions so rmSync can clean up.
-      chmodSync(join(root, "apps", "console", "src", "secret.ts"), 0o644);
+      chmodSync(join(root, secretRel), 0o644);
       rmSync(root, { recursive: true, force: true });
     }
   });
 
-  test("skips an unreadable directory (chmod 000) without crashing", () => {
+  test("fails closed on an unreadable directory (chmod 000) with an exact-path unsafe finding", () => {
     const root = mkdtempSync(join(tmpdir(), "console-host-retirement-unreadable-dir-"));
     try {
       const locked = join(root, "locked");
@@ -204,9 +222,26 @@ describe("host-retirement-guard", () => {
       chmodSync(locked, 0o000);
 
       const { findings } = scanTree(root);
-      // The unreadable directory is skipped (readdirSync throws), so no
-      // container finding is emitted and no crash occurs.
+      // The unreadable directory fails closed: no container finding (entries
+      // never listed) but an exact-path unsafe-fs-entry finding for the dir.
       expect(findings.filter((f) => f.category === "container")).toHaveLength(0);
+      const unsafe = findings.filter((f) => f.category === "unsafe-fs-entry");
+      expect(unsafe).toHaveLength(1);
+      expect(unsafe[0]).toMatchObject({ category: "unsafe-fs-entry", file: "locked", line: 1 });
+
+      // strict mode FAILS on the unsafe finding.
+      const strict = evaluate({ mode: "strict", root });
+      expect(strict.pass).toBe(false);
+      expect(strict.verdict).toBe("FAIL");
+      expect(strict.findings.some((f) => f.category === "unsafe-fs-entry" && f.file === "locked")).toBe(true);
+
+      // no-new-regressions FAILS with an empty baseline (unsafe finding is new).
+      const baselinePath = join(root, "baseline.json");
+      writeFileSync(baselinePath, JSON.stringify({ deprecatedHost: DEPRECATED_HOST_PATH, fingerprints: [] }));
+      const noNew = evaluate({ mode: "no-new-regressions", root, baselinePath });
+      expect(noNew.pass).toBe(false);
+      expect(noNew.verdict).toBe("FAIL");
+      expect(noNew.newRegressions.some((f) => f.category === "unsafe-fs-entry" && f.file === "locked")).toBe(true);
     } finally {
       chmodSync(join(root, "locked"), 0o755);
       rmSync(root, { recursive: true, force: true });
