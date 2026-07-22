@@ -1,6 +1,8 @@
 import { Database } from "bun:sqlite";
 import type { MaterializedEvidenceRef, MaterializedForensicEvent, MaterializedSpecialistJob, MaterializerAdapter, MaterializerDelta, MaterializerSnapshot } from "./types.ts";
 
+export const FORENSIC_BATCH_SIZE = 500;
+
 type ObservabilityCursor = {
   updated_at_ms: number;
   event_rowid: number;
@@ -41,8 +43,9 @@ export function createObservabilityAdapter(dbPath: string, repoSlug: string): Ma
       const baseline = normalizeCursor(cursor);
       const recentJobs = readJobsSince(db, repoSlug, baseline.updated_at_ms - 1000, beadIdSelect, hasMetrics);
       const eventRows = hasForensic
-        ? readForensicEventsSince(db, baseline.forensic_rowid)
-        : readLegacyEventsSince(db, baseline.event_rowid);
+        ? readForensicEventsSince(db, baseline.forensic_rowid, FORENSIC_BATCH_SIZE)
+        : readLegacyEventsSince(db, baseline.event_rowid, FORENSIC_BATCH_SIZE);
+      const hasMore = eventRows.length >= FORENSIC_BATCH_SIZE;
       const touchedJobIds = new Set(eventRows.flatMap((row) => row.job_id ? [row.job_id] : []));
       const touchedJobs = touchedJobIds.size > 0 ? readJobsByIds(db, repoSlug, [...touchedJobIds], beadIdSelect, hasMetrics) : [];
       const jobs = mergeJobs(recentJobs, touchedJobs);
@@ -51,6 +54,7 @@ export function createObservabilityAdapter(dbPath: string, repoSlug: string): Ma
         rows: jobs,
         forensicEvents: eventRows.flatMap((row) => materializeForensicEvent(repoSlug, row)),
         evidenceRefs: eventRows.flatMap((row) => materializeEvidenceRefs(repoSlug, row)),
+        hasMore,
       } satisfies MaterializerDelta<JobRow>;
     },
     async snapshot() {
@@ -60,6 +64,7 @@ export function createObservabilityAdapter(dbPath: string, repoSlug: string): Ma
       writeJobs(database, repoSlug, snapshot.rows);
       writeForensicEvents(database, snapshot.forensicEvents ?? []);
       writeEvidenceRefs(database, snapshot.evidenceRefs ?? []);
+      cleanupMalformedSentinels(database, repoSlug);
     },
   };
 }
@@ -125,22 +130,27 @@ function jobSelectSql(beadIdSelect: string, hasMetrics: boolean, suffix: string)
   `;
 }
 
-function readForensicEventsSince(db: Database, rowid: number): SourceEventRow[] {
+function readForensicEventsSince(db: Database, rowid: number, limit: number): SourceEventRow[] {
   return db.query(`
-    SELECT rowid, job_id, seq, t AS t_unix_ms, event_name AS event_type, event_json AS payload
+    SELECT rowid AS _rowid, job_id, seq, t AS t_unix_ms, event_name AS event_type, event_json AS payload
     FROM specialist_forensic_events
     WHERE rowid > ?
     ORDER BY rowid ASC
-  `).all(rowid).map((row) => ({ ...(row as Record<string, unknown>), source: "forensic" as const })) as SourceEventRow[];
+    LIMIT ?
+  `).all(rowid, limit).map((row) => {
+    const r = row as Record<string, unknown>;
+    return { ...r, rowid: r._rowid, source: "forensic" as const };
+  }) as SourceEventRow[];
 }
 
-function readLegacyEventsSince(db: Database, rowid: number): SourceEventRow[] {
+function readLegacyEventsSince(db: Database, rowid: number, limit: number): SourceEventRow[] {
   return db.query(`
     SELECT id AS rowid, job_id, seq, t AS t_unix_ms, type AS event_type, event_json AS payload
     FROM specialist_events
     WHERE id > ?
     ORDER BY id ASC
-  `).all(rowid).map((row) => ({ ...(row as Record<string, unknown>), source: "legacy" as const })) as SourceEventRow[];
+    LIMIT ?
+  `).all(rowid, limit).map((row) => ({ ...(row as Record<string, unknown>), source: "legacy" as const })) as SourceEventRow[];
 }
 
 function materializeJobRow(repoSlug: string, row: Record<string, unknown>): JobRow {
@@ -250,6 +260,12 @@ function parseEnvelope(row: SourceEventRow): Record<string, unknown> | null {
   } catch {
     return null;
   }
+}
+
+function cleanupMalformedSentinels(database: Database, repoSlug: string): void {
+  const sourceKey = `obs:${repoSlug}`;
+  database.query("DELETE FROM xtrm_forensic_events WHERE source_key = ? AND source_event_id = 'forensic:undefined'").run(sourceKey);
+  database.query("DELETE FROM xtrm_evidence_refs WHERE source_key = ? AND event_source_id = 'forensic:undefined'").run(sourceKey);
 }
 
 function writeJobs(database: Database, repoSlug: string, rows: readonly JobRow[]): void {

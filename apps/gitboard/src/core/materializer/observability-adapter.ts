@@ -1,1 +1,1 @@
-export { createObservabilityAdapter } from "../../../../../packages/core/src/materializer/observability-adapter.ts";
+export { createObservabilityAdapter, FORENSIC_BATCH_SIZE } from "../../../../../packages/core/src/materializer/observability-adapter.ts";
