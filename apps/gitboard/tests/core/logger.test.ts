@@ -103,7 +103,7 @@ describe("logger", () => {
     const logger = await loadLogger();
     logger.setDiskEnabled(true);
     logger.emit({ ts: "2026-05-19T00:00:00.000Z", level: "info", component: "system", event: "hello" });
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await logger.flush();
     expect(existsSync(join(dir, "2026-05-19.jsonl"))).toBe(true);
     expect(await readFile(join(dir, "2026-05-19.jsonl"), "utf8")).toContain('"event":"hello"');
     expect(existsSync(join(dir, "2026-05-01.jsonl"))).toBe(false);
