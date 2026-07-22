@@ -126,6 +126,39 @@ describe("specialists in-flight memory bound", () => {
     expect(limits).toEqual([0, 50]);
   });
 
+  it("rejects malformed limits to fallback and clamps valid integers", async () => {
+    const cases: Array<[raw: string, expected: number]> = [
+      ["%20", 50],
+      ["%09", 50],
+      ["3.5", 50],
+      ["-1", 50],
+      ["abc", 50],
+      ["0", 0],
+      ["250", 250],
+      ["9999", 5000],
+    ];
+
+    for (const [raw, expected] of cases) {
+      const limits: number[] = [];
+      const app = makeApp({ inFlight: () => {}, history: (limit) => { limits.push(limit); } });
+      const response = await app.fetch(new Request(`http://localhost/api/specialists/jobs/in-flight?limit=${raw}`));
+      expect(response.status).toBe(200);
+      expect(limits).toEqual([expected]);
+    }
+  });
+
+  it("collapses malformed limits onto the default cache key without churning", async () => {
+    const limits: number[] = [];
+    const app = makeApp({ inFlight: () => {}, history: (limit) => { limits.push(limit); } });
+
+    for (const raw of ["%20", "%09", "3.5", "abc", ""]) {
+      const response = await app.fetch(new Request(`http://localhost/api/specialists/jobs/in-flight?limit=${raw}`));
+      expect(response.status).toBe(200);
+    }
+
+    expect(limits).toEqual([50]);
+  });
+
   it("retains separate bounded cache entries for polling limits", async () => {
     const limits: number[] = [];
     const app = makeApp({ inFlight: () => {}, history: (limit) => { limits.push(limit); } });
