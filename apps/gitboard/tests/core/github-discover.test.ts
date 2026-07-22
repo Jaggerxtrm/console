@@ -29,7 +29,7 @@ function fakeSpawnSync(result: {
   stderr: Buffer;
   success: boolean;
 }) {
-  return (() => result) as typeof Bun.spawnSync;
+  return (() => result) as unknown as typeof Bun.spawnSync;
 }
 
 describe("discoverViaGhCli", () => {
