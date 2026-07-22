@@ -57,6 +57,7 @@ const MAX_IN_FLIGHT_CACHE_ENTRIES = 2;
 export const MAX_IN_FLIGHT_REFRESHES = 4;
 export const MAX_REPO_SLUG_FILTERS = 8;
 export const MAX_REPO_SLUG_FILTER_BYTES = 512;
+export const MAX_SPECIALIST_FEED_OUTPUT_BYTES = 1_048_576;
 
 type MaterializationStateRow = {
   source_key: string;
@@ -497,22 +498,49 @@ export async function runSpecialistFeed(jobId: string, options: { cwd?: string; 
     });
     let stdout = "";
     let stderr = "";
+    let stdoutBytes = 0;
+    let stderrBytes = 0;
+    let stdoutTruncated = false;
+    let settled = false;
+    const settle = (result: SpecialistFeedResult) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      resolveFeed(result);
+    };
     const timeout = setTimeout(() => {
       child.kill("SIGTERM");
-      resolveFeed({ ok: false, status: 500, error: "specialist feed timed out" });
+      settle({ ok: false, status: 500, error: "specialist feed timed out" });
     }, 10_000);
 
-    child.stdout.on("data", (chunk) => { stdout += chunk.toString("utf8"); });
-    child.stderr.on("data", (chunk) => { stderr += chunk.toString("utf8"); });
+    child.stdout.on("data", (chunk: Buffer) => {
+      if (stdoutTruncated) return;
+      stdoutBytes += chunk.length;
+      if (stdoutBytes > MAX_SPECIALIST_FEED_OUTPUT_BYTES) {
+        stdoutTruncated = true;
+        child.kill("SIGKILL");
+        return;
+      }
+      stdout += chunk.toString("utf8");
+    });
+    child.stderr.on("data", (chunk: Buffer) => {
+      if (stderrBytes > MAX_SPECIALIST_FEED_OUTPUT_BYTES) return;
+      stderrBytes += chunk.length;
+      if (stderrBytes > MAX_SPECIALIST_FEED_OUTPUT_BYTES) {
+        stderr = stderr.slice(0, MAX_SPECIALIST_FEED_OUTPUT_BYTES);
+        child.kill("SIGKILL");
+        return;
+      }
+      stderr += chunk.toString("utf8");
+    });
     child.on("error", (error) => {
-      clearTimeout(timeout);
-      resolveFeed({ ok: false, status: 500, error: error.message });
+      settle({ ok: false, status: 500, error: error.message });
     });
     child.on("close", (code) => {
-      clearTimeout(timeout);
-      if (code === 0) return resolveFeed({ ok: true, text: stdout });
+      if (stdoutTruncated) return settle({ ok: true, text: stdout });
+      if (code === 0) return settle({ ok: true, text: stdout });
       const message = stripAnsi(stderr || stdout).trim() || `specialist feed exited ${code}`;
-      resolveFeed({ ok: false, status: message.includes("not found") ? 404 : 500, error: message });
+      settle({ ok: false, status: message.includes("not found") ? 404 : 500, error: message });
     });
   });
 }
