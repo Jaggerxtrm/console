@@ -97,6 +97,62 @@ describe("graph cache identity", () => {
     releaseScan();
     await Promise.resolve();
   });
+
+  it("shares one in-flight issue refresh across concurrent warm callers", async () => {
+    // Unique project id + scanner isolate this test from module-level issue
+    // cache/inflight state left over from earlier tests in this file.
+    const project = { id: "repo-concurrent", name: "repo-concurrent", beadsPath: "/tmp/repo-concurrent", status: "active", lastScanned: "", issueCount: 0 };
+    const scanner = {
+      scanDirectory: async () => [project],
+      getProject: (projectId: string) => (projectId === "repo-concurrent" ? project : null),
+    } as never;
+
+    let releaseIssues!: (issues: BeadIssue[]) => void;
+    let issuesCalls = 0;
+    // Clear any queued mockResolvedValueOnce/mockRejectedValueOnce left by earlier
+    // tests so the controlled implementation below governs every call.
+    mockedReadIssuesFromJsonl.mockReset();
+    mockedReadIssuesFromJsonl.mockImplementation(() => {
+      issuesCalls += 1;
+      return new Promise<BeadIssue[]>((resolve) => {
+        releaseIssues = resolve;
+      });
+    });
+
+    const dao = createGraphDao({ scanner, observability: { inFlightJobs: () => [] } as never });
+
+    const warm1 = dao.getGraphSnapshotWarm("repo-concurrent");
+    // Drain microtasks until the first warm caller has registered the in-flight refresh.
+    for (let i = 0; i < 100 && issuesCalls === 0; i += 1) await Promise.resolve();
+    expect(issuesCalls).toBe(1);
+
+    // A synchronous snapshot reader must join existing refresh without starting
+    // another JSONL read; stale result remains allowed for this non-warm API.
+    const stale = dao.getGraphSnapshot("repo-concurrent");
+    expect(stale.freshness).toBe("stale");
+    expect(stale.graph.nodes).toEqual([]);
+    expect(issuesCalls).toBe(1);
+
+    let warm2Settled = false;
+    const warm2 = dao.getGraphSnapshotWarm("repo-concurrent").then((result) => {
+      warm2Settled = true;
+      return result;
+    });
+    for (let i = 0; i < 100; i += 1) await Promise.resolve();
+    // The second warm caller must join the in-flight refresh, not start a new one...
+    expect(issuesCalls).toBe(1);
+    // ...and must NOT settle with stale data while the shared refresh is pending.
+    expect(warm2Settled).toBe(false);
+
+    releaseIssues([{ ...baseIssue, id: "repo-concurrent-1" }]);
+    const [first, second] = await Promise.all([warm1, warm2]);
+
+    // Both concurrent callers observe the refreshed (fresh) snapshot.
+    expect(first.freshness).toBe("fresh");
+    expect(second.freshness).toBe("fresh");
+    expect(second.graph.nodes.map((node) => node.id)).toEqual(["repo-concurrent-1"]);
+    expect(issuesCalls).toBe(1);
+  });
 });
 
 const baseIssue: BeadIssue = {
