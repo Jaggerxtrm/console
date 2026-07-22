@@ -168,11 +168,10 @@ describe("UnifiedScanner", () => {
         component: "system",
         event: "scanner.probe",
         level: "warn",
-        data: expect.objectContaining({
+        data: {
           stage: "beads scan",
-          path: "/isolated/denied",
-          error: "Error: permission denied",
-        }),
+          code: "EACCES",
+        },
       }),
     ]);
     db.close();

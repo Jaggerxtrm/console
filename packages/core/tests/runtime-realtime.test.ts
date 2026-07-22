@@ -143,6 +143,51 @@ describe("realtime runtime", () => {
     expect(handler.connectionCount()).toBe(1);
   });
 
+  it("denies malformed and reserved channels without throwing", () => {
+    const registry = new RealtimeChannelRegistry();
+    const handler = new RealtimeConnectionHandler(registry);
+    const raw = makeRaw();
+    const connectionId = handler.connect(raw);
+
+    for (const channel of [null, 42, {}, "__proto__", "unknown:channel"]) {
+      expect(() => handler.handleMessage(connectionId, JSON.stringify({ action: "subscribe", channel, version: String(REALTIME_PROTOCOL_VERSION) }))).not.toThrow();
+      expect(() => handler.handleMessage(connectionId, JSON.stringify({ action: "unsubscribe", channel }))).not.toThrow();
+      expect(() => handler.handleMessage(connectionId, JSON.stringify({ action: "resume", channel }))).not.toThrow();
+    }
+
+    expect(handler.connectionCount()).toBe(1);
+    expect((registry as unknown as { channels: Map<string, unknown> }).channels.size).toBe(0);
+  });
+
+  it("caps subscriptions and rejects arbitrary channel growth", () => {
+    const registry = new RealtimeChannelRegistry();
+    const handler = new RealtimeConnectionHandler(registry);
+    const raw = makeRaw();
+    const connectionId = handler.connect(raw);
+
+    for (let index = 0; index < 100; index += 1) {
+      handler.handleMessage(connectionId, JSON.stringify({ action: "subscribe", channel: `github:repo:repo-${index}`, version: String(REALTIME_PROTOCOL_VERSION) }));
+    }
+    for (let index = 0; index < 10_000; index += 1) {
+      handler.handleMessage(connectionId, JSON.stringify({ action: "subscribe", channel: `attacker:${index}`, version: String(REALTIME_PROTOCOL_VERSION) }));
+    }
+
+    const connection = (handler as unknown as { connections: Map<string, { subscriptions: Set<string> }> }).connections.get(connectionId);
+    expect(connection?.subscriptions.size).toBeLessThanOrEqual(32);
+    expect((registry as unknown as { channels: Map<string, unknown> }).channels.size).toBeLessThanOrEqual(32);
+  });
+
+  it("cleans empty channel entries after unsubscribe", () => {
+    const registry = new RealtimeChannelRegistry();
+    const subscriber = makeSubscriber("cleanup");
+
+    registry.subscribe("system", subscriber);
+    registry.unsubscribe("system", subscriber);
+
+    expect(registry.subscriberCount("system")).toBe(0);
+    expect((registry as unknown as { channels: Map<string, unknown> }).channels.size).toBe(0);
+  });
+
   it("stops replay after backpressure and removes subscriber", () => {
     const registry = new RealtimeChannelRegistry();
     const backpressure: unknown[] = [];
