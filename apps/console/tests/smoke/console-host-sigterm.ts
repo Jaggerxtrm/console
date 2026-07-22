@@ -130,10 +130,23 @@ async function main(): Promise<SmokeResult> {
     const requiredEvents = ["host.starting", "host.listening", "host.shutting_down", "host.shutdown"];
     const homePathRedacted = !lines.join("\n").includes(homedir());
     const missingEvents = requiredEvents.filter((event) => !events.includes(event));
+    const starting = logs.find((entry) => entry.event === "host.starting");
+    const listeningFields = logs.find((entry) => entry.event === "host.listening");
+    const shuttingDown = logs.find((entry) => entry.event === "host.shutting_down");
+    const shutdown = logs.find((entry) => entry.event === "host.shutdown");
     if (healthStatus !== 200) throw new Error(`/health returned ${healthStatus}`);
     if (consoleStatus !== 200) throw new Error(`/console returned ${consoleStatus}`);
     if (exitCode !== 0 || signal !== null) throw new Error(`expected clean exit, got code=${exitCode} signal=${signal}`);
     if (missingEvents.length > 0) throw new Error(`missing events: ${missingEvents.join(", ")}`);
+    if (starting?.owner !== "apps/console" || starting?.dataDirSource !== "XTRM_DATA_DIR") {
+      throw new Error("host.starting missing owner/dataDirSource");
+    }
+    if (typeof listeningFields?.url !== "string" || typeof listeningFields?.port !== "number" || !Array.isArray(listeningFields?.mountedRoutes)) {
+      throw new Error("host.listening missing url/port/mountedRoutes");
+    }
+    if (shuttingDown?.signal !== "SIGTERM" || shutdown?.signal !== "SIGTERM") {
+      throw new Error("shutdown telemetry missing SIGTERM");
+    }
     if (!homePathRedacted) throw new Error(`raw home path leaked in logs: ${stderr}`);
 
     return {
