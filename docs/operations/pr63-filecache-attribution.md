@@ -108,8 +108,20 @@ Replacement: `tools/probes/cgroup-health-gate.ts`. PASS requires all of:
 1. `memory.events oom == 0` and `oom_kill == 0` (no real OOM);
 2. anonymous working set (`memory.stat anon`, cross-checked vs `MainPID RssAnon`)
    under an anon ceiling (default 512 MiB) — the real heap signal;
-3. service `active`, `NRestarts` unchanged (no crash loop);
-4. `/health == 200` and endpoint latency under a p95 ceiling (optional probes).
+3. service `ActiveState == active` **and** `SubState == running` (not exited/failed);
+4. `MainPID` present and `/proc/<pid>/status` readable (a live process to attribute);
+5. optional explicit, deterministic baselines when supplied: `NRestarts ==
+   GATE_EXPECT_RESTARTS` and/or `MainPID == GATE_EXPECT_PID` (mismatch fails);
+6. `/health == 200` and endpoint latency under a p95 ceiling (optional probes,
+   `GATE_PROBE_ENDPOINTS=1`). The health default is portable
+   `http://localhost:3030/health`; there is **no hardcoded job feed** — the feed
+   endpoint is probed only when `GATE_FEED_URL` is explicitly set, and a non-200
+   then fails.
+
+The gate **fails closed**: invalid/non-finite numeric config, a missing
+`MainPID`, an unreadable `/proc/<pid>/status`, a non-running substate, or a
+baseline mismatch all yield `FAIL`. Each report carries a `checked` list stating
+exactly which criteria were evaluated.
 
 File cache near `MemoryMax` is reported as `cache_pressure` **INFO**, never a FAIL,
 unless it coincides with `oom>0` or anon over ceiling (genuine saturation).
