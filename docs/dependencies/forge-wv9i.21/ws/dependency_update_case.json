@@ -1,0 +1,76 @@
+{
+  "schema": "xtrm.dependency_update_case.v0",
+  "case_id": "forge-wv9i.21-ws",
+  "trigger": {
+    "kind": "advisory",
+    "repo": "Jaggerxtrm/console",
+    "pr": null,
+    "branch": "feature/forge-wv9i.21-executor"
+  },
+  "package": {
+    "name": "ws",
+    "ecosystem": "npm",
+    "from_version": "8.19.0",
+    "to_version": "8.21.0",
+    "update_kind": "patch",
+    "dependency_kind": "transitive",
+    "scope": "test"
+  },
+  "supply_chain": {
+    "release_age_hours": 1448.3,
+    "cooldown_status": "cleared",
+    "registry_status": "normal",
+    "maintainer_change_detected": false,
+    "install_script_changed": false,
+    "artifact_repo_mismatch": "none"
+  },
+  "security": {
+    "advisories": [
+      {
+        "id": "GHSA-96hv-2xvq-fx4p",
+        "source": "osv",
+        "severity_cvss": 7.5,
+        "security_forced": true,
+        "fixed_in": "8.21.0"
+      }
+    ],
+    "known_exploited": false,
+    "public_exploit_available": true,
+    "epss_bucket": "low",
+    "malicious_package_signal": "none"
+  },
+  "usage": {
+    "affected_services": ["apps/gitboard", "apps/console"],
+    "affected_files": [
+      "apps/gitboard/package.json",
+      "apps/console/package.json",
+      "bun.lock"
+    ],
+    "runtime_reachable": "no",
+    "publicly_exposed_path": "no",
+    "github_actions_blast_radius": "low"
+  },
+  "tests": {
+    "existing_tests_relevant": [
+      "apps/gitboard/tests/api/ws/realtime-contract.test.ts",
+      "apps/gitboard/tests/api/ws/server-boundary.test.ts",
+      "apps/gitboard/tests/dashboard/lib/ws.test.ts"
+    ],
+    "missing_tests": [],
+    "recommended_commands": [
+      "bun install --frozen-lockfile",
+      "osv-scanner scan --lockfile ./bun.lock",
+      "bunx vitest run tests/api/ws"
+    ]
+  },
+  "service_skills": {
+    "paths": [],
+    "dependency_surface_present": false,
+    "health_checks": [],
+    "post_update_watch_signals": ["test_suite_duration", "happy_dom_env_failures"]
+  },
+  "preliminary_verdict": {
+    "status": "security_forced",
+    "reason": "SECURITY_FORCED under rigid policy \u00a74.1: public_exploit_available=true (the advisory ships a working OOM DoS PoC). Policy \u00a74.1 is disjunctive and non-negotiable \u2014 a public PoC forces SECURITY_FORCED regardless of reachability; it cannot be downgraded because ws is test-only. Advisory GHSA-96hv-2xvq-fx4p (CVE-2026-48779, OOM DoS) is fixed in 8.21.0; target equals the fixing version, so the finding is remediated. Release age 1448.3h clears cooldown; SECURITY_FORCED bypasses cooldown anyway. ws is transitive dev/test-only via happy-dom@20.8.4 (range ^8.18.3 satisfied) and is not runtime-reachable in production, which bounds blast radius but does not change the forced verdict. Pinned to exactly 8.21.0 via root override (not 8.21.1) per operator cooldown discipline. Remediated SECURITY_FORCED retains the post-deploy watch."
+  }
+}
