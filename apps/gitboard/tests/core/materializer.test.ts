@@ -14,6 +14,16 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+async function flushMaterializer(materializer: Materializer, isComplete: () => boolean): Promise<void> {
+  for (let step = 0; step < 100; step += 1) {
+    if (isComplete() && materializer.getSchedulerStats().active === 0 && materializer.getSchedulerStats().pending === 0) return;
+    vi.advanceTimersByTime(COALESCE_MS);
+    await Promise.resolve();
+    await Promise.resolve();
+  }
+  throw new Error("materializer did not drain deterministically");
+}
+
 afterEach(async () => {
   await rm(join(process.cwd(), ".tmp-materializer"), { recursive: true, force: true });
 });
@@ -87,6 +97,7 @@ function createAdapter(batches: Array<Array<{ issue_id: string; title: string }>
 
 describe("materializer", () => {
   it("coalesces same source triggers and isolates source failures", async () => {
+    vi.useFakeTimers();
     setDiskEnabled(false);
     const db = await createDb();
     const registry = new ChannelRegistry();
@@ -116,7 +127,7 @@ describe("materializer", () => {
     materializer.trigger("a");
     materializer.trigger("a");
     materializer.trigger("b");
-    await new Promise((resolve) => setTimeout(resolve, COALESCE_MS + 200));
+    await flushMaterializer(materializer, () => errors.length === 1 && hints.length === 1);
 
     expect(db.query("SELECT title FROM substrate_issues WHERE repo_slug = 'repo/a' AND issue_id = '1'").get() as { title: string }).toEqual({ title: "one" });
     expect(db.query("SELECT cursor FROM materialization_state WHERE source_key = 'a'").get() as { cursor: string }).toEqual({ cursor: '{"cursor":1}' });
@@ -127,48 +138,57 @@ describe("materializer", () => {
 
     shouldFail = false;
     materializer.trigger("b");
-    await new Promise((resolve) => setTimeout(resolve, COALESCE_MS + 200));
+    await flushMaterializer(materializer, () => errors.length === 1 && hints.length === 2);
     expect(db.query("SELECT cursor FROM materialization_state WHERE source_key = 'b'").get() as { cursor: string }).toEqual({ cursor: '{"cursor":1}' });
     expect(hints).toHaveLength(2);
     unsubscribe();
     db.close();
   });
 
-  it("bounds concurrent large source runs and coalesces unchanged source triggers", async () => {
+  it("drains 21 large sources with bounded concurrency and coalescing", async () => {
+    vi.useFakeTimers();
     const db = await createDb();
     const materializer = new Materializer(db);
     let activeRuns = 0;
     let peakActiveRuns = 0;
     let completedRuns = 0;
-    const largeRows = Array.from({ length: 2_000 }, (_, index) => ({ issue_id: String(index), title: `issue-${index}` }));
+    let materializedRows = 0;
+    const rowsPerSource = 500;
 
-    for (let sourceIndex = 0; sourceIndex < 12; sourceIndex += 1) {
+    for (let sourceIndex = 0; sourceIndex < 21; sourceIndex += 1) {
+      const sourceRows = Array.from({ length: rowsPerSource }, (_, rowIndex) => ({
+        issue_id: `${sourceIndex}-${rowIndex}`,
+        title: `issue-${sourceIndex}-${rowIndex}`,
+      }));
       const sourceKey = `beads:large-${sourceIndex}`;
       materializer.register(sourceKey, {
         async cursor() { return { cursor: 0 }; },
         async changesSince() {
           activeRuns += 1;
           peakActiveRuns = Math.max(peakActiveRuns, activeRuns);
-          await new Promise((resolve) => setTimeout(resolve, 25));
+          await Promise.resolve();
           activeRuns -= 1;
           completedRuns += 1;
-          return { cursor: { cursor: 1 }, rows: largeRows };
+          materializedRows += sourceRows.length;
+          return { cursor: { cursor: 1 }, rows: sourceRows };
         },
-        async snapshot() { return { rows: largeRows }; },
+        async snapshot() { return { rows: sourceRows }; },
         write() {},
       });
       materializer.trigger(sourceKey);
       materializer.trigger(sourceKey);
     }
 
-    await new Promise((resolve) => setTimeout(resolve, COALESCE_MS + 2_000));
+    await flushMaterializer(materializer, () => completedRuns === 21);
     const scheduler = materializer.getSchedulerStats();
 
-    expect(completedRuns).toBe(12);
+    expect(completedRuns).toBe(21);
+    expect(materializedRows).toBeGreaterThanOrEqual(10_000);
     expect(peakActiveRuns).toBeLessThanOrEqual(2);
     expect(scheduler.maxActive).toBeLessThanOrEqual(2);
-    expect(scheduler.maxPending).toBeLessThanOrEqual(scheduler.pendingLimit);
+    expect(scheduler.maxPending).toBeLessThanOrEqual(8);
     expect(scheduler.pending).toBe(0);
+    expect(scheduler.active).toBe(0);
     db.close();
   });
 

@@ -56,7 +56,7 @@ export class Materializer {
 
   private schedule(sourceKey: string): Promise<void> {
     const scheduled = this.scheduler.submit(sourceKey, () => this.runOnce(sourceKey));
-    if (scheduled.accepted) return scheduled.completion!;
+    if (scheduled.accepted) return scheduled.completion;
     this.queues.get(sourceKey)?.enqueue(sourceKey, () => this.schedule(sourceKey));
     return Promise.resolve();
   }

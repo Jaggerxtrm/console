@@ -12,10 +12,9 @@ export interface MaterializerSchedulerStats {
   pendingLimit: number;
 }
 
-export interface MaterializerScheduleResult {
-  accepted: boolean;
-  completion?: Promise<void>;
-}
+export type MaterializerScheduleResult =
+  | { accepted: true; completion: Promise<void> }
+  | { accepted: false };
 
 export class BoundedMaterializerScheduler {
   private readonly pending: Array<{
