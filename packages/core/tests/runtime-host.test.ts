@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { createGitboardRuntimeLifecycle, createGitboardRuntimeLifecyclePlan, createRuntimeHostDescriptor, runtimeHostHasCapability } from "../src/runtime/index.ts";
+import { createGitboardRuntimeLifecycle, createGitboardRuntimeLifecyclePlan, createRuntimeHostDescriptor, createRuntimeLifecycle, createRuntimeLifecyclePlan, runtimeHostHasCapability } from "../src/runtime/index.ts";
 
 describe("runtime host descriptor", () => {
-  it("captures compatibility host capabilities without owning app implementations", () => {
+  it("captures host capabilities without owning app implementations", () => {
     const host = createRuntimeHostDescriptor({
+      owner: "apps/console",
       storeDb: "store",
       stateDb: "state",
       registry: "registry",
@@ -13,19 +14,42 @@ describe("runtime host descriptor", () => {
     });
 
     expect(host).toMatchObject({
-      compatibilityHost: "apps/gitboard",
+      owner: "apps/console",
       storeDb: "store",
       stateDb: "state",
       registry: "registry",
       materializer: "materializer",
     });
+    // Canonical descriptors carry no hardcoded compatibility host literal.
+    expect(host.compatibilityHost).toBeUndefined();
     expect(runtimeHostHasCapability(host, "materializer")).toBe(true);
     expect(runtimeHostHasCapability(host, "github-adapter")).toBe(false);
     expect(host.mountedRoutes).toEqual(["/api/feed", "/api/substrate"]);
     expect(host.staticServiceParity).toEqual([]);
   });
 
-  it("owns gitboard lifecycle policy while app supplies concrete adapters", () => {
+  it("proves Console ownership through the canonical host-neutral factories", () => {
+    const plan = createRuntimeLifecyclePlan({ owner: "apps/console", hasStateDatabase: false });
+    const lifecycle = createRuntimeLifecycle(plan, {
+      storeDb: "store",
+      stateDb: null,
+      registry: "registry",
+      createMaterializer: () => ({ created: "materializer" }),
+      createScanner: () => ({ created: "scanner" }),
+      createBeadsWatcher: () => ({ created: "beads-watcher" }),
+      createObservabilityWatcher: () => ({ created: "observability-watcher" }),
+      createBeadsParityHarness: (db, options) => ({ db, options }),
+      createObservabilityParityHarness: (db, options) => ({ db, options }),
+    });
+
+    expect(plan.owner).toBe("apps/console");
+    expect(plan.compatibilityHost).toBeUndefined();
+    expect(lifecycle.runtimeHost.owner).toBe("apps/console");
+    // Canonical Console ownership never silently carries the legacy literal.
+    expect(lifecycle.runtimeHost.compatibilityHost).toBeUndefined();
+  });
+
+  it("proves Gitboard ownership and legacy literal through the temporary aliases", () => {
     const plan = createGitboardRuntimeLifecyclePlan({
       hasStateDatabase: true,
       isDatasetteDebugEnabled: true,
@@ -43,6 +67,12 @@ describe("runtime host descriptor", () => {
       createObservabilityParityHarness: (db, options) => ({ db, options, harness: "observability" }),
     });
 
+    // The alias injects the legacy owner and compatibility host for callers
+    // that predate the host-neutral contract.
+    expect(plan.owner).toBe("apps/gitboard");
+    expect(plan.compatibilityHost).toBe("apps/gitboard");
+    expect(lifecycle.runtimeHost.owner).toBe("apps/gitboard");
+    expect(lifecycle.runtimeHost.compatibilityHost).toBe("apps/gitboard");
     expect(plan.mountedRoutes).toContain("/explore/sql");
     expect(lifecycle.materializer).toEqual({ db: "store", registry: "registry" });
     expect(lifecycle.scanner).toEqual({ db: "store", options: { parityEnabled: true } });
