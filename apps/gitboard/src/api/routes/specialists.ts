@@ -57,6 +57,7 @@ const MAX_IN_FLIGHT_CACHE_ENTRIES = 2;
 export const MAX_IN_FLIGHT_REFRESHES = 4;
 export const MAX_REPO_SLUG_FILTERS = 8;
 export const MAX_REPO_SLUG_FILTER_BYTES = 512;
+export const MAX_SPECIALIST_FEED_OUTPUT_BYTES = 1_048_576;
 
 type MaterializationStateRow = {
   source_key: string;
@@ -480,6 +481,9 @@ function resolveJobForEventLookup(current: { dao: SpecialistsDao; repos: Special
 }
 
 const SPECIALIST_JOB_ID_RE = /^[A-Za-z0-9._:-]{3,128}$/;
+const SPECIALIST_FEED_TIMEOUT_MS = 10_000;
+const SPECIALIST_FEED_TERM_GRACE_MS = 2_000;
+const SPECIALIST_FEED_REAP_DEADLINE_MS = 4_000;
 
 type SpecialistFeedResult =
   | { ok: true; text: string }
@@ -494,25 +498,76 @@ export async function runSpecialistFeed(jobId: string, options: { cwd?: string; 
       cwd: options.cwd,
       env: buildSpecialistFeedEnv(env),
       stdio: ["ignore", "pipe", "pipe"],
+      detached: true,
     });
     let stdout = "";
     let stderr = "";
-    const timeout = setTimeout(() => {
-      child.kill("SIGTERM");
-      resolveFeed({ ok: false, status: 500, error: "specialist feed timed out" });
-    }, 10_000);
-
-    child.stdout.on("data", (chunk) => { stdout += chunk.toString("utf8"); });
-    child.stderr.on("data", (chunk) => { stderr += chunk.toString("utf8"); });
-    child.on("error", (error) => {
+    let stdoutBytes = 0;
+    let stderrBytes = 0;
+    let stdoutTruncated = false;
+    let settled = false;
+    let timedOut = false;
+    let killTimer: ReturnType<typeof setTimeout> | undefined;
+    let reapDeadlineTimer: ReturnType<typeof setTimeout> | undefined;
+    const killGroup = (signal: NodeJS.Signals) => {
+      if (child.pid == null) return;
+      try {
+        process.kill(-child.pid, signal);
+      } catch {
+        try {
+          child.kill(signal);
+        } catch {
+          // group/child already reaped
+        }
+      }
+    };
+    const settle = (result: SpecialistFeedResult) => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timeout);
-      resolveFeed({ ok: false, status: 500, error: error.message });
+      clearTimeout(killTimer);
+      clearTimeout(reapDeadlineTimer);
+      resolveFeed(result);
+    };
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      killGroup("SIGTERM");
+      killTimer = setTimeout(() => killGroup("SIGKILL"), SPECIALIST_FEED_TERM_GRACE_MS);
+      reapDeadlineTimer = setTimeout(() => {
+        killGroup("SIGKILL");
+        settle({ ok: false, status: 500, error: "specialist feed timed out" });
+      }, SPECIALIST_FEED_REAP_DEADLINE_MS);
+    }, SPECIALIST_FEED_TIMEOUT_MS);
+
+    child.stdout.on("data", (chunk: Buffer) => {
+      if (stdoutTruncated) return;
+      stdoutBytes += chunk.length;
+      if (stdoutBytes > MAX_SPECIALIST_FEED_OUTPUT_BYTES) {
+        stdoutTruncated = true;
+        killGroup("SIGKILL");
+        return;
+      }
+      stdout += chunk.toString("utf8");
+    });
+    child.stderr.on("data", (chunk: Buffer) => {
+      if (stderrBytes > MAX_SPECIALIST_FEED_OUTPUT_BYTES) return;
+      stderrBytes += chunk.length;
+      if (stderrBytes > MAX_SPECIALIST_FEED_OUTPUT_BYTES) {
+        stderr = stderr.slice(0, MAX_SPECIALIST_FEED_OUTPUT_BYTES);
+        killGroup("SIGKILL");
+        return;
+      }
+      stderr += chunk.toString("utf8");
+    });
+    child.on("error", (error) => {
+      settle({ ok: false, status: 500, error: error.message });
     });
     child.on("close", (code) => {
-      clearTimeout(timeout);
-      if (code === 0) return resolveFeed({ ok: true, text: stdout });
+      if (timedOut) return settle({ ok: false, status: 500, error: "specialist feed timed out" });
+      if (stdoutTruncated) return settle({ ok: true, text: stdout });
+      if (code === 0) return settle({ ok: true, text: stdout });
       const message = stripAnsi(stderr || stdout).trim() || `specialist feed exited ${code}`;
-      resolveFeed({ ok: false, status: message.includes("not found") ? 404 : 500, error: message });
+      settle({ ok: false, status: message.includes("not found") ? 404 : 500, error: message });
     });
   });
 }
