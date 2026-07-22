@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { createAdapterRegistry, type AdapterRegistry } from "./adapter.ts";
-import { SourceQueue } from "./queue.ts";
+import { BoundedMaterializerScheduler, SourceQueue, type MaterializerSchedulerStats } from "./queue.ts";
 import type { MaterializerAdapter } from "./types.ts";
 
 export type MaterializerLogLevel = "debug" | "info" | "warn" | "error";
@@ -27,6 +27,7 @@ export interface MaterializerHooks {
 export class Materializer {
   private readonly registry: AdapterRegistry = createAdapterRegistry();
   private readonly queues = new Map<string, SourceQueue>();
+  private readonly scheduler = new BoundedMaterializerScheduler();
 
   constructor(
     private readonly db: Database,
@@ -46,7 +47,18 @@ export class Materializer {
   trigger(sourceKey: string): void {
     const queue = this.queues.get(sourceKey);
     if (!queue) throw new Error(`unknown source: ${sourceKey}`);
-    queue.enqueue(sourceKey, () => this.runOnce(sourceKey));
+    queue.enqueue(sourceKey, () => this.schedule(sourceKey));
+  }
+
+  getSchedulerStats(): MaterializerSchedulerStats {
+    return this.scheduler.getStats();
+  }
+
+  private schedule(sourceKey: string): Promise<void> {
+    const scheduled = this.scheduler.submit(sourceKey, () => this.runOnce(sourceKey));
+    if (scheduled.accepted) return scheduled.completion;
+    this.queues.get(sourceKey)?.enqueue(sourceKey, () => this.schedule(sourceKey));
+    return Promise.resolve();
   }
 
   async runOnce(sourceKey: string): Promise<void> {
