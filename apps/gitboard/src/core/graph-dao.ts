@@ -287,7 +287,7 @@ function readCachedIssues(project: BeadsProject, includeClosed: boolean): { key:
 async function refreshIssues(project: BeadsProject, includeClosed: boolean): Promise<void> {
   const key = issueCacheKey(project, includeClosed);
   const inflight = issueInflight.get(key);
-  if (inflight) return;
+  if (inflight) return inflight;
 
   const promise = readIssues(project, includeClosed)
     .then((issues) => {
