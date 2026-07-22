@@ -19,6 +19,8 @@ describe("graph route xtrm source", () => {
     const response = await app.fetch(new Request("http://localhost/api/console/graph?project=repo-a&refresh=true"));
     const json = await response.json() as {
       freshness: string;
+      project_id: string;
+      repo_slug: string;
       source_health: { status: string; message?: string; metadata?: Record<string, unknown> };
       nodes: Array<{ id: string }>;
       edges: unknown[];
@@ -36,10 +38,19 @@ describe("graph route xtrm source", () => {
     expect(json.edges).toEqual(coreSnapshot.graph.edges);
     expect(json.specialists).toEqual(coreSnapshot.graph.specialists);
     expect(json.freshness).toEqual(coreSnapshot.freshness);
+    expect(json.project_id).toEqual(coreSnapshot.graph.project_id);
+    expect(json.repo_slug).toEqual(coreSnapshot.graph.repo_slug);
     expect(coreSnapshot.sourceHealth).toBeDefined();
     expect(json.source_health.status).toEqual(coreSnapshot.sourceHealth?.status);
     expect(json.source_health.message).toEqual(coreSnapshot.sourceHealth?.message);
-    expect(json.source_health.metadata).toEqual(coreSnapshot.sourceHealth?.metadata);
+    const { age_seconds: jsonAgeSeconds, ...jsonMetadata } = json.source_health.metadata ?? {};
+    const { age_seconds: coreAgeSeconds, ...coreMetadata } = coreSnapshot.sourceHealth?.metadata ?? {};
+    expect(jsonMetadata).toEqual(coreMetadata);
+    expect(typeof jsonAgeSeconds).toBe("number");
+    expect(typeof coreAgeSeconds).toBe("number");
+    if (typeof jsonAgeSeconds === "number" && typeof coreAgeSeconds === "number") {
+      expect(Math.abs(jsonAgeSeconds - coreAgeSeconds)).toBeLessThanOrEqual(1);
+    }
     expect(json.nodes.map((node) => node.id)).toEqual(["A"]);
 
     db.close();
