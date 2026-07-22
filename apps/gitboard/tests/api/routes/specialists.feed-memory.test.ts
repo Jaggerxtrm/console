@@ -139,4 +139,42 @@ describe("runSpecialistFeed lifecycle and output byte bound", () => {
 
     expect(result).toEqual({ ok: true, text: "JOB:job-1\n" });
   });
+
+  // Regression for F-001 (audit f990ed): timeout sent SIGTERM to the direct child
+  // only and settled immediately, so a SIGTERM-resistant child survived the HTTP
+  // response. Timeout must escalate TERM->KILL and reap the direct child before
+  // settling. Fails before the fix (child survives) and passes after it.
+  it("reaps a SIGTERM-ignoring child via bounded TERM-to-KILL escalation", async () => {
+    const pidFile = join(repoDir, "feed.pid");
+    const env = writeNodeFeed(
+      `process.on("SIGTERM", () => {}); require("node:fs").writeFileSync(process.env.FEED_PID_FILE, String(process.pid)); setInterval(() => {}, 1000);\n`,
+    );
+    env.FEED_PID_FILE = pidFile;
+
+    const result = await runSpecialistFeed("job-1", { cwd: repoDir, env });
+
+    expect(result).toEqual({ ok: false, status: 500, error: "specialist feed timed out" });
+    expect(await childExited(pidFile)).toBe(true);
+  }, 20_000);
+
+  it("kills inherited-stdio descendant via process-group cleanup and settles once", async () => {
+    const pidFile = join(repoDir, "feed.pid");
+    const descPidFile = join(repoDir, "desc.pid");
+    const descendant = `process.on("SIGTERM", () => {}); require("node:fs").writeFileSync(process.env.DESC_PID_FILE, String(process.pid)); setInterval(() => {}, 1000);`;
+    const env = writeNodeFeed(
+      `const { spawn } = require("node:child_process");
+       spawn(process.execPath, ["-e", ${JSON.stringify(descendant)}], { stdio: "inherit" });
+       require("node:fs").writeFileSync(process.env.FEED_PID_FILE, String(process.pid));
+       process.on("SIGTERM", () => {});
+       setInterval(() => {}, 1000);\n`,
+    );
+    env.FEED_PID_FILE = pidFile;
+    env.DESC_PID_FILE = descPidFile;
+
+    const result = await runSpecialistFeed("job-1", { cwd: repoDir, env });
+
+    expect(result).toEqual({ ok: false, status: 500, error: "specialist feed timed out" });
+    expect(await childExited(pidFile)).toBe(true);
+    expect(await childExited(descPidFile)).toBe(true);
+  }, 20_000);
 });
