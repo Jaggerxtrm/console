@@ -262,4 +262,92 @@ describe("host-retirement-guard", () => {
       rmSync(outside, { recursive: true, force: true });
     }
   });
+
+  // SEC-4 challenge: deterministic, root-independent adversarial coverage.
+  // The chmod-000 tests above are bypassed when the suite runs as root (uid 0
+  // ignores permission bits). The cases below fail for structural/OS reasons
+  // root cannot bypass, so they hold in both non-root and root runtimes.
+  describe("SEC-4 root-independent failure paths", () => {
+    const ROOT_UNSAFE_SNIPPET = "unreadable directory; guard cannot list entries for classification";
+    const ROOT_UNSAFE_FINGERPRINT = `unsafe-fs-entry::.::${ROOT_UNSAFE_SNIPPET}`;
+
+    test("root path that is a file (ENOTDIR) fails closed with an exact '.' unsafe finding (root-independent)", () => {
+      // readdirSync on a non-directory throws ENOTDIR regardless of uid, so this
+      // read failure is NOT bypassable by root (unlike chmod 000).
+      const root = mkdtempSync(join(tmpdir(), "console-host-retirement-rootfile-"));
+      const notADir = join(root, "not-a-dir.txt");
+      try {
+        writeFileSync(notADir, 'import legacy from "apps/gitboard/src/index.ts";\n');
+
+        const { findings, scannedFiles } = scanTree(notADir);
+        expect(scannedFiles).toBe(0);
+        expect(findings).toHaveLength(1);
+        expect(findings[0]).toMatchObject({
+          category: "unsafe-fs-entry",
+          file: ".",
+          line: 1,
+          snippet: ROOT_UNSAFE_SNIPPET,
+          fingerprint: ROOT_UNSAFE_FINGERPRINT,
+        });
+
+        // strict FAILS on the unsafe finding.
+        const strict = evaluate({ mode: "strict", root: notADir });
+        expect(strict.pass).toBe(false);
+        expect(strict.verdict).toBe("FAIL");
+
+        // no-new-regressions FAILS with an empty baseline (unsafe finding is new)...
+        const baselinePath = join(root, "baseline.json");
+        writeFileSync(baselinePath, JSON.stringify({ deprecatedHost: DEPRECATED_HOST_PATH, fingerprints: [] }));
+        const noNew = evaluate({ mode: "no-new-regressions", root: notADir, baselinePath });
+        expect(noNew.pass).toBe(false);
+        expect(noNew.verdict).toBe("FAIL");
+        expect(noNew.newRegressions.map((f) => f.fingerprint)).toContain(ROOT_UNSAFE_FINGERPRINT);
+
+        // ...and PASSES once the exact fingerprint is baselined, proving the
+        // normalized fingerprint is stable enough to be a baseline token.
+        writeFileSync(baselinePath, JSON.stringify({ deprecatedHost: DEPRECATED_HOST_PATH, fingerprints: [ROOT_UNSAFE_FINGERPRINT] }));
+        const baselined = evaluate({ mode: "no-new-regressions", root: notADir, baselinePath });
+        expect(baselined.pass).toBe(true);
+        expect(baselined.verdict).toBe("PASS");
+        expect(baselined.newRegressions).toHaveLength(0);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+
+    test("symlinks named as ignored directories stay ignored (no unsafe finding, root-independent)", () => {
+      const root = mkdtempSync(join(tmpdir(), "console-host-retirement-ignsym-"));
+      const outside = mkdtempSync(join(tmpdir(), "console-host-retirement-ignsym-out-"));
+      try {
+        // Target holds a real gitboard reference; the ignored NAME must keep the
+        // symlink from becoming an unsafe finding or being followed.
+        writeFileSync(join(outside, "Dockerfile"), 'CMD ["bun", "apps/gitboard/src/index.ts"]\n');
+        symlinkSync(outside, join(root, "node_modules")); // IGNORED_DIRS name
+        symlinkSync(outside, join(root, "fixtures"));     // TEST_DIR_NAMES name
+
+        const { findings, scannedFiles } = scanTree(root);
+        expect(findings).toHaveLength(0);
+        expect(scannedFiles).toBe(0);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+        rmSync(outside, { recursive: true, force: true });
+      }
+    });
+
+    test("fingerprints use exact normalized form (snippet trimmed, inner whitespace collapsed)", () => {
+      const root = mkdtempSync(join(tmpdir(), "console-host-retirement-fingerprint-"));
+      try {
+        // Inner whitespace must collapse in the fingerprint (the baseline token)
+        // while the human snippet keeps original inner spacing, trimmed at ends.
+        writeFileSync(join(root, "Dockerfile"), 'CMD   ["x",   "apps/gitboard/src/index.ts"]\n');
+
+        const { findings } = scanTree(root);
+        expect(findings).toHaveLength(1);
+        expect(findings[0].snippet).toBe('CMD   ["x",   "apps/gitboard/src/index.ts"]');
+        expect(findings[0].fingerprint).toBe('container::Dockerfile::CMD ["x", "apps/gitboard/src/index.ts"]');
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+  });
 });
