@@ -323,9 +323,13 @@ function countStatuses(jobs: SpecialistJob[]): Record<string, number> {
 }
 
 function parseLimit(value: string | undefined, fallback: number): number {
-  if (value === undefined || value === "") return fallback;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed >= 0 ? Math.min(Math.floor(parsed), 5000) : fallback;
+  if (value === undefined) return fallback;
+  const trimmed = value.trim();
+  if (trimmed === "") return fallback;
+  if (!/^-?\d+$/.test(trimmed)) return fallback;
+  const parsed = Number(trimmed);
+  if (!Number.isInteger(parsed) || parsed < 0) return fallback;
+  return Math.min(parsed, 5000);
 }
 
 function parseRepoSlugs(value: string | undefined): string[] {
