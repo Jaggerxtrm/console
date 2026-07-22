@@ -9,6 +9,26 @@ vi.mock("../../../../src/dashboard/lib/client-log.ts", () => ({
   logClientEvent: vi.fn(),
 }));
 
+// TerminalStream wraps a real xterm Terminal whose construction/fit/font-ready
+// work is heavy and CPU-contention-sensitive under parallel suite load. This pane
+// test only asserts on the `.terminal-stream` wrapper count, toggle buttons, and
+// result markdown — never on xterm-rendered glyphs (xterm behavior is covered by
+// tests/dashboard/components/terminal/TerminalStream.test.tsx). Stub the leaf so
+// settling stays deterministic without weakening any assertion here.
+vi.mock("../../../../src/dashboard/components/terminal/TerminalStream.tsx", async () => {
+  const React = await import("react");
+  type StubProps = { className?: string; status?: React.ReactNode; output?: readonly unknown[] };
+  function TerminalStream({ className, status, output }: StubProps) {
+    return React.createElement(
+      "section",
+      { className: className ? `terminal-stream ${className}` : "terminal-stream", "aria-label": "terminal stream" },
+      status ? React.createElement("div", { className: "terminal-stream-status" }, status) : null,
+      React.createElement("div", { className: "terminal-stream-surface" }, (output ?? []).map((chunk) => String(chunk)).join("\n")),
+    );
+  }
+  return { TerminalStream };
+});
+
 describe("Console BeadActivityPane", () => {
   beforeEach(() => {
     Object.defineProperty(navigator, "sendBeacon", { value: vi.fn(() => true), configurable: true });
