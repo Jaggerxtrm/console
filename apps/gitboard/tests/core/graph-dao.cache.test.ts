@@ -126,6 +126,13 @@ describe("graph cache identity", () => {
     for (let i = 0; i < 100 && issuesCalls === 0; i += 1) await Promise.resolve();
     expect(issuesCalls).toBe(1);
 
+    // A synchronous snapshot reader must join existing refresh without starting
+    // another JSONL read; stale result remains allowed for this non-warm API.
+    const stale = dao.getGraphSnapshot("repo-concurrent");
+    expect(stale.freshness).toBe("stale");
+    expect(stale.graph.nodes).toEqual([]);
+    expect(issuesCalls).toBe(1);
+
     let warm2Settled = false;
     const warm2 = dao.getGraphSnapshotWarm("repo-concurrent").then((result) => {
       warm2Settled = true;
