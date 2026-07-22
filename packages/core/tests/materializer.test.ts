@@ -92,6 +92,7 @@ describe("core materializer infrastructure", () => {
     const completions = new Map<string, Promise<void>>();
     const inFlight = new Set<string>();
     const finished = new Set<string>();
+    let rejectedSubmissions = 0;
     let active = 0;
     let peakActive = 0;
 
@@ -112,6 +113,7 @@ describe("core materializer infrastructure", () => {
           }
         });
         if (!scheduled.accepted) {
+          rejectedSubmissions += 1;
           gates.delete(sourceKey);
           continue;
         }
@@ -135,6 +137,7 @@ describe("core materializer infrastructure", () => {
     }
 
     expect(waiting).toHaveLength(0);
+    expect(rejectedSubmissions).toBeGreaterThan(0);
     expect(finished).toEqual(new Set(sources));
     expect(peakActive).toBeLessThanOrEqual(2);
     expect(scheduler.getStats()).toMatchObject({ active: 0, pending: 0, maxActive: 2, pendingLimit: 8 });
@@ -145,5 +148,20 @@ describe("core materializer infrastructure", () => {
     expect(rejected.accepted).toBe(true);
     if (rejected.accepted) await expect(rejected.completion).rejects.toBe(failure);
     expect(scheduler.getStats()).toMatchObject({ active: 0, pending: 0 });
+  });
+
+  it("frees bounded slot after rejection and resolves following queued work", async () => {
+    const scheduler = new BoundedMaterializerScheduler(1, 8);
+    const failure = new Error("first run failed");
+    let nextRuns = 0;
+    const failed = scheduler.submit("source:failed", async () => { throw failure; });
+    const next = scheduler.submit("source:next", async () => { nextRuns += 1; });
+
+    expect(failed.accepted).toBe(true);
+    expect(next.accepted).toBe(true);
+    if (failed.accepted) await expect(failed.completion).rejects.toBe(failure);
+    if (next.accepted) await expect(next.completion).resolves.toBeUndefined();
+    expect(nextRuns).toBe(1);
+    expect(scheduler.getStats()).toMatchObject({ active: 0, pending: 0, maxActive: 1 });
   });
 });
