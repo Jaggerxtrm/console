@@ -56,7 +56,7 @@ export function createObservabilityAdapter(dbPath: string, repoSlug: string): Ma
       return { updated_at_ms: 0, job_id: "", event_rowid: 0, forensic_rowid: 0 };
     },
     async changesSince(cursor) {
-      const baseline = normalizeCursor(cursor, sourceHighWater(db, hasForensic));
+      const baseline = normalizeCursor(cursor, sourceHighWater(db, hasForensic), db);
       const recentJobs = readJobsSince(db, repoSlug, baseline, beadIdSelect, hasMetrics);
       const jobsOverflow = recentJobs.length > JOB_BATCH_SIZE;
       const pageJobs = jobsOverflow ? recentJobs.slice(0, JOB_BATCH_SIZE) : recentJobs;
@@ -143,7 +143,7 @@ function sanitizePosition(value: unknown, highWater: number): number {
   return value;
 }
 
-function normalizeCursor(cursor: unknown, highWater: SourceHighWater): ObservabilityCursor {
+function normalizeCursor(cursor: unknown, highWater: SourceHighWater, db: Database): ObservabilityCursor {
   const value = cursor as Partial<ObservabilityCursor> | null | undefined;
   const updatedAtMs = sanitizePosition(value?.updated_at_ms, highWater.updatedAtMs);
   // The tie-break job_id must be a bounded string. On a reset/invalid job
@@ -151,13 +151,31 @@ function normalizeCursor(cursor: unknown, highWater: SourceHighWater): Observabi
   // equal-timestamp rows are replayed (idempotent) rather than skipped or used
   // to inject an unbounded string into SQL comparisons.
   const rawJobId = typeof value?.job_id === "string" ? value.job_id : "";
-  const jobId = updatedAtMs === 0 || rawJobId.length > JOB_ID_MAX_LEN ? "" : rawJobId;
+  let jobId = updatedAtMs === 0 || rawJobId.length > JOB_ID_MAX_LEN ? "" : rawJobId;
+  // Validate the tie-breaker as an exact (updated_at_ms, job_id) tuple against
+  // the source. A legitimate cursor is always produced from a real row, so its
+  // tuple exists. A non-empty job_id whose exact tuple is absent is a phantom
+  // (never existed), a deleted/pruned anchor, or an ahead tie-breaker; any of
+  // these would make `job_id > ?` skip equal-timestamp rows. Reset it to "" so
+  // the whole bucket replays (idempotent upserts) instead of dropping rows. One
+  // bounded existence lookup per run; an existing tuple is preserved so stable
+  // keyset pagination and legitimate continuation hold.
+  if (jobId !== "" && !cursorTupleExists(db, updatedAtMs, jobId)) jobId = "";
   return {
     updated_at_ms: updatedAtMs,
     job_id: jobId,
     event_rowid: sanitizePosition(value?.event_rowid, highWater.eventRowid),
     forensic_rowid: sanitizePosition(value?.forensic_rowid ?? value?.event_rowid, highWater.forensicRowid),
   };
+}
+
+// True iff the exact (updated_at_ms, job_id) cursor tuple exists in the source.
+// One bounded, index-served existence probe per run (LIMIT 1, no scan of rows).
+function cursorTupleExists(db: Database, updatedAtMs: number, jobId: string): boolean {
+  const row = db.query("SELECT 1 AS ok FROM specialist_jobs WHERE updated_at_ms = ? AND job_id = ? LIMIT 1").get(updatedAtMs, jobId) as { ok: number } | null | undefined;
+  // Host-neutral: bun:sqlite returns null on no row, the node:sqlite shim returns
+  // undefined. Treat both as absent so the phantom tie-breaker resets everywhere.
+  return row != null;
 }
 
 function readJobsSince(db: Database, repoSlug: string, cursor: ObservabilityCursor, beadIdSelect: string, hasMetrics: boolean): JobRow[] {
