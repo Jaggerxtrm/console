@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
@@ -12,15 +12,6 @@ import {
   type DiscoveredRepo,
 } from "../../src/core/github-discover.ts";
 
-// Bun is not defined in Node.js Vitest workers — stub the global.
-beforeAll(() => {
-  vi.stubGlobal("Bun", { spawnSync: vi.fn() });
-});
-
-afterAll(() => {
-  vi.unstubAllGlobals();
-});
-
 const sampleRepos: DiscoveredRepo[] = [
   { full_name: "alice/recent-public", is_private: false, pushed_at: new Date().toISOString() },
   { full_name: "alice/recent-private", is_private: true, pushed_at: new Date().toISOString() },
@@ -32,20 +23,30 @@ const sampleRepos: DiscoveredRepo[] = [
   { full_name: "alice/null-pushed", is_private: false, pushed_at: null },
 ];
 
+function fakeSpawnSync(result: {
+  exitCode: number;
+  stdout: Buffer;
+  stderr: Buffer;
+  success: boolean;
+}) {
+  return (() => result) as unknown as typeof Bun.spawnSync;
+}
+
 describe("discoverViaGhCli", () => {
   it("parses JSON output from gh repo list", () => {
-    vi.spyOn(Bun, "spawnSync").mockReturnValueOnce({
-      exitCode: 0,
-      stdout: Buffer.from(JSON.stringify([
-        { nameWithOwner: "alice/repo-a", isPrivate: false, pushedAt: "2026-03-01T00:00:00Z" },
-        { nameWithOwner: "alice/repo-b", isPrivate: true, pushedAt: "2026-02-01T00:00:00Z" },
-        { nameWithOwner: "alice/repo-c", isPrivate: false, pushedAt: null },
-      ])),
-      stderr: Buffer.from(""),
-      success: true,
-    } as ReturnType<typeof Bun.spawnSync>);
+    const repos = discoverViaGhCli(
+      fakeSpawnSync({
+        exitCode: 0,
+        stdout: Buffer.from(JSON.stringify([
+          { nameWithOwner: "alice/repo-a", isPrivate: false, pushedAt: "2026-03-01T00:00:00Z" },
+          { nameWithOwner: "alice/repo-b", isPrivate: true, pushedAt: "2026-02-01T00:00:00Z" },
+          { nameWithOwner: "alice/repo-c", isPrivate: false, pushedAt: null },
+        ])),
+        stderr: Buffer.from(""),
+        success: true,
+      }),
+    );
 
-    const repos = discoverViaGhCli();
     expect(repos).toHaveLength(3);
     expect(repos[0]).toEqual({ full_name: "alice/repo-a", is_private: false, pushed_at: "2026-03-01T00:00:00Z" });
     expect(repos[1]).toEqual({ full_name: "alice/repo-b", is_private: true, pushed_at: "2026-02-01T00:00:00Z" });
@@ -53,14 +54,16 @@ describe("discoverViaGhCli", () => {
   });
 
   it("throws when gh exits with non-zero code", () => {
-    vi.spyOn(Bun, "spawnSync").mockReturnValueOnce({
-      exitCode: 1,
-      stdout: Buffer.from(""),
-      stderr: Buffer.from("not logged in"),
-      success: false,
-    } as ReturnType<typeof Bun.spawnSync>);
-
-    expect(() => discoverViaGhCli()).toThrow("gh repo list failed");
+    expect(() =>
+      discoverViaGhCli(
+        fakeSpawnSync({
+          exitCode: 1,
+          stdout: Buffer.from(""),
+          stderr: Buffer.from("not logged in"),
+          success: false,
+        }),
+      ),
+    ).toThrow("gh repo list failed");
   });
 });
 
@@ -132,9 +135,6 @@ describe("discoverAndInsert", () => {
 
   beforeEach(async () => {
     tmpDir = await mkdtemp(join(tmpdir(), "agent-forge-test-"));
-    vi.restoreAllMocks();
-    // Re-stub Bun after restoreAllMocks clears the spy
-    vi.stubGlobal("Bun", { spawnSync: vi.fn() });
   });
 
   afterEach(async () => {
@@ -145,17 +145,19 @@ describe("discoverAndInsert", () => {
   it("inserts discovered repos into the database", async () => {
     const db = createDatabase(join(tmpDir, "state.db"));
 
-    vi.spyOn(Bun, "spawnSync").mockReturnValueOnce({
-      exitCode: 0,
-      stdout: Buffer.from(JSON.stringify([
-        { nameWithOwner: "alice/repo-a", isPrivate: false, pushedAt: new Date().toISOString() },
-        { nameWithOwner: "alice/repo-b", isPrivate: false, pushedAt: new Date().toISOString() },
-      ])),
-      stderr: Buffer.from(""),
-      success: true,
-    } as ReturnType<typeof Bun.spawnSync>);
-
-    const result = await discoverAndInsert(db);
+    const result = await discoverAndInsert(
+      db,
+      undefined,
+      fakeSpawnSync({
+        exitCode: 0,
+        stdout: Buffer.from(JSON.stringify([
+          { nameWithOwner: "alice/repo-a", isPrivate: false, pushedAt: new Date().toISOString() },
+          { nameWithOwner: "alice/repo-b", isPrivate: false, pushedAt: new Date().toISOString() },
+        ])),
+        stderr: Buffer.from(""),
+        success: true,
+      }),
+    );
 
     expect(result).toHaveLength(2);
     expect(result).toContain("alice/repo-a");
@@ -173,13 +175,6 @@ describe("discoverAndInsert", () => {
     process.env.GITHUB_TOKEN = "test-token";
     const db = createDatabase(join(tmpDir, "state.db"));
 
-    vi.spyOn(Bun, "spawnSync").mockReturnValue({
-      exitCode: 1,
-      stdout: Buffer.from(""),
-      stderr: Buffer.from("not logged in"),
-      success: false,
-    } as ReturnType<typeof Bun.spawnSync>);
-
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       new Response(
         JSON.stringify([
@@ -189,7 +184,16 @@ describe("discoverAndInsert", () => {
       )
     );
 
-    const result = await discoverAndInsert(db);
+    const result = await discoverAndInsert(
+      db,
+      undefined,
+      fakeSpawnSync({
+        exitCode: 1,
+        stdout: Buffer.from(""),
+        stderr: Buffer.from("not logged in"),
+        success: false,
+      }),
+    );
 
     expect(result).toHaveLength(1);
     expect(result).toContain("alice/api-repo");

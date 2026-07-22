@@ -278,7 +278,9 @@ describe("materializer", () => {
     await materializer.runOnce("a");
 
     expect(warnings).toHaveLength(1);
-    expect((warnings[0] as { data?: { source_key?: string; cursor?: string } }).data).toEqual({ source_key: "a", cursor: "{not-json" });
+    const warnData = (warnings[0] as { data?: Record<string, unknown> }).data;
+    expect(warnData).toEqual({ source_key: "a", cursor_bytes: 9, cursor_valid_json: false, cursor_redacted: true });
+    expect(JSON.stringify(warnData)).not.toContain("{not-json");
     expect(db.query("SELECT cursor FROM materialization_state WHERE source_key = 'a'").get() as { cursor: string }).toEqual({ cursor: '{"cursor":1}' });
     unsubscribe();
     db.close();
@@ -293,13 +295,13 @@ describe("materializer", () => {
 
     const adapter = createObservabilityAdapter(join(process.cwd(), ".tmp-materializer", "observability.sqlite"), "repo/a");
     const first = await adapter.changesSince({ updated_at_ms: 0, event_rowid: 0 });
-    expect(first.cursor).toEqual({ updated_at_ms: 2000, event_rowid: 1, forensic_rowid: 0 });
+    expect(first.cursor).toEqual({ updated_at_ms: 2000, event_rowid: 1, forensic_rowid: 0, job_id: "job-2" });
     expect(first.rows.map((row) => row.job_id)).toEqual(["job-1", "job-2"]);
 
     obsDb.query("INSERT INTO specialist_events (job_id, seq, specialist, bead_id, t, type, event_json) VALUES (?, ?, ?, ?, ?, ?, ?)").run("job-1", 2, "sp1", null, 2, "turn", "{\"x\":1}");
     const second = await adapter.changesSince(first.cursor);
-    expect(second.cursor).toEqual({ updated_at_ms: 2000, event_rowid: 2, forensic_rowid: 0 });
-    expect(second.rows.map((row) => row.job_id).sort()).toEqual(["job-1", "job-2"]);
+    expect(second.cursor).toEqual({ updated_at_ms: 2000, event_rowid: 2, forensic_rowid: 0, job_id: "job-2" });
+    expect(second.rows.map((row) => row.job_id).sort()).toEqual(["job-1"]);
     obsDb.close();
     xtrmDb.close();
   });

@@ -107,6 +107,7 @@ export interface MaterializerSnapshot<TRow = MaterializedIssue, TDependency = Ma
 export interface MaterializerDelta<TRow = MaterializedIssue, TDependency = MaterializedDependency>
   extends MaterializerSnapshot<TRow, TDependency> {
   cursor: MaterializerCursor;
+  hasMore?: boolean;
 }
 
 export interface MaterializerAdapter<TRow = MaterializedIssue, TDependency = MaterializedDependency> {

@@ -25,7 +25,7 @@ describe("observability adapter", () => {
 
     const adapter = createObservabilityAdapter(dbPath, "repo-1");
 
-    await expect(adapter.cursor()).resolves.toEqual({ updated_at_ms: 0, event_rowid: 0, forensic_rowid: 0 });
+    await expect(adapter.cursor()).resolves.toEqual({ updated_at_ms: 0, event_rowid: 0, forensic_rowid: 0, job_id: "" });
   });
 
   it("materializes specialist_jobs rows", async () => {

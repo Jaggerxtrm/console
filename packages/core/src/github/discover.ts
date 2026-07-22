@@ -13,8 +13,10 @@ export interface DiscoverOptions {
   includePrivate?: boolean; // default true
 }
 
-export function discoverViaGhCli(): DiscoveredRepo[] {
-  const result = Bun.spawnSync([
+export function discoverViaGhCli(
+  spawnSync: typeof Bun.spawnSync = Bun.spawnSync,
+): DiscoveredRepo[] {
+  const result = spawnSync([
     "gh", "repo", "list",
     "--json", "nameWithOwner,isPrivate,pushedAt",
     "--limit", "100",
@@ -89,11 +91,15 @@ export function filterRepos(repos: DiscoveredRepo[], options?: DiscoverOptions):
   });
 }
 
-export async function discoverAndInsert(db: Database, options?: DiscoverOptions): Promise<string[]> {
+export async function discoverAndInsert(
+  db: Database,
+  options?: DiscoverOptions,
+  spawnSync?: typeof Bun.spawnSync,
+): Promise<string[]> {
   let discovered: DiscoveredRepo[];
 
   try {
-    discovered = discoverViaGhCli();
+    discovered = discoverViaGhCli(spawnSync);
     console.log(`[github-discover] Found ${discovered.length} repos via gh CLI`);
   } catch (err) {
     console.warn(`[github-discover] gh CLI failed (${(err as Error).message}), falling back to REST API`);

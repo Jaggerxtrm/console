@@ -92,6 +92,10 @@ export class Materializer {
       throw error;
     }
 
+    if (next.hasMore) {
+      this.queues.get(sourceKey)?.enqueue(sourceKey, () => this.schedule(sourceKey));
+    }
+
     this.publishHint(sourceKey);
     const counts = this.countMaterializedIssueVariants(sourceKey);
     this.emitLog("system", "materializer.run", "info", undefined, { source_key: sourceKey, duration_ms: Date.now() - startedAt, rows_written: next.rows.length, dependencies_written: next.dependencies?.length ?? 0, rows_with_real_priority: counts.rows_with_real_priority, rows_with_real_type: counts.rows_with_real_type, rows_with_labels: counts.rows_with_labels });
@@ -155,7 +159,12 @@ export class Materializer {
     try {
       return JSON.parse(row.cursor);
     } catch {
-      this.emitLog("system", "materializer.cursor.invalid", "warn", undefined, { source_key: sourceKey, cursor: row.cursor });
+      this.emitLog("system", "materializer.cursor.invalid", "warn", undefined, {
+        source_key: sourceKey,
+        cursor_bytes: row.cursor.length,
+        cursor_valid_json: false,
+        cursor_redacted: true,
+      });
       return null;
     }
   }

@@ -169,24 +169,18 @@ describe("core github discover helpers", () => {
   });
 
   it("discoverViaGhCli parses JSON output when gh is available", () => {
-    vi.stubGlobal("Bun", {
-      spawnSync: () => ({
-        exitCode: 0,
-        stdout: Buffer.from(JSON.stringify([
-          { nameWithOwner: "alice/repo-a", isPrivate: false, pushedAt: "2026-03-01T00:00:00Z" },
-          { nameWithOwner: "alice/repo-b", isPrivate: true, pushedAt: "2026-02-01T00:00:00Z" },
-        ])),
-        stderr: Buffer.from(""),
-        success: true,
-      }),
+    const fakeSpawnSync = () => ({
+      exitCode: 0,
+      stdout: Buffer.from(JSON.stringify([
+        { nameWithOwner: "alice/repo-a", isPrivate: false, pushedAt: "2026-03-01T00:00:00Z" },
+        { nameWithOwner: "alice/repo-b", isPrivate: true, pushedAt: "2026-02-01T00:00:00Z" },
+      ])),
+      stderr: Buffer.from(""),
+      success: true,
     });
-    try {
-      const repos = discoverViaGhCli();
-      expect(repos).toHaveLength(2);
-      expect(repos[0]).toEqual({ full_name: "alice/repo-a", is_private: false, pushed_at: "2026-03-01T00:00:00Z" });
-    } finally {
-      vi.unstubAllGlobals();
-    }
+    const repos = discoverViaGhCli(fakeSpawnSync as typeof Bun.spawnSync);
+    expect(repos).toHaveLength(2);
+    expect(repos[0]).toEqual({ full_name: "alice/repo-a", is_private: false, pushed_at: "2026-03-01T00:00:00Z" });
   });
 });
 
