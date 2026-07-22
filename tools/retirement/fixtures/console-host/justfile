@@ -1,0 +1,10 @@
+# Console host commands
+
+# Start the console host for local development
+dev:
+    cd apps/console && bun run dev &
+    wait
+
+# Health probe
+health:
+    curl -s http://localhost:3000/health && echo " - console"
