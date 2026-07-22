@@ -167,8 +167,14 @@ export function createSpecialistsRouter(
   router.get("/jobs/in-flight", async (c) => {
     const startedAt = performance.now();
     const limit = parseLimit(c.req.query("limit"), 50);
-    const filter: SpecialistJobFilter = { repoSlugs: parseRepoSlugs(c.req.query("repo_slug") ?? c.req.query("repo_slugs")) };
+    const rawRepoSlugs = parseRepoSlugs(c.req.query("repo_slug") ?? c.req.query("repo_slugs"));
     const current = resolve();
+    if (rawRepoSlugs === null) {
+      const degraded: InFlightValue = { in_flight: [], recent_history: [], jobs: [], epoch: repoEpochs(current.repos, epochGetter) };
+      logInFlightResponse(degraded.jobs, degraded.recent_history, degraded.epoch, "degraded", startedAt);
+      return c.json({ ...degraded, coverage: current.dao.coverage?.(), freshness: "degraded", source_health: sourceHealthFromCoverage(current.dao.coverage?.(), getSourceHealth()) });
+    }
+    const filter: SpecialistJobFilter = { repoSlugs: rawRepoSlugs };
     const key = cacheKey("in-flight", current.repos, epochGetter, String(limit), filter.repoSlugs?.join(",") ?? "");
     const cached = readBoundedCache(inFlightCache, key);
     if (cached) {
@@ -340,18 +346,14 @@ function parseLimit(value: string | undefined, fallback: number): number {
   return Math.min(parsed, 5000);
 }
 
-function parseRepoSlugs(value: string | undefined): string[] {
+function parseRepoSlugs(value: string | undefined): string[] | null {
   if (!value) return [];
   const slugs = [...new Set(value.split(",").map((item) => item.trim()).filter(Boolean))].sort();
-  const result: string[] = [];
-  let bytes = 0;
-  for (const slug of slugs) {
-    const slugBytes = Buffer.byteLength(slug, "utf8");
-    if (result.length >= MAX_REPO_SLUG_FILTERS || bytes + slugBytes > MAX_REPO_SLUG_FILTER_BYTES) break;
-    result.push(slug);
-    bytes += slugBytes;
-  }
-  return result;
+  if (slugs.length === 0) return [];
+  if (slugs.length > MAX_REPO_SLUG_FILTERS) return null;
+  const totalBytes = slugs.reduce((sum, s) => sum + Buffer.byteLength(s, "utf8"), 0);
+  if (totalBytes > MAX_REPO_SLUG_FILTER_BYTES) return null;
+  return slugs;
 }
 
 function summarizeRepos(repos: SpecialistRepoList): SpecialistRepoSummary {

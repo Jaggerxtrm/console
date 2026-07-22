@@ -212,12 +212,12 @@ describe("specialists in-flight memory bound", () => {
     expect(daoCalls).toBeLessThanOrEqual(MAX_IN_FLIGHT_REFRESHES);
   });
 
-  it("bounds repo_slug filter count before DAO invocation", async () => {
-    const capturedFilters: Array<readonly string[] | undefined> = [];
+  it("rejects over-count repo_slug filter without DAO invocation or scope widening", async () => {
+    let daoCalls = 0;
     const app = new Hono();
     app.route("/api/specialists", createSpecialistsRouter({
       jobsByBead: () => [],
-      inFlightJobs: (filter) => { capturedFilters.push(filter?.repoSlugs); return [job]; },
+      inFlightJobs: () => { daoCalls += 1; return [job]; },
       recentJobs: () => [],
       chainById: () => [],
     }, {
@@ -225,15 +225,86 @@ describe("specialists in-flight memory bound", () => {
       getEpoch: () => 0,
     }));
 
-    const slugs = Array.from({ length: 100 }, (_, i) => `repo-${i}`).join(",");
+    const slugs = Array.from({ length: MAX_REPO_SLUG_FILTERS + 1 }, (_, i) => `repo-${i}`).join(",");
     const response = await app.fetch(new Request(`http://localhost/api/specialists/jobs/in-flight?repo_slug=${slugs}`));
 
     expect(response.status).toBe(200);
-    expect(capturedFilters.length).toBe(1);
-    expect(capturedFilters[0]!.length).toBeLessThanOrEqual(MAX_REPO_SLUG_FILTERS);
+    expect(daoCalls).toBe(0);
+    const body = await response.json();
+    expect(body.in_flight).toEqual([]);
+    expect(body.jobs).toEqual([]);
+    expect(body.freshness).toBe("degraded");
   });
 
-  it("bounds repo_slug total bytes before cache-key construction", async () => {
+  it("rejects over-byte repo_slug filter without DAO invocation or scope widening", async () => {
+    let daoCalls = 0;
+    const app = new Hono();
+    app.route("/api/specialists", createSpecialistsRouter({
+      jobsByBead: () => [],
+      inFlightJobs: () => { daoCalls += 1; return [job]; },
+      recentJobs: () => [],
+      chainById: () => [],
+    }, {
+      listRepos: () => [{ repoSlug: "repo-a", repoPath: "repo-a", dbPath: "repo-a.db", mtimeMs: 0 }],
+      getEpoch: () => 0,
+    }));
+
+    const slugs = Array.from({ length: 3 }, (_, i) => `repo-${"x".repeat(200)}-${i}`).join(",");
+    const response = await app.fetch(new Request(`http://localhost/api/specialists/jobs/in-flight?repo_slug=${slugs}`));
+
+    expect(response.status).toBe(200);
+    expect(daoCalls).toBe(0);
+    const body = await response.json();
+    expect(body.in_flight).toEqual([]);
+    expect(body.jobs).toEqual([]);
+    expect(body.freshness).toBe("degraded");
+  });
+
+  it("rejects oversized single repo_slug without widening to unfiltered query", async () => {
+    let daoCalls = 0;
+    const app = new Hono();
+    app.route("/api/specialists", createSpecialistsRouter({
+      jobsByBead: () => [],
+      inFlightJobs: () => { daoCalls += 1; return [job]; },
+      recentJobs: () => [],
+      chainById: () => [],
+    }, {
+      listRepos: () => [{ repoSlug: "repo-a", repoPath: "repo-a", dbPath: "repo-a.db", mtimeMs: 0 }],
+      getEpoch: () => 0,
+    }));
+
+    const oversized = "x".repeat(MAX_REPO_SLUG_FILTER_BYTES + 1);
+    const response = await app.fetch(new Request(`http://localhost/api/specialists/jobs/in-flight?repo_slug=${oversized}`));
+
+    expect(response.status).toBe(200);
+    expect(daoCalls).toBe(0);
+    const body = await response.json();
+    expect(body.in_flight).toEqual([]);
+    expect(body.jobs).toEqual([]);
+  });
+
+  it("absent repo_slug filter intentionally queries all repos via DAO", async () => {
+    let daoCalls = 0;
+    const capturedFilters: Array<readonly string[] | undefined> = [];
+    const app = new Hono();
+    app.route("/api/specialists", createSpecialistsRouter({
+      jobsByBead: () => [],
+      inFlightJobs: (filter) => { daoCalls += 1; capturedFilters.push(filter?.repoSlugs); return [job]; },
+      recentJobs: () => [],
+      chainById: () => [],
+    }, {
+      listRepos: () => [{ repoSlug: "repo-a", repoPath: "repo-a", dbPath: "repo-a.db", mtimeMs: 0 }],
+      getEpoch: () => 0,
+    }));
+
+    const response = await app.fetch(new Request("http://localhost/api/specialists/jobs/in-flight"));
+
+    expect(response.status).toBe(200);
+    expect(daoCalls).toBe(1);
+    expect(capturedFilters[0]).toEqual([]);
+  });
+
+  it("exact-bound valid repo_slug filter remains scoped through DAO", async () => {
     const capturedFilters: Array<readonly string[] | undefined> = [];
     const app = new Hono();
     app.route("/api/specialists", createSpecialistsRouter({
@@ -246,13 +317,12 @@ describe("specialists in-flight memory bound", () => {
       getEpoch: () => 0,
     }));
 
-    const slugs = Array.from({ length: 10 }, (_, i) => `repo-${"x".repeat(200)}-${i}`).join(",");
+    const slugs = Array.from({ length: MAX_REPO_SLUG_FILTERS }, (_, i) => `r${i}`).join(",");
     const response = await app.fetch(new Request(`http://localhost/api/specialists/jobs/in-flight?repo_slug=${slugs}`));
 
     expect(response.status).toBe(200);
     expect(capturedFilters.length).toBe(1);
-    const totalBytes = capturedFilters[0]!.reduce((sum, s) => sum + Buffer.byteLength(s, "utf8"), 0);
-    expect(totalBytes).toBeLessThanOrEqual(MAX_REPO_SLUG_FILTER_BYTES);
+    expect(capturedFilters[0]!.length).toBe(MAX_REPO_SLUG_FILTERS);
   });
 
   it("canonicalizes equivalent repo_slug filters to same cache key", async () => {
