@@ -33,6 +33,7 @@ export function setRealtimePublisher(nextRegistry: ChannelRegistry | null): void
 }
 
 export function emit(entry: LogEntry): void { logger.emit(entry); }
+export function flush(): Promise<void> { return logger.flush(); }
 export function getRing(): LogEntry[] { return logger.getRing(); }
 export function subscribe(filter: Partial<Pick<LogEntry, "level" | "component" | "event">> | undefined, fn: (entry: LogEntry) => void): () => void {
   return logger.subscribe(filter, fn);

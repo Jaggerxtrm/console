@@ -44,7 +44,8 @@ afterEach(async () => {
 
 describe("GET /api/console/graph", () => {
   it("returns nodes, edges, specialists", async () => {
-    const app = createApp();
+    const { app, dao } = createAppContext(new FixedScanner(join(dir, "gitboard")));
+    await dao.getGraphSnapshotWarm("gitboard", false);
     const res = await app.fetch(new Request("http://localhost/api/console/graph?project=gitboard&include_closed=false"));
     expect(res.status).toBe(200);
     const json = await res.json() as { project_id: string; repo_slug: string; freshness: string; source_health: { source: string; status: string }; nodes: Array<{ id: string }>; edges: Array<{ type: string }>; specialists: Array<{ bead_id: string; status: string }> };
@@ -198,6 +199,24 @@ describe("GET /api/console/graph", () => {
   });
 });
 
+class FixedScanner extends ProjectScanner {
+  constructor(private readonly projectPath: string) {
+    super();
+  }
+
+  override async scanDirectory(): Promise<BeadsProject[]> {
+    return [{
+      id: "gitboard",
+      name: "gitboard",
+      path: this.projectPath,
+      beadsPath: join(this.projectPath, ".beads"),
+      status: "idle",
+      lastScanned: "2026-01-01T00:00:00.000Z",
+      issueCount: 6,
+    }];
+  }
+}
+
 class CountingScanner extends ProjectScanner {
   scanCount = 0;
 
@@ -229,11 +248,15 @@ class DelayedScanner extends CountingScanner {
 }
 
 function createApp(scanner = new ProjectScanner({ searchPath: dir, maxDepth: 2, excludePatterns: ["node_modules", ".git" ] })): Hono {
+  return createAppContext(scanner).app;
+}
+
+function createAppContext(scanner: ProjectScanner): { app: Hono; dao: ReturnType<typeof createGraphDao> } {
   const pool = createAttachPool([{ repoSlug: "gitboard", repoPath: dir, dbPath: join(dir, "repo.db"), mtimeMs: 0 }]);
   const dao = createGraphDao({ scanner, observability: createObservabilityDao(pool) });
   const app = new Hono();
   app.route("/api/console/graph", createGraphRouter(dao));
-  return app;
+  return { app, dao };
 }
 
 function createColdParallelApp(): Hono {

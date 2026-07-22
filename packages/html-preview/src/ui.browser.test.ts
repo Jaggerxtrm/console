@@ -1,14 +1,22 @@
 import { chromium } from "playwright";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { renderIndex } from "./ui.ts";
 import type { Browser, Page } from "playwright";
 import type { PreviewIndex } from "./types.ts";
 
 describe("rendered index interactions", () => {
   let browser: Browser;
+  let activePage: Page | undefined;
 
   beforeAll(async () => {
     browser = await chromium.launch({ headless: true });
+  });
+
+  afterEach(async () => {
+    if (activePage) {
+      await activePage.close().catch(() => undefined);
+      activePage = undefined;
+    }
   });
 
   afterAll(async () => {
@@ -17,6 +25,7 @@ describe("rendered index interactions", () => {
 
   it("filters rows by repository and search term in a browser", async () => {
     const page = await browser.newPage();
+    activePage = page;
     await page.setContent(renderIndex(makeIndex()), { waitUntil: "load" });
 
     await expectVisibleRows(page, 5);
@@ -78,10 +87,12 @@ describe("rendered index interactions", () => {
     });
 
     await page.close();
+    activePage = undefined;
   });
 
   it("keeps large indexes windowed instead of rendering every row and folder upfront", async () => {
     const page = await browser.newPage({ viewport: { width: 1200, height: 720 } });
+    activePage = page;
     const index = makeLargeIndex(600);
     await page.setContent(renderIndex(index), { waitUntil: "load" });
 
@@ -95,6 +106,7 @@ describe("rendered index interactions", () => {
     expect(await page.locator("#result-count").textContent()).toBe("600 visible");
 
     await page.close();
+    activePage = undefined;
   });
 
 });
