@@ -54,6 +54,9 @@ type InFlightValue = {
 
 const CACHE_TTL_MS = 5000;
 const MAX_IN_FLIGHT_CACHE_ENTRIES = 2;
+export const MAX_IN_FLIGHT_REFRESHES = 4;
+export const MAX_REPO_SLUG_FILTERS = 8;
+export const MAX_REPO_SLUG_FILTER_BYTES = 512;
 
 type MaterializationStateRow = {
   source_key: string;
@@ -175,6 +178,11 @@ export function createSpecialistsRouter(
 
     let refresh = inFlightRefreshes.get(key);
     if (!refresh) {
+      if (inFlightRefreshes.size >= MAX_IN_FLIGHT_REFRESHES) {
+        const degraded: InFlightValue = { in_flight: [], recent_history: [], jobs: [], epoch: repoEpochs(current.repos, epochGetter) };
+        logInFlightResponse(degraded.jobs, degraded.recent_history, degraded.epoch, "degraded", startedAt);
+        return c.json({ ...degraded, coverage: current.dao.coverage?.(), freshness: "degraded", source_health: sourceHealthFromCoverage(current.dao.coverage?.(), getSourceHealth()) });
+      }
       refresh = refreshInFlight(current.dao, current.repos, epochGetter, limit, key, filter);
       inFlightRefreshes.set(key, refresh);
     }
@@ -334,7 +342,16 @@ function parseLimit(value: string | undefined, fallback: number): number {
 
 function parseRepoSlugs(value: string | undefined): string[] {
   if (!value) return [];
-  return [...new Set(value.split(",").map((item) => item.trim()).filter(Boolean))];
+  const slugs = [...new Set(value.split(",").map((item) => item.trim()).filter(Boolean))].sort();
+  const result: string[] = [];
+  let bytes = 0;
+  for (const slug of slugs) {
+    const slugBytes = Buffer.byteLength(slug, "utf8");
+    if (result.length >= MAX_REPO_SLUG_FILTERS || bytes + slugBytes > MAX_REPO_SLUG_FILTER_BYTES) break;
+    result.push(slug);
+    bytes += slugBytes;
+  }
+  return result;
 }
 
 function summarizeRepos(repos: SpecialistRepoList): SpecialistRepoSummary {

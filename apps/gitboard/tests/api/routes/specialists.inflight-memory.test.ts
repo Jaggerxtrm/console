@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Hono } from "hono";
 import { getRing, setDiskEnabled } from "../../../src/core/logger.ts";
-import { createSpecialistsRouter } from "../../../src/api/routes/specialists.ts";
+import { createSpecialistsRouter, MAX_IN_FLIGHT_REFRESHES, MAX_REPO_SLUG_FILTERS, MAX_REPO_SLUG_FILTER_BYTES } from "../../../src/api/routes/specialists.ts";
 import type { SpecialistJob } from "../../../src/server/observability/types.ts";
 
 const job: SpecialistJob = {
@@ -171,5 +171,118 @@ describe("specialists in-flight memory bound", () => {
     }
 
     expect(limits).toEqual([50, 1000]);
+  });
+
+  it("caps concurrent distinct in-flight refreshes and degrades excess without DAO calls", async () => {
+    let daoCalls = 0;
+    const app = makeApp({ inFlight: () => { daoCalls += 1; }, history: () => {} });
+
+    const responses = await Promise.all(
+      Array.from({ length: 20 }, (_, i) =>
+        app.fetch(new Request(`http://localhost/api/specialists/jobs/in-flight?limit=${i + 1}`)),
+      ),
+    );
+
+    expect(responses.every((r) => r.status === 200)).toBe(true);
+    expect(daoCalls).toBeLessThanOrEqual(MAX_IN_FLIGHT_REFRESHES);
+    expect(daoCalls).toBeGreaterThan(0);
+
+    for (const response of responses) {
+      const body = await response.json();
+      expect(body).toHaveProperty("in_flight");
+      expect(body).toHaveProperty("recent_history");
+      expect(body).toHaveProperty("jobs");
+      expect(body).toHaveProperty("epoch");
+      expect(body).toHaveProperty("freshness");
+      expect(body).toHaveProperty("source_health");
+    }
+  });
+
+  it("excess distinct repo_slug keys do not invoke DAO beyond cap", async () => {
+    let daoCalls = 0;
+    const app = makeApp({ inFlight: () => { daoCalls += 1; }, history: () => {} });
+
+    const responses = await Promise.all(
+      Array.from({ length: 20 }, (_, i) =>
+        app.fetch(new Request(`http://localhost/api/specialists/jobs/in-flight?repo_slug=hostile-${i}`)),
+      ),
+    );
+
+    expect(responses.every((r) => r.status === 200)).toBe(true);
+    expect(daoCalls).toBeLessThanOrEqual(MAX_IN_FLIGHT_REFRESHES);
+  });
+
+  it("bounds repo_slug filter count before DAO invocation", async () => {
+    const capturedFilters: Array<readonly string[] | undefined> = [];
+    const app = new Hono();
+    app.route("/api/specialists", createSpecialistsRouter({
+      jobsByBead: () => [],
+      inFlightJobs: (filter) => { capturedFilters.push(filter?.repoSlugs); return [job]; },
+      recentJobs: () => [],
+      chainById: () => [],
+    }, {
+      listRepos: () => [{ repoSlug: "repo-a", repoPath: "repo-a", dbPath: "repo-a.db", mtimeMs: 0 }],
+      getEpoch: () => 0,
+    }));
+
+    const slugs = Array.from({ length: 100 }, (_, i) => `repo-${i}`).join(",");
+    const response = await app.fetch(new Request(`http://localhost/api/specialists/jobs/in-flight?repo_slug=${slugs}`));
+
+    expect(response.status).toBe(200);
+    expect(capturedFilters.length).toBe(1);
+    expect(capturedFilters[0]!.length).toBeLessThanOrEqual(MAX_REPO_SLUG_FILTERS);
+  });
+
+  it("bounds repo_slug total bytes before cache-key construction", async () => {
+    const capturedFilters: Array<readonly string[] | undefined> = [];
+    const app = new Hono();
+    app.route("/api/specialists", createSpecialistsRouter({
+      jobsByBead: () => [],
+      inFlightJobs: (filter) => { capturedFilters.push(filter?.repoSlugs); return [job]; },
+      recentJobs: () => [],
+      chainById: () => [],
+    }, {
+      listRepos: () => [{ repoSlug: "repo-a", repoPath: "repo-a", dbPath: "repo-a.db", mtimeMs: 0 }],
+      getEpoch: () => 0,
+    }));
+
+    const slugs = Array.from({ length: 10 }, (_, i) => `repo-${"x".repeat(200)}-${i}`).join(",");
+    const response = await app.fetch(new Request(`http://localhost/api/specialists/jobs/in-flight?repo_slug=${slugs}`));
+
+    expect(response.status).toBe(200);
+    expect(capturedFilters.length).toBe(1);
+    const totalBytes = capturedFilters[0]!.reduce((sum, s) => sum + Buffer.byteLength(s, "utf8"), 0);
+    expect(totalBytes).toBeLessThanOrEqual(MAX_REPO_SLUG_FILTER_BYTES);
+  });
+
+  it("canonicalizes equivalent repo_slug filters to same cache key", async () => {
+    let daoCalls = 0;
+    const app = makeApp({ inFlight: () => { daoCalls += 1; }, history: () => {} });
+
+    const r1 = await app.fetch(new Request("http://localhost/api/specialists/jobs/in-flight?repo_slug=beta,alpha"));
+    const r2 = await app.fetch(new Request("http://localhost/api/specialists/jobs/in-flight?repo_slug=alpha,beta"));
+
+    expect(r1.status).toBe(200);
+    expect(r2.status).toBe(200);
+    expect(daoCalls).toBe(1);
+  });
+
+  it("recovers refresh capacity after settlement", async () => {
+    let daoCalls = 0;
+    const app = makeApp({ inFlight: () => { daoCalls += 1; }, history: () => {} });
+
+    await Promise.all(
+      Array.from({ length: 20 }, (_, i) =>
+        app.fetch(new Request(`http://localhost/api/specialists/jobs/in-flight?limit=${i + 1}`)),
+      ),
+    );
+
+    const callsAfterSaturation = daoCalls;
+
+    const response = await app.fetch(new Request("http://localhost/api/specialists/jobs/in-flight?limit=999"));
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.freshness).toBe("fresh");
+    expect(daoCalls).toBe(callsAfterSaturation + 1);
   });
 });
