@@ -121,6 +121,17 @@ describe("console host routing", () => {
     expect(response.status).toBe(302);
     expect(response.headers.get("location")).toBe("/console");
   });
+
+  it("permanently redirects legacy Gitboard routes to /console", async () => {
+    const distDir = makeDistDir({ "index.html": INDEX_HTML, "assets/app.js": "legacy asset" });
+    const host = createConsoleHost({ consoleDistDir: distDir, logger: silentLogger() });
+
+    for (const path of ["/gitboard", "/gitboard/assets/app.js"]) {
+      const response = await host.app.request(path);
+      expect(response.status, path).toBe(308);
+      expect(response.headers.get("location"), path).toBe("/console");
+    }
+  });
 });
 
 describe("console host lifecycle hook contract", () => {
@@ -153,10 +164,11 @@ describe("host-neutral data directory seam", () => {
     expect(resolution.storeDbPath).toBe("/tmp/xtrm-data/xtrm.sqlite");
   });
 
-  it("falls back to GITBOARD_DATA_DIR when XTRM_DATA_DIR is unset", () => {
-    const resolution = resolveDataDir({ GITBOARD_DATA_DIR: "/tmp/legacy" }, "/home/u");
+  it("falls back to GITBOARD_DATA_DIR when XTRM_DATA_DIR is blank", () => {
+    const resolution = resolveDataDir({ XTRM_DATA_DIR: "  ", GITBOARD_DATA_DIR: " /tmp/legacy " }, "/home/u");
     expect(resolution.source).toBe("GITBOARD_DATA_DIR");
     expect(resolution.dataDir).toBe("/tmp/legacy");
+    expect(resolution.storeDbPath).toBe("/tmp/legacy/xtrm.sqlite");
   });
 
   it("defaults to the production home .agent-forge directory", () => {
@@ -245,6 +257,9 @@ describe("console database bootstrap seam", () => {
     });
 
     expect(bootstrap.storeDbPath).toBe(join(dataDir.dataDir, "xtrm.sqlite"));
+    expect(bootstrap.legacyFoldDbPath).toBe(join(dataDir.dataDir, "gitboard.sqlite"));
+    expect(bootstrap.storeDbPath).not.toContain("state.sqlite");
+    expect(bootstrap.legacyFoldDbPath).not.toContain("state.sqlite");
     expect(existsSync(dataDir.dataDir)).toBe(false);
     bootstrap.ensureDataDir();
     expect(existsSync(dataDir.dataDir)).toBe(true);

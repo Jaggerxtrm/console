@@ -5,7 +5,7 @@
  */
 import { describe, expect, test } from "bun:test";
 import { evaluate, scanTree, DEPRECATED_HOST_PATH } from "./host-retirement-guard";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -65,6 +65,30 @@ describe("host-retirement-guard", () => {
     const { findings } = scanTree(FIXTURE_ROOT);
     const importFindings = findings.filter((f) => f.category === "production-import");
     expect(importFindings.length).toBe(0);
+  });
+
+  test("classifies every production guard category", () => {
+    const root = mkdtempSync(join(tmpdir(), "console-host-retirement-categories-"));
+    try {
+      mkdirSync(join(root, "apps", "console", "src"), { recursive: true });
+      mkdirSync(join(root, "systemd"), { recursive: true });
+      writeFileSync(join(root, "Dockerfile"), 'CMD ["bun", "apps/gitboard/src/index.ts"]\n');
+      writeFileSync(join(root, "justfile"), "serve: bun run apps/gitboard/src/index.ts\n");
+      writeFileSync(join(root, "systemd", "console.service"), "ExecStart=/usr/bin/bun apps/gitboard/src/index.ts\n");
+      writeFileSync(join(root, "package.json"), JSON.stringify({ scripts: { serve: "bun run apps/gitboard/src/index.ts" } }));
+      writeFileSync(join(root, "apps", "console", "src", "index.ts"), 'import legacy from "apps/gitboard/src/index.ts";\n');
+
+      const { findings } = scanTree(root);
+      expect(new Set(findings.map((finding) => finding.category))).toEqual(new Set([
+        "container",
+        "build-script",
+        "service-definition",
+        "workspace-manifest",
+        "production-import",
+      ]));
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   test("strict mode detects all known production surfaces", () => {
