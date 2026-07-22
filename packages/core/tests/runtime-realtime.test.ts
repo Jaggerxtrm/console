@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { REALTIME_PROTOCOL_VERSION, RealtimeChannelRegistry, RealtimeConnectionHandler, type RealtimeSendResult, type RealtimeSubscriber } from "../src/runtime/index.ts";
+import { isAllowedRealtimeChannel, REALTIME_PROTOCOL_VERSION, RealtimeChannelRegistry, RealtimeConnectionHandler, type RealtimeSendResult, type RealtimeSubscriber } from "../src/runtime/index.ts";
 
 function makeRaw(sendResult: RealtimeSendResult = undefined) {
   const sent: string[] = [];
@@ -143,13 +143,45 @@ describe("realtime runtime", () => {
     expect(handler.connectionCount()).toBe(1);
   });
 
+  it("accepts every public channel family and rejects malformed boundaries", () => {
+    for (const channel of [
+      "github:activity",
+      "github:repo:repo-1",
+      "substrate:changes",
+      "substrate:project:project-1",
+      "specialists:activity",
+      "specialists:repo:repo-1",
+      "session:session-1",
+      "output:run-1",
+      "messages",
+      "protocol:protocol-1",
+      "system",
+    ]) {
+      expect(isAllowedRealtimeChannel(channel)).toBe(true);
+    }
+
+    for (const channel of [
+      null,
+      42,
+      {},
+      "",
+      "unknown:channel",
+      "github:repo:",
+      "github:repo:bad/segment",
+      `github:repo:${"x".repeat(129)}`,
+      `system:${"x".repeat(257)}`,
+    ]) {
+      expect(isAllowedRealtimeChannel(channel)).toBe(false);
+    }
+  });
+
   it("denies malformed and reserved channels without throwing", () => {
     const registry = new RealtimeChannelRegistry();
     const handler = new RealtimeConnectionHandler(registry);
     const raw = makeRaw();
     const connectionId = handler.connect(raw);
 
-    for (const channel of [null, 42, {}, "__proto__", "unknown:channel"]) {
+    for (const channel of [null, 42, {}, "__proto__", "unknown:channel", ...["__proto__", "constructor", "prototype"].map((segment) => `session:${segment}`)]) {
       expect(() => handler.handleMessage(connectionId, JSON.stringify({ action: "subscribe", channel, version: String(REALTIME_PROTOCOL_VERSION) }))).not.toThrow();
       expect(() => handler.handleMessage(connectionId, JSON.stringify({ action: "unsubscribe", channel }))).not.toThrow();
       expect(() => handler.handleMessage(connectionId, JSON.stringify({ action: "resume", channel }))).not.toThrow();
@@ -173,11 +205,21 @@ describe("realtime runtime", () => {
     }
 
     const connection = (handler as unknown as { connections: Map<string, { subscriptions: Set<string> }> }).connections.get(connectionId);
-    expect(connection?.subscriptions.size).toBeLessThanOrEqual(32);
-    expect((registry as unknown as { channels: Map<string, unknown> }).channels.size).toBeLessThanOrEqual(32);
+    expect(connection?.subscriptions.size).toBe(32);
+    expect((registry as unknown as { channels: Map<string, unknown> }).channels.size).toBe(32);
+
+    handler.subscribe(connectionId, "github:repo:repo-100");
+    expect(connection?.subscriptions.size).toBe(32);
+    expect(registry.subscriberCount("github:repo:repo-100")).toBe(0);
+
+    handler.unsubscribe(connectionId, "github:repo:repo-0");
+    handler.subscribe(connectionId, "github:repo:repo-100");
+    expect(connection?.subscriptions.size).toBe(32);
+    expect(registry.subscriberCount("github:repo:repo-100")).toBe(1);
+    expect((registry as unknown as { channels: Map<string, unknown> }).channels.size).toBe(32);
   });
 
-  it("cleans empty channel entries after unsubscribe", () => {
+  it("cleans empty channel entries after unsubscribe and disconnect", () => {
     const registry = new RealtimeChannelRegistry();
     const subscriber = makeSubscriber("cleanup");
 
@@ -185,6 +227,19 @@ describe("realtime runtime", () => {
     registry.unsubscribe("system", subscriber);
 
     expect(registry.subscriberCount("system")).toBe(0);
+    expect((registry as unknown as { channels: Map<string, unknown> }).channels.size).toBe(0);
+
+    const disconnectedRaw = makeRaw();
+    const disconnects: string[] = [];
+    const handler = new RealtimeConnectionHandler(registry, { onDisconnect: (id) => disconnects.push(id) });
+    const connectionId = handler.connect(disconnectedRaw);
+    handler.subscribe(connectionId, "system");
+    handler.subscribe(connectionId, "github:activity");
+    handler.disconnect(connectionId);
+
+    expect(disconnects).toEqual([connectionId]);
+    expect(registry.subscriberCount("system")).toBe(0);
+    expect(registry.subscriberCount("github:activity")).toBe(0);
     expect((registry as unknown as { channels: Map<string, unknown> }).channels.size).toBe(0);
   });
 

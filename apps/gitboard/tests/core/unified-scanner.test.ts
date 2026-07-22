@@ -177,6 +177,45 @@ describe("UnifiedScanner", () => {
     db.close();
   });
 
+  it("redacts probe paths and arbitrary error details while preserving stable codes", () => {
+    const db = createXtrmDatabase(dbPath);
+    const scannerWithPrivateMethods = new UnifiedScanner(db, { beadsSearchPath: tmpDir, observabilityRoots: [tmpDir], parityEnabled: false }) as unknown as {
+      logProbeFailure: (stage: string, path: string, error: unknown) => void;
+    };
+    const before = getRing().length;
+    const secretPath = "/private/scanner-secret/project";
+    const secretMessage = "token=top-secret scanner failure";
+
+    scannerWithPrivateMethods.logProbeFailure("permission probe", secretPath, Object.assign(new Error(secretMessage), { code: "EACCES" }));
+    scannerWithPrivateMethods.logProbeFailure("numeric code probe", secretPath, { code: 13, message: secretMessage });
+    scannerWithPrivateMethods.logProbeFailure("unknown error probe", secretPath, secretMessage);
+
+    const entries = getRing().slice(before);
+    expect(entries).toHaveLength(3);
+    expect(entries.map((entry) => entry.data)).toEqual([
+      { stage: "permission probe", code: "EACCES" },
+      { stage: "numeric code probe", code: "UNKNOWN" },
+      { stage: "unknown error probe", code: "UNKNOWN" },
+    ]);
+    expect(JSON.stringify(entries)).not.toContain(secretPath);
+    expect(JSON.stringify(entries)).not.toContain(secretMessage);
+    db.close();
+  });
+
+  it("suppresses expected missing probe telemetry", () => {
+    const db = createXtrmDatabase(dbPath);
+    const scannerWithPrivateMethods = new UnifiedScanner(db, { beadsSearchPath: tmpDir, observabilityRoots: [tmpDir], parityEnabled: false }) as unknown as {
+      logProbeFailure: (stage: string, path: string, error: unknown) => void;
+    };
+    const before = getRing().length;
+
+    scannerWithPrivateMethods.logProbeFailure("missing probe", "/private/missing", { code: "ENOENT" });
+    scannerWithPrivateMethods.logProbeFailure("not-dir probe", "/private/not-dir", { code: "ENOTDIR" });
+
+    expect(getRing().slice(before)).toEqual([]);
+    db.close();
+  });
+
   it("keeps expected missing probes out of debug logs", async () => {
     const db = createXtrmDatabase(dbPath);
     const debug = vi.spyOn(console, "debug").mockImplementation(() => undefined);
