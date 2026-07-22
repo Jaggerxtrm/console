@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createGitboardRuntimeLifecycle, createGitboardRuntimeLifecyclePlan, createRuntimeHostDescriptor, runtimeHostHasCapability } from "../src/runtime/index.ts";
+import { createGitboardRuntimeLifecycle, createGitboardRuntimeLifecyclePlan, createRuntimeHostDescriptor, createRuntimeLifecycle, createRuntimeLifecyclePlan, runtimeHostHasCapability } from "../src/runtime/index.ts";
 
 describe("runtime host descriptor", () => {
   it("captures compatibility host capabilities without owning app implementations", () => {
@@ -55,6 +55,48 @@ describe("runtime host descriptor", () => {
       expect.objectContaining({ route: "/health", state: "retained" }),
       expect.objectContaining({ route: "runtime-descriptor", state: "retained" }),
     ]);
+  });
+
+  it("records an explicit host owner while retaining the compatibility host literal", () => {
+    const consoleHost = createRuntimeHostDescriptor({
+      owner: "apps/console",
+      storeDb: null,
+      stateDb: null,
+      registry: null,
+      materializer: null,
+      mountedRoutes: ["/health", "/console"],
+      capabilities: ["http-api", "static-dashboard"],
+    });
+
+    expect(consoleHost.owner).toBe("apps/console");
+    expect(consoleHost.compatibilityHost).toBe("apps/gitboard");
+
+    const legacyHost = createRuntimeHostDescriptor({
+      storeDb: "store",
+      registry: "registry",
+      mountedRoutes: [],
+      capabilities: [],
+    });
+    expect(legacyHost.owner).toBe("apps/gitboard");
+  });
+
+  it("threads explicit owner through the host-neutral lifecycle factories", () => {
+    const plan = createRuntimeLifecyclePlan({ owner: "apps/console", hasStateDatabase: false });
+    const lifecycle = createRuntimeLifecycle(plan, {
+      storeDb: "store",
+      stateDb: null,
+      registry: "registry",
+      createMaterializer: () => ({ created: "materializer" }),
+      createScanner: () => ({ created: "scanner" }),
+      createBeadsWatcher: () => ({ created: "beads-watcher" }),
+      createObservabilityWatcher: () => ({ created: "observability-watcher" }),
+      createBeadsParityHarness: (db, options) => ({ db, options }),
+      createObservabilityParityHarness: (db, options) => ({ db, options }),
+    });
+
+    expect(plan.owner).toBe("apps/console");
+    expect(lifecycle.runtimeHost.owner).toBe("apps/console");
+    expect(lifecycle.runtimeHost.compatibilityHost).toBe("apps/gitboard");
   });
 
   it("keeps degraded readable mode when state database is absent", () => {

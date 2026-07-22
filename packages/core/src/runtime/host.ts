@@ -9,6 +9,13 @@ export type RuntimeHostCapability =
 
 export type StaticServiceRetirementState = "retained" | "retired";
 
+/**
+ * Explicit owner of a runtime host descriptor. `apps/console` is the target
+ * production host; `apps/gitboard` is the legacy compatibility host retained
+ * only for migration reporting until cutover completes.
+ */
+export type RuntimeHostOwner = "apps/console" | "apps/gitboard" | "packages/core";
+
 export interface StaticServiceRouteParity {
   route: string;
   state: StaticServiceRetirementState;
@@ -17,6 +24,7 @@ export interface StaticServiceRouteParity {
 }
 
 export interface RuntimeHostDescriptor<TDatabase = unknown, TRegistry = unknown, TMaterializer = unknown> {
+  owner: RuntimeHostOwner;
   compatibilityHost: "apps/gitboard";
   storeDb: TDatabase;
   stateDb: TDatabase | null;
@@ -27,7 +35,8 @@ export interface RuntimeHostDescriptor<TDatabase = unknown, TRegistry = unknown,
   staticServiceParity: readonly StaticServiceRouteParity[];
 }
 
-export interface GitboardRuntimeLifecyclePlan {
+export interface RuntimeLifecyclePlan {
+  owner: RuntimeHostOwner;
   capabilities: readonly RuntimeHostCapability[];
   mountedRoutes: readonly string[];
   hasStateDatabase: boolean;
@@ -35,13 +44,14 @@ export interface GitboardRuntimeLifecyclePlan {
   isParityEnabled: boolean;
 }
 
-export interface GitboardRuntimeLifecycleOptions {
+export interface RuntimeLifecycleOptions {
+  owner?: RuntimeHostOwner;
   hasStateDatabase: boolean;
   isDatasetteDebugEnabled?: boolean;
   isParityEnabled?: boolean;
 }
 
-export interface GitboardRuntimeLifecycleFactory<TDatabase, TRegistry, TMaterializer, TScanner, TBeadsWatcher, TObservabilityWatcher, TBeadsParityHarness, TObservabilityParityHarness> {
+export interface RuntimeLifecycleFactory<TDatabase, TRegistry, TMaterializer, TScanner, TBeadsWatcher, TObservabilityWatcher, TBeadsParityHarness, TObservabilityParityHarness> {
   storeDb: TDatabase;
   stateDb: TDatabase | null;
   registry: TRegistry;
@@ -53,7 +63,7 @@ export interface GitboardRuntimeLifecycleFactory<TDatabase, TRegistry, TMaterial
   createObservabilityParityHarness: (db: TDatabase | null, options: { enabled: boolean }) => TObservabilityParityHarness;
 }
 
-export interface GitboardRuntimeLifecycle<TDatabase, TRegistry, TMaterializer, TScanner, TBeadsWatcher, TObservabilityWatcher, TBeadsParityHarness, TObservabilityParityHarness> {
+export interface RuntimeLifecycle<TDatabase, TRegistry, TMaterializer, TScanner, TBeadsWatcher, TObservabilityWatcher, TBeadsParityHarness, TObservabilityParityHarness> {
   materializer: TMaterializer | null;
   scanner: TScanner | null;
   beadsWatcher: TBeadsWatcher | null;
@@ -64,6 +74,7 @@ export interface GitboardRuntimeLifecycle<TDatabase, TRegistry, TMaterializer, T
 }
 
 export interface RuntimeHostDescriptorOptions<TDatabase, TRegistry, TMaterializer> {
+  owner?: RuntimeHostOwner;
   storeDb: TDatabase;
   stateDb?: TDatabase | null;
   registry: TRegistry;
@@ -77,6 +88,7 @@ export function createRuntimeHostDescriptor<TDatabase, TRegistry, TMaterializer>
   options: RuntimeHostDescriptorOptions<TDatabase, TRegistry, TMaterializer>,
 ): RuntimeHostDescriptor<TDatabase, TRegistry, TMaterializer> {
   return {
+    owner: options.owner ?? "apps/gitboard",
     compatibilityHost: "apps/gitboard",
     storeDb: options.storeDb,
     stateDb: options.stateDb ?? null,
@@ -88,10 +100,11 @@ export function createRuntimeHostDescriptor<TDatabase, TRegistry, TMaterializer>
   };
 }
 
-export function createGitboardRuntimeLifecyclePlan(options: GitboardRuntimeLifecycleOptions): GitboardRuntimeLifecyclePlan {
+export function createRuntimeLifecyclePlan(options: RuntimeLifecycleOptions): RuntimeLifecyclePlan {
   const isDatasetteDebugEnabled = options.isDatasetteDebugEnabled ?? false;
 
   return {
+    owner: options.owner ?? "apps/gitboard",
     hasStateDatabase: options.hasStateDatabase,
     isDatasetteDebugEnabled,
     isParityEnabled: options.isParityEnabled ?? false,
@@ -153,10 +166,10 @@ export function createStaticServiceParityTable(): readonly StaticServiceRoutePar
   ];
 }
 
-export function createGitboardRuntimeLifecycle<TDatabase, TRegistry, TMaterializer, TScanner, TBeadsWatcher, TObservabilityWatcher, TBeadsParityHarness, TObservabilityParityHarness>(
-  plan: GitboardRuntimeLifecyclePlan,
-  factory: GitboardRuntimeLifecycleFactory<TDatabase, TRegistry, TMaterializer, TScanner, TBeadsWatcher, TObservabilityWatcher, TBeadsParityHarness, TObservabilityParityHarness>,
-): GitboardRuntimeLifecycle<TDatabase, TRegistry, TMaterializer, TScanner, TBeadsWatcher, TObservabilityWatcher, TBeadsParityHarness, TObservabilityParityHarness> {
+export function createRuntimeLifecycle<TDatabase, TRegistry, TMaterializer, TScanner, TBeadsWatcher, TObservabilityWatcher, TBeadsParityHarness, TObservabilityParityHarness>(
+  plan: RuntimeLifecyclePlan,
+  factory: RuntimeLifecycleFactory<TDatabase, TRegistry, TMaterializer, TScanner, TBeadsWatcher, TObservabilityWatcher, TBeadsParityHarness, TObservabilityParityHarness>,
+): RuntimeLifecycle<TDatabase, TRegistry, TMaterializer, TScanner, TBeadsWatcher, TObservabilityWatcher, TBeadsParityHarness, TObservabilityParityHarness> {
   const materializer = factory.stateDb ? factory.createMaterializer(factory.storeDb, factory.registry) : null;
   const scanner = factory.stateDb ? factory.createScanner(factory.storeDb, { parityEnabled: plan.isParityEnabled }) : null;
   const beadsWatcher = materializer && factory.stateDb ? factory.createBeadsWatcher(materializer, factory.stateDb, factory.registry) : null;
@@ -172,6 +185,7 @@ export function createGitboardRuntimeLifecycle<TDatabase, TRegistry, TMaterializ
     observabilityParityHarness,
     beadsParityHarness,
     runtimeHost: createRuntimeHostDescriptor({
+      owner: plan.owner,
       storeDb: factory.storeDb,
       stateDb: factory.stateDb,
       registry: factory.registry,
@@ -186,3 +200,32 @@ export function createGitboardRuntimeLifecycle<TDatabase, TRegistry, TMaterializ
 export function runtimeHostHasCapability(host: RuntimeHostDescriptor, capability: RuntimeHostCapability): boolean {
   return host.capabilities.includes(capability);
 }
+
+// Temporary Gitboard-prefixed compatibility aliases. The host-neutral names
+// above are canonical; these aliases keep apps/gitboard callers source-compatible
+// until that host is retired, then they are deleted wholesale.
+export type GitboardRuntimeLifecycleOptions = RuntimeLifecycleOptions;
+export type GitboardRuntimeLifecyclePlan = RuntimeLifecyclePlan;
+export type GitboardRuntimeLifecycleFactory<
+  TDatabase,
+  TRegistry,
+  TMaterializer,
+  TScanner,
+  TBeadsWatcher,
+  TObservabilityWatcher,
+  TBeadsParityHarness,
+  TObservabilityParityHarness,
+> = RuntimeLifecycleFactory<TDatabase, TRegistry, TMaterializer, TScanner, TBeadsWatcher, TObservabilityWatcher, TBeadsParityHarness, TObservabilityParityHarness>;
+export type GitboardRuntimeLifecycle<
+  TDatabase,
+  TRegistry,
+  TMaterializer,
+  TScanner,
+  TBeadsWatcher,
+  TObservabilityWatcher,
+  TBeadsParityHarness,
+  TObservabilityParityHarness,
+> = RuntimeLifecycle<TDatabase, TRegistry, TMaterializer, TScanner, TBeadsWatcher, TObservabilityWatcher, TBeadsParityHarness, TObservabilityParityHarness>;
+
+export const createGitboardRuntimeLifecyclePlan = createRuntimeLifecyclePlan;
+export const createGitboardRuntimeLifecycle = createRuntimeLifecycle;
