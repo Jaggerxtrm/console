@@ -8,6 +8,26 @@ vi.mock("../../../../src/dashboard/lib/client-log.ts", () => ({
   logClientEvent: vi.fn(),
 }));
 
+// TerminalStream wraps a real xterm Terminal whose construction/fit/font-ready
+// work is heavy and CPU-contention-sensitive under parallel suite load. This pane
+// test only asserts on the `.terminal-stream` wrapper count, toggle buttons, and
+// result markdown — never on xterm-rendered glyphs (xterm behavior is covered by
+// tests/dashboard/components/terminal/TerminalStream.test.tsx). Stub the leaf so
+// settling stays deterministic without weakening any assertion here.
+vi.mock("../../../../src/dashboard/components/terminal/TerminalStream.tsx", async () => {
+  const React = await import("react");
+  type StubProps = { className?: string; status?: React.ReactNode; output?: readonly unknown[] };
+  function TerminalStream({ className, status, output }: StubProps) {
+    return React.createElement(
+      "section",
+      { className: className ? `terminal-stream ${className}` : "terminal-stream", "aria-label": "terminal stream" },
+      status ? React.createElement("div", { className: "terminal-stream-status" }, status) : null,
+      React.createElement("div", { className: "terminal-stream-surface" }, (output ?? []).map((chunk) => String(chunk)).join("\n")),
+    );
+  }
+  return { TerminalStream };
+});
+
 describe("BeadActivityPane", () => {
   beforeEach(() => {
     Object.defineProperty(navigator, "sendBeacon", { value: vi.fn(() => true), configurable: true });
@@ -40,11 +60,13 @@ describe("BeadActivityPane", () => {
     const { BeadActivityPane } = await import("../../../../src/dashboard/components/specialists/BeadActivityPane.tsx");
     render(React.createElement(BeadActivityPane, { beadId: "bead-1" }));
 
-    await waitFor(() => expect(document.querySelectorAll(".terminal-stream")).toHaveLength(1));
-    await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/job-running/feed"))).toBe(true));
+    await waitFor(() => {
+      expect(document.querySelectorAll(".terminal-stream")).toHaveLength(1);
+      expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/job-running/feed"))).toBe(true);
+      expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/feed"))).toBe(true);
+      expect(screen.getByText("fallback result")).toBeTruthy();
+    });
     expect(screen.getByRole("button", { name: /expand terminal feed/i })).toBeTruthy();
-    await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/feed"))).toBe(true));
-    await waitFor(() => expect(screen.getByText("fallback result")).toBeTruthy());
     expect(logClientEvent).toHaveBeenCalledWith("bead_activity.mount", { beadId: "bead-1", jobIdHint: undefined });
     expect(logClientEvent).toHaveBeenCalledWith("bead_activity.result.rendered", expect.objectContaining({ beadId: "bead-1", jobId: "job-done", hasResult: true }));
 
