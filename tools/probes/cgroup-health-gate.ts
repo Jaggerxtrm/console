@@ -60,8 +60,11 @@ export interface Snapshot {
   pid: number | null;
   /** True only if /proc/<pid>/status was actually read for a live pid. */
   procReadable: boolean;
-  rssAnonKb: number;
-  vmRssKb: number;
+  /** Parsed RssAnon in kB, or null when the field was absent/malformed. Never a
+   * silent 0: a null here means the anon fallback cannot be proven -> fail closed. */
+  rssAnonKb: number | null;
+  /** Parsed VmRSS in kB, or null when absent/malformed. */
+  vmRssKb: number | null;
   nRestarts: number | null;
   activeState: string;
   subState: string;
@@ -119,16 +122,49 @@ export function evaluate(cfg: GateConfig, snap: Snapshot): Evaluation {
   const failures: string[] = [];
   const checked: string[] = [];
 
-  const anonBytes = snap.stat.anon ?? snap.rssAnonKb * 1024;
-  const anonMb = anonBytes / (1024 * 1024);
-  const oom = snap.events.oom ?? 0;
-  const oomKill = snap.events.oom_kill ?? 0;
+  const rawAnon = snap.stat.anon;
+  const rawOom = snap.events.oom;
+  const rawOomKill = snap.events.oom_kill;
 
   checked.push("memory.events oom==0 && oom_kill==0");
-  if (oom > 0 || oomKill > 0) failures.push(`oom=${oom} oom_kill=${oomKill}`);
+  // Fail closed unless BOTH counters are present and finite. A missing key means
+  // we cannot prove the absence of OOM; a NaN/Infinity counter compared with `> 0`
+  // is always false, which would otherwise fail OPEN and let a saturated or
+  // garbled host PASS the deployment gate.
+  if (rawOom === undefined || rawOomKill === undefined) {
+    failures.push(`memory.events missing key (oom=${rawOom} oom_kill=${rawOomKill})`);
+  } else if (!Number.isFinite(rawOom) || !Number.isFinite(rawOomKill)) {
+    failures.push(`memory.events malformed (oom=${rawOom} oom_kill=${rawOomKill})`);
+  } else if (rawOom > 0 || rawOomKill > 0) {
+    failures.push(`oom=${rawOom} oom_kill=${rawOomKill}`);
+  }
 
   checked.push(`anon <= ${cfg.anonCeilingMb}MiB`);
-  if (anonMb > cfg.anonCeilingMb) failures.push(`anon=${anonMb.toFixed(0)}MiB > ceiling ${cfg.anonCeilingMb}MiB`);
+  // Prefer memory.stat "anon". Fall back to MainPID RssAnon ONLY when a finite
+  // RssAnon was actually parsed (procReadable). A missing anon with no readable
+  // RssAnon means we cannot prove the ceiling -> fail closed (never default to 0).
+  let anonBytes: number;
+  let anonProven: boolean;
+  if (rawAnon !== undefined) {
+    anonBytes = rawAnon;
+    anonProven = Number.isFinite(rawAnon);
+  } else if (snap.procReadable && snap.rssAnonKb != null && Number.isFinite(snap.rssAnonKb)) {
+    // Fallback is valid ONLY for a genuinely parsed finite RssAnon. A readable
+    // status file with an absent/malformed RssAnon yields rssAnonKb=null, so we
+    // never treat a defaulted 0 as proven.
+    anonBytes = snap.rssAnonKb * 1024;
+    anonProven = true;
+  } else {
+    anonBytes = NaN;
+    anonProven = false;
+  }
+  if (!anonProven) {
+    failures.push(`anon unproven (stat.anon=${rawAnon} procReadable=${snap.procReadable})`);
+  } else {
+    const anonMb = anonBytes / (1024 * 1024);
+    if (anonMb > cfg.anonCeilingMb)
+      failures.push(`anon=${anonMb.toFixed(0)}MiB > ceiling ${cfg.anonCeilingMb}MiB`);
+  }
 
   checked.push("MainPID present");
   if (snap.pid == null) failures.push("MainPID missing");
@@ -214,19 +250,57 @@ function readNRestarts(service: string): number | null {
   return Number.isFinite(v) && v >= 0 ? v : null;
 }
 
-function procAnonKb(pid: number): { rssAnonKb: number; vmRssKb: number; readable: boolean } {
-  const p = `/proc/${pid}/status`;
-  if (!existsSync(p)) return { rssAnonKb: 0, vmRssKb: 0, readable: false };
-  const s = readFileSync(p, "utf8");
-  const grab = (k: string) => Number(s.match(new RegExp(`^${k}:\\s+(\\d+)\\s+kB`, "m"))?.[1] ?? 0);
-  return { rssAnonKb: grab("RssAnon"), vmRssKb: grab("VmRSS"), readable: true };
+/** Parse RssAnon/VmRSS (kB) from /proc/<pid>/status text. A required field that
+ * is absent or malformed yields null — never a silent 0 — so a caller cannot
+ * mistake a missing measurement for a proven zero and fail the gate open. */
+export function parseProcStatus(s: string): { rssAnonKb: number | null; vmRssKb: number | null } {
+  const grab = (k: string): number | null => {
+    const m = s.match(new RegExp(`^${k}:\\s+(\\d+)\\s+kB`, "m"));
+    if (!m) return null;
+    const v = Number(m[1]);
+    return Number.isFinite(v) ? v : null;
+  };
+  return { rssAnonKb: grab("RssAnon"), vmRssKb: grab("VmRSS") };
 }
 
-async function probe(url: string): Promise<EndpointResult | null> {
+function procAnonKb(pid: number): { rssAnonKb: number | null; vmRssKb: number | null; readable: boolean } {
+  const p = `/proc/${pid}/status`;
+  if (!existsSync(p)) return { rssAnonKb: null, vmRssKb: null, readable: false };
+  const s = readFileSync(p, "utf8");
+  // readable = the file was read; rssAnonKb=null still means the anon fallback
+  // is unproven even though the status file itself was readable.
+  return { ...parseProcStatus(s), readable: true };
+}
+
+/** Health/feed bodies are tiny; cap the drain so a huge or hostile response body
+ * cannot OOM the gate process. The gate only needs status + latency, never the
+ * full body. (The previous `await res.arrayBuffer()` was unbounded.) */
+export const MAX_PROBE_BODY_BYTES = 1 << 20; // 1 MiB
+export const PROBE_TIMEOUT_MS = 10000;
+
+export interface ProbeOptions {
+  timeoutMs?: number;
+  /** Injectable for hermetic tests; defaults to global fetch. */
+  fetchImpl?: typeof fetch;
+}
+
+export async function probe(url: string, opts: ProbeOptions = {}): Promise<EndpointResult | null> {
+  const { timeoutMs = PROBE_TIMEOUT_MS, fetchImpl = fetch } = opts;
   const t0 = performance.now();
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
-    await res.arrayBuffer();
+    const res = await fetchImpl(url, { signal: AbortSignal.timeout(timeoutMs) });
+    // Bounded drain: read at most MAX_PROBE_BODY_BYTES, then cancel the stream.
+    const reader = res.body?.getReader();
+    if (reader) {
+      let seen = 0;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        seen += value?.byteLength ?? 0;
+        if (seen >= MAX_PROBE_BODY_BYTES) break;
+      }
+      await reader.cancel().catch(() => {});
+    }
     return { status: res.status, seconds: (performance.now() - t0) / 1000 };
   } catch {
     return null;
@@ -250,7 +324,7 @@ async function main() {
   }
 
   const pid = mainPid(cfg.service);
-  const proc = pid ? procAnonKb(pid) : { rssAnonKb: 0, vmRssKb: 0, readable: false };
+  const proc = pid ? procAnonKb(pid) : { rssAnonKb: null, vmRssKb: null, readable: false };
   const snap: Snapshot = {
     current: readNum(`${dir}/memory.current`),
     max: readNum(`${dir}/memory.max`),
@@ -273,7 +347,7 @@ async function main() {
 
   const { verdict, failures, checked } = evaluate(cfg, snap);
 
-  const anonBytes = snap.stat.anon ?? snap.rssAnonKb * 1024;
+  const anonBytes = snap.stat.anon ?? (snap.rssAnonKb ?? 0) * 1024;
   const fileBytes = snap.stat.file ?? 0;
   const anonMb = anonBytes / (1024 * 1024);
   const fileMb = fileBytes / (1024 * 1024);

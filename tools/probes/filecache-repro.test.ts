@@ -29,6 +29,13 @@ describe("parseReproInputs — bounded positive integers", () => {
     // 1 MiB / 1_000_000 rows -> < 1 byte per row after overhead.
     expect(() => parseReproInputs({ REPRO_SIZE_MB: "1", REPRO_ROWS: "1000000" })).toThrow(/too large/);
   });
+
+  test("accepts exact upper bounds (boundary is inclusive)", () => {
+    expect(parseReproInputs({ REPRO_SIZE_MB: String(MAX_TARGET_MB) }).targetMb).toBe(MAX_TARGET_MB);
+    // 1e6 rows fits in 4096 MiB after the 64-byte overhead.
+    const r = parseReproInputs({ REPRO_SIZE_MB: String(MAX_TARGET_MB), REPRO_ROWS: String(MAX_ROWS) });
+    expect(r.rows).toBe(MAX_ROWS);
+  });
 });
 
 describe("runWithCleanup — guaranteed cleanup on forced failure", () => {
@@ -78,6 +85,43 @@ describe("runWithCleanup — guaranteed cleanup on forced failure", () => {
       return 123;
     });
     expect(out).toBe(123);
+    expect(existsSync(capturedDir)).toBe(false);
+    expect(existsSync(base)).toBe(true);
+    rmSync(base, { recursive: true, force: true });
+  });
+
+  test("constructor failure before registerDb still removes the unique dir", () => {
+    const base = mkdtempSync(join(tmpdir(), "repro-base-"));
+    let capturedDir = "";
+    expect(() =>
+      runWithCleanup(base, (dir) => {
+        capturedDir = dir;
+        // Database constructor throws: parent subdir does not exist. No registerDb call.
+        new Database(join(dir, "no", "such", "subdir", "x.sqlite"));
+      }),
+    ).toThrow();
+    expect(existsSync(capturedDir)).toBe(false);
+    expect(existsSync(base)).toBe(true);
+    expect(readdirSync(base).filter((n) => n.startsWith("filecache-repro-"))).toEqual([]);
+    rmSync(base, { recursive: true, force: true });
+  });
+
+  test("probe-shaped failure after register closes db and removes dir", () => {
+    const base = mkdtempSync(join(tmpdir(), "repro-base-"));
+    let capturedDir = "";
+    let dbRef: Database | null = null;
+    expect(() =>
+      runWithCleanup(base, (dir, registerDb) => {
+        capturedDir = dir;
+        const db = new Database(join(dir, "f.sqlite"));
+        registerDb(db);
+        dbRef = db;
+        db.exec("CREATE TABLE t (x)");
+        // Simulate pcprobe()/query throwing mid-run after a db was registered.
+        throw new Error("pcprobe stat failed: boom");
+      }),
+    ).toThrow(/pcprobe stat failed/);
+    expect(() => (dbRef as unknown as Database).query("SELECT 1").all()).toThrow();
     expect(existsSync(capturedDir)).toBe(false);
     expect(existsSync(base)).toBe(true);
     rmSync(base, { recursive: true, force: true });

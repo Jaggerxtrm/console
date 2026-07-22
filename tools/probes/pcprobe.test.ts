@@ -91,6 +91,43 @@ describe("pcprobe behavior", () => {
     const r = run("stat", join(work, "does-not-exist"));
     expect(r.status).toBe(1);
   });
+
+  test("stat escapes raw control bytes (<0x20) as \\u00xx and stays valid JSON", () => {
+    // 0x01 and 0x1b are legal ext4 filename bytes (only '/' and NUL are forbidden).
+    const ctrl = join(work, "c\u0001tr\u001bol.db");
+    writeFileSync(ctrl, Buffer.alloc(4096, 4));
+    const r = run("stat", ctrl);
+    expect(r.status).toBe(0);
+    // Old code emitted raw control bytes -> JSON.parse would throw.
+    const j = JSON.parse(r.stdout.trim());
+    expect(j.path).toBe(ctrl);
+    expect(j.total_bytes).toBe(4096);
+    // The raw control bytes must not appear literally in the JSON body.
+    expect(r.stdout).not.toContain("\u0001");
+    expect(r.stdout).not.toContain("\u001b");
+    expect(r.stdout).toContain("\\u0001");
+    expect(r.stdout).toContain("\\u001b");
+  });
+
+  test("stat escapes a real newline (0x0a) in the path as \\n", () => {
+    const nl = join(work, "new\nline.db");
+    writeFileSync(nl, Buffer.alloc(4096, 5));
+    const r = run("stat", nl);
+    expect(r.status).toBe(0);
+    const j = JSON.parse(r.stdout.trim());
+    expect(j.path).toBe(nl);
+    expect(r.stdout).toContain("\\n");
+  });
+
+  test("evict escapes control bytes too", () => {
+    const ctrl = join(work, "ev\u0002ict.db");
+    writeFileSync(ctrl, Buffer.alloc(4096, 6));
+    const r = run("evict", ctrl);
+    expect(r.status).toBe(0);
+    const j = JSON.parse(r.stdout.trim());
+    expect(j.path).toBe(ctrl);
+    expect(j.evicted).toBe(true);
+  });
 });
 
 // Cleanup the scratch dir after the suite process exits.
