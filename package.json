@@ -26,5 +26,9 @@
   },
   "patchedDependencies": {
     "node-pty@1.1.0": "patches/node-pty@1.1.0.patch"
+  },
+  "overrides": {
+    "hono": "4.12.27",
+    "ws": "8.21.0"
   }
 }

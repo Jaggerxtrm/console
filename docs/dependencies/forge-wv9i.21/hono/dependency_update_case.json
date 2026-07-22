@@ -1,0 +1,83 @@
+{
+  "schema": "xtrm.dependency_update_case.v0",
+  "case_id": "forge-wv9i.21-hono",
+  "trigger": {
+    "kind": "advisory",
+    "repo": "Jaggerxtrm/console",
+    "pr": null,
+    "branch": "feature/forge-wv9i.21-executor"
+  },
+  "package": {
+    "name": "hono",
+    "ecosystem": "npm",
+    "from_version": "4.12.8",
+    "to_version": "4.12.27",
+    "update_kind": "patch",
+    "dependency_kind": "direct",
+    "scope": "runtime"
+  },
+  "supply_chain": {
+    "release_age_hours": 695.5,
+    "cooldown_status": "cleared",
+    "registry_status": "normal",
+    "maintainer_change_detected": false,
+    "install_script_changed": false,
+    "artifact_repo_mismatch": "none"
+  },
+  "security": {
+    "advisories": [
+      {
+        "id": "GHSA-88fw-hqm2-52qc",
+        "source": "ghsa",
+        "severity_cvss": 7.1,
+        "security_forced": false,
+        "fixed_in": "4.12.25"
+      }
+    ],
+    "known_exploited": false,
+    "public_exploit_available": false,
+    "epss_bucket": "low",
+    "malicious_package_signal": "none"
+  },
+  "usage": {
+    "affected_services": ["apps/gitboard", "packages/html-preview"],
+    "affected_files": [
+      "apps/gitboard/package.json",
+      "packages/html-preview/package.json",
+      "apps/gitboard/src/api/server.ts"
+    ],
+    "runtime_reachable": "yes",
+    "publicly_exposed_path": "no",
+    "github_actions_blast_radius": "low"
+  },
+  "tests": {
+    "existing_tests_relevant": [
+      "apps/gitboard/tests/api/ws/origin-policy.test.ts",
+      "apps/gitboard/tests/api/ws/realtime-contract.test.ts",
+      "apps/gitboard/tests/api/routes/sources-policy.test.ts",
+      "apps/gitboard/tests/api/server-runtime-host.test.ts"
+    ],
+    "missing_tests": [
+      "apps/gitboard/tests/api/cors-compatibility.test.ts"
+    ],
+    "recommended_commands": [
+      "bun install --frozen-lockfile",
+      "osv-scanner scan --lockfile ./bun.lock",
+      "bunx vitest run tests/api/cors-compatibility.test.ts tests/api/ws/origin-policy.test.ts"
+    ]
+  },
+  "service_skills": {
+    "paths": [],
+    "dependency_surface_present": false,
+    "health_checks": ["/health"],
+    "post_update_watch_signals": [
+      "request_error_rate",
+      "cors_preflight_failure_rate",
+      "restart_count"
+    ]
+  },
+  "preliminary_verdict": {
+    "status": "safe_candidate",
+    "reason": "Advisory GHSA-88fw-hqm2-52qc fixed in 4.12.25; target 4.12.27 clears it. Release age 695.5h clears the 168h cooldown. Not SECURITY_FORCED (CVSS 7.1 < 9.0, EPSS low 0.248%, no KEV, no active exploitation). Vulnerable path (credentials:true + wildcard origin) is not reachable: gitboard mounts bare cors() with credentials defaulting false. Patch bump, no code change required."
+  }
+}
