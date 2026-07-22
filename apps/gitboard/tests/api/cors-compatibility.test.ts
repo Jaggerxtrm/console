@@ -6,8 +6,10 @@ import { createApp } from "../../src/api/server.ts";
 import { createXtrmDatabase } from "../../src/core/xtrm-store.ts";
 
 const tempDirs: string[] = [];
+const databases: Array<{ close(): void }> = [];
 
 afterEach(() => {
+  while (databases.length > 0) databases.pop()?.close();
   while (tempDirs.length > 0) {
     const dir = tempDirs.pop();
     if (dir) rmSync(dir, { recursive: true, force: true });
@@ -18,6 +20,7 @@ function buildApp() {
   const root = mkdtempSync(join(tmpdir(), "gitboard-cors-compat-"));
   tempDirs.push(root);
   const db = createXtrmDatabase(join(root, "xtrm.sqlite"));
+  databases.push(db);
   return createApp(db, db).app;
 }
 
