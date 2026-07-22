@@ -56,7 +56,7 @@ export interface RealtimeConnection {
 }
 
 export interface RealtimeRawConnection {
-  send(data: string): void;
+  send(data: string): RealtimeSendResult;
   close(code?: number): void;
 }
 
@@ -64,9 +64,26 @@ export interface RealtimeConnectionHandlerOptions {
   readonly onConnect?: (id: string) => void;
   readonly onDisconnect?: (id: string) => void;
   readonly onVersionMismatch?: (event: { readonly id: string; readonly channel: RealtimeChannelName; readonly version: unknown }) => void;
+  readonly onBackpressure?: (event: { readonly id: string; readonly channel: RealtimeChannelName; readonly bytes: number; readonly status: "backpressure" | "dropped" }) => void;
 }
 
+export type RealtimeSendResult = void | boolean | number;
+
 const RING_BUFFER_SIZE = 500;
+const MAX_REPLAY_BYTES = 1024 * 1024;
+const MAX_SUBSCRIPTIONS_PER_CONNECTION = 32;
+const BACKPRESSURE_CLOSE_CODE = 1013;
+const textEncoder = new TextEncoder();
+const STATIC_CHANNELS = new Set(["github:activity", "substrate:changes", "specialists:activity", "messages", "system"]);
+const DYNAMIC_CHANNEL_PATTERN = /^(github:repo|substrate:project|specialists:repo|session|output|protocol):([A-Za-z0-9][A-Za-z0-9._-]{0,127})$/;
+const RESERVED_CHANNEL_SEGMENTS = new Set(["__proto__", "constructor", "prototype"]);
+
+export function isAllowedRealtimeChannel(channel: unknown): channel is RealtimeChannelName {
+  if (typeof channel !== "string" || channel.length > 256) return false;
+  if (STATIC_CHANNELS.has(channel)) return true;
+  const match = DYNAMIC_CHANNEL_PATTERN.exec(channel);
+  return Boolean(match && !RESERVED_CHANNEL_SEGMENTS.has(match[2]));
+}
 
 export class RealtimeChannelRegistry implements RealtimeRegistry {
   private readonly channels = new Map<string, Set<RealtimeSubscriber>>();
@@ -75,17 +92,24 @@ export class RealtimeChannelRegistry implements RealtimeRegistry {
   private readonly bootId = crypto.randomUUID();
 
   subscribe(channel: RealtimeChannelName, subscriber: RealtimeSubscriber): void {
+    if (!isAllowedRealtimeChannel(channel)) return;
     const subscribers = this.channels.get(channel) ?? new Set<RealtimeSubscriber>();
     subscribers.add(subscriber);
     this.channels.set(channel, subscribers);
   }
 
   unsubscribe(channel: RealtimeChannelName, subscriber: RealtimeSubscriber): void {
-    this.channels.get(channel)?.delete(subscriber);
+    const subscribers = this.channels.get(channel);
+    if (!subscribers) return;
+    subscribers.delete(subscriber);
+    if (subscribers.size === 0) this.channels.delete(channel);
   }
 
   unsubscribeAll(subscriber: RealtimeSubscriber): void {
-    for (const subscribers of this.channels.values()) subscribers.delete(subscriber);
+    for (const [channel, subscribers] of this.channels) {
+      subscribers.delete(subscriber);
+      if (subscribers.size === 0) this.channels.delete(channel);
+    }
   }
 
   publish(channel: RealtimeChannelName, event: string, data: unknown, version?: string): RealtimeEnvelope {
@@ -136,6 +160,7 @@ export class RealtimeChannelRegistry implements RealtimeRegistry {
         subscribers.delete(subscriber);
       }
     }
+    if (subscribers.size === 0) this.channels.delete(channel);
   }
 
   private appendToBuffer(channel: RealtimeChannelName, envelope: RealtimeEnvelope): void {
@@ -166,26 +191,43 @@ export class RealtimeConnectionHandler {
 
   subscribe(connectionId: string, channel: RealtimeChannelName): void {
     const connection = this.connections.get(connectionId);
-    if (!connection?.subscriber) return;
+    if (!connection?.subscriber || !isAllowedRealtimeChannel(channel)) return;
+    if (connection.subscriptions.has(channel) || connection.subscriptions.size >= MAX_SUBSCRIPTIONS_PER_CONNECTION) return;
     connection.subscriptions.add(channel);
     this.registry.subscribe(channel, connection.subscriber);
   }
 
   unsubscribe(connectionId: string, channel: RealtimeChannelName): void {
     const connection = this.connections.get(connectionId);
-    if (!connection?.subscriber) return;
+    if (!connection?.subscriber || !isAllowedRealtimeChannel(channel)) return;
     connection.subscriptions.delete(channel);
     this.registry.unsubscribe(channel, connection.subscriber);
   }
 
   resume(connectionId: string, channel: RealtimeChannelName, sinceSeq: number, bootId?: string): void {
     const connection = this.connections.get(connectionId);
-    if (!connection?.subscriber) return;
+    if (!connection?.subscriber || !isAllowedRealtimeChannel(channel)) return;
     if (this.registry.hasReplayGap(channel, sinceSeq, bootId ?? "")) {
-      connection.raw.send(JSON.stringify(createSyncHint(channel, sinceSeq)));
+      this.send(connection, JSON.stringify(createSyncHint(channel, sinceSeq)), channel);
       return;
     }
-    for (const envelope of this.registry.replay(channel, sinceSeq, bootId ?? "")) connection.raw.send(JSON.stringify(envelope));
+
+    const replay = this.registry.replay(channel, sinceSeq, bootId ?? "");
+    const serialized: string[] = [];
+    let replayBytes = 0;
+    for (const envelope of replay) {
+      const message = JSON.stringify(envelope);
+      const bytes = byteLength(message);
+      if (replayBytes + bytes > MAX_REPLAY_BYTES) {
+        this.send(connection, JSON.stringify(createSyncHint(channel, sinceSeq, "replay_overload")), channel);
+        return;
+      }
+      serialized.push(message);
+      replayBytes += bytes;
+    }
+    for (const message of serialized) {
+      if (!this.send(connection, message, channel)) return;
+    }
   }
 
   disconnect(connectionId: string): void {
@@ -226,14 +268,34 @@ export class RealtimeConnectionHandler {
     return {
       id: connection.id,
       send: (message) => {
-        try {
-          connection.raw.send(JSON.stringify(message));
-        } catch {
-          this.disconnect(connection.id);
-        }
+        this.send(connection, JSON.stringify(message), message.channel);
       },
     };
   }
+
+  private send(connection: RealtimeConnection, message: string, channel: RealtimeChannelName): boolean {
+    const bytes = byteLength(message);
+    try {
+      const result = connection.raw.send(message);
+      if (result === false || (typeof result === "number" && result <= 0)) {
+        try {
+          connection.raw.close(BACKPRESSURE_CLOSE_CODE);
+        } catch {}
+        this.disconnect(connection.id);
+        const status = result === 0 ? "dropped" : "backpressure";
+        this.options.onBackpressure?.({ id: connection.id, channel, bytes, status });
+        return false;
+      }
+      return true;
+    } catch {
+      this.disconnect(connection.id);
+      return false;
+    }
+  }
+}
+
+function byteLength(message: string): number {
+  return textEncoder.encode(message).byteLength;
 }
 
 type ClientMessage =
@@ -248,7 +310,7 @@ function parseClientMessage(raw: string): ClientMessage | null {
   } catch {
     return null;
   }
-  if (!isClientMessageObject(message)) return null;
+  if (!isClientMessageObject(message) || !isAllowedRealtimeChannel(message.channel)) return null;
   if (message.action === "subscribe") return { action: "subscribe", channel: message.channel, version: message.version };
   if (message.action === "unsubscribe") return { action: "unsubscribe", channel: message.channel };
   if (message.action === "resume") {
@@ -263,7 +325,7 @@ function isClientMessageObject(message: unknown): message is Record<string, unkn
   return typeof message === "object" && message !== null && "action" in message && "channel" in message;
 }
 
-function createSyncHint(channel: RealtimeChannelName, sinceSeq: number): RealtimeMessage {
+function createSyncHint(channel: RealtimeChannelName, sinceSeq: number, reason = "buffer_miss"): RealtimeMessage {
   const event = channel.startsWith("substrate:") ? "substrate:sync_hint" : channel.startsWith("specialists:") ? "specialists:sync_hint" : "github:sync_hint";
-  return { type: "event", channel, event, data: { reason: "buffer_miss", channel, since_seq: sinceSeq } };
+  return { type: "event", channel, event, data: { reason, channel, since_seq: sinceSeq } };
 }

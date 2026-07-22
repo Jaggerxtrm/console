@@ -23,6 +23,25 @@ describe("SourceRefreshLifecycle", () => {
     expect(calls).toBe(1);
   });
 
+  it("clears in-flight refresh after rejection", async () => {
+    let calls = 0;
+    let rejectRefresh!: (error: Error) => void;
+    const lifecycle = new SourceRefreshLifecycle({
+      refreshIntervalMs: 1000,
+      refresh: () => {
+        calls += 1;
+        if (calls === 1) return new Promise<string[]>((_resolve, reject) => { rejectRefresh = reject; });
+        return Promise.resolve(["recovered"]);
+      },
+    });
+
+    const first = lifecycle.refresh();
+    rejectRefresh(new Error("synthetic refresh failure"));
+    await expect(first).rejects.toThrow("synthetic refresh failure");
+    await expect(lifecycle.refresh()).resolves.toEqual(["recovered"]);
+    expect(calls).toBe(2);
+  });
+
   it("starts one immediate refresh and a single interval", async () => {
     vi.useFakeTimers();
     const refresh = vi.fn(async () => ["ok"]);

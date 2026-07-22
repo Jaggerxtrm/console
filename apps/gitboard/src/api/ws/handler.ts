@@ -17,6 +17,9 @@ export class WsHandler extends RealtimeConnectionHandler {
       onVersionMismatch: ({ id, channel, version }) => {
         emit(makeLogEntry("ws", "subscribe.version_mismatch", "warn", undefined, { id, channel, version }));
       },
+      onBackpressure: ({ id, channel, bytes, status }) => {
+        emit(makeLogEntry("ws", `ws.publish.${status}`, "warn", undefined, { id, channel, bytes, status }));
+      },
     });
   }
 }

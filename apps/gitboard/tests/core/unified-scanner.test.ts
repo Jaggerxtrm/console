@@ -1,8 +1,9 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtemp, rm, mkdir, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 import { createXtrmDatabase } from "../../src/core/xtrm-store.ts";
+import { getRing } from "../../src/core/logger.ts";
 import { normalizeLegacySourceStatus, UnifiedScanner } from "../../src/core/unified-scanner.ts";
 
 describe("UnifiedScanner", () => {
@@ -119,6 +120,111 @@ describe("UnifiedScanner", () => {
     const [first, second] = await Promise.all([scanner.refresh(), scanner.refresh()]);
     expect(first.length).toBe(second.length);
 
+    db.close();
+  });
+
+  it("shares startup refresh with explicit refresh", async () => {
+    const db = createXtrmDatabase(dbPath);
+    const scanner = new UnifiedScanner(db, { beadsSearchPath: tmpDir, observabilityRoots: [tmpDir], parityEnabled: false });
+    const scannerWithPrivateMethods = scanner as unknown as {
+      scan: () => Promise<unknown[]>;
+    };
+    const originalScan = scannerWithPrivateMethods.scan;
+    let scans = 0;
+    let releaseScan!: () => void;
+    let scanStarted!: () => void;
+    const started = new Promise<void>((resolve) => { scanStarted = resolve; });
+    const release = new Promise<void>((resolve) => { releaseScan = resolve; });
+    scannerWithPrivateMethods.scan = async () => {
+      scans += 1;
+      scanStarted();
+      await release;
+      return originalScan.call(scanner);
+    };
+
+    scanner.start();
+    await started;
+    const explicitRefresh = scanner.refresh();
+    releaseScan();
+    await explicitRefresh;
+    scanner.stop();
+
+    expect(scans).toBe(1);
+    db.close();
+  });
+
+  it("records non-missing probe failures as structured warnings", () => {
+    const db = createXtrmDatabase(dbPath);
+    const scannerWithPrivateMethods = new UnifiedScanner(db, { beadsSearchPath: tmpDir, observabilityRoots: [tmpDir], parityEnabled: false }) as unknown as {
+      logProbeFailure: (stage: string, path: string, error: unknown) => void;
+    };
+    const before = getRing().length;
+    const error = Object.assign(new Error("permission denied"), { code: "EACCES" });
+
+    scannerWithPrivateMethods.logProbeFailure("beads scan", "/isolated/denied", error);
+
+    expect(getRing().slice(before)).toEqual([
+      expect.objectContaining({
+        component: "system",
+        event: "scanner.probe",
+        level: "warn",
+        data: {
+          stage: "beads scan",
+          code: "EACCES",
+        },
+      }),
+    ]);
+    db.close();
+  });
+
+  it("redacts probe paths and arbitrary error details while preserving stable codes", () => {
+    const db = createXtrmDatabase(dbPath);
+    const scannerWithPrivateMethods = new UnifiedScanner(db, { beadsSearchPath: tmpDir, observabilityRoots: [tmpDir], parityEnabled: false }) as unknown as {
+      logProbeFailure: (stage: string, path: string, error: unknown) => void;
+    };
+    const before = getRing().length;
+    const secretPath = "/private/scanner-secret/project";
+    const secretMessage = "token=top-secret scanner failure";
+
+    scannerWithPrivateMethods.logProbeFailure("permission probe", secretPath, Object.assign(new Error(secretMessage), { code: "EACCES" }));
+    scannerWithPrivateMethods.logProbeFailure("numeric code probe", secretPath, { code: 13, message: secretMessage });
+    scannerWithPrivateMethods.logProbeFailure("unknown error probe", secretPath, secretMessage);
+
+    const entries = getRing().slice(before);
+    expect(entries).toHaveLength(3);
+    expect(entries.map((entry) => entry.data)).toEqual([
+      { stage: "permission probe", code: "EACCES" },
+      { stage: "numeric code probe", code: "UNKNOWN" },
+      { stage: "unknown error probe", code: "UNKNOWN" },
+    ]);
+    expect(JSON.stringify(entries)).not.toContain(secretPath);
+    expect(JSON.stringify(entries)).not.toContain(secretMessage);
+    db.close();
+  });
+
+  it("suppresses expected missing probe telemetry", () => {
+    const db = createXtrmDatabase(dbPath);
+    const scannerWithPrivateMethods = new UnifiedScanner(db, { beadsSearchPath: tmpDir, observabilityRoots: [tmpDir], parityEnabled: false }) as unknown as {
+      logProbeFailure: (stage: string, path: string, error: unknown) => void;
+    };
+    const before = getRing().length;
+
+    scannerWithPrivateMethods.logProbeFailure("missing probe", "/private/missing", { code: "ENOENT" });
+    scannerWithPrivateMethods.logProbeFailure("not-dir probe", "/private/not-dir", { code: "ENOTDIR" });
+
+    expect(getRing().slice(before)).toEqual([]);
+    db.close();
+  });
+
+  it("keeps expected missing probes out of debug logs", async () => {
+    const db = createXtrmDatabase(dbPath);
+    const debug = vi.spyOn(console, "debug").mockImplementation(() => undefined);
+    const scanner = new UnifiedScanner(db, { beadsSearchPath: tmpDir, observabilityRoots: [tmpDir], parityEnabled: false });
+
+    await scanner.refresh();
+
+    expect(debug).not.toHaveBeenCalled();
+    debug.mockRestore();
     db.close();
   });
 });

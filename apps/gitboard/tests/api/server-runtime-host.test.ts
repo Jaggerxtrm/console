@@ -1,11 +1,13 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "../../src/api/server.ts";
 import { ChannelRegistry } from "../../src/api/ws/channels.ts";
 import { BeadsChangeWatcher } from "../../src/core/beads-change-watcher.ts";
 import { ProjectScanner } from "../../src/core/project-scanner.ts";
+import { UnifiedScanner } from "../../src/core/unified-scanner.ts";
+import { TriggerWatcher } from "../../src/server/beads/trigger-watcher.ts";
 import { createXtrmDatabase } from "../../src/core/xtrm-store.ts";
 
 const tempDirs: string[] = [];
@@ -51,6 +53,74 @@ describe("gitboard runtime host compatibility", () => {
 
     const response = await app.request("/health");
     expect(response.status).toBe(200);
+  });
+
+  it("starts beads discovery after unified startup refresh completes", async () => {
+    const root = mkdtempSync(join(tmpdir(), "gitboard-runtime-host-sequencing-"));
+    tempDirs.push(root);
+    const db = createXtrmDatabase(join(root, "xtrm.sqlite"));
+    const events: string[] = [];
+    let releaseRefresh!: () => void;
+    const refresh = new Promise<never[]>((resolve) => { releaseRefresh = () => resolve([]); });
+    const scannerStart = vi.spyOn(UnifiedScanner.prototype, "start").mockImplementation(() => { events.push("scanner.start"); });
+    const scannerRefresh = vi.spyOn(UnifiedScanner.prototype, "refresh").mockReturnValue(refresh);
+    const watcherStart = vi.spyOn(TriggerWatcher.prototype, "start").mockImplementation(() => { events.push("watcher.start"); });
+
+    try {
+      createApp(db, db);
+      expect(events).toEqual(["scanner.start"]);
+
+      releaseRefresh();
+      await refresh;
+      await Promise.resolve();
+
+      expect(events).toEqual(["scanner.start", "watcher.start"]);
+      expect(scannerRefresh).toHaveBeenCalledTimes(1);
+    } finally {
+      scannerStart.mockRestore();
+      scannerRefresh.mockRestore();
+      watcherStart.mockRestore();
+      db.close();
+    }
+  });
+
+  it("does not start stale watcher after a newer app lifecycle replaces it", async () => {
+    const root = mkdtempSync(join(tmpdir(), "gitboard-runtime-host-stale-lifecycle-"));
+    tempDirs.push(root);
+    const db = createXtrmDatabase(join(root, "xtrm.sqlite"));
+    const refreshes: Array<Promise<never[]>> = [];
+    const releases: Array<(value: never[]) => void> = [];
+    let watcherStarts = 0;
+    const scannerStart = vi.spyOn(UnifiedScanner.prototype, "start").mockImplementation(() => undefined);
+    const scannerRefresh = vi.spyOn(UnifiedScanner.prototype, "refresh").mockImplementation(() => {
+      const refresh = new Promise<never[]>((resolve) => { releases.push(resolve); });
+      refreshes.push(refresh);
+      return refresh;
+    });
+    const watcherStart = vi.spyOn(TriggerWatcher.prototype, "start").mockImplementation(() => { watcherStarts += 1; });
+
+    try {
+      createApp(db, db);
+      createApp(db, db);
+      expect(scannerRefresh).toHaveBeenCalledTimes(2);
+
+      releases[0]([]);
+      await refreshes[0];
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(watcherStarts).toBe(0);
+
+      releases[1]([]);
+      await refreshes[1];
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(watcherStarts).toBe(1);
+    } finally {
+      scannerStart.mockRestore();
+      scannerRefresh.mockRestore();
+      watcherStart.mockRestore();
+      db.close();
+    }
   });
 
   it("publishes Datasette SQL proxy only when explicit debug flag is enabled", () => {

@@ -23,6 +23,7 @@ export class ProjectScanner {
   private config: ProjectScannerConfig;
   private projectCache: Map<string, BeadsProject> = new Map();
   private nameToId: Map<string, string> = new Map();
+  private scanInFlight: Promise<BeadsProject[]> | null = null;
 
   constructor(config: Partial<ProjectScannerConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -32,26 +33,34 @@ export class ProjectScanner {
    * Scan all configured paths for beads projects
    */
   async scanAll(): Promise<BeadsProject[]> {
-    const projects: BeadsProject[] = [];
+    if (this.scanInFlight) return this.scanInFlight;
 
-    const pathsToScan = this.config.scanPaths?.length 
-      ? this.config.scanPaths 
-      : this.config.searchPath 
-        ? [this.config.searchPath] 
-        : [];
+    const scan = (async (): Promise<BeadsProject[]> => {
+      const projects: BeadsProject[] = [];
 
-    for (const scanPath of pathsToScan) {
-      const found = await this.scanPath(scanPath, 0);
-      projects.push(...found);
-    }
+      const pathsToScan = this.config.scanPaths?.length
+        ? this.config.scanPaths
+        : this.config.searchPath
+          ? [this.config.searchPath]
+          : [];
 
-    // Update cache
-    for (const project of projects) {
-      this.projectCache.set(project.id, project);
-      this.nameToId.set(project.name, project.id);
-    }
+      for (const scanPath of pathsToScan) {
+        const found = await this.scanPath(scanPath, 0);
+        projects.push(...found);
+      }
 
-    return projects;
+      // Update cache
+      for (const project of projects) {
+        this.projectCache.set(project.id, project);
+        this.nameToId.set(project.name, project.id);
+      }
+
+      return projects;
+    })();
+    this.scanInFlight = scan.finally(() => {
+      this.scanInFlight = null;
+    });
+    return this.scanInFlight;
   }
 
   /**

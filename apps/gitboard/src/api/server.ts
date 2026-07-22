@@ -104,6 +104,7 @@ export function createApp(db: Database, xtrmDb?: Database): {
   currentUnifiedScanner?.stop();
   currentUnifiedScanner = lifecycle.scanner;
   currentUnifiedScanner?.start();
+  const startupScannerRefresh = currentUnifiedScanner?.refresh();
   if (materializer && xtrmDb) {
     for (const repo of obsRepos) {
       const sourceKey = `obs:${repo.repoSlug}`;
@@ -127,7 +128,15 @@ export function createApp(db: Database, xtrmDb?: Database): {
   setRealtimePublisher(registry);
   currentWatcher?.stop();
   currentWatcher = lifecycle.beadsWatcher;
-  currentWatcher?.start();
+  const watcher = currentWatcher;
+  if (startupScannerRefresh && watcher) {
+    void startupScannerRefresh.then(
+      () => { if (currentWatcher === watcher && currentUnifiedScanner === lifecycle.scanner) watcher.start(); },
+      () => { if (currentWatcher === watcher && currentUnifiedScanner === lifecycle.scanner) watcher.start(); },
+    );
+  } else {
+    watcher?.start();
+  }
   currentObservabilityWatcher?.stop();
   currentObservabilityWatcher = lifecycle.observabilityWatcher;
   currentObservabilityWatcher.start();
@@ -276,6 +285,8 @@ export function startServer(xtrmDb: Database, options: ServerOptions = {}): void
       return app.fetch(req);
     },
     websocket: {
+      backpressureLimit: 1024 * 1024,
+      closeOnBackpressureLimit: true,
       open(ws) {
         const path = (ws.data as { path?: string } | undefined)?.path ?? "";
         if (path.startsWith("/api/console/terminal/ws")) {
@@ -286,7 +297,7 @@ export function startServer(xtrmDb: Database, options: ServerOptions = {}): void
         }
         const id = wsHandler.connect({
           send: (data) => ws.send(data),
-          close: () => ws.close(),
+          close: (code) => ws.close(code),
         });
         (ws as typeof ws & { connId: string }).connId = id;
         ws.send(JSON.stringify({ type: "connected", id }));
