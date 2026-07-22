@@ -424,6 +424,36 @@ describe("probe — response-body bound + cancellation (hermetic, injected fetch
     expect(getPulled()).toBeLessThan(total);
   });
 
+  test("oversized body: reader.cancel() is invoked after the cap (stream released, not left open)", async () => {
+    // Red/green for the `await reader.cancel()` on the bounded-drain path: without
+    // it the oversized upstream stream is never released (resource/socket leak)
+    // even though probe() stops reading at the cap. Deleting that line leaves
+    // every other probe test green, so assert the cancel callback directly.
+    let cancelCalled = false;
+    let pulled = 0;
+    const total = 4 * 1024 * 1024; // 4 MiB, over the 1 MiB cap
+    const chunk = 65536;
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (pulled >= total) {
+          controller.close();
+          return;
+        }
+        const n = Math.min(chunk, total - pulled);
+        pulled += n;
+        controller.enqueue(new Uint8Array(n));
+      },
+      cancel() {
+        cancelCalled = true;
+      },
+    });
+    const fetchImpl = (async () => new Response(stream, { status: 200 })) as unknown as typeof fetch;
+    const r = await probe("http://stub/big", { fetchImpl });
+    expect(r!.status).toBe(200);
+    expect(pulled).toBeLessThan(total); // bounded drain, not fully buffered
+    expect(cancelCalled).toBe(true); // stream cancelled after the cap
+  });
+
   test("small body fully drained; status + latency captured", async () => {
     const fetchImpl = (async () => new Response("ok", { status: 200 })) as unknown as typeof fetch;
     const r = await probe("http://stub/health", { fetchImpl });
