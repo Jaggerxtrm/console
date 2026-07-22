@@ -128,7 +128,7 @@ export function createConsoleHost(options: ConsoleHostOptions = {}): ConsoleHost
     stateDb: null,
     registry: null,
     materializer: null,
-    mountedRoutes: ["/health", "/console", ...mountedApiRoutes],
+    mountedRoutes: ["/health", "/console", "/gitboard", ...mountedApiRoutes],
     capabilities: ["http-api", "static-dashboard"],
     staticServiceParity: [],
   });

@@ -30,18 +30,27 @@
  *   bun run tools/retirement/host-retirement-guard.ts --mode strict --json
  *   bun run tools/retirement/host-retirement-guard.ts --update-baseline
  */
-import { readdirSync, readFileSync, statSync, writeFileSync, existsSync } from "node:fs";
+import { readdirSync, readFileSync, lstatSync, openSync, fstatSync, readSync, closeSync, writeFileSync, existsSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 
 export const DEPRECATED_HOST_PATH = "apps/gitboard";
 export const DEPRECATED_HOST_PACKAGE = "@xtrm/gitboard";
+
+/**
+ * Conservative per-file ceiling for guard candidate reads, enforced before
+ * allocation. Far above every real classified source/manifest file (largest
+ * current source is ~50 KiB). A candidate larger than this fails closed with a
+ * structured finding instead of being read unbounded.
+ */
+export const GUARD_MAX_FILE_BYTES = 1024 * 1024;
 
 export type GuardCategory =
   | "service-definition"
   | "container"
   | "build-script"
   | "workspace-manifest"
-  | "production-import";
+  | "production-import"
+  | "unsafe-fs-entry";
 
 export type GuardMode = "strict" | "console-host" | "no-new-regressions";
 
@@ -229,16 +238,32 @@ function isTestFile(name: string): boolean {
   return TEST_FILE_RE.test(name);
 }
 
-function walkFiles(root: string): string[] {
+function walkFiles(root: string): { files: string[]; findings: GuardFinding[] } {
   const collected: string[] = [];
+  const findings: GuardFinding[] = [];
   const walk = (dir: string): void => {
-    for (const entry of readdirSync(dir)) {
+    let entries: string[];
+    try {
+      entries = readdirSync(dir);
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
       const absolute = join(dir, entry);
       const relPath = relative(root, absolute);
       let stats;
       try {
-        stats = statSync(absolute);
+        // lstat (not stat): never follow symlinks, so symlinked directories and
+        // cycles are not recursed and symlinked files are not read.
+        stats = lstatSync(absolute);
       } catch {
+        continue;
+      }
+      if (stats.isSymbolicLink()) {
+        // Fail closed: any non-ignored symlink is a structured finding. The
+        // guard refuses to classify through a link it will not follow.
+        if (shouldIgnoreDir(entry, relPath)) continue;
+        findings.push(makeFinding("unsafe-fs-entry", relPath, 1, "symlinked path; guard does not follow symlinks"));
         continue;
       }
       if (stats.isDirectory()) {
@@ -254,19 +279,60 @@ function walkFiles(root: string): string[] {
     }
   };
   walk(root);
-  return collected.sort();
+  return { files: collected.sort(), findings };
+}
+
+/**
+ * Reads a classified candidate with a hard size cap enforced before
+ * allocation. Returns the content when within the ceiling, "oversized" when
+ * the file exceeds it (caller fails closed), or null when unreadable. At most
+ * the validated size is read, so a concurrently growing file cannot force an
+ * unbounded allocation.
+ */
+function readCandidateBounded(absolutePath: string): string | "oversized" | null {
+  let fd: number | undefined;
+  try {
+    fd = openSync(absolutePath, "r");
+    const info = fstatSync(fd);
+    if (!info.isFile()) return null;
+    if (info.size > GUARD_MAX_FILE_BYTES) return "oversized";
+    const buffer = Buffer.alloc(info.size);
+    let offset = 0;
+    while (offset < buffer.byteLength) {
+      const bytesRead = readSync(fd, buffer, offset, buffer.byteLength - offset, null);
+      if (bytesRead === 0) break;
+      offset += bytesRead;
+    }
+    return buffer.toString("utf8", 0, offset);
+  } catch {
+    return null;
+  } finally {
+    if (fd !== undefined) {
+      try {
+        closeSync(fd);
+      } catch {
+        // ignore close errors
+      }
+    }
+  }
 }
 
 export function scanTree(root: string): { findings: GuardFinding[]; scannedFiles: number } {
-  const files = walkFiles(root);
-  const findings: GuardFinding[] = [];
+  const { files, findings } = walkFiles(root);
   for (const relPath of files) {
     const scanner = classifyFile(relPath);
     if (!scanner) continue;
-    let content: string;
-    try {
-      content = readFileSync(join(root, relPath), "utf8");
-    } catch {
+    const content = readCandidateBounded(join(root, relPath));
+    if (content === null) continue;
+    if (content === "oversized") {
+      findings.push(
+        makeFinding(
+          "unsafe-fs-entry",
+          relPath,
+          1,
+          `candidate exceeds guard cap of ${GUARD_MAX_FILE_BYTES} bytes; refusing unbounded read`,
+        ),
+      );
       continue;
     }
     findings.push(...scanner(relPath, content));

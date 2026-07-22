@@ -1,12 +1,13 @@
-import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
 import { createDatabaseBootstrap } from "../../src/server/database.ts";
 import { redactHomePath, resolveDataDir } from "../../src/server/data-dir.ts";
 import { CONSOLE_HOST_OWNER, createConsoleHost } from "../../src/server/host.ts";
 import { createHostLogger } from "../../src/server/log.ts";
-import { readStaticAsset } from "../../src/server/static.ts";
+import { readStaticAsset, MAX_STATIC_ASSET_BYTES } from "../../src/server/static.ts";
 
 const tempDirs: string[] = [];
 
@@ -45,6 +46,7 @@ describe("console host descriptor", () => {
     expect(host.descriptor.capabilities).toContain("static-dashboard");
     expect(host.descriptor.mountedRoutes).toContain("/health");
     expect(host.descriptor.mountedRoutes).toContain("/console");
+    expect(host.descriptor.mountedRoutes).toContain("/gitboard");
   });
 });
 
@@ -153,6 +155,68 @@ describe("static asset traversal guard", () => {
     const distDir = makeDistDir({ "index.html": INDEX_HTML });
     const outside = await readStaticAsset(distDir, "../../../../../../etc/passwd");
     expect(outside).toBeNull();
+  });
+
+  it("refuses an in-root leaf symlink whose target lives outside the root", async () => {
+    const distDir = makeDistDir({ "index.html": INDEX_HTML });
+    const outsideFile = join(distDir, "..", "outside-secret.txt");
+    writeFileSync(outsideFile, "must-not-be-served");
+    symlinkSync(outsideFile, join(distDir, "leak.txt"));
+    try {
+      const asset = await readStaticAsset(distDir, "leak.txt");
+      expect(asset).toBeNull();
+      const host = createConsoleHost({ consoleDistDir: distDir, logger: silentLogger() });
+      const response = await host.app.request("/console/leak.txt");
+      expect(await response.text()).not.toContain("must-not-be-served");
+    } finally {
+      rmSync(outsideFile, { force: true });
+    }
+  });
+
+  it("refuses a symlinked parent directory that points outside the root", async () => {
+    const distDir = makeDistDir({ "index.html": INDEX_HTML });
+    const outsideDir = mkdtempSync(join(tmpdir(), "console-host-outside-"));
+    tempDirs.push(outsideDir);
+    writeFileSync(join(outsideDir, "secret.js"), "must-not-be-served");
+    symlinkSync(outsideDir, join(distDir, "sneaky"));
+    const asset = await readStaticAsset(distDir, "sneaky/secret.js");
+    expect(asset).toBeNull();
+  });
+
+  it("serves an in-root symlink whose real target stays inside the root", async () => {
+    const distDir = makeDistDir({ "index.html": INDEX_HTML, "assets/real.js": "safe-target" });
+    symlinkSync(join(distDir, "assets", "real.js"), join(distDir, "assets", "alias.js"));
+    const asset = await readStaticAsset(distDir, "assets/alias.js");
+    expect(asset).not.toBeNull();
+    expect(new TextDecoder().decode(asset!.body)).toContain("safe-target");
+  });
+
+  it("refuses a regular file larger than the exported ceiling", async () => {
+    const distDir = makeDistDir({ "index.html": INDEX_HTML });
+    const big = join(distDir, "big.js");
+    const chunk = Buffer.alloc(MAX_STATIC_ASSET_BYTES + 1, 97);
+    writeFileSync(big, chunk);
+    const asset = await readStaticAsset(distDir, "big.js");
+    expect(asset).toBeNull();
+  });
+
+  it("keeps the ceiling above every current built console asset", async () => {
+    const { readdirSync, statSync } = await import("node:fs");
+    const { join: pjoin } = await import("node:path");
+    const distRoot = fileURLToPath(new URL("../../dist/dashboard/console", import.meta.url));
+    if (!existsSync(distRoot)) return; // dist not built in this checkout
+    const stack = [distRoot];
+    while (stack.length > 0) {
+      const dir = stack.pop()!;
+      for (const entry of readdirSync(dir)) {
+        const full = pjoin(dir, entry);
+        const info = statSync(full);
+        if (info.isDirectory()) stack.push(full);
+        else if (info.isFile()) {
+          expect(info.size, full).toBeLessThanOrEqual(MAX_STATIC_ASSET_BYTES);
+        }
+      }
+    }
   });
 });
 

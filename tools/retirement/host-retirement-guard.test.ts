@@ -4,8 +4,8 @@
  * fixture. Run with: bun test tools/retirement/host-retirement-guard.test.ts
  */
 import { describe, expect, test } from "bun:test";
-import { evaluate, scanTree, DEPRECATED_HOST_PATH } from "./host-retirement-guard";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { evaluate, scanTree, DEPRECATED_HOST_PATH, GUARD_MAX_FILE_BYTES } from "./host-retirement-guard";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -101,5 +101,93 @@ describe("host-retirement-guard", () => {
 
   test("DEPRECATED_HOST_PATH is apps/gitboard", () => {
     expect(DEPRECATED_HOST_PATH).toBe("apps/gitboard");
+  });
+
+  test("fails closed on a symlinked directory pointing outside the root", () => {
+    const root = mkdtempSync(join(tmpdir(), "console-host-retirement-symdir-"));
+    const outside = mkdtempSync(join(tmpdir(), "console-host-retirement-outside-"));
+    try {
+      mkdirSync(join(outside, "apps", "gitboard", "src"), { recursive: true });
+      writeFileSync(join(outside, "apps", "gitboard", "src", "index.ts"), "export const legacy = true;\n");
+      symlinkSync(outside, join(root, "linked"));
+
+      const { findings } = scanTree(root);
+      const unsafe = findings.filter((f) => f.category === "unsafe-fs-entry");
+      expect(unsafe).toHaveLength(1);
+      expect(unsafe[0]).toMatchObject({ category: "unsafe-fs-entry", file: "linked" });
+      // The link is never followed, so the outside import is NOT scanned in.
+      expect(findings.filter((f) => f.category === "production-import")).toHaveLength(0);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  test("fails closed on a self-referential symlink cycle without hanging", () => {
+    const root = mkdtempSync(join(tmpdir(), "console-host-retirement-cycle-"));
+    try {
+      mkdirSync(join(root, "dir"), { recursive: true });
+      symlinkSync(join(root, "dir"), join(root, "dir", "loop"));
+
+      const { findings } = scanTree(root);
+      const unsafe = findings.filter((f) => f.category === "unsafe-fs-entry");
+      expect(unsafe).toHaveLength(1);
+      expect(unsafe[0]).toMatchObject({ file: join("dir", "loop") });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("fails closed on a leaf symlink file instead of reading its target", () => {
+    const root = mkdtempSync(join(tmpdir(), "console-host-retirement-symfile-"));
+    const outside = mkdtempSync(join(tmpdir(), "console-host-retirement-symfile-out-"));
+    try {
+      const target = join(outside, "Dockerfile");
+      writeFileSync(target, 'CMD ["bun", "apps/gitboard/src/index.ts"]\n');
+      symlinkSync(target, join(root, "Dockerfile"));
+
+      const { findings } = scanTree(root);
+      const unsafe = findings.filter((f) => f.category === "unsafe-fs-entry");
+      expect(unsafe).toHaveLength(1);
+      expect(unsafe[0]).toMatchObject({ file: "Dockerfile" });
+      expect(findings.filter((f) => f.category === "container")).toHaveLength(0);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  test("fails closed with exact path/category on an oversized classified source", () => {
+    const root = mkdtempSync(join(tmpdir(), "console-host-retirement-oversized-"));
+    try {
+      mkdirSync(join(root, "apps", "console", "src"), { recursive: true });
+      const big = join(root, "apps", "console", "src", "big.ts");
+      writeFileSync(big, Buffer.alloc(GUARD_MAX_FILE_BYTES + 1, 97));
+
+      const { findings } = scanTree(root);
+      const unsafe = findings.filter((f) => f.category === "unsafe-fs-entry");
+      expect(unsafe).toHaveLength(1);
+      expect(unsafe[0]).toMatchObject({
+        category: "unsafe-fs-entry",
+        file: join("apps", "console", "src", "big.ts"),
+      });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("strict mode FAILS when a symlink or oversized candidate is present", () => {
+    const root = mkdtempSync(join(tmpdir(), "console-host-retirement-strict-unsafe-"));
+    const outside = mkdtempSync(join(tmpdir(), "console-host-retirement-strict-out-"));
+    try {
+      symlinkSync(outside, join(root, "linked"));
+      const report = evaluate({ mode: "strict", root });
+      expect(report.pass).toBe(false);
+      expect(report.verdict).toBe("FAIL");
+      expect(report.findings.some((f) => f.category === "unsafe-fs-entry")).toBe(true);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(outside, { recursive: true, force: true });
+    }
   });
 });
