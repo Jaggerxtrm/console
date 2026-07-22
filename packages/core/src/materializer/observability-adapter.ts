@@ -2,9 +2,24 @@ import { Database } from "bun:sqlite";
 import type { MaterializedEvidenceRef, MaterializedForensicEvent, MaterializedSpecialistJob, MaterializerAdapter, MaterializerDelta, MaterializerSnapshot } from "./types.ts";
 
 export const FORENSIC_BATCH_SIZE = 500;
+// Job cardinality bound per run. Jobs page via a stable (updated_at_ms, job_id)
+// tuple so rows sharing a timestamp cannot be dropped between batches.
+export const JOB_BATCH_SIZE = 500;
+// Source TEXT byte caps applied in SQL via length()/CASE so oversized payloads
+// are never materialized into JS merely to be rejected.
+export const LAST_OUTPUT_MAX_BYTES = 64 * 1024;
+export const TOKEN_TRAJECTORY_MAX_BYTES = 256 * 1024;
+export const EVENT_PAYLOAD_MAX_BYTES = 256 * 1024;
+// Evidence ref expansion caps: deterministic per-event and per-run ceilings.
+export const EVIDENCE_REFS_PER_EVENT_CAP = 64;
+export const EVIDENCE_REFS_PER_RUN_CAP = 1024;
+// Bound the persisted job_id tie-break so an attacker cannot inject an
+// arbitrarily large cursor string into SQL comparisons.
+export const JOB_ID_MAX_LEN = 256;
 
 type ObservabilityCursor = {
   updated_at_ms: number;
+  job_id: string;
   event_rowid: number;
   forensic_rowid: number;
 };
@@ -18,6 +33,7 @@ type SourceEventRow = {
   t_unix_ms: number | null;
   event_type: string | null;
   payload: string | null;
+  payload_bytes: number;
   source: "forensic" | "legacy";
 };
 
@@ -37,24 +53,27 @@ export function createObservabilityAdapter(dbPath: string, repoSlug: string): Ma
   const hasForensic = hasTable(db, "specialist_forensic_events");
   return {
     async cursor() {
-      return { updated_at_ms: 0, event_rowid: 0, forensic_rowid: 0 };
+      return { updated_at_ms: 0, job_id: "", event_rowid: 0, forensic_rowid: 0 };
     },
     async changesSince(cursor) {
-      const baseline = normalizeCursor(cursor);
-      const recentJobs = readJobsSince(db, repoSlug, baseline.updated_at_ms - 1000, beadIdSelect, hasMetrics);
+      const baseline = normalizeCursor(cursor, sourceHighWater(db, hasForensic));
+      const recentJobs = readJobsSince(db, repoSlug, baseline, beadIdSelect, hasMetrics);
+      const jobsOverflow = recentJobs.length > JOB_BATCH_SIZE;
+      const pageJobs = jobsOverflow ? recentJobs.slice(0, JOB_BATCH_SIZE) : recentJobs;
       const eventRows = hasForensic
         ? readForensicEventsSince(db, baseline.forensic_rowid, FORENSIC_BATCH_SIZE)
         : readLegacyEventsSince(db, baseline.event_rowid, FORENSIC_BATCH_SIZE);
-      const hasMore = eventRows.length >= FORENSIC_BATCH_SIZE;
+      const eventsOverflow = eventRows.length >= FORENSIC_BATCH_SIZE;
       const touchedJobIds = new Set(eventRows.flatMap((row) => row.job_id ? [row.job_id] : []));
       const touchedJobs = touchedJobIds.size > 0 ? readJobsByIds(db, repoSlug, [...touchedJobIds], beadIdSelect, hasMetrics) : [];
-      const jobs = mergeJobs(recentJobs, touchedJobs);
+      const jobs = mergeJobs(pageJobs, touchedJobs);
+      const evidenceRefs = collectEvidenceRefs(repoSlug, eventRows);
       return {
-        cursor: nextCursor(jobs, eventRows, baseline, hasForensic),
+        cursor: nextCursor(pageJobs, eventRows, baseline, hasForensic),
         rows: jobs,
         forensicEvents: eventRows.flatMap((row) => materializeForensicEvent(repoSlug, row)),
-        evidenceRefs: eventRows.flatMap((row) => materializeEvidenceRefs(repoSlug, row)),
-        hasMore,
+        evidenceRefs,
+        hasMore: jobsOverflow || eventsOverflow,
       } satisfies MaterializerDelta<JobRow>;
     },
     async snapshot() {
@@ -87,18 +106,63 @@ function hasColumn(db: Database, tableName: string, columnName: string): boolean
   }
 }
 
-function normalizeCursor(cursor: unknown): ObservabilityCursor {
-  const value = cursor as Partial<ObservabilityCursor> | null | undefined;
+type SourceHighWater = { updatedAtMs: number; eventRowid: number; forensicRowid: number };
+
+function sourceHighWater(db: Database, hasForensic: boolean): SourceHighWater {
+  const jobMax = (db.query("SELECT MAX(updated_at_ms) AS m FROM specialist_jobs").get() as { m: number | null } | undefined)?.m;
+  const forensicMax = hasForensic
+    ? (db.query("SELECT MAX(rowid) AS m FROM specialist_forensic_events").get() as { m: number | null } | undefined)?.m
+    : null;
+  const legacyMax = hasForensic
+    ? null
+    : (db.query("SELECT MAX(id) AS m FROM specialist_events").get() as { m: number | null } | undefined)?.m;
   return {
-    updated_at_ms: Number(value?.updated_at_ms ?? 0),
-    event_rowid: Number(value?.event_rowid ?? 0),
-    forensic_rowid: Number(value?.forensic_rowid ?? value?.event_rowid ?? 0),
+    updatedAtMs: clampFinite(jobMax, 0),
+    eventRowid: clampFinite(legacyMax, 0),
+    forensicRowid: clampFinite(forensicMax, 0),
   };
 }
 
-function readJobsSince(db: Database, repoSlug: string, updatedAtMs: number, beadIdSelect: string, hasMetrics: boolean): JobRow[] {
-  return db.query(jobSelectSql(beadIdSelect, hasMetrics, "WHERE j.updated_at_ms > ? ORDER BY j.updated_at_ms ASC, j.job_id ASC"))
-    .all(updatedAtMs)
+function clampFinite(value: unknown, fallback: number): number {
+  const number = typeof value === "number" ? value : Number.NaN;
+  return Number.isFinite(number) && number >= 0 ? Math.floor(number) : fallback;
+}
+
+// Strictly validate a persisted positional cursor field: accept ONLY a genuine
+// finite safe non-negative integer (typeof number). Numeric strings, fractional
+// numbers, NaN/Infinity, negatives and unsafe integers are rejected (not
+// coerced/floored) and trigger reset-aware replay. A valid cursor above the
+// source high-water (on a non-empty source) signals a source reset/rewind, so we
+// replay from 0 — safe because target writes are idempotent upserts — instead of
+// clamping to the high-water and silently skipping the boundary row. An
+// empty/pruned source (high-water 0) normalizes to 0 without a false reset.
+function sanitizePosition(value: unknown, highWater: number): number {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) return 0;
+  if (highWater <= 0) return 0;
+  if (value > highWater) return 0;
+  return value;
+}
+
+function normalizeCursor(cursor: unknown, highWater: SourceHighWater): ObservabilityCursor {
+  const value = cursor as Partial<ObservabilityCursor> | null | undefined;
+  const updatedAtMs = sanitizePosition(value?.updated_at_ms, highWater.updatedAtMs);
+  // The tie-break job_id must be a bounded string. On a reset/invalid job
+  // high-water, or an oversized/non-string job_id, restart the tie-break so
+  // equal-timestamp rows are replayed (idempotent) rather than skipped or used
+  // to inject an unbounded string into SQL comparisons.
+  const rawJobId = typeof value?.job_id === "string" ? value.job_id : "";
+  const jobId = updatedAtMs === 0 || rawJobId.length > JOB_ID_MAX_LEN ? "" : rawJobId;
+  return {
+    updated_at_ms: updatedAtMs,
+    job_id: jobId,
+    event_rowid: sanitizePosition(value?.event_rowid, highWater.eventRowid),
+    forensic_rowid: sanitizePosition(value?.forensic_rowid ?? value?.event_rowid, highWater.forensicRowid),
+  };
+}
+
+function readJobsSince(db: Database, repoSlug: string, cursor: ObservabilityCursor, beadIdSelect: string, hasMetrics: boolean): JobRow[] {
+  return db.query(jobSelectSql(beadIdSelect, hasMetrics, "WHERE (j.updated_at_ms > ?) OR (j.updated_at_ms = ? AND j.job_id > ?) ORDER BY j.updated_at_ms ASC, j.job_id ASC LIMIT " + (JOB_BATCH_SIZE + 1)))
+    .all(cursor.updated_at_ms, cursor.updated_at_ms, cursor.job_id)
     .map((row) => materializeJobRow(repoSlug, row as Record<string, unknown>));
 }
 
@@ -119,11 +183,16 @@ function readJobsByIds(db: Database, repoSlug: string, jobIds: readonly string[]
 function jobSelectSql(beadIdSelect: string, hasMetrics: boolean, suffix: string): string {
   const metricsJoin = hasMetrics ? "LEFT JOIN specialist_job_metrics AS m ON m.job_id = j.job_id" : "";
   const metricsColumns = hasMetrics
-    ? "m.total_turns AS turns, m.total_tools AS tools, m.model AS model, m.token_trajectory_json AS token_trajectory_json"
-    : "NULL AS turns, NULL AS tools, NULL AS model, NULL AS token_trajectory_json";
+    ? `m.total_turns AS turns, m.total_tools AS tools, m.model AS model,
+       CASE WHEN m.token_trajectory_json IS NULL OR length(CAST(m.token_trajectory_json AS BLOB)) <= ${TOKEN_TRAJECTORY_MAX_BYTES} THEN m.token_trajectory_json ELSE NULL END AS token_trajectory_json,
+       CASE WHEN m.token_trajectory_json IS NULL THEN 0 ELSE length(CAST(m.token_trajectory_json AS BLOB)) END AS token_trajectory_bytes`
+    : "NULL AS turns, NULL AS tools, NULL AS model, NULL AS token_trajectory_json, 0 AS token_trajectory_bytes";
   return `
     SELECT j.job_id, ${beadIdSelect}, j.specialist, j.status, j.chain_id, j.epic_id, j.chain_kind,
-      j.worktree_column AS worktree, j.last_output, j.updated_at_ms, ${metricsColumns}
+      j.worktree_column AS worktree,
+      CASE WHEN j.last_output IS NULL OR length(CAST(j.last_output AS BLOB)) <= ${LAST_OUTPUT_MAX_BYTES} THEN j.last_output ELSE NULL END AS last_output,
+      CASE WHEN j.last_output IS NULL THEN 0 ELSE length(CAST(j.last_output AS BLOB)) END AS last_output_bytes,
+      j.updated_at_ms, ${metricsColumns}
     FROM specialist_jobs AS j
     ${metricsJoin}
     ${suffix}
@@ -132,7 +201,9 @@ function jobSelectSql(beadIdSelect: string, hasMetrics: boolean, suffix: string)
 
 function readForensicEventsSince(db: Database, rowid: number, limit: number): SourceEventRow[] {
   return db.query(`
-    SELECT rowid AS _rowid, job_id, seq, t AS t_unix_ms, event_name AS event_type, event_json AS payload
+    SELECT rowid AS _rowid, job_id, seq, t AS t_unix_ms, event_name AS event_type,
+      CASE WHEN event_json IS NULL OR length(CAST(event_json AS BLOB)) <= ${EVENT_PAYLOAD_MAX_BYTES} THEN event_json ELSE NULL END AS payload,
+      CASE WHEN event_json IS NULL THEN 0 ELSE length(CAST(event_json AS BLOB)) END AS payload_bytes
     FROM specialist_forensic_events
     WHERE rowid > ?
     ORDER BY rowid ASC
@@ -145,7 +216,9 @@ function readForensicEventsSince(db: Database, rowid: number, limit: number): So
 
 function readLegacyEventsSince(db: Database, rowid: number, limit: number): SourceEventRow[] {
   return db.query(`
-    SELECT id AS rowid, job_id, seq, t AS t_unix_ms, type AS event_type, event_json AS payload
+    SELECT id AS rowid, job_id, seq, t AS t_unix_ms, type AS event_type,
+      CASE WHEN event_json IS NULL OR length(CAST(event_json AS BLOB)) <= ${EVENT_PAYLOAD_MAX_BYTES} THEN event_json ELSE NULL END AS payload,
+      CASE WHEN event_json IS NULL THEN 0 ELSE length(CAST(event_json AS BLOB)) END AS payload_bytes
     FROM specialist_events
     WHERE id > ?
     ORDER BY id ASC
@@ -154,7 +227,13 @@ function readLegacyEventsSince(db: Database, rowid: number, limit: number): Sour
 }
 
 function materializeJobRow(repoSlug: string, row: Record<string, unknown>): JobRow {
+  const trajectoryBytes = Number(row.token_trajectory_bytes ?? 0);
   const tokens = parseTokenTrajectory(row.token_trajectory_json);
+  const lastOutputBytes = Number(row.last_output_bytes ?? 0);
+  const lastOutput = row.last_output == null
+    ? (lastOutputBytes > 0 ? `[redacted:oversized:last_output:${lastOutputBytes}b]` : null)
+    : String(row.last_output);
+  const trajectoryOversized = row.token_trajectory_json == null && trajectoryBytes > 0;
   return {
     repo_slug: repoSlug,
     job_id: String(row.job_id),
@@ -165,7 +244,7 @@ function materializeJobRow(repoSlug: string, row: Record<string, unknown>): JobR
     epic_id: row.epic_id == null ? null : String(row.epic_id),
     chain_kind: row.chain_kind == null ? null : String(row.chain_kind),
     worktree: row.worktree == null ? null : String(row.worktree),
-    last_output: row.last_output == null ? null : String(row.last_output),
+    last_output: lastOutput,
     created_at: null,
     updated_at: null,
     updated_at_ms: row.updated_at_ms == null ? null : Number(row.updated_at_ms),
@@ -173,20 +252,26 @@ function materializeJobRow(repoSlug: string, row: Record<string, unknown>): JobR
     tools: row.tools == null ? null : Number(row.tools),
     model: row.model == null ? null : String(row.model),
     ...tokens,
-    usage_source: row.token_trajectory_json == null ? null : "specialist_job_metrics",
+    usage_source: row.token_trajectory_json == null
+      ? (trajectoryOversized ? "specialist_job_metrics:oversized" : null)
+      : "specialist_job_metrics",
   };
 }
 
 function materializeForensicEvent(repoSlug: string, row: SourceEventRow): MaterializedForensicEvent[] {
+  const sourceKey = `obs:${repoSlug}`;
+  const sourceEventId = `${row.source}:${row.rowid}`;
+  if (row.payload == null && row.payload_bytes > 0) {
+    return [oversizedEventMarker(repoSlug, sourceKey, sourceEventId, row)];
+  }
   const envelope = parseEnvelope(row);
   if (!envelope) return [];
-  const sourceKey = `obs:${repoSlug}`;
   const correlation = record(envelope.correlation);
   const jobId = stringValue(correlation.job_id) ?? row.job_id ?? null;
   const tUnixMs = numberValue(envelope.t_unix_ms) ?? row.t_unix_ms ?? null;
   return [{
     source_key: sourceKey,
-    source_event_id: `${row.source}:${row.rowid}`,
+    source_event_id: sourceEventId,
     repo_slug: repoSlug,
     job_id: jobId,
     seq: numberValue(envelope.seq) ?? row.seq ?? null,
@@ -208,6 +293,61 @@ function materializeForensicEvent(repoSlug: string, row: SourceEventRow): Materi
   }];
 }
 
+function oversizedEventMarker(repoSlug: string, sourceKey: string, sourceEventId: string, row: SourceEventRow): MaterializedForensicEvent {
+  const tUnixMs = row.t_unix_ms ?? null;
+  const body = {
+    reason: "payload_oversized",
+    payload_bytes: row.payload_bytes,
+    limit_bytes: EVENT_PAYLOAD_MAX_BYTES,
+    source_event_id: sourceEventId,
+  };
+  const envelope = {
+    schema_version: "xtrm.forensic.v1",
+    t_unix_ms: tUnixMs,
+    seq: row.seq,
+    severity: "warn",
+    event_family: "observability",
+    event_name: "observability.payload.oversized",
+    event_version: 1,
+    resource: {},
+    correlation: { job_id: row.job_id },
+    body,
+    redaction: { status: "redacted" },
+  };
+  return {
+    source_key: sourceKey,
+    source_event_id: sourceEventId,
+    repo_slug: repoSlug,
+    job_id: row.job_id ?? null,
+    seq: row.seq ?? null,
+    t_unix_ms: tUnixMs,
+    timestamp: tUnixMs == null ? null : new Date(tUnixMs).toISOString(),
+    schema_version: envelope.schema_version,
+    severity: envelope.severity,
+    event_family: envelope.event_family,
+    event_name: envelope.event_name,
+    event_version: envelope.event_version,
+    resource_json: stableJson(envelope.resource),
+    correlation_json: stableJson(envelope.correlation),
+    body_json: stableJson(body),
+    redaction_json: stableJson(envelope.redaction),
+    envelope_json: stableJson(envelope),
+  };
+}
+
+function collectEvidenceRefs(repoSlug: string, eventRows: SourceEventRow[]): MaterializedEvidenceRef[] {
+  const out: MaterializedEvidenceRef[] = [];
+  for (const row of eventRows) {
+    if (out.length >= EVIDENCE_REFS_PER_RUN_CAP) break;
+    const refs = materializeEvidenceRefs(repoSlug, row);
+    for (const ref of refs) {
+      if (out.length >= EVIDENCE_REFS_PER_RUN_CAP) break;
+      out.push(ref);
+    }
+  }
+  return out;
+}
+
 function materializeEvidenceRefs(repoSlug: string, row: SourceEventRow): MaterializedEvidenceRef[] {
   const envelope = parseEnvelope(row);
   if (!envelope) return [];
@@ -215,13 +355,15 @@ function materializeEvidenceRefs(repoSlug: string, row: SourceEventRow): Materia
   const body = record(envelope.body);
   const links = record(envelope.links);
   const refs = [...arrayValue(body.evidence_refs), ...arrayValue(links.evidence_refs), ...arrayValue(links.evidence)];
-  return refs.flatMap((ref, index) => {
+  const out: MaterializedEvidenceRef[] = [];
+  refs.forEach((ref, index) => {
+    if (out.length >= EVIDENCE_REFS_PER_EVENT_CAP) return;
     const value = record(ref);
     const kind = stringValue(value.evidence_kind) ?? stringValue(value.kind);
-    if (!kind) return [];
+    if (!kind) return;
     const id = stringValue(value.id) ?? stringValue(value.ref) ?? `${row.source}:${row.rowid}:${index}`;
     const correlation = record(envelope.correlation);
-    return [{
+    out.push({
       source_key: sourceKey,
       repo_slug: repoSlug,
       evidence_id: id,
@@ -231,8 +373,9 @@ function materializeEvidenceRefs(repoSlug: string, row: SourceEventRow): Materia
       event_source_id: `${row.source}:${row.rowid}`,
       ref_json: stableJson(value),
       created_at: stringValue(envelope.timestamp) ?? null,
-    }];
+    });
   });
+  return out;
 }
 
 function parseEnvelope(row: SourceEventRow): Record<string, unknown> | null {
@@ -343,11 +486,21 @@ function mergeJobs(primary: JobRow[], touched: JobRow[]): JobRow[] {
 }
 
 function nextCursor(jobs: JobRow[], events: SourceEventRow[], baseline: ObservabilityCursor, hasForensic: boolean): ObservabilityCursor {
-  const maxJob = jobs.reduce((max, row) => Math.max(max, row.updated_at_ms ?? 0), baseline.updated_at_ms);
+  // Job high-water advances only from the ordered, paginated job scan so the
+  // stable (updated_at_ms, job_id) tuple never regresses or drops equal stamps.
+  let jobUpdatedAt = baseline.updated_at_ms;
+  let jobId = baseline.job_id;
+  for (const row of jobs) {
+    const ts = row.updated_at_ms ?? 0;
+    if (ts > jobUpdatedAt || (ts === jobUpdatedAt && row.job_id > jobId)) {
+      jobUpdatedAt = ts;
+      jobId = row.job_id;
+    }
+  }
   const maxEvent = events.reduce((max, row) => Math.max(max, row.rowid ?? 0), hasForensic ? baseline.forensic_rowid : baseline.event_rowid);
   return hasForensic
-    ? { updated_at_ms: maxJob, event_rowid: baseline.event_rowid, forensic_rowid: maxEvent }
-    : { updated_at_ms: maxJob, event_rowid: maxEvent, forensic_rowid: baseline.forensic_rowid };
+    ? { updated_at_ms: jobUpdatedAt, job_id: jobId, event_rowid: baseline.event_rowid, forensic_rowid: maxEvent }
+    : { updated_at_ms: jobUpdatedAt, job_id: jobId, event_rowid: maxEvent, forensic_rowid: baseline.forensic_rowid };
 }
 
 function parseTokenTrajectory(value: unknown): TokenTotals {

@@ -159,7 +159,12 @@ export class Materializer {
     try {
       return JSON.parse(row.cursor);
     } catch {
-      this.emitLog("system", "materializer.cursor.invalid", "warn", undefined, { source_key: sourceKey, cursor: row.cursor });
+      this.emitLog("system", "materializer.cursor.invalid", "warn", undefined, {
+        source_key: sourceKey,
+        cursor_bytes: row.cursor.length,
+        cursor_valid_json: false,
+        cursor_redacted: true,
+      });
       return null;
     }
   }
