@@ -98,7 +98,7 @@ export function readSpecialistRecentJobs(db: Database | null | undefined, limit:
   if (!db) return [];
   const beadIdExpr = beadIdColumnExpression(db);
   const repoFilter = repoWhere(filter);
-  return loadSpecialistJobs(db, `WHERE j.status IN ('done', 'error', 'failed', 'cancelled')${repoFilter.sql}`, repoFilter.params, beadIdExpr).slice(0, limit);
+  return loadSpecialistJobs(db, `WHERE j.status IN ('done', 'error', 'failed', 'cancelled')${repoFilter.sql}`, repoFilter.params, beadIdExpr, limit);
 }
 
 export function readSpecialistChainJobs(db: Database | null | undefined, chainId: string, filter?: SpecialistJobFilter): SpecialistJobRow[] {
@@ -146,10 +146,17 @@ export function readMaterializationState(db: Database | null | undefined): Mater
   return db.query("SELECT source_key, last_status, last_success_at FROM materialization_state").all() as MaterializationStateRow[];
 }
 
-function loadSpecialistJobs(db: Database, whereSql: string, params: readonly (string | number)[], beadIdExpr = beadIdColumnExpression(db)): SpecialistJobRow[] {
+function loadSpecialistJobs(
+  db: Database,
+  whereSql: string,
+  params: readonly (string | number)[],
+  beadIdExpr = beadIdColumnExpression(db),
+  limit?: number,
+): SpecialistJobRow[] {
+  const limitSql = limit === undefined ? "" : "\n    LIMIT ?";
+  const queryParams = limit === undefined ? params : [...params, Math.max(0, Math.floor(limit))];
   const rows = db.query(`
     SELECT j.repo_slug, j.job_id, ${beadIdExpr} AS bead_id, j.chain_id, j.epic_id, j.chain_kind, j.status, j.updated_at, j.specialist, j.last_output,
-      COALESCE((SELECT COUNT(*) FROM specialist_job_events e WHERE e.repo_slug = j.repo_slug AND e.job_id = j.job_id), 0) AS event_count,
       ${metricExpr(db, "turns")} AS turns, ${metricExpr(db, "tools")} AS tools, ${metricExpr(db, "model")} AS model,
       ${metricExpr(db, "token_input")} AS token_input, ${metricExpr(db, "token_output")} AS token_output,
       ${metricExpr(db, "token_cache_read")} AS token_cache_read, ${metricExpr(db, "token_cache_creation")} AS token_cache_creation,
@@ -158,8 +165,8 @@ function loadSpecialistJobs(db: Database, whereSql: string, params: readonly (st
     FROM specialist_jobs AS j
     LEFT JOIN substrate_job_link AS l ON l.repo_slug = j.repo_slug AND l.job_id = j.job_id
     ${whereSql}
-    ORDER BY COALESCE(j.updated_at, '') DESC, j.job_id ASC
-  `).all(...params) as Array<Record<string, unknown>>;
+    ORDER BY COALESCE(j.updated_at, '') DESC, j.job_id ASC${limitSql}
+  `).all(...queryParams) as Array<Record<string, unknown>>;
   return rows.map(mapJobRow);
 }
 

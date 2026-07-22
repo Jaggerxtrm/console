@@ -45,7 +45,18 @@ type CachedValue<T> = {
   refreshedAt: number;
 };
 
+type InFlightValue = {
+  in_flight: SpecialistJob[];
+  recent_history: SpecialistJob[];
+  jobs: SpecialistJob[];
+  epoch: Record<string, number>;
+};
+
 const CACHE_TTL_MS = 5000;
+const MAX_IN_FLIGHT_CACHE_ENTRIES = 2;
+export const MAX_IN_FLIGHT_REFRESHES = 4;
+export const MAX_REPO_SLUG_FILTERS = 8;
+export const MAX_REPO_SLUG_FILTER_BYTES = 512;
 
 type MaterializationStateRow = {
   source_key: string;
@@ -60,7 +71,7 @@ type ObservabilityCoverage = {
 };
 
 type XtrmSpecialistsDao = SpecialistsDao & {
-  inFlightWithRecent(limit: number, filter?: SpecialistJobFilter): { in_flight: SpecialistJob[]; recent_history: SpecialistJob[]; jobs: SpecialistJob[]; epoch: Record<string, number> };
+  inFlightWithRecent(limit: number, filter?: SpecialistJobFilter): InFlightValue;
   materializationState(): MaterializationStateRow[];
   coverage?: () => ObservabilityCoverage;
 };
@@ -98,7 +109,8 @@ export function createSpecialistsRouter(
       : getDefaultBundle(repoLister, epochGetter);
   };
   let jobsByBeadCache: CachedValue<{ jobs: SpecialistJob[] }> | null = null;
-  let inFlightCache: CachedValue<{ in_flight: SpecialistJob[]; recent_history: SpecialistJob[]; jobs: SpecialistJob[]; epoch: Record<string, number> }> | null = null;
+  const inFlightCache = new Map<string, CachedValue<InFlightValue>>();
+  const inFlightRefreshes = new Map<string, Promise<CachedValue<InFlightValue>>>();
   let chainCache: CachedValue<{ chain: { jobs: SpecialistChain[] } }> | null = null;
 
   router.get("/jobs", async (c) => {
@@ -155,17 +167,38 @@ export function createSpecialistsRouter(
   router.get("/jobs/in-flight", async (c) => {
     const startedAt = performance.now();
     const limit = parseLimit(c.req.query("limit"), 50);
-    const filter: SpecialistJobFilter = { repoSlugs: parseRepoSlugs(c.req.query("repo_slug") ?? c.req.query("repo_slugs")) };
+    const rawRepoSlugs = parseRepoSlugs(c.req.query("repo_slug") ?? c.req.query("repo_slugs"));
     const current = resolve();
+    if (rawRepoSlugs === null) {
+      const degraded: InFlightValue = { in_flight: [], recent_history: [], jobs: [], epoch: repoEpochs(current.repos, epochGetter) };
+      logInFlightResponse(degraded.jobs, degraded.recent_history, degraded.epoch, "degraded", startedAt);
+      return c.json({ ...degraded, coverage: current.dao.coverage?.(), freshness: "degraded", source_health: sourceHealthFromCoverage(current.dao.coverage?.(), getSourceHealth()) });
+    }
+    const filter: SpecialistJobFilter = { repoSlugs: rawRepoSlugs };
     const key = cacheKey("in-flight", current.repos, epochGetter, String(limit), filter.repoSlugs?.join(",") ?? "");
-    const cached = readCache(inFlightCache, key);
+    const cached = readBoundedCache(inFlightCache, key);
     if (cached) {
       logInFlightResponse(cached.jobs, cached.recent_history, cached.epoch, "cache", startedAt);
       return c.json({ ...cached, coverage: current.dao.coverage?.(), freshness: "fresh", source_health: sourceHealthFromCoverage(current.dao.coverage?.(), getSourceHealth()) });
     }
 
-    const refreshed = await refreshInFlight(current.dao, current.repos, epochGetter, limit, key, filter);
-    inFlightCache = refreshed;
+    let refresh = inFlightRefreshes.get(key);
+    if (!refresh) {
+      if (inFlightRefreshes.size >= MAX_IN_FLIGHT_REFRESHES) {
+        const degraded: InFlightValue = { in_flight: [], recent_history: [], jobs: [], epoch: repoEpochs(current.repos, epochGetter) };
+        logInFlightResponse(degraded.jobs, degraded.recent_history, degraded.epoch, "degraded", startedAt);
+        return c.json({ ...degraded, coverage: current.dao.coverage?.(), freshness: "degraded", source_health: sourceHealthFromCoverage(current.dao.coverage?.(), getSourceHealth()) });
+      }
+      refresh = refreshInFlight(current.dao, current.repos, epochGetter, limit, key, filter);
+      inFlightRefreshes.set(key, refresh);
+    }
+    let refreshed: CachedValue<InFlightValue>;
+    try {
+      refreshed = await refresh;
+    } finally {
+      if (inFlightRefreshes.get(key) === refresh) inFlightRefreshes.delete(key);
+    }
+    writeBoundedCache(inFlightCache, refreshed);
     const coverage = current.dao.coverage?.();
     logInFlightResponse(refreshed.value.jobs, refreshed.value.recent_history, refreshed.value.epoch, "fresh", startedAt);
     return c.json({ ...refreshed.value, coverage, freshness: "fresh", source_health: sourceHealthFromCoverage(coverage, getSourceHealth()) });
@@ -304,13 +337,24 @@ function countStatuses(jobs: SpecialistJob[]): Record<string, number> {
 }
 
 function parseLimit(value: string | undefined, fallback: number): number {
-  const parsed = value ? Number(value) : fallback;
-  return Number.isFinite(parsed) && parsed > 0 ? Math.min(Math.floor(parsed), 5000) : fallback;
+  if (value === undefined) return fallback;
+  const trimmed = value.trim();
+  if (trimmed === "") return fallback;
+  if (!/^-?\d+$/.test(trimmed)) return fallback;
+  const parsed = Number(trimmed);
+  if (!Number.isInteger(parsed) || parsed < 0) return fallback;
+  return Math.min(parsed, 5000);
 }
 
-function parseRepoSlugs(value: string | undefined): string[] {
+function parseRepoSlugs(value: string | undefined): string[] | null {
   if (!value) return [];
-  return [...new Set(value.split(",").map((item) => item.trim()).filter(Boolean))];
+  if (Buffer.byteLength(value, "utf8") > MAX_REPO_SLUG_FILTER_BYTES) return null;
+  const slugs = [...new Set(value.split(",").map((item) => item.trim()).filter(Boolean))].sort();
+  if (slugs.length === 0) return [];
+  if (slugs.length > MAX_REPO_SLUG_FILTERS) return null;
+  const totalBytes = slugs.reduce((sum, s) => sum + Buffer.byteLength(s, "utf8"), 0);
+  if (totalBytes > MAX_REPO_SLUG_FILTER_BYTES) return null;
+  return slugs;
 }
 
 function summarizeRepos(repos: SpecialistRepoList): SpecialistRepoSummary {
@@ -332,8 +376,30 @@ function readCache<T>(entry: CachedValue<T> | null, key: string): T | null {
   return entry.value;
 }
 
+function readBoundedCache<T>(entries: Map<string, CachedValue<T>>, key: string): T | null {
+  const entry = entries.get(key);
+  const value = readCache(entry ?? null, key);
+  if (value === null) {
+    if (entry) entries.delete(key);
+    return null;
+  }
+  entries.delete(key);
+  entries.set(key, entry!);
+  return value;
+}
+
 function writeCache<T>(key: string, value: T): CachedValue<T> {
   return { key, value, refreshedAt: Date.now() };
+}
+
+function writeBoundedCache<T>(entries: Map<string, CachedValue<T>>, entry: CachedValue<T>): void {
+  entries.delete(entry.key);
+  entries.set(entry.key, entry);
+  while (entries.size > MAX_IN_FLIGHT_CACHE_ENTRIES) {
+    const oldest = entries.keys().next().value as string | undefined;
+    if (oldest === undefined) break;
+    entries.delete(oldest);
+  }
 }
 
 function refreshJobsByBead(dao: SpecialistsDao, beadId: string, key: string): CachedValue<{ jobs: SpecialistJob[] }> {
@@ -347,7 +413,7 @@ async function refreshInFlight(
   limit: number,
   key: string,
   filter?: SpecialistJobFilter,
-): Promise<CachedValue<{ in_flight: SpecialistJob[]; recent_history: SpecialistJob[]; jobs: SpecialistJob[]; epoch: Record<string, number> }>> {
+): Promise<CachedValue<InFlightValue>> {
   const value = "inFlightWithRecent" in dao
     ? (dao as XtrmSpecialistsDao).inFlightWithRecent(limit, filter)
     : (() => {
