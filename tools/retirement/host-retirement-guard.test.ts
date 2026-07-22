@@ -5,7 +5,9 @@
  */
 import { describe, expect, test } from "bun:test";
 import { evaluate, scanTree, DEPRECATED_HOST_PATH } from "./host-retirement-guard";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { tmpdir } from "node:os";
 
 const REPO_ROOT = join(import.meta.dir, "..", "..");
 const FIXTURE_ROOT = join(import.meta.dir, "fixtures", "console-host");
@@ -40,6 +42,23 @@ describe("host-retirement-guard", () => {
     expect(report.pass).toBe(true);
     expect(report.verdict).toBe("PASS");
     expect(report.newRegressions.length).toBe(0);
+  });
+
+  test("no-new-regressions mode FAILS against a synthetic new production reference", () => {
+    const root = mkdtempSync(join(tmpdir(), "console-host-retirement-negative-"));
+    const baselinePath = join(root, "baseline.json");
+    try {
+      writeFileSync(join(root, "Dockerfile"), 'CMD ["bun", "apps/gitboard/src/index.ts"]\\n');
+      writeFileSync(baselinePath, JSON.stringify({ deprecatedHost: DEPRECATED_HOST_PATH, fingerprints: [] }));
+
+      const report = evaluate({ mode: "no-new-regressions", root, baselinePath });
+      expect(report.pass).toBe(false);
+      expect(report.verdict).toBe("FAIL");
+      expect(report.newRegressions).toHaveLength(1);
+      expect(report.newRegressions[0]).toMatchObject({ category: "container", file: "Dockerfile" });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   test("fixture host.ts string literal does NOT trip production-import scanner", () => {

@@ -1,5 +1,5 @@
 import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { createDatabaseBootstrap } from "../../src/server/database.ts";
@@ -89,6 +89,21 @@ describe("console host routing", () => {
     expect(await response.text()).toContain("console-host-fixture");
   });
 
+  it("denies a path-traversal target through the console route", async () => {
+    const distDir = makeDistDir({ "index.html": INDEX_HTML });
+    const outsidePath = join(distDir, "..", "outside-secret.txt");
+    writeFileSync(outsidePath, "must-not-be-served");
+    try {
+      const host = createConsoleHost({ consoleDistDir: distDir, logger: silentLogger() });
+      const response = await host.app.request("/console/%2e%2e/outside-secret.txt");
+      const body = await response.text();
+      expect(response.status).toBe(404);
+      expect(body).not.toContain("must-not-be-served");
+    } finally {
+      rmSync(outsidePath, { force: true });
+    }
+  });
+
   it("fails loud when the console dist is missing", async () => {
     const distDir = makeDistDir({});
     const host = createConsoleHost({ consoleDistDir: distDir, logger: silentLogger() });
@@ -156,6 +171,39 @@ describe("home path redaction", () => {
     expect(redactHomePath("/home/u/.xtrm", "/home/u")).toBe("~/.xtrm");
     expect(redactHomePath("/home/u", "/home/u")).toBe("~");
     expect(redactHomePath("/etc/xtrm", "/home/u")).toBe("/etc/xtrm");
+  });
+
+  it("emits structured host configuration with redacted paths", () => {
+    const previousLevel = process.env.LOG_LEVEL;
+    process.env.LOG_LEVEL = "debug";
+    try {
+      const lines: string[] = [];
+      const home = homedir();
+      const distDir = join(home, "console-host-redaction-dist");
+      const dataDir = resolveDataDir({ XTRM_DATA_DIR: join(home, ".xtrm") }, home);
+      createConsoleHost({
+        consoleDistDir: distDir,
+        dataDir,
+        logger: createHostLogger({
+          sink: (line) => lines.push(line),
+          now: () => new Date("2026-07-22T00:00:00.000Z"),
+        }),
+      });
+
+      expect(lines).toHaveLength(1);
+      const entry = JSON.parse(lines[0]!) as Record<string, unknown>;
+      expect(entry).toMatchObject({
+        level: "debug",
+        component: "console-host",
+        event: "host.configured",
+        dataDirSource: "XTRM_DATA_DIR",
+        consoleDistDir: "~/console-host-redaction-dist",
+      });
+      expect(lines[0]).not.toContain(home);
+    } finally {
+      if (previousLevel === undefined) delete process.env.LOG_LEVEL;
+      else process.env.LOG_LEVEL = previousLevel;
+    }
   });
 });
 
