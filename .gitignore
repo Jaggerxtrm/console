@@ -58,3 +58,8 @@ __pycache__/
 .xtrm/skills/state.json
 .pi/skills/
 .xtrm/cache/
+
+# compiled page-cache probe binary (build from tools/probes/pcprobe.c)
+tools/probes/pcprobe
+# isolated repro temp fixtures (disk-backed)
+.repro-tmp/
