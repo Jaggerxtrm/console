@@ -42,7 +42,10 @@ async function shutdown(signal: string): Promise<void> {
     logger.info("host.shutdown", { signal });
     process.exit(0);
   } catch (error) {
-    logger.error("host.shutdown_failed", { signal, error: (error as Error).message });
+    logger.error("host.shutdown_failed", {
+      signal,
+      error: error instanceof Error ? error.message : String(error),
+    });
     process.exit(1);
   }
 }
