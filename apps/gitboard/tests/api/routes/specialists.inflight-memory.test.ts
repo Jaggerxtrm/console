@@ -101,16 +101,17 @@ describe("specialists in-flight memory bound", () => {
     expect(inFlightCalls).toBe(2);
   });
 
-  it("evicts old entries after more than four distinct cache keys", async () => {
+  it("evicts least-recently-used entry at two-entry bound", async () => {
     const limits: number[] = [];
     const app = makeApp({ inFlight: () => {}, history: (limit) => { limits.push(limit); } });
 
-    for (const limit of [1, 2, 3, 4, 5, 1]) {
+    for (const limit of [1, 2, 1, 3, 1, 2]) {
       const response = await app.fetch(new Request(`http://localhost/api/specialists/jobs/in-flight?limit=${limit}`));
       expect(response.status).toBe(200);
     }
 
-    expect(limits).toEqual([1, 2, 3, 4, 5, 1]);
+    // 1 is refreshed before 3 arrives, so 2 is evicted; 2 then requires refresh.
+    expect(limits).toEqual([1, 2, 3, 2]);
   });
 
   it("treats limit zero as empty history and keeps zero distinct from default cache key", async () => {
