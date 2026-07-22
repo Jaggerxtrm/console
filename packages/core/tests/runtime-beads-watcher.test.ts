@@ -76,6 +76,33 @@ describe("BeadsWatcherRuntime", () => {
     expect(lastTriggeredId).toBe("p1");
   });
 
+  it("triggers first poll and fs changes, but skips unchanged trigger heartbeats", async () => {
+    const beadsPath = mkdtempSync(join(tmpdir(), "beads-watcher-trigger-"));
+    const issuesPath = join(beadsPath, "issues.jsonl");
+    writeFileSync(issuesPath, "\n");
+    const project = { id: "p1", beadsPath };
+    let triggerCalls = 0;
+    let commitHashReads = 0;
+    const { ports } = makeHarness({
+      projects: [project],
+      readCommitHash: async () => {
+        commitHashReads += 1;
+        return "unchanged";
+      },
+      triggerMaterializer: () => { triggerCalls += 1; },
+    });
+    const runtime = new BeadsWatcherRuntime(ports, { activePollMs: 15, debounceMs: 10, coalesceMs: 10 });
+    runtime.start();
+    await wait(100);
+    appendFileSync(issuesPath, "changed\n");
+    await wait(100);
+    runtime.stop();
+    rmSync(beadsPath, { recursive: true, force: true });
+
+    expect(commitHashReads).toBeGreaterThan(1);
+    expect(triggerCalls).toBe(2);
+  });
+
   it("skips readSnapshot when commit hash unchanged and snapshot cached", async () => {
     let snapshotCalls = 0;
     const project = makeProject("p1");

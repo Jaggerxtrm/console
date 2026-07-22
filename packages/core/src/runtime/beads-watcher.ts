@@ -88,7 +88,7 @@ export interface BeadsWatcherPorts<TProject extends BeadsWatcherProject = BeadsW
   readCommitHash(project: TProject): Promise<string | null>;
   publish: BeadsWatcherPublisher["publish"];
   emitLog: (entry: LogEntry) => void;
-  /** When present the watcher short-circuits polling into a single trigger call. */
+  /** When present the watcher triggers initial and fs-change polls, not unchanged heartbeats. */
   triggerMaterializer?: (project: TProject) => void;
 }
 
@@ -109,6 +109,7 @@ export class BeadsWatcherRuntime<TProject extends BeadsWatcherProject = BeadsWat
   private lastCommitHash = new Map<string, string>();
   private queue: BeadsWatcherPendingEvent[] = [];
   private lastHealth = new Map<string, boolean>();
+  private triggerInitialized = new Set<string>();
 
   constructor(
     private readonly ports: BeadsWatcherPorts<TProject>,
@@ -131,6 +132,7 @@ export class BeadsWatcherRuntime<TProject extends BeadsWatcherProject = BeadsWat
     this.debounceTimers.clear();
     for (const watcher of this.watchers.values()) watcher.close();
     this.watchers.clear();
+    this.triggerInitialized.clear();
   }
 
   isStopped(): boolean { return this.stopped; }
@@ -158,7 +160,7 @@ export class BeadsWatcherRuntime<TProject extends BeadsWatcherProject = BeadsWat
     for (const project of projects) {
       if (this.stopped) return;
       this.ensureWatcher(project);
-      await this.poll(project);
+      await this.poll(project, false);
       if (this.stopped) return;
     }
     this.timer = setTimeout(() => void this.loop(), projects.length > 0 ? this.activePollMs : this.idlePollMs);
@@ -174,7 +176,7 @@ export class BeadsWatcherRuntime<TProject extends BeadsWatcherProject = BeadsWat
         const timer = setTimeout(() => {
           if (this.stopped) return;
           this.debounceTimers.delete(project.id);
-          void this.poll(project);
+          void this.poll(project, true);
         }, this.debounceMs);
         this.debounceTimers.set(project.id, timer);
       });
@@ -184,15 +186,26 @@ export class BeadsWatcherRuntime<TProject extends BeadsWatcherProject = BeadsWat
     }
   }
 
-  private async poll(project: TProject): Promise<void> {
+  private async poll(project: TProject, forced = false): Promise<void> {
     if (this.stopped) return;
-    const debounceTimer = this.debounceTimers.get(project.id);
+    const debounceTimer = forced ? this.debounceTimers.get(project.id) : undefined;
     if (debounceTimer) {
       clearTimeout(debounceTimer);
       this.debounceTimers.delete(project.id);
     }
     if (this.ports.triggerMaterializer) {
-      this.ports.triggerMaterializer(project);
+      const initialized = this.triggerInitialized.has(project.id);
+      if (!initialized || forced) this.ports.triggerMaterializer(project);
+      this.triggerInitialized.add(project.id);
+      const commitHash = await this.ports.readCommitHash(project);
+      if (this.stopped) return;
+      if (commitHash) {
+        const previousHash = this.lastCommitHash.get(project.id);
+        this.lastCommitHash.set(project.id, commitHash);
+        if (initialized && !forced && previousHash === commitHash) return;
+      }
+      if (initialized && !forced && !commitHash) return;
+      if (initialized && !forced && commitHash) this.ports.triggerMaterializer(project);
       return;
     }
     const commitHash = await this.ports.readCommitHash(project);

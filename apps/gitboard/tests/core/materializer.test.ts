@@ -134,6 +134,44 @@ describe("materializer", () => {
     db.close();
   });
 
+  it("bounds concurrent large source runs and coalesces unchanged source triggers", async () => {
+    const db = await createDb();
+    const materializer = new Materializer(db);
+    let activeRuns = 0;
+    let peakActiveRuns = 0;
+    let completedRuns = 0;
+    const largeRows = Array.from({ length: 2_000 }, (_, index) => ({ issue_id: String(index), title: `issue-${index}` }));
+
+    for (let sourceIndex = 0; sourceIndex < 12; sourceIndex += 1) {
+      const sourceKey = `beads:large-${sourceIndex}`;
+      materializer.register(sourceKey, {
+        async cursor() { return { cursor: 0 }; },
+        async changesSince() {
+          activeRuns += 1;
+          peakActiveRuns = Math.max(peakActiveRuns, activeRuns);
+          await new Promise((resolve) => setTimeout(resolve, 25));
+          activeRuns -= 1;
+          completedRuns += 1;
+          return { cursor: { cursor: 1 }, rows: largeRows };
+        },
+        async snapshot() { return { rows: largeRows }; },
+        write() {},
+      });
+      materializer.trigger(sourceKey);
+      materializer.trigger(sourceKey);
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, COALESCE_MS + 2_000));
+    const scheduler = materializer.getSchedulerStats();
+
+    expect(completedRuns).toBe(12);
+    expect(peakActiveRuns).toBeLessThanOrEqual(2);
+    expect(scheduler.maxActive).toBeLessThanOrEqual(2);
+    expect(scheduler.maxPending).toBeLessThanOrEqual(scheduler.pendingLimit);
+    expect(scheduler.pending).toBe(0);
+    db.close();
+  });
+
   it("rolls back writes when cursor advance crashes, then re-applies", async () => {
     const db = await createDb();
     setDiskEnabled(false);
