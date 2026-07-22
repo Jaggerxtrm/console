@@ -1,9 +1,20 @@
 /** @vitest-environment happy-dom */
 
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ChainJob, ChainSummary, UseChainsOptions } from "../../../../src/dashboard/hooks/useChains.ts";
 import { useBeadSideDrawer } from "../../../../src/dashboard/hooks/useBeadSideDrawer.ts";
+
+type SpecialistsModule = typeof import("../../../../src/dashboard/pages/console/Specialists.tsx");
+type ShellModule = typeof import("../../../../src/dashboard/stores/shell.ts");
+
+let Specialists: SpecialistsModule["Specialists"];
+let useShellStore: ShellModule["useShellStore"];
+
+beforeAll(async () => {
+  ({ Specialists } = await import("../../../../src/dashboard/pages/console/Specialists.tsx"));
+  ({ useShellStore } = await import("../../../../src/dashboard/stores/shell.ts"));
+});
 
 const chainBJobs = [
   job({ chainId: "chain-b", beadId: "forge-2", jobId: "job-chain-b-first", status: "running", updatedAt: "2026-05-31T00:00:00.000Z" }),
@@ -61,8 +72,7 @@ vi.mock("../../../../src/dashboard/lib/client-log.ts", () => ({
 }));
 
 describe("Console Specialists drawer routing", () => {
-  beforeEach(async () => {
-    const { useShellStore } = await import("../../../../src/dashboard/stores/shell.ts");
+  beforeEach(() => {
     act(() => {
       useBeadSideDrawer.setState({
         beadId: null,
@@ -102,7 +112,6 @@ describe("Console Specialists drawer routing", () => {
   });
 
   it("opens the bead drawer with chain context", async () => {
-    const { Specialists } = await import("../../../../src/dashboard/pages/console/Specialists.tsx");
     render(<Specialists />);
 
     fireEvent.click(await screen.findByText("chain-b"));
