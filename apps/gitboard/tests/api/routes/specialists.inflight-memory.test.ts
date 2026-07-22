@@ -41,6 +41,24 @@ describe("specialists in-flight memory bound", () => {
     return app;
   }
 
+  // Arms a guard on String.prototype.split that throws only when invoked on the exact
+  // tracked (decoded oversized) string. Proves the raw-byte gate short-circuits BEFORE
+  // split/map/Set/sort allocate: pre-fix code reaches split and 500s; fixed code never does.
+  function armSplitGuard(tracked: string): { wasCalled: () => boolean; restore: () => void } {
+    const original = String.prototype.split;
+    const call = original as unknown as (this: string, separator?: string | RegExp, limit?: number) => string[];
+    let called = false;
+    const guarded = function (this: string, separator?: string | RegExp, limit?: number): string[] {
+      if (this === tracked) {
+        called = true;
+        throw new Error("split invoked on oversized repo_slug input");
+      }
+      return call.call(this, separator, limit);
+    };
+    String.prototype.split = guarded as typeof original;
+    return { wasCalled: () => called, restore: () => { String.prototype.split = original; } };
+  }
+
   it("deduplicates concurrent cold reads", async () => {
     let inFlightReads = 0;
     let historyReads = 0;
@@ -281,6 +299,75 @@ describe("specialists in-flight memory bound", () => {
     const body = await response.json();
     expect(body.in_flight).toEqual([]);
     expect(body.jobs).toEqual([]);
+  });
+
+  it("rejects huge duplicate-heavy repo_slug list pre-allocation without DAO invocation", async () => {
+    let daoCalls = 0;
+    const app = new Hono();
+    app.route("/api/specialists", createSpecialistsRouter({
+      jobsByBead: () => [],
+      inFlightJobs: () => { daoCalls += 1; return [job]; },
+      recentJobs: () => [],
+      chainById: () => [],
+    }, {
+      listRepos: () => [{ repoSlug: "repo-a", repoPath: "repo-a", dbPath: "repo-a.db", mtimeMs: 0 }],
+      getEpoch: () => 0,
+    }));
+
+    // 10k comma-separated tokens that dedupe to two small slugs; raw input dwarfs the
+    // byte bound, so the gate must fire before split/map/Set/sort allocate the list.
+    const slugs = "alpha,beta,".repeat(5000);
+    expect(Buffer.byteLength(slugs, "utf8")).toBeGreaterThan(MAX_REPO_SLUG_FILTER_BYTES);
+    // Build the request before arming the guard so URL construction is unaffected.
+    const request = new Request(`http://localhost/api/specialists/jobs/in-flight?repo_slug=${slugs}`);
+    const guard = armSplitGuard(slugs);
+    try {
+      const response = await app.fetch(request);
+      expect(guard.wasCalled()).toBe(false);
+      expect(response.status).toBe(200);
+      expect(daoCalls).toBe(0);
+      const body = await response.json();
+      expect(body.in_flight).toEqual([]);
+      expect(body.jobs).toEqual([]);
+      expect(body.freshness).toBe("degraded");
+    } finally {
+      guard.restore();
+    }
+  });
+
+  it("rejects multibyte UTF-8 overflow by raw bytes before allocation without DAO invocation", async () => {
+    let daoCalls = 0;
+    const app = new Hono();
+    app.route("/api/specialists", createSpecialistsRouter({
+      jobsByBead: () => [],
+      inFlightJobs: () => { daoCalls += 1; return [job]; },
+      recentJobs: () => [],
+      chainById: () => [],
+    }, {
+      listRepos: () => [{ repoSlug: "repo-a", repoPath: "repo-a", dbPath: "repo-a.db", mtimeMs: 0 }],
+      getEpoch: () => 0,
+    }));
+
+    // 2-byte U+00E9 tokens: UTF-16 length stays under the bound (a length gate would miss it)
+    // while raw UTF-8 bytes overflow; dedupes to one small slug.
+    const slugs = "é,".repeat(200);
+    expect(slugs.length).toBeLessThanOrEqual(MAX_REPO_SLUG_FILTER_BYTES);
+    expect(Buffer.byteLength(slugs, "utf8")).toBeGreaterThan(MAX_REPO_SLUG_FILTER_BYTES);
+    // Build the request before arming the guard so URL construction is unaffected.
+    const request = new Request(`http://localhost/api/specialists/jobs/in-flight?repo_slug=${encodeURIComponent(slugs)}`);
+    const guard = armSplitGuard(slugs);
+    try {
+      const response = await app.fetch(request);
+      expect(guard.wasCalled()).toBe(false);
+      expect(response.status).toBe(200);
+      expect(daoCalls).toBe(0);
+      const body = await response.json();
+      expect(body.in_flight).toEqual([]);
+      expect(body.jobs).toEqual([]);
+      expect(body.freshness).toBe("degraded");
+    } finally {
+      guard.restore();
+    }
   });
 
   it("absent repo_slug filter intentionally queries all repos via DAO", async () => {

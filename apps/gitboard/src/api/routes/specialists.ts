@@ -348,6 +348,7 @@ function parseLimit(value: string | undefined, fallback: number): number {
 
 function parseRepoSlugs(value: string | undefined): string[] | null {
   if (!value) return [];
+  if (Buffer.byteLength(value, "utf8") > MAX_REPO_SLUG_FILTER_BYTES) return null;
   const slugs = [...new Set(value.split(",").map((item) => item.trim()).filter(Boolean))].sort();
   if (slugs.length === 0) return [];
   if (slugs.length > MAX_REPO_SLUG_FILTERS) return null;
