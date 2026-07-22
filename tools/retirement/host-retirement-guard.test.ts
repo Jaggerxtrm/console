@@ -5,7 +5,7 @@
  */
 import { describe, expect, test } from "bun:test";
 import { evaluate, scanTree, DEPRECATED_HOST_PATH, GUARD_MAX_FILE_BYTES } from "./host-retirement-guard";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -172,6 +172,43 @@ describe("host-retirement-guard", () => {
         file: join("apps", "console", "src", "big.ts"),
       });
     } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("skips an unreadable classified file (chmod 000) without crashing", () => {
+    const root = mkdtempSync(join(tmpdir(), "console-host-retirement-unreadable-"));
+    try {
+      mkdirSync(join(root, "apps", "console", "src"), { recursive: true });
+      const secret = join(root, "apps", "console", "src", "secret.ts");
+      writeFileSync(secret, 'import legacy from "apps/gitboard/src/index.ts";\n');
+      chmodSync(secret, 0o000);
+
+      const { findings } = scanTree(root);
+      // The unreadable file is skipped (readCandidateBounded returns null),
+      // so no production-import finding is emitted and no crash occurs.
+      expect(findings.filter((f) => f.category === "production-import")).toHaveLength(0);
+    } finally {
+      // Restore permissions so rmSync can clean up.
+      chmodSync(join(root, "apps", "console", "src", "secret.ts"), 0o644);
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("skips an unreadable directory (chmod 000) without crashing", () => {
+    const root = mkdtempSync(join(tmpdir(), "console-host-retirement-unreadable-dir-"));
+    try {
+      const locked = join(root, "locked");
+      mkdirSync(locked, { recursive: true });
+      writeFileSync(join(locked, "Dockerfile"), 'CMD ["bun", "apps/gitboard/src/index.ts"]\n');
+      chmodSync(locked, 0o000);
+
+      const { findings } = scanTree(root);
+      // The unreadable directory is skipped (readdirSync throws), so no
+      // container finding is emitted and no crash occurs.
+      expect(findings.filter((f) => f.category === "container")).toHaveLength(0);
+    } finally {
+      chmodSync(join(root, "locked"), 0o755);
       rmSync(root, { recursive: true, force: true });
     }
   });

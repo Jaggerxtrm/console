@@ -1,8 +1,8 @@
-import { existsSync, mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { createDatabaseBootstrap } from "../../src/server/database.ts";
 import { redactHomePath, resolveDataDir } from "../../src/server/data-dir.ts";
 import { CONSOLE_HOST_OWNER, createConsoleHost } from "../../src/server/host.ts";
@@ -217,6 +217,138 @@ describe("static asset traversal guard", () => {
         }
       }
     }
+  });
+});
+
+describe("traversal encoding variants", () => {
+  const TRAVERSAL_PAYLOADS = [
+    ["double-encoded dot-dot-slash", "/console/%252e%252e/outside-secret.txt"],
+    ["null byte injection", "/console/%00../outside-secret.txt"],
+    ["backslash traversal", "/console/..\\outside-secret.txt"],
+    ["mixed-case percent encoding", "/console/%2E%2E/outside-secret.txt"],
+    ["unicode dot", "/console/\u2024\u2024/outside-secret.txt"],
+    ["dot-dot-slash literal", "/console/../../outside-secret.txt"],
+  ] as const;
+
+  it.each(TRAVERSAL_PAYLOADS)("refuses %s", async (_label, path) => {
+    const distDir = makeDistDir({ "index.html": INDEX_HTML });
+    const outsidePath = join(distDir, "..", "outside-secret.txt");
+    writeFileSync(outsidePath, "must-not-be-served");
+    try {
+      const host = createConsoleHost({ consoleDistDir: distDir, logger: silentLogger() });
+      const response = await host.app.request(path);
+      const body = await response.text();
+      expect(body).not.toContain("must-not-be-served");
+    } finally {
+      rmSync(outsidePath, { force: true });
+    }
+  });
+});
+
+describe("308 legacy redirect exact contracts", () => {
+  it("redirects /gitboard with query string to /console (no query leak)", async () => {
+    const distDir = makeDistDir({ "index.html": INDEX_HTML });
+    const host = createConsoleHost({ consoleDistDir: distDir, logger: silentLogger() });
+
+    const response = await host.app.request("/gitboard?tab=issues&sort=desc");
+    expect(response.status).toBe(308);
+    expect(response.headers.get("location")).toBe("/console");
+  });
+
+  it("redirects deeply nested /gitboard path with query to /console", async () => {
+    const distDir = makeDistDir({ "index.html": INDEX_HTML });
+    const host = createConsoleHost({ consoleDistDir: distDir, logger: silentLogger() });
+
+    const response = await host.app.request("/gitboard/repos/org/repo/issues/42?q=1#frag");
+    expect(response.status).toBe(308);
+    expect(response.headers.get("location")).toBe("/console");
+  });
+
+  it("redirects /gitboard with fragment-only suffix to /console", async () => {
+    const distDir = makeDistDir({ "index.html": INDEX_HTML });
+    const host = createConsoleHost({ consoleDistDir: distDir, logger: silentLogger() });
+
+    const response = await host.app.request("/gitboard#section");
+    expect(response.status).toBe(308);
+    expect(response.headers.get("location")).toBe("/console");
+  });
+});
+
+describe("console host shutdown cleanup", () => {
+  function mockBunServe() {
+    let stopCalled = 0;
+    const fakeServer = {
+      port: 9876,
+      hostname: "127.0.0.1",
+      stop: (_closeActive?: boolean) => { stopCalled++; },
+    };
+    vi.stubGlobal("Bun", { serve: () => fakeServer });
+    return { fakeServer, getStopCount: () => stopCalled };
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("start binds via Bun.serve and stop releases the listener", async () => {
+    const { getStopCount } = mockBunServe();
+    const distDir = makeDistDir({ "index.html": INDEX_HTML });
+    const host = createConsoleHost({ consoleDistDir: distDir, logger: silentLogger() });
+
+    const running = await host.start();
+    expect(running.port).toBe(9876);
+    expect(running.url).toBe("http://127.0.0.1:9876");
+    expect(getStopCount()).toBe(0);
+
+    await running.stop();
+    expect(getStopCount()).toBe(1);
+  });
+
+  it("stop is idempotent (double-stop does not throw or double-release)", async () => {
+    const { getStopCount } = mockBunServe();
+    const distDir = makeDistDir({ "index.html": INDEX_HTML });
+    const host = createConsoleHost({ consoleDistDir: distDir, logger: silentLogger() });
+
+    const running = await host.start();
+    await running.stop();
+    await expect(running.stop()).resolves.toBeUndefined();
+    expect(getStopCount()).toBe(1);
+  });
+
+  it("stop invokes stopBackground hook before releasing the listener", async () => {
+    mockBunServe();
+    const distDir = makeDistDir({ "index.html": INDEX_HTML });
+    const callOrder: string[] = [];
+    const host = createConsoleHost({
+      consoleDistDir: distDir,
+      logger: silentLogger(),
+      hooks: {
+        startBackground: () => { callOrder.push("startBackground"); },
+        stopBackground: () => { callOrder.push("stopBackground"); },
+      },
+    });
+
+    const running = await host.start();
+    expect(callOrder).toEqual(["startBackground"]);
+    await running.stop();
+    expect(callOrder).toEqual(["startBackground", "stopBackground"]);
+  });
+
+  it("rolls back startBackground when Bun.serve throws", async () => {
+    vi.stubGlobal("Bun", { serve: () => { throw new Error("port-in-use"); } });
+    const distDir = makeDistDir({ "index.html": INDEX_HTML });
+    const callOrder: string[] = [];
+    const host = createConsoleHost({
+      consoleDistDir: distDir,
+      logger: silentLogger(),
+      hooks: {
+        startBackground: () => { callOrder.push("startBackground"); },
+        stopBackground: () => { callOrder.push("stopBackground"); },
+      },
+    });
+
+    await expect(host.start()).rejects.toThrow("port-in-use");
+    expect(callOrder).toEqual(["startBackground", "stopBackground"]);
   });
 });
 
