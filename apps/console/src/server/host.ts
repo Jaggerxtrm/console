@@ -77,6 +77,12 @@ function buildApp(consoleDistDir: string, hooks: ConsoleHostHooks): { app: Hono;
 
   app.get("/", (c) => c.redirect("/console"));
 
+  // Legacy Gitboard routes are permanently retired to /console. Fixed literal
+  // target only — never derive the Location from the request, so query strings
+  // and fragments cannot produce an open redirect.
+  app.get("/gitboard", (c) => c.redirect("/console", 308));
+  app.get("/gitboard/*", (c) => c.redirect("/console", 308));
+
   app.get("/console", async () => serveIndex(consoleDistDir));
 
   app.get("/console/*", async (c) => {
