@@ -26,7 +26,7 @@ describe("explore SQL proxy", () => {
 
     const app = new Hono().route("/explore/sql", createExploreSqlRouter({ datasetteUrl: "http://datasette.test", fetchImpl: fetchImpl as unknown as typeof fetch }));
     const res = await app.request("http://localhost/explore/sql/-/databases.json", {
-      headers: { authorization: "Bearer secret", cookie: "sid=secret" },
+      headers: { authorization: "Bearer secret", cookie: "sid=secret", "x-xtrm-peer-address": "127.0.0.1" },
     });
 
     expect(res.status).toBe(200);
@@ -51,10 +51,10 @@ describe("explore SQL proxy", () => {
   });
 
   it("classifies loopback hosts as local debug requests", () => {
-    expect(isLocalDebugRequest(new Request("http://127.0.0.1/explore/sql"))).toBe(true);
-    expect(isLocalDebugRequest(new Request("http://[::1]/explore/sql"))).toBe(true);
-    expect(isLocalDebugRequest(new Request("http://localhost/explore/sql", { headers: { "x-forwarded-host": "localhost:3030" } }))).toBe(true);
-    expect(isLocalDebugRequest(new Request("http://localhost/explore/sql", { headers: { "x-forwarded-host": "example.com" } }))).toBe(false);
+    expect(isLocalDebugRequest(new Request("http://127.0.0.1/explore/sql", { headers: { "x-xtrm-peer-address": "127.0.0.1" } }))).toBe(true);
+    expect(isLocalDebugRequest(new Request("http://[::1]/explore/sql", { headers: { "x-xtrm-peer-address": "::1" } }))).toBe(true);
+    expect(isLocalDebugRequest(new Request("http://localhost/explore/sql", { headers: { "x-xtrm-peer-address": "127.0.0.1" } }))).toBe(true);
+    expect(isLocalDebugRequest(new Request("http://localhost/explore/sql", { headers: { "x-xtrm-peer-address": "10.0.0.8" } }))).toBe(false);
   });
 
   it("converts upstream 5xx into a bounded 502 envelope and logs hashed path", async () => {
@@ -62,7 +62,7 @@ describe("explore SQL proxy", () => {
     const fetchImpl = vi.fn(async () => new Response("raw sql error", { status: 503 }));
     const app = new Hono().route("/explore/sql", createExploreSqlRouter({ datasetteUrl: "http://datasette.test", fetchImpl: fetchImpl as unknown as typeof fetch }));
 
-    const res = await app.request("http://localhost/explore/sql/query/private?sql=select-secret");
+    const res = await app.request("http://localhost/explore/sql/query/private?sql=select-secret", { headers: { "x-xtrm-peer-address": "127.0.0.1" } });
 
     expect(res.status).toBe(502);
     expect(await res.json()).toEqual({ ok: false, error: "datasette_upstream_error", upstream_status: 503 });

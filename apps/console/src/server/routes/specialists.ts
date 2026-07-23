@@ -1,0 +1,587 @@
+import { Hono } from "hono";
+import { spawn } from "node:child_process";
+import { makeLogEntry, type LogEntry } from "../../../../../packages/core/src/runtime/index.ts";
+import { isVerifiedShellAdminRequest } from "../../../../../packages/core/src/terminal/policy.ts";
+import { isLoopbackAddress, isTrustedLocalhostRequest, TRUSTED_PEER_ADDRESS_HEADER } from "../../../../../packages/core/src/runtime/console-write-policy.ts";
+import { createAttachPool, createObservabilityDao, get as getEpoch, listRepos } from "../../../../../packages/core/src/observability/index.ts";
+import type { RepoEntry, AttachPoolLike, SpecialistChain, SpecialistJob } from "../../../../../packages/core/src/observability/index.ts";
+import { makeSourceHealth } from "../../../../../packages/core/src/state/source-health.ts";
+import {
+  readMaterializationState as coreReadMaterializationState,
+  readSpecialistChainJobs as coreReadSpecialistChainJobs,
+  readSpecialistFeedEvents as coreReadSpecialistFeedEvents,
+  readSpecialistInFlightJobs as coreReadSpecialistInFlightJobs,
+  readSpecialistJobResult as coreReadSpecialistJobResult,
+  readSpecialistJobsByBead as coreReadSpecialistJobsByBead,
+  readSpecialistRecentJobs as coreReadSpecialistRecentJobs,
+  type SpecialistJobFilter,
+  type SpecialistJobRow,
+} from "../../../../../packages/core/src/state/index.ts";
+
+export interface SpecialistsDao {
+  jobsByBead(beadId: string, filter?: SpecialistJobFilter): SpecialistJob[];
+  inFlightJobs(filter?: SpecialistJobFilter): SpecialistJob[];
+  recentJobs(limit: number, filter?: SpecialistJobFilter): SpecialistJob[];
+  chainById(chainId: string, filter?: SpecialistJobFilter): SpecialistChain[];
+  coverage?(): ObservabilityCoverage;
+}
+
+type SpecialistRepoSummary = ReadonlyArray<Pick<RepoEntry, "repoSlug">>;
+type SpecialistRepoList = ReadonlyArray<RepoEntry>;
+
+type DefaultDaoBundle = {
+  dao: SpecialistsDao;
+  repos: SpecialistRepoSummary;
+  createdAt: number;
+  key: string;
+};
+
+type CachedValue<T> = {
+  key: string;
+  value: T;
+  refreshedAt: number;
+};
+
+type InFlightValue = {
+  in_flight: SpecialistJob[];
+  recent_history: SpecialistJob[];
+  jobs: SpecialistJob[];
+  epoch: Record<string, number>;
+};
+
+const CACHE_TTL_MS = 5000;
+const MAX_IN_FLIGHT_CACHE_ENTRIES = 2;
+export const MAX_IN_FLIGHT_REFRESHES = 4;
+export const MAX_REPO_SLUG_FILTERS = 8;
+export const MAX_REPO_SLUG_FILTER_BYTES = 512;
+export const MAX_SPECIALIST_FEED_OUTPUT_BYTES = 1_048_576;
+
+type MaterializationStateRow = {
+  source_key: string;
+  last_status: string | null;
+  last_success_at: string | null;
+};
+
+type ObservabilityCoverage = {
+  attached: string[];
+  skipped: Array<{ slug: string; reason: string }>;
+  totalDiscovered: number;
+};
+
+type XtrmSpecialistsDao = SpecialistsDao & {
+  inFlightWithRecent(limit: number, filter?: SpecialistJobFilter): InFlightValue;
+  materializationState(): MaterializationStateRow[];
+  coverage?: () => ObservabilityCoverage;
+};
+
+let defaultBundle: DefaultDaoBundle | null = null;
+let defaultBundleWarm: { key: string; promise: Promise<void> } | null = null;
+
+export interface SpecialistsRouterOptions {
+  listRepos?: () => SpecialistRepoList;
+  getEpoch?: (repoSlug: string) => number;
+  emit?: (entry: LogEntry) => void;
+}
+
+export function createSpecialistsRouter(
+  dao?: SpecialistsDao,
+  xtrmDb?: import("bun:sqlite").Database | SpecialistsRouterOptions,
+  options: SpecialistsRouterOptions = {},
+): Hono {
+  const router = new Hono();
+  const resolvedOptions = isSpecialistsRouterOptions(xtrmDb) ? xtrmDb : options;
+  const xtrmDatabase = isSpecialistsRouterOptions(xtrmDb) ? undefined : xtrmDb;
+  const repoLister = resolvedOptions.listRepos ?? listRepos;
+  const epochGetter = resolvedOptions.getEpoch ?? getEpoch;
+  const log = resolvedOptions.emit ?? (() => {});
+  const xtrmDao = xtrmDatabase ? createXtrmSpecialistsDao(xtrmDatabase, repoLister, epochGetter) : null;
+  const liveFallbackEnabled = process.env.GITBOARD_SPECIALISTS_LIVE_FALLBACK === "1";
+  const getSourceHealth = () => {
+    if (dao) return makeSourceHealth("specialists", "fresh", { metadata: {} });
+    return sourceHealthFromState(xtrmDao?.materializationState());
+  };
+  const resolve = () => {
+    if (dao) return { dao, repos: summarizeRepos(repoLister()) };
+    if (!xtrmDao) return getDefaultBundle(repoLister, epochGetter);
+    if (liveFallbackEnabled) return { dao: xtrmDao, repos: summarizeRepos(repoLister()) };
+    return hasSuccessfulObsMaterialization(xtrmDao.materializationState())
+      ? { dao: xtrmDao, repos: summarizeRepos(repoLister()) }
+      : getDefaultBundle(repoLister, epochGetter);
+  };
+  let jobsByBeadCache: CachedValue<{ jobs: SpecialistJob[] }> | null = null;
+  const inFlightCache = new Map<string, CachedValue<InFlightValue>>();
+  const inFlightRefreshes = new Map<string, Promise<CachedValue<InFlightValue>>>();
+  let chainCache: CachedValue<{ chain: { jobs: SpecialistChain[] } }> | null = null;
+
+  router.get("/jobs", async (c) => {
+    const startedAt = performance.now();
+    const beadId = c.req.query("bead_id");
+    if (!beadId) return c.json({ error: "Missing bead_id" }, 400);
+
+    const current = resolve();
+    const key = cacheKey("jobs", current.repos, epochGetter, beadId);
+    const cached = readCache(jobsByBeadCache, key);
+    if (cached) {
+      logJobsByBeadResponse(log, beadId, cached.jobs, "cache", startedAt);
+      return c.json({ ...cached, coverage: current.dao.coverage?.(), freshness: "fresh", source_health: sourceHealthFromCoverage(current.dao.coverage?.(), getSourceHealth()) });
+    }
+
+    const refreshed = await refreshJobsByBead(current.dao, beadId, key);
+    jobsByBeadCache = refreshed;
+    logJobsByBeadResponse(log, beadId, refreshed.value.jobs, "fresh", startedAt);
+    return c.json({ ...refreshed.value, coverage: current.dao.coverage?.(), freshness: "fresh", source_health: sourceHealthFromCoverage(current.dao.coverage?.(), getSourceHealth()) });
+  });
+
+  router.get("/jobs/:job_id/result", async (c) => {
+    if (!isSpecialistResultRequestAllowed(c.req.raw)) return c.json({ error: "forbidden" }, 403);
+    const jobId = c.req.param("job_id");
+    const db = xtrmDatabase;
+    if (!db) return c.json({ error: "result unavailable" }, 404);
+    const result = coreReadSpecialistJobResult(db, jobId);
+    if (!result) return c.json({ error: "result not found" }, 404);
+    return c.json({ text: result.text, content_type: result.contentType });
+  });
+
+  router.get("/jobs/:job_id/feed-events", async (c) => {
+    if (!isSpecialistResultRequestAllowed(c.req.raw)) return c.json({ error: "forbidden" }, 403);
+    const jobId = c.req.param("job_id");
+    const db = xtrmDatabase;
+    if (!db) return c.json({ error: "feed events unavailable" }, 404);
+    const job = resolveJobForEventLookup(resolve(), jobId);
+    if (!job) return c.json({ error: "feed events not found" }, 404);
+    const events = coreReadSpecialistFeedEvents(db, job.repoSlug, jobId);
+    return c.json({ events });
+  });
+
+  router.get("/jobs/:job_id/feed", async (c) => {
+    if (!isSpecialistResultRequestAllowed(c.req.raw)) return c.json({ error: "forbidden" }, 403);
+    const jobId = c.req.param("job_id");
+    const current = resolve();
+    const job = findJobById(current.dao, jobId);
+    const repo = job ? repoLister().find((entry) => entry.repoSlug === job.repoSlug) : undefined;
+    const feed = await runSpecialistFeed(jobId, { cwd: repo?.repoPath });
+    if (!feed.ok) return c.json({ error: feed.error }, feed.status);
+    return c.json({ text: feed.text, content_type: "text/plain; charset=utf-8" });
+  });
+
+  router.get("/jobs/in-flight", async (c) => {
+    const startedAt = performance.now();
+    const limit = parseLimit(c.req.query("limit"), 50);
+    const rawRepoSlugs = parseRepoSlugs(c.req.query("repo_slug") ?? c.req.query("repo_slugs"));
+    const current = resolve();
+    if (rawRepoSlugs === null) {
+      const degraded: InFlightValue = { in_flight: [], recent_history: [], jobs: [], epoch: repoEpochs(current.repos, epochGetter) };
+      logInFlightResponse(log, degraded.jobs, degraded.recent_history, degraded.epoch, "degraded", startedAt);
+      return c.json({ ...degraded, coverage: current.dao.coverage?.(), freshness: "degraded", source_health: sourceHealthFromCoverage(current.dao.coverage?.(), getSourceHealth()) });
+    }
+    const filter: SpecialistJobFilter = { repoSlugs: rawRepoSlugs };
+    const key = cacheKey("in-flight", current.repos, epochGetter, String(limit), filter.repoSlugs?.join(",") ?? "");
+    const cached = readBoundedCache(inFlightCache, key);
+    if (cached) {
+      logInFlightResponse(log, cached.jobs, cached.recent_history, cached.epoch, "cache", startedAt);
+      return c.json({ ...cached, coverage: current.dao.coverage?.(), freshness: "fresh", source_health: sourceHealthFromCoverage(current.dao.coverage?.(), getSourceHealth()) });
+    }
+
+    let refresh = inFlightRefreshes.get(key);
+    if (!refresh) {
+      if (inFlightRefreshes.size >= MAX_IN_FLIGHT_REFRESHES) {
+        const degraded: InFlightValue = { in_flight: [], recent_history: [], jobs: [], epoch: repoEpochs(current.repos, epochGetter) };
+        logInFlightResponse(log, degraded.jobs, degraded.recent_history, degraded.epoch, "degraded", startedAt);
+        return c.json({ ...degraded, coverage: current.dao.coverage?.(), freshness: "degraded", source_health: sourceHealthFromCoverage(current.dao.coverage?.(), getSourceHealth()) });
+      }
+      refresh = refreshInFlight(current.dao, current.repos, epochGetter, limit, key, filter);
+      inFlightRefreshes.set(key, refresh);
+    }
+    let refreshed: CachedValue<InFlightValue>;
+    try {
+      refreshed = await refresh;
+    } finally {
+      if (inFlightRefreshes.get(key) === refresh) inFlightRefreshes.delete(key);
+    }
+    writeBoundedCache(inFlightCache, refreshed);
+    const coverage = current.dao.coverage?.();
+    logInFlightResponse(log, refreshed.value.jobs, refreshed.value.recent_history, refreshed.value.epoch, "fresh", startedAt);
+    return c.json({ ...refreshed.value, coverage, freshness: "fresh", source_health: sourceHealthFromCoverage(coverage, getSourceHealth()) });
+  });
+
+  router.get("/chains/:chain_id", async (c) => {
+    const chainId = c.req.param("chain_id");
+    const current = resolve();
+    const key = cacheKey("chain", current.repos, epochGetter, chainId);
+    const cached = readCache(chainCache, key);
+    if (cached) {
+      if (cached.chain.jobs.length === 0) return c.json({ error: "Chain not found" }, 404);
+      return c.json({ ...cached, coverage: current.dao.coverage?.(), freshness: "fresh", source_health: sourceHealthFromCoverage(current.dao.coverage?.(), getSourceHealth()) });
+    }
+
+    const refreshed = await refreshChain(current.dao, chainId, key);
+    chainCache = refreshed;
+    if (refreshed.value.chain.jobs.length === 0) return c.json({ error: "Chain not found" }, 404);
+    return c.json({ ...refreshed.value, coverage: current.dao.coverage?.(), freshness: "fresh", source_health: sourceHealthFromCoverage(current.dao.coverage?.(), getSourceHealth()) });
+  });
+
+  return router;
+}
+
+function sourceHealthFromCoverage(coverage: ObservabilityCoverage | undefined, fallback: ReturnType<typeof makeSourceHealth>) {
+  if (!coverage || coverage.skipped.length === 0) return fallback;
+  return makeSourceHealth("specialists", "degraded", { metadata: { coverage } });
+}
+
+function getSourceHealth() {
+  return makeSourceHealth("specialists", "fresh", { metadata: {} });
+}
+
+function sourceHealthFromState(rows: MaterializationStateRow[] | undefined) {
+  if (!rows || rows.length === 0) return makeSourceHealth("specialists", "degraded", { metadata: {} });
+  if (rows.some((row) => row.last_status === "error")) return makeSourceHealth("specialists", "unhealthy", { metadata: summarizeMaterializationState(rows) });
+  if (rows.every((row) => row.last_status === "success")) return makeSourceHealth("specialists", "fresh", { metadata: summarizeMaterializationState(rows) });
+  return makeSourceHealth("specialists", "degraded", { metadata: summarizeMaterializationState(rows) });
+}
+
+function summarizeMaterializationState(rows: MaterializationStateRow[]): Record<string, unknown> {
+  const latest = rows.filter((row) => row.source_key.startsWith("obs:")).sort((left, right) => Date.parse(right.last_success_at ?? "") - Date.parse(left.last_success_at ?? ""))[0];
+  return latest ? { source_key: latest.source_key, last_status: latest.last_status, last_success_at: latest.last_success_at } : {};
+}
+
+function hasSuccessfulObsMaterialization(rows: MaterializationStateRow[]): boolean {
+  return rows.some((row) => row.source_key.startsWith("obs:") && row.last_status === "success");
+}
+
+function createXtrmSpecialistsDao(db: import("bun:sqlite").Database, repoLister: () => SpecialistRepoList, epochGetter: (repoSlug: string) => number): XtrmSpecialistsDao {
+  return {
+    jobsByBead: (beadId, filter) => coreReadSpecialistJobsByBead(db, beadId, filter).map(toSpecialistJob),
+    inFlightJobs: (filter) => coreReadSpecialistInFlightJobs(db, filter).map(toSpecialistJob),
+    recentJobs: (limit, filter) => coreReadSpecialistRecentJobs(db, limit, filter).map(toSpecialistJob),
+    chainById: (chainId, filter) => coreReadSpecialistChainJobs(db, chainId, filter).map(toSpecialistJob) as unknown as SpecialistChain[],
+    inFlightWithRecent: (limit, filter) => {
+      const repos = summarizeRepos(repoLister());
+      const epoch = repoEpochs(repos, epochGetter);
+      const in_flight = coreReadSpecialistInFlightJobs(db, filter).map(toSpecialistJob);
+      const recent_history = coreReadSpecialistRecentJobs(db, limit, filter).map(toSpecialistJob);
+      return { in_flight, recent_history, jobs: in_flight, epoch };
+    },
+    materializationState: () => coreReadMaterializationState(db) as MaterializationStateRow[],
+  };
+}
+
+function toSpecialistJob(row: SpecialistJobRow): SpecialistJob {
+  return {
+    jobId: row.jobId,
+    repoSlug: row.repoSlug,
+    beadId: row.beadId,
+    chainId: row.chainId,
+    epicId: row.epicId,
+    chainKind: row.chainKind,
+    status: row.status,
+    updatedAt: row.updatedAt,
+    specialist: row.specialist,
+    lastOutput: row.lastOutput,
+    turns: row.turns,
+    tools: row.tools,
+    model: row.model,
+    tokenUsage: row.tokenUsage,
+  };
+}
+
+function logJobsByBeadResponse(log: (entry: LogEntry) => void, beadId: string, jobs: SpecialistJob[], freshness: string, startedAt: number): void {
+  log(makeLogEntry("api", "specialists.jobs_by_bead.response", "info", undefined, {
+    beadId,
+    freshness,
+    ms: Math.round(performance.now() - startedAt),
+    jobs: jobs.length,
+    jobIds: jobs.slice(0, 50).map((job) => job.jobId),
+    statuses: countStatuses(jobs),
+    summaries: summarizeJobs(jobs),
+  }));
+}
+
+function logInFlightResponse(
+  log: (entry: LogEntry) => void,
+  jobs: SpecialistJob[],
+  recentHistory: SpecialistJob[],
+  epoch: Record<string, number>,
+  freshness: string,
+  startedAt: number,
+): void {
+  log(makeLogEntry("api", "specialists.in_flight.response", "info", undefined, {
+    freshness,
+    ms: Math.round(performance.now() - startedAt),
+    jobs: jobs.length,
+    recentHistory: recentHistory.length,
+    beadIds: [...new Set(jobs.map((job) => job.beadId))].slice(0, 50),
+    repoSlugs: [...new Set(jobs.map((job) => job.repoSlug))].slice(0, 50),
+    jobIds: jobs.slice(0, 50).map((job) => job.jobId),
+    statuses: countStatuses(jobs),
+    epoch,
+    summaries: summarizeJobs(jobs),
+  }));
+}
+
+function summarizeJobs(jobs: SpecialistJob[]): Array<Record<string, unknown>> {
+  return jobs.slice(0, 50).map((job) => ({
+    jobId: job.jobId,
+    chainId: job.chainId,
+    beadId: job.beadId,
+    repoSlug: job.repoSlug,
+    status: job.status,
+    specialist: job.specialist,
+    chainKind: job.chainKind,
+    updatedAt: job.updatedAt,
+  }));
+}
+
+function countStatuses(jobs: SpecialistJob[]): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const job of jobs) counts[job.status] = (counts[job.status] ?? 0) + 1;
+  return counts;
+}
+
+function parseLimit(value: string | undefined, fallback: number): number {
+  if (value === undefined) return fallback;
+  const trimmed = value.trim();
+  if (trimmed === "") return fallback;
+  if (!/^-?\d+$/.test(trimmed)) return fallback;
+  const parsed = Number(trimmed);
+  if (!Number.isInteger(parsed) || parsed < 0) return fallback;
+  return Math.min(parsed, 5000);
+}
+
+function parseRepoSlugs(value: string | undefined): string[] | null {
+  if (!value) return [];
+  if (Buffer.byteLength(value, "utf8") > MAX_REPO_SLUG_FILTER_BYTES) return null;
+  const slugs = [...new Set(value.split(",").map((item) => item.trim()).filter(Boolean))].sort();
+  if (slugs.length === 0) return [];
+  if (slugs.length > MAX_REPO_SLUG_FILTERS) return null;
+  const totalBytes = slugs.reduce((sum, s) => sum + Buffer.byteLength(s, "utf8"), 0);
+  if (totalBytes > MAX_REPO_SLUG_FILTER_BYTES) return null;
+  return slugs;
+}
+
+function summarizeRepos(repos: SpecialistRepoList): SpecialistRepoSummary {
+  return repos.map((repo) => ({ repoSlug: repo.repoSlug }));
+}
+
+function repoEpochs(repos: SpecialistRepoSummary, epochGetter: (repoSlug: string) => number): Record<string, number> {
+  return Object.fromEntries(repos.map((repo) => [repo.repoSlug, epochGetter(repo.repoSlug)]));
+}
+
+function cacheKey(prefix: string, repos: SpecialistRepoSummary, epochGetter: (repoSlug: string) => number, ...parts: string[]): string {
+  const repoPart = repos.map((repo) => `${repo.repoSlug}:${epochGetter(repo.repoSlug)}`).sort().join("|");
+  return `${prefix}:${parts.join(":")}:${repoPart}`;
+}
+
+function readCache<T>(entry: CachedValue<T> | null, key: string): T | null {
+  if (!entry || entry.key !== key) return null;
+  if (Date.now() - entry.refreshedAt > CACHE_TTL_MS) return null;
+  return entry.value;
+}
+
+function readBoundedCache<T>(entries: Map<string, CachedValue<T>>, key: string): T | null {
+  const entry = entries.get(key);
+  const value = readCache(entry ?? null, key);
+  if (value === null) {
+    if (entry) entries.delete(key);
+    return null;
+  }
+  entries.delete(key);
+  entries.set(key, entry!);
+  return value;
+}
+
+function writeCache<T>(key: string, value: T): CachedValue<T> {
+  return { key, value, refreshedAt: Date.now() };
+}
+
+function writeBoundedCache<T>(entries: Map<string, CachedValue<T>>, entry: CachedValue<T>): void {
+  entries.delete(entry.key);
+  entries.set(entry.key, entry);
+  while (entries.size > MAX_IN_FLIGHT_CACHE_ENTRIES) {
+    const oldest = entries.keys().next().value as string | undefined;
+    if (oldest === undefined) break;
+    entries.delete(oldest);
+  }
+}
+
+function refreshJobsByBead(dao: SpecialistsDao, beadId: string, key: string): CachedValue<{ jobs: SpecialistJob[] }> {
+  return writeCache(key, { jobs: dao.jobsByBead(beadId) });
+}
+
+async function refreshInFlight(
+  dao: SpecialistsDao,
+  repos: SpecialistRepoSummary,
+  epochGetter: (repoSlug: string) => number,
+  limit: number,
+  key: string,
+  filter?: SpecialistJobFilter,
+): Promise<CachedValue<InFlightValue>> {
+  const value = "inFlightWithRecent" in dao
+    ? (dao as XtrmSpecialistsDao).inFlightWithRecent(limit, filter)
+    : (() => {
+        const inFlight = dao.inFlightJobs(filter).slice(0, 200);
+        return {
+          in_flight: inFlight,
+          recent_history: dao.recentJobs(limit, filter).slice(0, limit),
+          jobs: inFlight,
+          epoch: repoEpochs(repos, epochGetter),
+        };
+      })();
+  return writeCache(key, value);
+}
+
+function refreshChain(dao: SpecialistsDao, chainId: string, key: string): CachedValue<{ chain: { jobs: SpecialistChain[] } }> {
+  return writeCache(key, { chain: { jobs: dao.chainById(chainId) } });
+}
+
+function getDefaultBundle(repoLister: () => SpecialistRepoList, epochGetter: (repoSlug: string) => number): DefaultDaoBundle {
+  const now = Date.now();
+  const repos = repoLister();
+  const key = cacheKey("bundle", repos, epochGetter);
+  if (defaultBundle && defaultBundle.key === key) return defaultBundle;
+
+  void warmDefaultBundle(repos, key);
+  if (defaultBundle) return defaultBundle;
+  return { dao: emptySpecialistsDao(), repos: summarizeRepos(repos), createdAt: now, key };
+}
+
+async function warmDefaultBundle(repos: SpecialistRepoList, key: string): Promise<void> {
+  if (defaultBundleWarm?.key === key) return;
+  const promise = Promise.resolve().then(() => {
+    const pool: AttachPoolLike = createAttachPool(repos);
+    defaultBundle = { dao: createObservabilityDao(pool), repos: summarizeRepos(repos), createdAt: Date.now(), key };
+  }).catch(() => undefined).finally(() => {
+    if (defaultBundleWarm?.key === key) defaultBundleWarm = null;
+  });
+  defaultBundleWarm = { key, promise };
+  await promise;
+}
+
+function emptySpecialistsDao(): SpecialistsDao {
+  return { jobsByBead: () => [], inFlightJobs: () => [], recentJobs: () => [], chainById: () => [] };
+}
+
+export function isSpecialistResultRequestAllowed(request: Request, env: NodeJS.ProcessEnv = process.env): boolean {
+  const peerAddress = request.headers.get(TRUSTED_PEER_ADDRESS_HEADER);
+  if (peerAddress
+    && isLoopbackAddress(peerAddress)
+    && isTrustedLocalhostRequest(request.url, request.headers.get("host") ?? new URL(request.url).host, peerAddress)
+    && isVerifiedShellAdminRequest(request.headers, env)) {
+    return true;
+  }
+  return false;
+}
+
+function findJobById(dao: SpecialistsDao, jobId: string): SpecialistJob | undefined {
+  return [...dao.inFlightJobs(), ...dao.recentJobs(500)].find((job) => job.jobId === jobId || job.beadId === jobId);
+}
+
+function resolveJobForEventLookup(current: { dao: SpecialistsDao; repos: SpecialistRepoSummary }, jobId: string): SpecialistJob | undefined {
+  const job = findJobById(current.dao, jobId);
+  if (!job) return undefined;
+  if (!current.repos.some((repo) => repo.repoSlug === job.repoSlug)) return undefined;
+  return job;
+}
+
+const SPECIALIST_JOB_ID_RE = /^[A-Za-z0-9._:-]{3,128}$/;
+const SPECIALIST_FEED_TIMEOUT_MS = 10_000;
+const SPECIALIST_FEED_TERM_GRACE_MS = 2_000;
+const SPECIALIST_FEED_REAP_DEADLINE_MS = 4_000;
+
+type SpecialistFeedResult =
+  | { ok: true; text: string }
+  | { ok: false; status: 400 | 404 | 500; error: string };
+
+export async function runSpecialistFeed(jobId: string, options: { cwd?: string; env?: NodeJS.ProcessEnv } = {}): Promise<SpecialistFeedResult> {
+  if (!SPECIALIST_JOB_ID_RE.test(jobId)) return { ok: false, status: 400, error: "invalid job id" };
+  const env = options.env ?? process.env;
+  const command = env.GITBOARD_SPECIALISTS_BIN || "specialists";
+  return new Promise((resolveFeed) => {
+    const child = spawn(command, ["feed", jobId], {
+      cwd: options.cwd,
+      env: buildSpecialistFeedEnv(env),
+      stdio: ["ignore", "pipe", "pipe"],
+      detached: true,
+    });
+    let stdout = "";
+    let stderr = "";
+    let stdoutBytes = 0;
+    let stderrBytes = 0;
+    let stdoutTruncated = false;
+    let settled = false;
+    let timedOut = false;
+    let killTimer: ReturnType<typeof setTimeout> | undefined;
+    let reapDeadlineTimer: ReturnType<typeof setTimeout> | undefined;
+    const killGroup = (signal: NodeJS.Signals) => {
+      if (child.pid == null) return;
+      try {
+        process.kill(-child.pid, signal);
+      } catch {
+        try {
+          child.kill(signal);
+        } catch {
+          // group/child already reaped
+        }
+      }
+    };
+    const settle = (result: SpecialistFeedResult) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      clearTimeout(killTimer);
+      clearTimeout(reapDeadlineTimer);
+      resolveFeed(result);
+    };
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      killGroup("SIGTERM");
+      killTimer = setTimeout(() => killGroup("SIGKILL"), SPECIALIST_FEED_TERM_GRACE_MS);
+      reapDeadlineTimer = setTimeout(() => {
+        killGroup("SIGKILL");
+        settle({ ok: false, status: 500, error: "specialist feed timed out" });
+      }, SPECIALIST_FEED_REAP_DEADLINE_MS);
+    }, SPECIALIST_FEED_TIMEOUT_MS);
+
+    child.stdout.on("data", (chunk: Buffer) => {
+      if (stdoutTruncated) return;
+      stdoutBytes += chunk.length;
+      if (stdoutBytes > MAX_SPECIALIST_FEED_OUTPUT_BYTES) {
+        stdoutTruncated = true;
+        killGroup("SIGKILL");
+        return;
+      }
+      stdout += chunk.toString("utf8");
+    });
+    child.stderr.on("data", (chunk: Buffer) => {
+      if (stderrBytes > MAX_SPECIALIST_FEED_OUTPUT_BYTES) return;
+      stderrBytes += chunk.length;
+      if (stderrBytes > MAX_SPECIALIST_FEED_OUTPUT_BYTES) {
+        stderr = stderr.slice(0, MAX_SPECIALIST_FEED_OUTPUT_BYTES);
+        killGroup("SIGKILL");
+        return;
+      }
+      stderr += chunk.toString("utf8");
+    });
+    child.on("error", (error) => {
+      settle({ ok: false, status: 500, error: error.message });
+    });
+    child.on("close", (code) => {
+      if (timedOut) return settle({ ok: false, status: 500, error: "specialist feed timed out" });
+      if (stdoutTruncated) return settle({ ok: true, text: stdout });
+      if (code === 0) return settle({ ok: true, text: stdout });
+      const message = stripAnsi(stderr || stdout).trim() || `specialist feed exited ${code}`;
+      settle({ ok: false, status: message.includes("not found") ? 404 : 500, error: message });
+    });
+  });
+}
+
+function buildSpecialistFeedEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return { ...env, NO_COLOR: "1", FORCE_COLOR: "0" };
+}
+
+function stripAnsi(value: string): string {
+  return value.replace(/\x1b\[[0-9;]*m/g, "");
+}
+
+function isSpecialistsRouterOptions(value: unknown): value is SpecialistsRouterOptions {
+  return typeof value === "object" && value !== null && ("listRepos" in value || "getEpoch" in value || "emit" in value);
+}

@@ -1,9 +1,10 @@
 import { Hono } from "hono";
 import { isTrustedLocalhostRequest, TRUSTED_PEER_ADDRESS_HEADER } from "../../../../../packages/core/src/runtime/console-write-policy.ts";
+import { paritySummaryForTelemetry, type ParitySummary } from "../../../../../packages/core/src/observability/parity.ts";
 
 export interface InternalParityHarness {
   getParityOkCount(): number;
-  getLatestSummary(): unknown;
+  getLatestSummary(): ParitySummary | null;
 }
 
 export type InternalParityHarnessResolver = () => InternalParityHarness | null;
@@ -16,7 +17,7 @@ export function createInternalParityRouter(resolveHarness: InternalParityHarness
     const summary = harness?.getLatestSummary() ?? null;
     return c.json({
       parity_ok_count: harness?.getParityOkCount() ?? 0,
-      latest_summary: summary,
+      latest_summary: summary ? paritySummaryForTelemetry(summary) : null,
     });
   });
 

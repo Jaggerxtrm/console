@@ -29,6 +29,10 @@
       "import": "./dist/explore/index.js",
       "types": "./dist/explore/index.d.ts"
     },
+    "./observability": {
+      "import": "./dist/observability/index.js",
+      "types": "./dist/observability/index.d.ts"
+    },
     "./runtime": {
       "import": "./dist/runtime/index.js",
       "types": "./dist/runtime/index.d.ts"

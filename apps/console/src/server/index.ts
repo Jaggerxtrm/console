@@ -3,7 +3,8 @@ import { createDatabaseBootstrap } from "./database.ts";
 import { redactHomePath, resolveDataDir } from "./data-dir.ts";
 import { CONSOLE_HOST_OWNER, createConsoleHost } from "./host.ts";
 import { createHostLogger } from "./log.ts";
-import { CONSOLE_PHASE2_ROUTE_PREFIXES, createConsoleApiRouter } from "./routes/index.ts";
+import { createGithubRuntime } from "./github/runtime.ts";
+import { CONSOLE_API_ROUTE_PREFIXES, createConsoleApiRouter } from "./routes/index.ts";
 
 const logger = createHostLogger();
 const dataDir = resolveDataDir();
@@ -12,7 +13,12 @@ const port = Number(process.env.PORT ?? 3000);
 const hostname = process.env.HOST?.trim() || "127.0.0.1";
 database.ensureDataDir();
 const databaseHandle = database.open();
-const apiRouter = createConsoleApiRouter({ db: databaseHandle.db, logger });
+const githubRuntime = createGithubRuntime({ db: databaseHandle.db, logger });
+const apiRouter = createConsoleApiRouter({
+  db: databaseHandle.db,
+  logger,
+  datasetteDebugEnabled: process.env.EXPLORE_DATASETTE_DEBUG === "1",
+});
 
 const host = createConsoleHost({
   port,
@@ -23,8 +29,12 @@ const host = createConsoleHost({
   hooks: {
     mountRoutes: (app) => {
       app.route("/", apiRouter);
-      return CONSOLE_PHASE2_ROUTE_PREFIXES;
+      return CONSOLE_API_ROUTE_PREFIXES;
     },
+    startBackground: () => {
+      void githubRuntime.start();
+    },
+    stopBackground: () => githubRuntime.stop(),
   },
 });
 

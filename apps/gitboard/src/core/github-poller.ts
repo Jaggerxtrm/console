@@ -2,32 +2,29 @@ import { REALTIME_PROTOCOL_VERSION } from "../types/realtime.ts";
 import { emit, makeLogEntry } from "./logger.ts";
 import type { ChannelName, ChannelRegistry } from "../api/ws/channels.ts";
 import {
-  GithubPoller as CoreGithubPoller,
-  type GithubActivityPublisher,
-  type GithubAdapterEventName,
-  type GithubAdapterLogger,
-  type GithubPollerOptions as CoreGithubPollerOptions,
+  GithubPoller as ConsoleGithubPoller,
+  type GithubPollerDatabase,
+  type GithubPollerOptions as ConsoleGithubPollerOptions,
   type RawGithubCommit,
   type RawGithubEvent,
   getAuthenticatedUsername,
   getGithubToken,
   transformCommits,
   transformEvent,
+} from "../../../console/src/server/github/poller.ts";
+import type {
+  GithubActivityPublisher,
+  GithubAdapterEventName,
+  GithubAdapterLogger,
 } from "../../../../packages/core/src/github/index.ts";
 
-export {
-  getAuthenticatedUsername,
-  getGithubToken,
-  transformCommits,
-  transformEvent,
-};
-
-export type { RawGithubCommit, RawGithubEvent };
+export { getAuthenticatedUsername, getGithubToken, transformCommits, transformEvent };
+export type { RawGithubCommit, RawGithubEvent, GithubPollerDatabase };
 
 function buildAppActivityPublisher(registry: ChannelRegistry): GithubActivityPublisher {
   return {
     publish(channel, event: GithubAdapterEventName, data: unknown, version: string): void {
-      registry.publish(channel as ChannelName, event, data, version ?? REALTIME_PROTOCOL_VERSION);
+      registry.publish(channel as ChannelName, event, data, version ?? String(REALTIME_PROTOCOL_VERSION));
     },
   };
 }
@@ -39,8 +36,6 @@ const appLogger: GithubAdapterLogger = {
   },
 };
 
-export type GithubPollerDatabase = ConstructorParameters<typeof CoreGithubPoller>[0];
-
 export interface GithubPollerShimOptions {
   intervalMs?: number;
   backfillPages?: number;
@@ -49,18 +44,16 @@ export interface GithubPollerShimOptions {
   protocolVersion?: string;
 }
 
-export class GithubPoller extends CoreGithubPoller {
+export class GithubPoller extends ConsoleGithubPoller {
   constructor(db: GithubPollerDatabase, token: string, options: GithubPollerShimOptions = {}) {
-    const coreOptions: CoreGithubPollerOptions = {
+    const coreOptions: ConsoleGithubPollerOptions = {
       intervalMs: options.intervalMs,
       backfillPages: options.backfillPages,
       repoConcurrency: options.repoConcurrency,
       protocolVersion: options.protocolVersion,
       logger: appLogger,
     };
-    if (options.registry) {
-      coreOptions.registry = buildAppActivityPublisher(options.registry);
-    }
+    if (options.registry) coreOptions.registry = buildAppActivityPublisher(options.registry);
     super(db, token, coreOptions);
   }
 }

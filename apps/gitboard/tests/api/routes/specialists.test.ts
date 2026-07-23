@@ -233,23 +233,22 @@ describe("GET /api/specialists/jobs/:job_id/result", () => {
 
   it("returns markdown result for admin", async () => {
     const app = createResultApp(true);
-    const res = await app.fetch(new Request("http://localhost/api/specialists/jobs/job-1/result", { headers: { "x-gitboard-shell-token": "test-admin-token" } }));
+    const res = await app.fetch(new Request("http://localhost/api/specialists/jobs/job-1/result", { headers: adminReadHeaders() }));
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ text: "# done", content_type: "text/markdown" });
   });
 
-  it("returns markdown result for same-origin dashboard reads", async () => {
+  it("does not treat same-origin browser metadata as payload authorization", async () => {
     const app = createResultApp(true);
-    const res = await app.fetch(new Request("http://localhost/api/specialists/jobs/job-1/result", { headers: { "sec-fetch-site": "same-origin" } }));
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ text: "# done", content_type: "text/markdown" });
+    const res = await app.fetch(new Request("http://localhost/api/specialists/jobs/job-1/result", { headers: { origin: "http://localhost" } }));
+    expect(res.status).toBe(403);
   });
 });
 
 describe("GET /api/specialists/jobs/:job_id/feed-events", () => {
   it("returns forensic events matching core read-model output for resolved repo only", async () => {
     const { app, db } = createResultHarness(true);
-    const res = await app.fetch(new Request("http://localhost/api/specialists/jobs/job-1/feed-events", { headers: { "x-gitboard-shell-token": "test-admin-token" } }));
+    const res = await app.fetch(new Request("http://localhost/api/specialists/jobs/job-1/feed-events", { headers: adminReadHeaders() }));
 
     expect(res.status).toBe(200);
     const body = await res.json() as { events: unknown[] };
@@ -263,14 +262,14 @@ describe("GET /api/specialists/jobs/:job_id/feed-events", () => {
 
   it("returns 404 when job cannot be resolved to a repo", async () => {
     const app = createUnresolvedFeedEventsApp();
-    const res = await app.fetch(new Request("http://localhost/api/specialists/jobs/job-missing/feed-events", { headers: { "x-gitboard-shell-token": "test-admin-token" } }));
+    const res = await app.fetch(new Request("http://localhost/api/specialists/jobs/job-missing/feed-events", { headers: adminReadHeaders() }));
 
     expect(res.status).toBe(404);
   });
 
   it("preserves canonical envelope fields while dropping unknown top-level keys", async () => {
     const app = createResultApp(true, { extraPayload: true });
-    const res = await app.fetch(new Request("http://localhost/api/specialists/jobs/job-1/feed-events", { headers: { "x-gitboard-shell-token": "test-admin-token" } }));
+    const res = await app.fetch(new Request("http://localhost/api/specialists/jobs/job-1/feed-events", { headers: adminReadHeaders() }));
 
     expect(res.status).toBe(200);
     const json = await res.json() as { events: Array<Record<string, unknown>> };
@@ -296,7 +295,7 @@ describe("GET /api/specialists/jobs/:job_id/feed", () => {
     process.env.GITBOARD_SPECIALISTS_BIN = "/bin/sh";
 
     const app = createAppWithDao();
-    const res = await app.fetch(new Request("http://localhost/api/specialists/jobs/job-1/feed", { headers: { "x-gitboard-shell-token": "test-admin-token" } }));
+    const res = await app.fetch(new Request("http://localhost/api/specialists/jobs/job-1/feed", { headers: adminReadHeaders() }));
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ text: "JOB:job-1\n", content_type: "text/plain; charset=utf-8" });
   });
@@ -607,6 +606,13 @@ function resolvedJob(): SpecialistJob {
     turns: null,
     tools: null,
     model: null,
+  };
+}
+
+function adminReadHeaders(): Record<string, string> {
+  return {
+    "x-gitboard-shell-token": "test-admin-token",
+    "x-xtrm-peer-address": "127.0.0.1",
   };
 }
 
