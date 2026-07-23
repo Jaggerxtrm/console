@@ -84,6 +84,36 @@ describe("core materializer infrastructure", () => {
     }
   });
 
+  it("cancels queued source work and waits for an active drain during shutdown", async () => {
+    vi.useFakeTimers();
+    try {
+      const cancelled = new SourceQueue();
+      let cancelledRuns = 0;
+      cancelled.enqueue("source:cancelled", async () => { cancelledRuns += 1; });
+      await cancelled.stop();
+      await vi.advanceTimersByTimeAsync(COALESCE_MS);
+      expect(cancelledRuns).toBe(0);
+
+      const active = new SourceQueue();
+      const gate = deferred<void>();
+      let activeRuns = 0;
+      active.enqueue("source:active", async () => {
+        activeRuns += 1;
+        await gate.promise;
+      });
+      await vi.advanceTimersByTimeAsync(COALESCE_MS);
+      let stopped = false;
+      const stopping = active.stop().then(() => { stopped = true; });
+      await flushMicrotasks();
+      expect(stopped).toBe(false);
+      gate.resolve();
+      await stopping;
+      expect(activeRuns).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("bounds more than 21 unique sources and resolves every accepted completion", async () => {
     const scheduler = new BoundedMaterializerScheduler(2, 8);
     const sources = Array.from({ length: 32 }, (_, index) => `source:${index}`);

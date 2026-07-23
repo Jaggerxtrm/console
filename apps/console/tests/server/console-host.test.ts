@@ -387,6 +387,26 @@ describe("console host shutdown cleanup", () => {
     expect(callOrder).toEqual(["startBackground", "stopBackground"]);
   });
 
+  it("sanitizes background rollback failures", async () => {
+    vi.stubGlobal("Bun", { serve: () => { throw new Error("port-in-use"); } });
+    const distDir = makeDistDir({ "index.html": INDEX_HTML });
+    const lines: string[] = [];
+    const logger = createHostLogger({ sink: (line) => lines.push(line) });
+    const host = createConsoleHost({
+      consoleDistDir: distDir,
+      logger,
+      hooks: {
+        stopBackground: () => { throw new Error("/private/path?token=secret"); },
+      },
+    });
+
+    await expect(host.start()).rejects.toThrow("port-in-use");
+    const rollback = lines.map((line) => JSON.parse(line)).find((entry) => entry.event === "host.background_rollback_failed");
+    expect(rollback).toMatchObject({ error_type: "Error" });
+    expect(JSON.stringify(rollback)).not.toContain("private/path");
+    expect(JSON.stringify(rollback)).not.toContain("secret");
+  });
+
   it("rejects localhost authorization spoofing from a remote Bun socket peer", async () => {
     let fetchHandler: ((request: Request, server: unknown) => Response | Promise<Response>) | undefined;
     const fakeServer = {
@@ -479,7 +499,7 @@ describe("home path redaction", () => {
         component: "console-host",
         event: "host.configured",
         dataDirSource: "XTRM_DATA_DIR",
-        consoleDistDir: "~/console-host-redaction-dist",
+        consoleDistSource: "configured",
       });
       expect(lines[0]).not.toContain(home);
     } finally {

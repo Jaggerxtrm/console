@@ -241,6 +241,35 @@ Validation:
 - local smoke showing `materializer.run` and `materializer.publishHint` from the console host
 - source refresh cooldown/in-flight behavior still works
 
+#### Phase 4 verification evidence
+
+`apps/console/tests/smoke/phase4-lifecycle-telemetry.ts` starts the real
+Console entrypoint with isolated data, projects, observability, home, and log
+directories. It proves discovery and materialization persist an issue and
+cursor, checks the live internal-log ring, terminates through SIGTERM, then
+checks the flushed JSONL log for all required lifecycle events owned by
+`apps/console`. A missing optional JSONL source produces `watcher.skip`
+without stopping the runtime. The smoke also starts second Console and legacy
+Gitboard processes against the same temporary state database and requires both
+writer leases to be rejected while the first host remains healthy. It then
+proves lease reacquisition after both graceful SIGTERM and abrupt SIGKILL exits.
+
+```bash
+bun run --cwd apps/console smoke:lifecycle
+bun run --cwd apps/console smoke:api-parity
+bun run --cwd packages/core test
+bun run --cwd apps/console test
+bun run --cwd apps/gitboard test
+bun run build
+```
+
+Expected lifecycle-smoke summary: `PASS`, 14 required events, zero
+unclassified scanner-discovery warnings for the fixture, Console and Gitboard
+contenders rejected, crash lease release confirmed, and `phase4-healthy.1`
+persisted. The structured logs are queryable
+under `${LOG_DIR}/YYYY-MM-DD.jsonl`; filter by `event` and
+`data.owner == "apps/console"`.
+
 ### Phase 5 — Move realtime WebSocket and internal logs
 
 Move the highest-risk host boundary.

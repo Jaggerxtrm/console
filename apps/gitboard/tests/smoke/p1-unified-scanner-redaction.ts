@@ -30,7 +30,7 @@ try {
   assert.deepEqual(entries.map((entry) => entry.data), [{ stage: "boundary probe", code: "EACCES" }]);
   assert.equal(JSON.stringify(entries).includes(secretPath), false);
   assert.equal(JSON.stringify(entries).includes(secretMessage), false);
-  scanner.stop();
+  await scanner.stop();
   console.log("unified scanner Bun/sqlite redaction smoke ok");
 } finally {
   db.close();

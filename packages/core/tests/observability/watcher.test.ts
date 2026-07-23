@@ -45,4 +45,22 @@ describe("observability watcher", () => {
     await sleep(150);
     expect(trigger).not.toHaveBeenCalled();
   });
+
+  it("does not disclose watched paths in filesystem error logs", () => {
+    const root = mkdtempSync(join(tmpdir(), "core-observability-watcher-redaction-"));
+    roots.push(root);
+    const logger = { warn: vi.fn(), debug: vi.fn() };
+    const watcher = createObservabilityWatcher([{
+      repoSlug: "missing",
+      repoPath: join(root, "private-repo"),
+      dbPath: join(root, "private-repo", "observability.db"),
+      mtimeMs: 0,
+    }], { logger });
+
+    watcher.start();
+    watcher.stop();
+
+    expect(logger.warn).toHaveBeenCalled();
+    expect(JSON.stringify(logger.warn.mock.calls)).not.toContain(root);
+  });
 });

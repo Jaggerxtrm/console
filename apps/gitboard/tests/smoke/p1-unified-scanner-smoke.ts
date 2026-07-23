@@ -27,7 +27,7 @@ async function main(): Promise<void> {
     }
     if (rowCount !== 1) throw new Error("scanner timer did not trigger refresh");
 
-    scanner.stop();
+    await scanner.stop();
     db.close();
     console.log("scanner timer smoke ok");
   } finally {

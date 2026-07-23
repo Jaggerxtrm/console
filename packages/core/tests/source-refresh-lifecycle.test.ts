@@ -50,7 +50,7 @@ describe("SourceRefreshLifecycle", () => {
     lifecycle.start();
     lifecycle.start();
     await vi.advanceTimersByTimeAsync(125);
-    lifecycle.stop();
+    await lifecycle.stop();
     await vi.advanceTimersByTimeAsync(100);
 
     expect(refresh.mock.calls.length).toBeGreaterThanOrEqual(2);
@@ -58,5 +58,23 @@ describe("SourceRefreshLifecycle", () => {
     expect(lifecycle.isRunning()).toBe(false);
     vi.useRealTimers();
   });
-});
 
+  it("drains an in-flight refresh and rejects new work after stop", async () => {
+    let resolveRefresh!: (value: string[]) => void;
+    const lifecycle = new SourceRefreshLifecycle({
+      refreshIntervalMs: 60_000,
+      refresh: () => new Promise<string[]>((resolve) => { resolveRefresh = resolve; }),
+    });
+
+    lifecycle.start();
+    let stopSettled = false;
+    const stopping = lifecycle.stop().then(() => { stopSettled = true; });
+    await Promise.resolve();
+
+    expect(stopSettled).toBe(false);
+    await expect(lifecycle.refresh()).rejects.toThrow("source refresh stopped");
+    resolveRefresh(["done"]);
+    await stopping;
+    expect(stopSettled).toBe(true);
+  });
+});

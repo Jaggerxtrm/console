@@ -12,6 +12,7 @@
     "serve:host": "bun run src/server/index.ts",
     "smoke:host": "bun run tests/smoke/console-host-smoke.ts",
     "smoke:api-parity": "bun run tests/smoke/api-host-parity.ts",
+    "smoke:lifecycle": "bun run tests/smoke/phase4-lifecycle-telemetry.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "tsc --noEmit",

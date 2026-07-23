@@ -83,16 +83,33 @@ export class SourceQueue {
   private running = false;
   private queued = false;
   private timer: ReturnType<typeof setTimeout> | null = null;
+  private activeDrain: Promise<void> | null = null;
+  private stopped = false;
 
   constructor(private readonly onError?: SourceQueueErrorHandler) {}
 
   enqueue(sourceKey: string, run: () => Promise<void>): void {
+    if (this.stopped) return;
     this.queued = true;
     if (this.running || this.timer) return;
     this.timer = setTimeout(() => {
       this.timer = null;
-      void this.drain(sourceKey, run);
+      const drain = this.drain(sourceKey, run);
+      this.activeDrain = drain;
+      void drain.finally(() => {
+        if (this.activeDrain === drain) this.activeDrain = null;
+      });
     }, COALESCE_MS);
+  }
+
+  async stop(): Promise<void> {
+    this.stopped = true;
+    this.queued = false;
+    if (this.timer) {
+      clearTimeout(this.timer);
+      this.timer = null;
+    }
+    await this.activeDrain;
   }
 
   private async drain(sourceKey: string, run: () => Promise<void>): Promise<void> {
@@ -105,7 +122,7 @@ export class SourceQueue {
       this.onError?.(sourceKey, error);
     } finally {
       this.running = false;
-      if (this.queued) this.enqueue(sourceKey, run);
+      if (this.queued && !this.stopped) this.enqueue(sourceKey, run);
     }
   }
 }

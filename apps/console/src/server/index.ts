@@ -1,9 +1,11 @@
 import { createXtrmDatabase } from "../../../../packages/core/src/state/database.ts";
+import { acquireRuntimeWriterLease } from "../../../../packages/core/src/runtime/writer-lease.ts";
 import { createDatabaseBootstrap } from "./database.ts";
-import { redactHomePath, resolveDataDir } from "./data-dir.ts";
+import { resolveDataDir } from "./data-dir.ts";
 import { CONSOLE_HOST_OWNER, createConsoleHost } from "./host.ts";
 import { createHostLogger } from "./log.ts";
 import { createGithubRuntime } from "./github/runtime.ts";
+import { createConsoleRuntime } from "./runtime-lifecycle.ts";
 import { CONSOLE_API_ROUTE_PREFIXES, createConsoleApiRouter } from "./routes/index.ts";
 
 const logger = createHostLogger();
@@ -12,11 +14,17 @@ const database = createDatabaseBootstrap(dataDir, createXtrmDatabase);
 const port = Number(process.env.PORT ?? 3000);
 const hostname = process.env.HOST?.trim() || "127.0.0.1";
 database.ensureDataDir();
+const writerLease = acquireRuntimeWriterLease(database.storeDbPath, { owner: CONSOLE_HOST_OWNER });
 const databaseHandle = database.open();
 const githubRuntime = createGithubRuntime({ db: databaseHandle.db, logger });
+const consoleRuntime = createConsoleRuntime({ db: databaseHandle.db, logger });
 const apiRouter = createConsoleApiRouter({
   db: databaseHandle.db,
   logger,
+  scanner: consoleRuntime.scanner,
+  triggerMaterialization: consoleRuntime.triggerMaterialization,
+  observabilityParityHarness: consoleRuntime.observabilityParityHarness,
+  beadsParityHarness: consoleRuntime.beadsParityHarness,
   datasetteDebugEnabled: process.env.EXPLORE_DATASETTE_DEBUG === "1",
 });
 
@@ -26,26 +34,41 @@ const host = createConsoleHost({
   dataDir,
   database,
   logger,
+  runtimeCapabilities: ["materializer", "source-health"],
   hooks: {
     mountRoutes: (app) => {
       app.route("/", apiRouter);
       return CONSOLE_API_ROUTE_PREFIXES;
     },
-    startBackground: () => {
-      void githubRuntime.start();
+    startBackground: async () => {
+      await consoleRuntime.start();
+      await githubRuntime.start();
     },
-    stopBackground: () => githubRuntime.stop(),
+    stopBackground: async () => {
+      const errors: unknown[] = [];
+      try {
+        await githubRuntime.stop();
+      } catch (error) {
+        errors.push(error);
+      }
+      try {
+        await consoleRuntime.stop();
+      } catch (error) {
+        errors.push(error);
+      }
+      if (errors.length > 0) throw new AggregateError(errors, "background runtime shutdown failed");
+    },
   },
 });
 
 logger.info("host.starting", {
   owner: CONSOLE_HOST_OWNER,
   dataDirSource: dataDir.source,
-  dataDir: redactHomePath(dataDir.dataDir),
-  consoleDistDir: redactHomePath(host.consoleDistDir),
+  consoleDistSource: process.env.CONSOLE_DIST_DIR?.trim() ? "configured" : "default",
   requestedPort: port,
   hostname,
   capabilities: host.descriptor.capabilities,
+  writerLease: "acquired",
 });
 
 const running = await host.start();
@@ -63,20 +86,30 @@ async function shutdown(signal: string): Promise<void> {
   if (shuttingDown) return;
   shuttingDown = true;
   logger.info("host.shutting_down", { signal });
+  const errors: unknown[] = [];
   try {
     await running.stop();
-    logger.info("host.shutdown", { signal });
-    await logger.flush();
-    databaseHandle.close();
-    process.exit(0);
   } catch (error) {
-    logger.error("host.shutdown_failed", {
-      signal,
-      error: error instanceof Error ? error.message : String(error),
-    });
-    databaseHandle.close();
-    process.exit(1);
+    errors.push(error);
   }
+  try {
+    databaseHandle.close();
+  } catch (error) {
+    errors.push(error);
+  }
+  try {
+    writerLease.release();
+  } catch (error) {
+    errors.push(error);
+  }
+  if (errors.length === 0) logger.info("host.shutdown", { signal });
+  else logger.error("host.shutdown_failed", {
+    signal,
+    error_count: errors.length,
+    error_types: errors.map((error) => error instanceof Error ? error.name : "Error"),
+  });
+  try { await logger.flush(); } catch { errors.push(new Error("logger flush failed")); }
+  process.exit(errors.length === 0 ? 0 : 1);
 }
 
 process.on("SIGINT", () => void shutdown("SIGINT"));

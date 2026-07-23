@@ -147,7 +147,7 @@ describe("UnifiedScanner", () => {
     const explicitRefresh = scanner.refresh();
     releaseScan();
     await explicitRefresh;
-    scanner.stop();
+    await scanner.stop();
 
     expect(scans).toBe(1);
     db.close();
