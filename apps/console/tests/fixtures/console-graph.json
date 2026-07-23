@@ -1,0 +1,73 @@
+{
+  "project_id": "gitboard",
+  "repo_slug": "gitboard",
+  "generated_at": "2026-05-20T00:00:00.000Z",
+  "freshness": "fresh",
+  "nodes": [
+    {
+      "id": "forge-a1",
+      "title": "Alpha",
+      "type": "task",
+      "priority": 0,
+      "status": "open",
+      "assignee": null,
+      "closed_at": null,
+      "superseded_by": null
+    },
+    {
+      "id": "forge-b2",
+      "title": "Beta",
+      "type": "feature",
+      "priority": 1,
+      "status": "in_progress",
+      "assignee": null,
+      "closed_at": null,
+      "superseded_by": null
+    },
+    {
+      "id": "forge-c3",
+      "title": "Gamma",
+      "type": "bug",
+      "priority": 2,
+      "status": "blocked",
+      "assignee": null,
+      "closed_at": null,
+      "superseded_by": null
+    },
+    {
+      "id": "forge-d4",
+      "title": "Delta",
+      "type": "epic",
+      "priority": 3,
+      "status": "closed",
+      "assignee": null,
+      "closed_at": "2026-05-19T23:00:00.000Z",
+      "superseded_by": "forge-e5"
+    },
+    {
+      "id": "forge-e5",
+      "title": "Epsilon",
+      "type": "chore",
+      "priority": 4,
+      "status": "open",
+      "assignee": null,
+      "closed_at": null,
+      "superseded_by": null
+    }
+  ],
+  "edges": [
+    { "from": "forge-a1", "to": "forge-b2", "type": "blocks" },
+    { "from": "forge-a1", "to": "forge-b2", "type": "related" },
+    { "from": "forge-b2", "to": "forge-c3", "type": "tracks" },
+    { "from": "forge-d4", "to": "forge-e5", "type": "supersedes" }
+  ],
+  "specialists": [
+    {
+      "bead_id": "forge-b2",
+      "job_id": "job-1",
+      "role": "executor",
+      "status": "running",
+      "updated_at": "2026-05-20T00:00:00.000Z"
+    }
+  ]
+}

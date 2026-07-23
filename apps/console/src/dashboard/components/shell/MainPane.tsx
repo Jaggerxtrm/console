@@ -204,7 +204,13 @@ function useGithubRepoData(fullName: string, tab: GithubTab): GithubRepoData {
   const [state, setState] = useState<GithubRepoData>(() => mergeRepoData(cacheForRepo(fullName), { ...emptyGithubRepoData(), events: liveEvents, prs: livePrs, issues: liveIssues, releases: liveReleases }));
 
   useEffect(() => {
-    setState(mergeRepoData(cacheForRepo(fullName), { ...emptyGithubRepoData(), events: liveEvents, prs: livePrs, issues: liveIssues, releases: liveReleases }));
+    setState(updateCache(fullName, (current) => mergeRepoData(current, {
+      ...emptyGithubRepoData(),
+      events: liveEvents,
+      prs: livePrs,
+      issues: liveIssues,
+      releases: liveReleases,
+    })));
   }, [fullName, liveEvents, livePrs, liveIssues, liveReleases]);
 
   useEffect(() => {
@@ -212,12 +218,21 @@ function useGithubRepoData(fullName: string, tab: GithubTab): GithubRepoData {
 
     let cancelled = false;
     const hasCachedData = cacheForRepo(fullName).loadedTabs[tab];
-    setState(updateCache(fullName, (current) => ({
-      ...current,
-      error: null,
-      loadingTabs: { ...current.loadingTabs, [tab]: true },
-      loading: !hasCachedData,
-    })));
+    setState(updateCache(fullName, (current) => {
+      const currentWithLiveRows = mergeRepoData(current, {
+        ...emptyGithubRepoData(),
+        events: liveEvents,
+        prs: livePrs,
+        issues: liveIssues,
+        releases: liveReleases,
+      });
+      return {
+        ...currentWithLiveRows,
+        error: null,
+        loadingTabs: { ...currentWithLiveRows.loadingTabs, [tab]: true },
+        loading: !hasCachedData,
+      };
+    }));
 
     const apply = (updater: (current: GithubRepoData) => GithubRepoData) => {
       if (cancelled) return;
@@ -275,7 +290,11 @@ function GithubTabView({ repo, tab }: { repo: RepoNode; tab: GithubTab }) {
     }
   }, [data.loading, data.loadingTabs, tab, data.events.length, data.prs.length, data.issues.length, data.releases.length]);
 
-  if (data.error) return <p className="ide-error-msg">{data.error}</p>;
+  const hasVisibleData = (tab === "activity" && data.events.length > 0)
+    || (tab === "prs" && data.prs.length > 0)
+    || (tab === "issues" && data.issues.length > 0)
+    || (tab === "releases" && data.releases.length > 0);
+  if (data.error && !hasVisibleData) return <p className="ide-error-msg">{data.error}</p>;
   const owner = repo.fullName.includes("/") ? repo.fullName.split("/")[0] : "";
   const name = repo.fullName.includes("/") ? repo.fullName.split("/")[1] : repo.fullName;
 

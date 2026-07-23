@@ -103,7 +103,7 @@ export function createSpecialistsRouter(
   const resolve = () => {
     if (dao) return { dao, repos: summarizeRepos(repoLister()) };
     if (!xtrmDao) return getDefaultBundle(repoLister, epochGetter);
-    if (liveFallbackEnabled) return { dao: xtrmDao, repos: summarizeRepos(repoLister()) };
+    if (liveFallbackEnabled) return getDefaultBundle(repoLister, epochGetter);
     return hasSuccessfulObsMaterialization(xtrmDao.materializationState())
       ? { dao: xtrmDao, repos: summarizeRepos(repoLister()) }
       : getDefaultBundle(repoLister, epochGetter);
