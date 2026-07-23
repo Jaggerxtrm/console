@@ -98,7 +98,7 @@ export function createObservabilityParityHarness(
     };
     latestSummary = summary;
 
-    const logDiffs = summary.diffs.map(parityDiffForLog);
+    const logDiffs = paritySummaryForTelemetry(summary).diffs;
     emitLog(makeLogEntry("system", "parity.observability", diff_count === 0 ? "info" : "warn", undefined, {
       severity: diff_count === 0 ? "info" : "warn",
       diff_count,
@@ -133,6 +133,13 @@ export function createObservabilityParityHarness(
   };
 }
 
+export function paritySummaryForTelemetry(summary: ParitySummary): ParitySummary {
+  return {
+    ...summary,
+    diffs: summary.diffs.map(parityDiffForLog),
+  };
+}
+
 function parityDiffForLog(diff: ParityDiff): ParityDiff {
   return {
     ...diff,
@@ -142,7 +149,7 @@ function parityDiffForLog(diff: ParityDiff): ParityDiff {
 }
 
 function summarizeParityValue(value: unknown): { type: string; length: number; sha256: string } {
-  const serialized = stableParityValue(value);
+  const serialized = typeof value === "string" ? value : stableParityValue(value);
   return {
     type: value === null ? "null" : Array.isArray(value) ? "array" : typeof value,
     length: Buffer.byteLength(serialized),
