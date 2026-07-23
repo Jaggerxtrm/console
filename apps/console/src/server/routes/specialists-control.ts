@@ -1,6 +1,6 @@
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { closeSync, constants as fsConstants, existsSync, fstatSync, openSync, readFileSync, realpathSync, writeSync } from "node:fs";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { Hono } from "hono";
 import type { Database } from "bun:sqlite";
 import { makeLogEntry, type LogEntry } from "../../../../../packages/core/src/runtime/index.ts";
@@ -30,6 +30,8 @@ type ResumeBody = { task?: string };
 
 const JOB_ID_RE = /^[A-Za-z0-9._:-]{3,128}$/;
 const COMMAND_TIMEOUT_MS = 15_000;
+const COMMAND_TERM_GRACE_MS = 2_000;
+const COMMAND_REAP_DEADLINE_MS = 4_000;
 
 export function createSpecialistsControlRouter(xtrmDb: Database | null, deps: RouteDeps = {}): Hono {
   const router = new Hono();
@@ -110,7 +112,9 @@ async function handleAction(args: { action: ControlAction; job: SpecialistJob; e
   const startedAt = performance.now();
   const command = args.env.GITBOARD_SPECIALISTS_BIN || "sp";
   const repo = args.repoLister().find((entry) => entry.repoSlug === args.job.repoSlug);
-  const commandArgs = buildCommandArgs(args.action, args.job.jobId ?? args.job.beadId);
+  const effectiveJobId = args.job.jobId ?? args.job.beadId;
+  if (!JOB_ID_RE.test(effectiveJobId)) throw new Error("invalid persisted job id");
+  const commandArgs = buildCommandArgs(args.action, effectiveJobId);
   const baseMetadata = {
     action: args.action,
     jobId: args.job.jobId,
@@ -125,7 +129,7 @@ async function handleAction(args: { action: ControlAction; job: SpecialistJob; e
     if (args.action === "stop") {
       await args.runCommand(command, commandArgs, { cwd: repo?.repoPath, env: buildCommandEnv(args.env) });
     } else {
-      await args.writeControlMessage(args.action, args.job.jobId ?? args.job.beadId, args.text ?? "", repo?.repoPath);
+      await args.writeControlMessage(args.action, effectiveJobId, args.text ?? "", repo?.repoPath);
     }
     args.log(makeLogEntry("api", "specialists.control", "info", undefined, {
       ...baseMetadata,
@@ -161,20 +165,46 @@ function buildCommandArgs(action: ControlAction, jobId: string): string[] {
 }
 
 async function writeSpecialistControlMessage(action: Extract<ControlAction, "steer" | "resume">, jobId: string, text: string, cwd?: string): Promise<void> {
-  const status = readSpecialistStatus(jobId, cwd);
+  if (!JOB_ID_RE.test(jobId)) throw new Error("invalid persisted job id");
+  const jobsDir = realpathSync(resolveJobsDir(cwd ?? process.cwd()));
+  const jobDir = realpathSync(containedPath(jobsDir, join(jobsDir, jobId)));
+  containedPath(jobsDir, jobDir);
+  const status = readSpecialistStatus(jobId, jobsDir, jobDir);
   if (!status?.fifo_path) throw new Error("specialists control pipe unavailable");
+  const candidate = containedPath(jobDir, resolve(jobDir, status.fifo_path));
+  const parent = realpathSync(dirname(candidate));
+  containedPath(jobDir, parent);
+  const fifoPath = join(parent, basename(candidate));
   const payload = action === "resume" ? { type: "resume", task: text } : { type: "steer", message: text };
-  writeFileSync(status.fifo_path, `${JSON.stringify(payload)}\n`, { flag: "a" });
+  const descriptor = openSync(fifoPath, fsConstants.O_WRONLY | fsConstants.O_NONBLOCK | fsConstants.O_NOFOLLOW);
+  try {
+    if (!fstatSync(descriptor).isFIFO()) throw new Error("specialists control pipe is not a fifo");
+    writeSync(descriptor, `${JSON.stringify(payload)}\n`);
+  } finally {
+    closeSync(descriptor);
+  }
 }
 
-function readSpecialistStatus(jobId: string, cwd = process.cwd()): { fifo_path?: string } | null {
-  const statusPath = join(resolveJobsDir(cwd), jobId, "status.json");
-  if (!existsSync(statusPath)) return null;
+function readSpecialistStatus(jobId: string, jobsDir: string, jobDir: string): { fifo_path?: string } | null {
+  const statusCandidate = containedPath(jobsDir, join(jobsDir, jobId, "status.json"));
+  if (!existsSync(statusCandidate)) return null;
+  const statusPath = realpathSync(statusCandidate);
+  containedPath(jobDir, statusPath);
   try {
     return JSON.parse(readFileSync(statusPath, "utf-8")) as { fifo_path?: string };
   } catch {
     return null;
   }
+}
+
+function containedPath(root: string, candidate: string): string {
+  const resolvedRoot = resolve(root);
+  const resolvedCandidate = resolve(candidate);
+  const pathFromRoot = relative(resolvedRoot, resolvedCandidate);
+  if (pathFromRoot === ".." || pathFromRoot.startsWith(`..${process.platform === "win32" ? "\\" : "/"}`) || isAbsolute(pathFromRoot)) {
+    throw new Error("specialists control path escapes job directory");
+  }
+  return resolvedCandidate;
 }
 
 function resolveJobsDir(cwd: string): string {
@@ -188,28 +218,80 @@ function buildCommandEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return { ...env, NO_COLOR: "1", FORCE_COLOR: "0" };
 }
 
-async function runSpecialistCommand(command: string, args: string[], options: { cwd?: string; env: NodeJS.ProcessEnv }): Promise<void> {
+export async function runSpecialistCommand(
+  command: string,
+  args: string[],
+  options: { cwd?: string; env: NodeJS.ProcessEnv },
+  timing: { timeoutMs?: number; termGraceMs?: number; reapDeadlineMs?: number } = {},
+): Promise<void> {
+  const timeoutMs = timing.timeoutMs ?? COMMAND_TIMEOUT_MS;
+  const termGraceMs = timing.termGraceMs ?? COMMAND_TERM_GRACE_MS;
+  const reapDeadlineMs = timing.reapDeadlineMs ?? COMMAND_REAP_DEADLINE_MS;
   await new Promise<void>((resolve, reject) => {
-    const child = spawn(command, args, { cwd: options.cwd, env: options.env, stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(command, args, { cwd: options.cwd, env: options.env, stdio: ["ignore", "pipe", "pipe"], detached: true });
     let settled = false;
+    let timedOut = false;
+    let childClosed = false;
+    let reapPoll: ReturnType<typeof setInterval> | undefined;
+    let killTimer: ReturnType<typeof setTimeout> | undefined;
+    let reapDeadline: ReturnType<typeof setTimeout> | undefined;
     const finish = (error?: Error) => {
       if (settled) return;
       settled = true;
       clearTimeout(timeout);
+      if (killTimer) clearTimeout(killTimer);
+      if (reapDeadline) clearTimeout(reapDeadline);
+      if (reapPoll) clearInterval(reapPoll);
       if (error) reject(error);
       else resolve();
     };
     const timeout = setTimeout(() => {
-      child.kill("SIGTERM");
-      finish(new Error("specialists control timed out"));
-    }, COMMAND_TIMEOUT_MS);
+      timedOut = true;
+      signalProcessGroup(child.pid, "SIGTERM", () => child.kill("SIGTERM"));
+      const completeWhenReaped = () => {
+        if (childClosed && !isProcessGroupAlive(child.pid)) finish(new Error("specialists control timed out"));
+      };
+      reapPoll = setInterval(completeWhenReaped, 20);
+      killTimer = setTimeout(() => {
+        signalProcessGroup(child.pid, "SIGKILL", () => child.kill("SIGKILL"));
+        completeWhenReaped();
+      }, termGraceMs);
+      reapDeadline = setTimeout(() => {
+        signalProcessGroup(child.pid, "SIGKILL", () => child.kill("SIGKILL"));
+        finish(new Error("specialists control timed out"));
+      }, termGraceMs + reapDeadlineMs);
+    }, timeoutMs);
 
     child.on("error", (error) => finish(error));
     child.on("close", (code) => {
+      childClosed = true;
+      if (timedOut) {
+        if (!isProcessGroupAlive(child.pid)) finish(new Error("specialists control timed out"));
+        return;
+      }
       if (code === 0) return finish();
       finish(new Error(`specialists control exited ${code}`));
     });
   });
+}
+
+function signalProcessGroup(pid: number | undefined, signal: NodeJS.Signals, fallback: () => void): void {
+  if (!pid) return fallback();
+  try {
+    process.kill(-pid, signal);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ESRCH") fallback();
+  }
+}
+
+function isProcessGroupAlive(pid: number | undefined): boolean {
+  if (!pid) return false;
+  try {
+    process.kill(-pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function isKeepAliveJob(job: SpecialistJob): boolean {

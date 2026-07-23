@@ -8,7 +8,7 @@ import { createExploreAgentopsRouter } from "../../../src/server/routes/explore-
 import { createExploreSqlRouter, isLocalDebugRequest, toUpstreamUrl } from "../../../src/server/routes/explore-sql.ts";
 import { createSpecialistsConfigRouter } from "../../../src/server/routes/specialists-config.ts";
 import { createSpecialistsControlRouter } from "../../../src/server/routes/specialists-control.ts";
-import { createSpecialistsRouter, MAX_REPO_SLUG_FILTERS } from "../../../src/server/routes/specialists.ts";
+import { createSpecialistsRouter, isSpecialistResultRequestAllowed, MAX_REPO_SLUG_FILTERS } from "../../../src/server/routes/specialists.ts";
 import type { SpecialistJob } from "../../../src/types/specialists.ts";
 
 describe("Phase 3 Console route ownership slice", () => {
@@ -68,6 +68,37 @@ describe("Phase 3 Console route ownership slice", () => {
     expect(writeControlMessage).toHaveBeenCalledWith("steer", "job-1", "continue", undefined);
   });
 
+  it("rejects forged fetch metadata for protected specialist payloads", () => {
+    expect(isSpecialistResultRequestAllowed(new Request("http://localhost/api/specialists/jobs/job-1/result", { headers: { "sec-fetch-site": "same-origin" } }))).toBe(false);
+    expect(isSpecialistResultRequestAllowed(new Request("http://localhost/api/specialists/jobs/job-1/result", { headers: { origin: "http://localhost" } }))).toBe(false);
+    expect(isSpecialistResultRequestAllowed(new Request("http://localhost/api/specialists/jobs/job-1/result", {
+      headers: { "x-gitboard-shell-token": "secret" },
+    }), { GITBOARD_SHELL_PROVIDER_ADMIN_TOKEN: "secret" })).toBe(false);
+    expect(isSpecialistResultRequestAllowed(new Request("http://localhost/api/specialists/jobs/job-1/result", {
+      headers: { "x-gitboard-shell-token": "secret", "x-xtrm-peer-address": "127.0.0.1" },
+    }), { GITBOARD_SHELL_PROVIDER_ADMIN_TOKEN: "secret" })).toBe(true);
+  });
+
+  it("revalidates the persisted specialist job id before invoking a control channel", async () => {
+    process.env.CONSOLE_WRITE_ADMIN_TOKEN = "secret";
+    const writeControlMessage = vi.fn().mockResolvedValue(undefined);
+    const malicious = { ...specialistJob("running"), jobId: "../../outside" };
+    const app = new Hono().route("/api/console/specialists", createSpecialistsControlRouter(null, {
+      writeControlMessage,
+      readJob: () => malicious,
+      env: { GITBOARD_SPECIALISTS_BIN: "sp" },
+    }));
+
+    const response = await app.request("http://localhost/api/console/specialists/jobs/bead-1/steer", {
+      method: "POST",
+      headers: { host: "localhost", "x-console-write-token": "secret" },
+      body: JSON.stringify({ message: "continue" }),
+    });
+
+    expect(response.status).toBe(500);
+    expect(writeControlMessage).not.toHaveBeenCalled();
+  });
+
   it("filters Explore AgentOps and degrades without a database", async () => {
     const db = new Database(":memory:", { create: true });
     db.exec("CREATE TABLE specialist_jobs (repo_slug TEXT, job_id TEXT, bead_id TEXT, specialist TEXT, status TEXT, model TEXT, turns INTEGER, tools INTEGER, token_input INTEGER, token_output INTEGER, token_cache_read INTEGER, token_cache_creation INTEGER, token_reasoning INTEGER, token_tool INTEGER, created_at TEXT, updated_at_ms INTEGER)");
@@ -85,13 +116,23 @@ describe("Phase 3 Console route ownership slice", () => {
 
   it("keeps the Datasette proxy loopback-only and rewrites safe responses", async () => {
     expect(toUpstreamUrl("http://localhost/explore/sql/foo?x=1", new URL("http://datasette.test/" )).toString()).toBe("http://datasette.test/foo?x=1");
-    expect(isLocalDebugRequest(new Request("http://127.0.0.1/explore/sql"))).toBe(true);
-    const fetchImpl = vi.fn(async () => new Response("ok", { headers: { location: "http://datasette.test/metadata", "set-cookie": "secret=1" } }));
+    expect(toUpstreamUrl("http://localhost/explore/sql//169.254.169.254/latest/meta-data", new URL("http://datasette.test/")).toString()).toBe("http://datasette.test/169.254.169.254/latest/meta-data");
+    expect(isLocalDebugRequest(new Request("http://127.0.0.1/explore/sql", { headers: { "x-xtrm-peer-address": "127.0.0.1" } }))).toBe(true);
+    expect(isLocalDebugRequest(new Request("http://127.0.0.1/explore/sql"))).toBe(false);
+    let forwardedHeaders = new Headers();
+    const fetchImpl = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      forwardedHeaders = new Headers(init?.headers);
+      return new Response("ok", { headers: { location: "http://datasette.test/metadata", "set-cookie": "secret=1" } });
+    });
     const app = new Hono().route("/explore/sql", createExploreSqlRouter({ datasetteUrl: "http://datasette.test", fetchImpl: fetchImpl as unknown as typeof fetch }));
-    const response = await app.request("http://localhost/explore/sql/metadata", { headers: { host: "localhost" } });
+    const response = await app.request("http://localhost/explore/sql/metadata", { headers: { host: "localhost", "x-forwarded-host": "attacker.example", "x-xtrm-peer-address": "127.0.0.1", accept: "text/html", cookie: "secret=1" } });
     expect(response.status).toBe(200);
     expect(response.headers.get("content-security-policy")).toBe("frame-ancestors 'self'");
     expect(response.headers.has("set-cookie")).toBe(false);
+    expect(forwardedHeaders.get("accept")).toBe("text/html");
+    expect(forwardedHeaders.has("host")).toBe(false);
+    expect(forwardedHeaders.has("x-forwarded-host")).toBe(false);
+    expect(forwardedHeaders.has("cookie")).toBe(false);
   });
 
   it("persists config mutations with the configured write gate", async () => {

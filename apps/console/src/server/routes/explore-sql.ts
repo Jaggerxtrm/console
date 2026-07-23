@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { Hono, type Context } from "hono";
 import { makeLogEntry, type LogEntry } from "../../../../../packages/core/src/runtime/index.ts";
+import { isLoopbackAddress, isTrustedLocalhostRequest, TRUSTED_PEER_ADDRESS_HEADER } from "../../../../../packages/core/src/runtime/console-write-policy.ts";
 
 export interface ExploreSqlProxyOptions {
   datasetteUrl?: string;
@@ -27,9 +28,7 @@ export function createExploreSqlRouter(options: ExploreSqlProxyOptions = {}): Ho
     let upstreamStatus = 0;
 
     try {
-      const headers = new Headers(c.req.raw.headers);
-      headers.delete("authorization");
-      headers.delete("cookie");
+      const headers = forwardedRequestHeaders(c.req.raw.headers);
 
       const init: RequestInit = {
         method: c.req.method,
@@ -69,10 +68,20 @@ export function createExploreSqlRouter(options: ExploreSqlProxyOptions = {}): Ho
 export function toUpstreamUrl(requestUrl: string, upstreamBase: URL): URL {
   const request = new URL(requestUrl);
   const suffix = request.pathname.startsWith(PREFIX) ? request.pathname.slice(PREFIX.length) : request.pathname;
-  const path = suffix === "" ? "/" : suffix;
-  const upstream = new URL(path, upstreamBase);
+  const relativePath = suffix.replace(/^\/+/, "");
+  const upstream = new URL(upstreamBase);
+  upstream.pathname = `${upstreamBase.pathname}${relativePath}`;
   upstream.search = request.search;
   return upstream;
+}
+
+function forwardedRequestHeaders(headers: Headers): Headers {
+  const forwarded = new Headers();
+  for (const name of ["accept", "accept-encoding", "accept-language", "content-type", "if-modified-since", "if-none-match", "range", "user-agent"]) {
+    const value = headers.get(name);
+    if (value !== null) forwarded.set(name, value);
+  }
+  return forwarded;
 }
 
 function sanitizeResponseHeaders(headers: Headers, upstreamBase: URL): Headers {
@@ -108,16 +117,10 @@ function shouldForwardBody(method: string): boolean {
 }
 
 export function isLocalDebugRequest(request: Request): boolean {
-  const forwardedHost = request.headers.get("x-forwarded-host");
-  if (forwardedHost && !isLocalHost(forwardedHost)) return false;
-  return isLocalHost(request.headers.get("host") ?? new URL(request.url).host);
-}
-
-function isLocalHost(value: string): boolean {
-  const host = value.trim().toLowerCase();
-  if (!host) return false;
-  const withoutPort = host.startsWith("[") ? host.slice(1, host.indexOf("]")) : host.split(":")[0] ?? "";
-  return ["localhost", "127.0.0.1", "::1", "0.0.0.0"].includes(withoutPort);
+  const peerAddress = request.headers.get(TRUSTED_PEER_ADDRESS_HEADER);
+  return Boolean(peerAddress
+    && isLoopbackAddress(peerAddress)
+    && isTrustedLocalhostRequest(request.url, request.headers.get("host") ?? new URL(request.url).host, peerAddress));
 }
 
 function logProxy(log: (entry: LogEntry) => void, upstreamStatus: number, started: number, path: string, error?: unknown): void {

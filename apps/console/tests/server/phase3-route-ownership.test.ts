@@ -29,6 +29,6 @@ describe("Phase 3 Console route ownership", () => {
     });
 
     expect((await disabled.request("http://localhost/explore/sql/")).status).toBe(404);
-    expect((await enabled.request("http://localhost/explore/sql/")).status).toBe(200);
+    expect((await enabled.request("http://localhost/explore/sql/", { headers: { "x-xtrm-peer-address": "127.0.0.1" } })).status).toBe(200);
   });
 });

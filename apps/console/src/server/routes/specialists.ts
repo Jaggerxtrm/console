@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { spawn } from "node:child_process";
 import { makeLogEntry, type LogEntry } from "../../../../../packages/core/src/runtime/index.ts";
 import { isVerifiedShellAdminRequest } from "../../../../../packages/core/src/terminal/policy.ts";
+import { isLoopbackAddress, isTrustedLocalhostRequest, TRUSTED_PEER_ADDRESS_HEADER } from "../../../../../packages/core/src/runtime/console-write-policy.ts";
 import { createAttachPool, createObservabilityDao, get as getEpoch, listRepos } from "../../../../../packages/core/src/observability/index.ts";
 import type { RepoEntry, AttachPoolLike, SpecialistChain, SpecialistJob } from "../../../../../packages/core/src/observability/index.ts";
 import { makeSourceHealth } from "../../../../../packages/core/src/state/source-health.ts";
@@ -132,7 +133,7 @@ export function createSpecialistsRouter(
   });
 
   router.get("/jobs/:job_id/result", async (c) => {
-    if (!isSpecialistResultRequestAllowed(c.req.raw.headers)) return c.json({ error: "forbidden" }, 403);
+    if (!isSpecialistResultRequestAllowed(c.req.raw)) return c.json({ error: "forbidden" }, 403);
     const jobId = c.req.param("job_id");
     const db = xtrmDatabase;
     if (!db) return c.json({ error: "result unavailable" }, 404);
@@ -142,7 +143,7 @@ export function createSpecialistsRouter(
   });
 
   router.get("/jobs/:job_id/feed-events", async (c) => {
-    if (!isSpecialistResultRequestAllowed(c.req.raw.headers)) return c.json({ error: "forbidden" }, 403);
+    if (!isSpecialistResultRequestAllowed(c.req.raw)) return c.json({ error: "forbidden" }, 403);
     const jobId = c.req.param("job_id");
     const db = xtrmDatabase;
     if (!db) return c.json({ error: "feed events unavailable" }, 404);
@@ -153,7 +154,7 @@ export function createSpecialistsRouter(
   });
 
   router.get("/jobs/:job_id/feed", async (c) => {
-    if (!isSpecialistResultRequestAllowed(c.req.raw.headers)) return c.json({ error: "forbidden" }, 403);
+    if (!isSpecialistResultRequestAllowed(c.req.raw)) return c.json({ error: "forbidden" }, 403);
     const jobId = c.req.param("job_id");
     const current = resolve();
     const job = findJobById(current.dao, jobId);
@@ -459,13 +460,15 @@ function emptySpecialistsDao(): SpecialistsDao {
   return { jobsByBead: () => [], inFlightJobs: () => [], recentJobs: () => [], chainById: () => [] };
 }
 
-export function isSpecialistResultRequestAllowed(headers: Headers): boolean {
-  return isVerifiedShellAdminRequest(headers) || isDashboardReadRequest(headers);
-}
-
-function isDashboardReadRequest(headers: Headers): boolean {
-  const fetchSite = headers.get("sec-fetch-site");
-  return fetchSite === "same-origin" || fetchSite === "same-site";
+export function isSpecialistResultRequestAllowed(request: Request, env: NodeJS.ProcessEnv = process.env): boolean {
+  const peerAddress = request.headers.get(TRUSTED_PEER_ADDRESS_HEADER);
+  if (peerAddress
+    && isLoopbackAddress(peerAddress)
+    && isTrustedLocalhostRequest(request.url, request.headers.get("host") ?? new URL(request.url).host, peerAddress)
+    && isVerifiedShellAdminRequest(request.headers, env)) {
+    return true;
+  }
+  return false;
 }
 
 function findJobById(dao: SpecialistsDao, jobId: string): SpecialistJob | undefined {

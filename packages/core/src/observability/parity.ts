@@ -1,4 +1,5 @@
 import { clearInterval, setInterval } from "node:timers";
+import { createHash } from "node:crypto";
 import { Database, type SQLQueryBindings } from "bun:sqlite";
 import { createAttachPool } from "./attach-pool.ts";
 import { createObservabilityDao } from "./dao.ts";
@@ -97,14 +98,15 @@ export function createObservabilityParityHarness(
     };
     latestSummary = summary;
 
+    const logDiffs = summary.diffs.map(parityDiffForLog);
     emitLog(makeLogEntry("system", "parity.observability", diff_count === 0 ? "info" : "warn", undefined, {
       severity: diff_count === 0 ? "info" : "warn",
       diff_count,
       parity_ok_count: parityOkCount,
       checks,
-      diffs: summary.diffs,
+      diffs: logDiffs,
     }));
-    for (const diff of summary.diffs) emitLog(makeLogEntry("system", "parity.observability", diff.severity, undefined, diff));
+    for (const diff of logDiffs) emitLog(makeLogEntry("system", "parity.observability", diff.severity, undefined, diff));
     return summary;
   }
 
@@ -129,6 +131,32 @@ export function createObservabilityParityHarness(
     getLatestSummary: () => latestSummary,
     getParityOkCount: () => parityOkCount,
   };
+}
+
+function parityDiffForLog(diff: ParityDiff): ParityDiff {
+  return {
+    ...diff,
+    live: summarizeParityValue(diff.live),
+    shadow: summarizeParityValue(diff.shadow),
+  };
+}
+
+function summarizeParityValue(value: unknown): { type: string; length: number; sha256: string } {
+  const serialized = stableParityValue(value);
+  return {
+    type: value === null ? "null" : Array.isArray(value) ? "array" : typeof value,
+    length: Buffer.byteLength(serialized),
+    sha256: createHash("sha256").update(serialized).digest("hex").slice(0, 16),
+  };
+}
+
+function stableParityValue(value: unknown): string {
+  if (value === undefined) return "undefined";
+  try {
+    return JSON.stringify(value) ?? String(value);
+  } catch {
+    return String(value);
+  }
 }
 
 function createShadowDao(db: Database) {
