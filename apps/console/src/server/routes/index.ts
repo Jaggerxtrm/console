@@ -144,7 +144,7 @@ export function createConsoleApiRouter(options: ConsoleApiRouteOptions): Hono {
   app.route("/api/internal", createInternalDoltHealthRouter());
   app.route("/api/internal", createInternalLogsRouter(options.logger));
   app.route("/api/internal", createInternalSubstrateRouter(options.db));
-  app.route("/api/internal", createInternalVerifyRouter({ emit: options.logger.emit }));
+  app.route("/api/internal", createInternalVerifyRouter({ emit: options.logger.emit, env: options.env }));
   app.route("/api/internal", createInternalParityRouter(() => options.observabilityParityHarness ?? null));
   app.get("/api/internal/parity/beads", (c) => {
     if (!isTrustedLocalhostRequest(c.req.url, c.req.header("host") ?? "", c.req.header(TRUSTED_PEER_ADDRESS_HEADER))) return c.json({ error: "forbidden" }, 403);
