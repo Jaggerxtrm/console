@@ -6,6 +6,7 @@ import { createXtrmDatabase } from "../../../src/core/xtrm-store.ts";
 import { getCurrentRegistry, startServer } from "../../../src/api/server.ts";
 
 type ServerOptions = {
+  fetch: (request: Request, server: { requestIP(request: Request): { address: string } | null; upgrade(request: Request, options?: unknown): boolean }) => Response | undefined | Promise<Response | undefined>;
   websocket: {
     backpressureLimit: number;
     closeOnBackpressureLimit: boolean;
@@ -27,13 +28,13 @@ afterEach(() => {
 });
 
 describe("Gitboard realtime Bun boundary", () => {
-  it("configures bounded Bun queues and forwards backpressure close code", () => {
+  it("configures bounded Bun queues and forwards backpressure close code", async () => {
     const root = mkdtempSync(join(tmpdir(), "gitboard-ws-boundary-"));
     tempDirs.push(root);
     const db = createXtrmDatabase(join(root, "xtrm.sqlite"));
     databases.push(db);
     let options: ServerOptions | undefined;
-    const fakeServer = { upgrade: vi.fn(() => true) };
+    const fakeServer = { upgrade: vi.fn(() => true), requestIP: vi.fn(() => ({ address: "203.0.113.20" })) };
     const serve = vi.fn((next: ServerOptions) => {
       options = next;
       return fakeServer;
@@ -45,6 +46,18 @@ describe("Gitboard realtime Bun boundary", () => {
     expect(serve).toHaveBeenCalledOnce();
     expect(options?.websocket.backpressureLimit).toBe(1024 * 1024);
     expect(options?.websocket.closeOnBackpressureLimit).toBe(true);
+
+    const spoofed = options?.fetch(new Request("http://localhost/api/console/ws", {
+      headers: { host: "localhost", origin: "http://localhost", upgrade: "websocket" },
+    }), fakeServer);
+    expect(spoofed).toBeInstanceOf(Response);
+    expect((spoofed as Response).status).toBe(403);
+
+    const hostilePrefix = await options?.fetch(new Request("http://localhost.attacker.tld/api/internal/parity/beads", {
+      headers: { host: "localhost.attacker.tld" },
+    }), fakeServer);
+    expect(hostilePrefix).toBeInstanceOf(Response);
+    expect(hostilePrefix?.status).toBe(403);
 
     const ws = {
       data: { path: "/api/console/ws" },

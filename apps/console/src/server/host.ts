@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { TRUSTED_PEER_ADDRESS_HEADER } from "../../../../packages/core/src/runtime/console-write-policy.ts";
 import { fileURLToPath } from "node:url";
 import { createRuntimeHostDescriptor, type RuntimeHostDescriptor } from "../../../../packages/core/src/runtime/host.ts";
 import { type ConsoleDatabaseBootstrap } from "./database.ts";
@@ -166,7 +167,7 @@ export function createConsoleHost(options: ConsoleHostOptions = {}): ConsoleHost
           hostname: options.hostname ?? "127.0.0.1",
           port: options.port ?? 0,
           idleTimeout: 30,
-          fetch: (request) => app.fetch(request),
+          fetch: (request, bunServer) => app.fetch(withTrustedPeerAddress(request, bunServer.requestIP(request)?.address)),
         });
       } catch (error) {
         await rollbackBackground();
@@ -202,4 +203,11 @@ export function createConsoleHost(options: ConsoleHostOptions = {}): ConsoleHost
       };
     },
   };
+}
+
+function withTrustedPeerAddress(request: Request, peerAddress?: string): Request {
+  const headers = new Headers(request.headers);
+  headers.delete(TRUSTED_PEER_ADDRESS_HEADER);
+  if (peerAddress) headers.set(TRUSTED_PEER_ADDRESS_HEADER, peerAddress);
+  return new Request(request, { headers });
 }

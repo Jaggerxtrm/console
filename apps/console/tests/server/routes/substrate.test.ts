@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { mkdir, mkdtemp, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
-import { createSubstrateRouter } from "../../../src/api/routes/substrate.ts";
-import { createXtrmDatabase } from "../../../src/core/xtrm-store.ts";
+import { createSubstrateRouter } from "../../../src/server/routes/substrate.ts";
+import { createXtrmDatabase } from "../../../../../packages/core/src/state/database.ts";
 import { readSubstrateClosedIssues, readSubstrateRuntimeGraph } from "../../../../../packages/core/src/state/index.ts";
 
 describe("substrate projects", () => {

@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Hono } from "hono";
-import { createGraphDao } from "../../../src/core/graph-dao.ts";
-import { createGraphRouter } from "../../../src/api/routes/graph.ts";
-import { createXtrmDatabase } from "../../../src/core/xtrm-store.ts";
+import { createGraphRouter, createXtrmGraphRoute } from "../../../src/server/routes/graph.ts";
+import { createXtrmDatabase } from "../../../../../packages/core/src/state/database.ts";
 import { readXtrmGraphSnapshot } from "../../../../../packages/core/src/state/index.ts";
 
 describe("graph route xtrm source", () => {
@@ -14,7 +13,7 @@ describe("graph route xtrm source", () => {
     db.query("INSERT INTO materialization_state (source_key, last_success_at, last_status, last_error) VALUES ('beads:repo-a', CURRENT_TIMESTAMP, 'error', 'source offline')").run();
 
     const app = new Hono();
-    app.route("/api/console/graph", createGraphRouter(createGraphDao({ xtrmDb: db, triggerMaterialization: (projectId) => triggered.push(projectId) })));
+    app.route("/api/console/graph", createGraphRouter(createXtrmGraphRoute(db, (projectId) => triggered.push(projectId))));
 
     const response = await app.fetch(new Request("http://localhost/api/console/graph?project=repo-a&refresh=true"));
     const json = await response.json() as {
@@ -62,7 +61,7 @@ describe("graph route xtrm source", () => {
     const db = createXtrmDatabase(":memory:");
     const triggered: Array<string | null | undefined> = [];
     const app = new Hono();
-    app.route("/api/console/graph", createGraphRouter(createGraphDao({ xtrmDb: db, triggerMaterialization: (projectId) => triggered.push(projectId) })));
+    app.route("/api/console/graph", createGraphRouter(createXtrmGraphRoute(db, (projectId) => triggered.push(projectId))));
 
     try {
       const forbidden = await app.fetch(new Request("http://localhost/api/console/graph/invalidate", {
@@ -111,6 +110,71 @@ describe("graph route xtrm source", () => {
       else process.env.CONSOLE_WRITE_ADMIN_TOKEN = originalPrimaryToken;
       if (originalLegacyToken === undefined) delete process.env.GITBOARD_SOURCES_ADMIN_TOKEN;
       else process.env.GITBOARD_SOURCES_ADMIN_TOKEN = originalLegacyToken;
+      db.close();
+    }
+  });
+
+  it("keeps invalidate cooldown state isolated per router instance", async () => {
+    const originalToken = process.env.CONSOLE_WRITE_ADMIN_TOKEN;
+    process.env.CONSOLE_WRITE_ADMIN_TOKEN = "primary-secret";
+    const db = createXtrmDatabase(":memory:");
+    const route = createXtrmGraphRoute(db, () => {});
+    const firstRouter = createGraphRouter(route);
+    const secondRouter = createGraphRouter(route);
+    const request = () => new Request("http://localhost/invalidate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", host: "localhost", "x-console-write-token": "primary-secret" },
+      body: JSON.stringify({ project_id: "repo-a" }),
+    });
+
+    try {
+      expect((await firstRouter.fetch(request())).status).toBe(200);
+      expect((await firstRouter.fetch(request())).status).toBe(429);
+      expect((await secondRouter.fetch(request())).status).toBe(200);
+    } finally {
+      if (originalToken === undefined) delete process.env.CONSOLE_WRITE_ADMIN_TOKEN;
+      else process.env.CONSOLE_WRITE_ADMIN_TOKEN = originalToken;
+      db.close();
+    }
+  });
+
+  it("returns unavailable when no materializer invalidator is wired", async () => {
+    const originalToken = process.env.CONSOLE_WRITE_ADMIN_TOKEN;
+    process.env.CONSOLE_WRITE_ADMIN_TOKEN = "primary-secret";
+    const db = createXtrmDatabase(":memory:");
+    const app = createGraphRouter(createXtrmGraphRoute(db));
+    try {
+      const response = await app.fetch(new Request("http://localhost/invalidate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", host: "localhost", "x-console-write-token": "primary-secret" },
+        body: JSON.stringify({ project_id: "repo-a" }),
+      }));
+      expect(response.status).toBe(503);
+      expect(await response.json()).toEqual({ error: "graph invalidation unavailable" });
+    } finally {
+      if (originalToken === undefined) delete process.env.CONSOLE_WRITE_ADMIN_TOKEN;
+      else process.env.CONSOLE_WRITE_ADMIN_TOKEN = originalToken;
+      db.close();
+    }
+  });
+
+  it("rejects invalid invalidate project keys", async () => {
+    const originalToken = process.env.CONSOLE_WRITE_ADMIN_TOKEN;
+    process.env.CONSOLE_WRITE_ADMIN_TOKEN = "primary-secret";
+    const db = createXtrmDatabase(":memory:");
+    const app = createGraphRouter(createXtrmGraphRoute(db, () => {}));
+    try {
+      for (const projectId of ["-repo", "repo/a", "repo a", "x".repeat(257), { nested: true }]) {
+        const response = await app.fetch(new Request("http://localhost/invalidate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", host: "localhost", "x-console-write-token": "primary-secret" },
+          body: JSON.stringify({ project_id: projectId }),
+        }));
+        expect(response.status, JSON.stringify(projectId)).toBe(400);
+      }
+    } finally {
+      if (originalToken === undefined) delete process.env.CONSOLE_WRITE_ADMIN_TOKEN;
+      else process.env.CONSOLE_WRITE_ADMIN_TOKEN = originalToken;
       db.close();
     }
   });

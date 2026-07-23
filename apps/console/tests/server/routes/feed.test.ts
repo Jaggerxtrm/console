@@ -3,8 +3,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readFeedPage } from "../../../../../packages/core/src/state/index.ts";
-import { createFeedRouter } from "../../../src/api/routes/feed.ts";
-import { createXtrmDatabase } from "../../../src/core/xtrm-store.ts";
+import { createFeedRouter } from "../../../src/server/routes/feed.ts";
+import { createXtrmDatabase } from "../../../../../packages/core/src/state/database.ts";
 
 describe("GET /api/feed", () => {
   let tmpDir: string;

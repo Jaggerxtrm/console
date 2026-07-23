@@ -130,4 +130,33 @@ describe("runtime verifier", () => {
       await rm(dir, { recursive: true, force: true });
     }
   });
+
+  it("enforces file, line, byte, and per-line ceilings", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "runtime-verifier-limits-"));
+    const entry = (second: number) => JSON.stringify({
+      ts: `2026-05-24T00:00:0${second}.000Z`,
+      component: "api",
+      event: "request",
+      data: { duration_ms: second },
+    });
+    await writeFile(join(dir, "2026-05-24.jsonl"), `${"x".repeat(5_000)}\n${entry(1)}\n${entry(2)}\n${entry(3)}\n`);
+    await writeFile(join(dir, "2026-05-25.jsonl"), `${entry(4)}\n`);
+    const metrics: VerifierMetrics[] = [];
+
+    try {
+      const result = await new Verifier({
+        dir,
+        maxFiles: 1,
+        maxLines: 3,
+        maxBytes: 32 * 1024,
+        maxLineBytes: 256,
+        onMetrics: (value) => metrics.push(value),
+      }).verify("2026-05-24T00:00:00.000Z", "2026-05-25T00:01:00.000Z");
+
+      expect(result.by_event["api.request"].count).toBe(2);
+      expect(metrics[0]).toMatchObject({ files_opened: 1, lines_scanned: 3, malformed_lines: 1 });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
 });

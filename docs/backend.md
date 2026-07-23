@@ -342,7 +342,7 @@ Guard fixtures:
 ```text
 apps/gitboard/tests/fixtures/api-feed-rollup-contract.json
 apps/gitboard/tests/api/feed-rollup-contract.test.ts
-apps/gitboard/tests/api/routes/graph.xtrm.test.ts
+apps/console/tests/server/routes/graph.xtrm.test.ts
 ```
 
 ## WebSocket Channels

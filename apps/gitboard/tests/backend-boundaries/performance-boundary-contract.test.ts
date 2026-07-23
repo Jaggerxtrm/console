@@ -7,7 +7,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../../../");
 
 const requiredBoundaryCases = [
   {
-    file: "apps/gitboard/tests/api/routes/substrate.test.ts",
+    file: "apps/console/tests/server/routes/substrate.test.ts",
     titles: [
       "orders closed issues by most recent close timestamp before applying the limit",
     ],

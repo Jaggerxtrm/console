@@ -11,48 +11,32 @@
 // Opaque issue IDs, bead_ids, and chain_ids are preserved verbatim.
 
 import type { Database } from "bun:sqlite";
+import { basename, dirname } from "node:path";
 import { makeSourceHealth, type SourceHealth } from "../source-health.ts";
+import type {
+  GraphEdge,
+  GraphEdgeType,
+  GraphFreshness,
+  GraphNode,
+  GraphNodeStatus,
+  GraphNodeType,
+  GraphResponse,
+  GraphSpecialist,
+  GraphSpecialistStatus,
+} from "../../types/graph.ts";
 
-export type GraphNodeType = "task" | "bug" | "feature" | "epic" | "chore" | "decision" | "molecule";
-export type GraphNodeStatus = "open" | "in_progress" | "blocked" | "closed" | "deferred";
-export type GraphEdgeType = "blocks" | "tracks" | "related" | "parent-child" | "discovered-from" | "validates" | "caused-by" | "until" | "supersedes";
-export type GraphSpecialistStatus = "starting" | "running" | "waiting" | "done" | "error" | "cancelled";
-
-export interface GraphNode {
-  id: string;
-  title: string;
-  type: GraphNodeType;
-  priority: 0 | 1 | 2 | 3 | 4;
-  status: GraphNodeStatus;
-  assignee: string | null;
-  closed_at: string | null;
-  superseded_by: string | null;
-}
-
-export interface GraphEdge {
-  from: string;
-  to: string;
-  type: GraphEdgeType;
-}
-
-export interface GraphSpecialist {
-  bead_id: string;
-  job_id: string;
-  role: string;
-  status: GraphSpecialistStatus;
-  updated_at: string;
-}
-
-export interface GraphResponse {
-  project_id: string;
-  repo_slug: string;
-  generated_at: string;
-  nodes: GraphNode[];
-  edges: GraphEdge[];
-  specialists: GraphSpecialist[];
-}
-
-export type GraphFreshness = "fresh" | "stale" | "degraded";
+export type {
+  GraphEdge,
+  GraphEdgeType,
+  GraphFreshness,
+  GraphNode,
+  GraphNodeStatus,
+  GraphNodeType,
+  GraphResponse,
+  GraphSpecialist,
+  GraphSpecialistStatus,
+  SpecialistStatus,
+} from "../../types/graph.ts";
 
 export interface GraphSnapshotResult {
   graph: GraphResponse;
@@ -68,6 +52,7 @@ export interface XtrmGraphSource {
   sourceKey: string;
   projectId: string;
   path: string;
+  projectName: string;
 }
 
 export function resolveXtrmGraphSource(db: Database, projectId: string | null | undefined): XtrmGraphSource | null {
@@ -86,17 +71,19 @@ export function resolveXtrmGraphSource(db: Database, projectId: string | null | 
     row = db.query("SELECT source_key, path FROM sources WHERE kind = 'beads' AND status IN ('active', 'missing') ORDER BY source_key ASC LIMIT 1").get() as { source_key: string; path: string } | undefined;
   }
   if (!row) return null;
-  return { sourceKey: row.source_key, projectId: row.source_key.replace(/^beads:/, ""), path: row.path };
+  return { sourceKey: row.source_key, projectId: row.source_key.replace(/^beads:/, ""), path: row.path, projectName: projectNameFromBeadsPath(row.path) };
 }
 
 export function readXtrmGraphSnapshot(db: Database, projectId: string | null | undefined, includeClosed: boolean): GraphSnapshotResult {
   const source = resolveXtrmGraphSource(db, projectId);
   if (!source) {
+    const project = projectFallbackNote(projectId);
     return {
-      graph: emptyGraph(projectId ?? ""),
+      graph: emptyGraph(projectId ?? "", project),
       freshness: "degraded",
       sourceHealth: makeSourceHealth("graph", "degraded", {
         message: projectId ? `Graph project "${projectId}" was not found.` : "Graph project_id is missing; select a beads project.",
+        metadata: { project },
       }),
     };
   }
@@ -314,8 +301,12 @@ function clampPriority(value: number): 0 | 1 | 2 | 3 | 4 {
   return 4;
 }
 
-function emptyGraph(projectId: string): GraphResponse {
-  return { project_id: projectId, repo_slug: projectId, generated_at: new Date().toISOString(), nodes: [], edges: [], specialists: [] };
+function emptyGraph(projectId: string, project?: string): GraphResponse {
+  return { project_id: projectId, repo_slug: projectId, generated_at: new Date().toISOString(), nodes: [], edges: [], specialists: [], ...(project ? { project } : {}) };
+}
+
+function projectFallbackNote(projectId: string | null | undefined): string {
+  return projectId ? `missing-project:${projectId}` : "fallback:no-selected-repo";
 }
 
 function parseJsonStringArray(value: unknown): string[] {
@@ -389,11 +380,7 @@ interface GraphSpecialistJob {
 
 function projectNameFromBeadsPath(path: string): string {
   const normalized = path.replace(/[\\/]+$/, "");
-  if (normalized.endsWith("/.beads") || normalized.endsWith("\\.beads")) {
-    const parent = normalized.replace(/[\\/.beads]+$/, "");
-    return parent.split(/[\\/]/).filter(Boolean).pop() ?? path;
-  }
-  return normalized.split(/[\\/]/).filter(Boolean).pop() ?? path;
+  return basename(normalized) === ".beads" ? basename(dirname(normalized)) : basename(normalized);
 }
 
 // Silence unused-export warning for ACTIVE_GRAPH_STATUSES — kept for parity

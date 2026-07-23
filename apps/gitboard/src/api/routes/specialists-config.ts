@@ -4,7 +4,7 @@ import { basename, dirname, join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { Hono } from "hono";
 import { emit, makeLogEntry } from "../../core/logger.ts";
-import { isAllowedConsoleWriteRequest } from "./sources-policy.ts";
+import { isAllowedConsoleWriteRequest, isLoopbackAddress, isLocalhost } from "./sources-policy.ts";
 
 const SPECIALISTS_SUBDIR = "specialists";
 const USER_CONFIG_FILENAME = "user.json";
@@ -182,7 +182,7 @@ export function createSpecialistsConfigRouter(options: SpecialistsConfigRouterOp
 function isReadAllowed(c: { req: { url: string; raw: Request } }): boolean {
   const host = c.req.raw.headers.get("host") ?? "";
   const origin = c.req.raw.headers.get("origin");
-  if (!origin) return isLocalConfigHost(c.req.url, host);
+  if (!origin) return isLocalConfigHost(c.req.url, host, c.req.raw.headers.get("x-xtrm-peer-address"));
   return isWriteAllowed(c);
 }
 
@@ -192,10 +192,12 @@ function isWriteAllowed(c: { req: { url: string; raw: Request } }): boolean {
     c.req.raw.headers.get("host") ?? "",
     c.req.raw.headers.get("origin"),
     c.req.raw.headers.get("x-console-write-token") ?? c.req.raw.headers.get("x-gitboard-sources-admin-token"),
+    process.env,
+    c.req.raw.headers.get("x-xtrm-peer-address"),
   );
 }
 
-function isLocalConfigHost(url: string, host: string): boolean {
+function isLocalConfigHost(url: string, host: string, peerAddress: string | null): boolean {
   try {
     const allowedHosts = new Set(["localhost", "127.0.0.1", "::1"]);
     const configuredHost = normalizeConfigHost(process.env.HOST);
@@ -204,6 +206,7 @@ function isLocalConfigHost(url: string, host: string): boolean {
     const requestUrl = new URL(url);
     const hostname = normalizeConfigHost(requestUrl.hostname);
     const hostName = normalizeConfigHost(new URL(host.includes("://") ? host : `http://${host}`).hostname);
+    if (peerAddress && (isLocalhost(host) || isLocalhost(requestUrl.hostname)) && !isLoopbackAddress(peerAddress)) return false;
     return Boolean(hostname && hostName && allowedHosts.has(hostname) && allowedHosts.has(hostName));
   } catch {
     return false;
