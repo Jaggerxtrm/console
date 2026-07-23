@@ -76,10 +76,11 @@ afterEach(async () => {
 async function req(path: string, method = "GET", body?: unknown): Promise<Response> {
   const { app } = createApp(db);
   const url = `http://localhost${path}`;
-  const init: RequestInit = { method };
+  const headers = new Headers({ host: "localhost", origin: "http://localhost" });
+  const init: RequestInit = { method, headers };
   if (body !== undefined) {
     init.body = JSON.stringify(body);
-    init.headers = { "Content-Type": "application/json" };
+    headers.set("Content-Type", "application/json");
   }
   return app.fetch(new Request(url, init));
 }

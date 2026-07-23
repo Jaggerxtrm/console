@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { makeLogEntry, type LogEntry } from "../../../../../packages/core/src/runtime/index.ts";
 
 export interface ExploreSqlProxyOptions {
@@ -16,7 +16,7 @@ export function createExploreSqlRouter(options: ExploreSqlProxyOptions = {}): Ho
   const fetchImpl = options.fetchImpl ?? fetch;
   const log = options.emit ?? (() => {});
 
-  app.all("*", async (c) => {
+  const proxy = async (c: Context) => {
     const started = performance.now();
     if (!isLocalDebugRequest(c.req.raw)) {
       logProxy(log, 0, started, c.req.path, new Error("non-local debug proxy request"));
@@ -58,7 +58,10 @@ export function createExploreSqlRouter(options: ExploreSqlProxyOptions = {}): Ho
       logProxy(log, upstreamStatus, started, c.req.path, error);
       return c.json({ ok: false, error: "datasette_unreachable" }, 502);
     }
-  });
+  };
+
+  app.all("/", proxy);
+  app.all("*", proxy);
 
   return app;
 }

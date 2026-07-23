@@ -13,6 +13,7 @@ export {
   MAX_REPO_SLUG_FILTER_BYTES,
   MAX_SPECIALIST_FEED_OUTPUT_BYTES,
   isSpecialistResultRequestAllowed,
+  runSpecialistFeed,
 } from "../../../../console/src/server/routes/specialists.ts";
 
 export function createSpecialistsRouter(
