@@ -9,6 +9,7 @@ import type { HostLogger } from "../log.ts";
 
 export type ConsoleWebSocketData = {
   path?: string;
+  connId?: string;
 };
 
 export interface ConsoleRealtimeOptions {

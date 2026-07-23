@@ -85,26 +85,19 @@ starts polling unless `SKIP_GITHUB_POLLER=1`.
 ## Directory and Module Map
 
 ```text
-apps/gitboard/src/index.ts                       Native Bun entrypoint
-apps/gitboard/src/api/server.ts                  Hono app composition + websocket upgrade
-apps/gitboard/src/api/routes/*.ts                HTTP API route modules
-apps/gitboard/src/api/ws/channels.ts             Channel registry + replay buffer
-apps/gitboard/src/api/ws/handler.ts              Dashboard websocket protocol
-apps/gitboard/src/api/terminal/*.ts              Terminal provider registry + bridge
-apps/gitboard/src/core/xtrm-store.ts             xtrm.sqlite schema and migrations
-apps/gitboard/src/core/migrations/*.ts           Legacy store fold migrations
-apps/gitboard/src/core/materializer/*.ts         Materializer core and adapters
-apps/gitboard/src/core/github-store.ts           GitHub DAO
-apps/gitboard/src/core/github-poller.ts          GitHub polling + realtime publication
-apps/gitboard/src/core/github-discover.ts        GitHub repo discovery
-apps/gitboard/src/core/project-scanner.ts        Beads project discovery
-apps/gitboard/src/core/dolt-client.ts            Dolt SQL client
-apps/gitboard/src/core/graph-dao.ts              Graph cache + graph builder
-apps/gitboard/src/core/logger.ts                 JSONL logs + websocket log fanout
-apps/gitboard/src/core/shell-provider-policy.ts  Shell/terminal access policy
-apps/gitboard/src/server/beads/*.ts              Beads trigger watcher
-apps/gitboard/src/server/observability/*.ts      Specialists observability registry/watcher/DAO
+apps/console/src/server/index.ts                 Canonical Bun/Hono entrypoint
+apps/console/src/server/routes/*.ts              HTTP API route modules
+apps/console/src/server/ws/*.ts                  Realtime registry, replay, and Bun boundary
+apps/console/src/server/terminal/*.ts            Terminal bridge, adapter, and PTY helper
+apps/console/src/server/runtime-lifecycle.ts      Scanner/materializer/watcher lifecycle
+apps/console/src/server/github/*.ts               GitHub poller/discovery runtime wiring
+packages/core/src/state/*.ts                     xtrm.sqlite schema and read models
+packages/core/src/materializer/*.ts              Materializer core and adapters
+packages/core/src/runtime/*.ts                   Scanner, watcher, realtime, and logging runtime
+packages/core/src/github/*.ts                    GitHub DAO, poller, and discovery
+packages/core/src/terminal/*.ts                  Terminal protocol, policy, and providers
 apps/console/src/dashboard/*.tsx                 Console frontend shell
+apps/gitboard/src/**                             Temporary rollback host pending Phase 8 deletion
 ```
 
 There is no load-bearing top-level Beadboard app in the current tree. Legacy
@@ -376,15 +369,24 @@ Routes:
 
 ```text
 GET /api/console/shell/status
-GET /api/console/terminal/providers
-WebSocket /api/console/terminal/ws/:provider
+GET /api/console/terminal/status
+POST /api/console/terminal/ticket
+WebSocket /api/console/shell/ws
+WebSocket /api/console/terminal/ws
 ```
 
-`TerminalBridge` owns terminal session lifecycle. `shell-provider-policy.ts`
-keeps the local provider disabled by default and requires loopback or configured
-admin/origin checks for non-loopback access.
+Console's `TerminalBridge` owns terminal session lifecycle. Core
+`terminal/policy.ts` keeps the local provider disabled by default. Exact-path
+WebSocket upgrades require a verified admin token and an allowed origin; a
+localhost Host header is also rejected when the peer address is not loopback.
+Browser clients first exchange the admin proof at the same-origin ticket route.
+The route returns no ticket in its body and instead sets a 30-second, one-time,
+path-scoped `HttpOnly; SameSite=Strict` cookie. Native WebSocket clients consume
+that cookie on upgrade; CLI and smoke clients may continue to provide the admin
+header directly. Ticket replay and hostile-origin consumption are denied.
 
-Security boundary: policy and Tailscale trust, not container isolation.
+Security boundary: explicit policy, token, origin, peer, cwd, shell, rate, and
+TTL controls, not container isolation or implicit Tailscale trust.
 
 Provider ownership and future scope:
 

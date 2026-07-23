@@ -8,6 +8,8 @@ import { createGithubRuntime } from "./github/runtime.ts";
 import { createConsoleRuntime } from "./runtime-lifecycle.ts";
 import { CONSOLE_API_ROUTE_PREFIXES, createConsoleApiRouter } from "./routes/index.ts";
 import { createConsoleRealtime } from "./ws/realtime.ts";
+import { createConsoleTerminal } from "./terminal/runtime.ts";
+import { createConsoleWebSocketBoundary } from "./ws/boundary.ts";
 
 const logger = createHostLogger();
 const dataDir = resolveDataDir();
@@ -18,6 +20,8 @@ database.ensureDataDir();
 const writerLease = acquireRuntimeWriterLease(database.storeDbPath, { owner: CONSOLE_HOST_OWNER });
 const databaseHandle = database.open();
 const realtime = createConsoleRealtime({ logger });
+const terminal = createConsoleTerminal({ logger });
+const websocketBoundary = createConsoleWebSocketBoundary({ realtime, terminal });
 const githubRuntime = createGithubRuntime({ db: databaseHandle.db, logger, publisher: realtime.registry });
 const consoleRuntime = createConsoleRuntime({ db: databaseHandle.db, logger, publisher: realtime.registry });
 const apiRouter = createConsoleApiRouter({
@@ -28,6 +32,8 @@ const apiRouter = createConsoleApiRouter({
   observabilityParityHarness: consoleRuntime.observabilityParityHarness,
   beadsParityHarness: consoleRuntime.beadsParityHarness,
   datasetteDebugEnabled: process.env.EXPLORE_DATASETTE_DEBUG === "1",
+  terminalProviders: terminal.providers,
+  terminalTickets: terminal.tickets,
 });
 
 const host = createConsoleHost({
@@ -36,14 +42,14 @@ const host = createConsoleHost({
   dataDir,
   database,
   logger,
-  runtimeCapabilities: ["materializer", "source-health", "websocket"],
+  runtimeCapabilities: ["materializer", "source-health", "websocket", "terminal"],
   hooks: {
     mountRoutes: (app) => {
       app.route("/", apiRouter);
       return CONSOLE_API_ROUTE_PREFIXES;
     },
-    handleWebSocketUpgrade: realtime.handleUpgrade,
-    websocket: realtime.websocket,
+    handleWebSocketUpgrade: websocketBoundary.handleUpgrade,
+    websocket: websocketBoundary.websocket,
     startBackground: async () => {
       await consoleRuntime.start();
       await githubRuntime.start();
@@ -57,6 +63,11 @@ const host = createConsoleHost({
       }
       try {
         await consoleRuntime.stop();
+      } catch (error) {
+        errors.push(error);
+      }
+      try {
+        await terminal.stop();
       } catch (error) {
         errors.push(error);
       }

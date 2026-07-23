@@ -5,7 +5,10 @@ import { isTrustedLocalhostRequest, TRUSTED_PEER_ADDRESS_HEADER } from "../../..
 import { makeLogEntry } from "../../../../../packages/core/src/runtime/logs.ts";
 import type { BeadsParitySummary } from "../../../../../packages/core/src/runtime/beads-parity.ts";
 import { makeSourceHealth } from "../../../../../packages/core/src/state/source-health.ts";
+import { isAllowedShellWebSocketOrigin } from "../../../../../packages/core/src/terminal/policy.ts";
+import { createTerminalProviderRegistry, type TerminalProviderRegistry } from "../../../../../packages/core/src/terminal/provider-registry.ts";
 import type { HostLogger } from "../log.ts";
+import type { TerminalTicketRegistry } from "../terminal/tickets.ts";
 import { createBeadsWriteRouter } from "./beads-write.ts";
 import { createExploreAgentopsRouter } from "./explore-agentops.ts";
 import { createExploreSqlRouter, type ExploreSqlProxyOptions } from "./explore-sql.ts";
@@ -19,10 +22,12 @@ import { createInternalSubstrateRouter } from "./internal-substrate.ts";
 import { createInternalVerifyRouter } from "./internal-verify.ts";
 import { createObservabilityRouter, type ObservabilityMetricsDao } from "./observability.ts";
 import { createSourcesRouter, type SourceScanner } from "./sources.ts";
+import { createShellRouter } from "./shell.ts";
 import { createSpecialistsConfigRouter } from "./specialists-config.ts";
 import { createSpecialistsControlRouter } from "./specialists-control.ts";
 import { createSpecialistsRouter } from "./specialists.ts";
 import { createSubstrateRouter } from "./substrate.ts";
+import { createTerminalRouter } from "./terminal.ts";
 
 export interface ConsoleApiRouteOptions {
   readonly db: Database | null;
@@ -39,6 +44,9 @@ export interface ConsoleApiRouteOptions {
   readonly githubPublisherOrRegistry?: unknown;
   readonly datasetteDebugEnabled?: boolean;
   readonly exploreSqlOptions?: ExploreSqlProxyOptions;
+  readonly terminalProviders?: TerminalProviderRegistry;
+  readonly terminalTickets?: TerminalTicketRegistry;
+  readonly env?: NodeJS.ProcessEnv;
 }
 
 export const CONSOLE_PHASE2_ROUTE_PREFIXES = [
@@ -57,14 +65,24 @@ export const CONSOLE_API_ROUTE_PREFIXES = [
   "/api/console/specialists",
   "/api/console/observability",
   "/api/console/explore",
+  "/api/console/shell",
+  "/api/console/terminal",
 ] as const;
 
 export function createConsoleApiRouter(options: ConsoleApiRouteOptions): Hono {
   const app = new Hono();
   const graphDao = options.graphDao
     ?? (options.db ? createXtrmGraphRoute(options.db, options.triggerMaterialization) : unavailableGraphDao());
+  const terminalProviders = options.terminalProviders ?? createTerminalProviderRegistry(options.env ?? process.env);
 
-  app.use("*", cors());
+  app.use("*", cors({
+    origin: (origin, c) => {
+      if (!isTerminalPolicyRoute(c.req.path)) return "*";
+      return isAllowedShellWebSocketOrigin(origin || null, c.req.header("host") ?? null, options.env)
+        ? origin
+        : null;
+    },
+  }));
   app.use("*", async (c, next) => {
     const startedAt = performance.now();
     try {
@@ -107,6 +125,11 @@ export function createConsoleApiRouter(options: ConsoleApiRouteOptions): Hono {
     app.route("/api/console/observability", createObservabilityRouter(options.observabilityDao, options.db));
   }
   app.route("/api/console/explore", createExploreAgentopsRouter(options.db, { emit: options.logger.emit }));
+  app.route("/api/console/shell", createShellRouter(options.env));
+  app.route("/api/console/terminal", createTerminalRouter(terminalProviders, {
+    env: options.env,
+    tickets: options.terminalTickets,
+  }));
   if (options.datasetteDebugEnabled) {
     const datasette = createExploreSqlRouter({
       ...options.exploreSqlOptions,
@@ -132,6 +155,10 @@ export function createConsoleApiRouter(options: ConsoleApiRouteOptions): Hono {
   });
 
   return app;
+}
+
+function isTerminalPolicyRoute(path: string): boolean {
+  return path.startsWith("/api/console/shell") || path.startsWith("/api/console/terminal");
 }
 
 function unavailableGraphDao(): GraphRouteDao {
