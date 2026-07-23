@@ -88,6 +88,7 @@ export interface BeadsWatcherPorts<TProject extends BeadsWatcherProject = BeadsW
   readCommitHash(project: TProject): Promise<string | null>;
   publish: BeadsWatcherPublisher["publish"];
   emitLog: (entry: LogEntry) => void;
+  telemetryContext?: Readonly<Record<string, unknown>>;
   /** When present the watcher triggers initial and fs-change polls, not unchanged heartbeats. */
   triggerMaterializer?: (project: TProject) => void;
 }
@@ -122,10 +123,17 @@ export class BeadsWatcherRuntime<TProject extends BeadsWatcherProject = BeadsWat
     } = {},
   ) {}
 
-  start(): void { void this.loop(); }
+  start(): void {
+    this.log("watcher.start", "info", undefined, { outcome: "started" });
+    void this.loop();
+  }
 
   stop(): void {
+    if (this.stopped) return;
+    this.log("watcher.stop", "info", undefined, { outcome: "stopping" });
     this.stopped = true;
+    const watched = this.watchers.size;
+    const pending = this.debounceTimers.size;
     if (this.timer) { clearTimeout(this.timer); this.timer = null; }
     this.clearFlushTimer();
     for (const timer of this.debounceTimers.values()) clearTimeout(timer);
@@ -133,6 +141,7 @@ export class BeadsWatcherRuntime<TProject extends BeadsWatcherProject = BeadsWat
     for (const watcher of this.watchers.values()) watcher.close();
     this.watchers.clear();
     this.triggerInitialized.clear();
+    this.log("watcher.cleanup", "info", undefined, { outcome: "stopped", watched, pending });
   }
 
   isStopped(): boolean { return this.stopped; }
@@ -150,7 +159,7 @@ export class BeadsWatcherRuntime<TProject extends BeadsWatcherProject = BeadsWat
   private get maxBatch(): number { return this.timing.maxBatch ?? BEADS_WATCHER_MAX_BATCH; }
 
   private log(event: string, level: LogLevel, msg: string | undefined, data: Record<string, unknown>): void {
-    this.ports.emitLog(makeLogEntry("watcher", event, level, msg, data));
+    this.ports.emitLog(makeLogEntry("watcher", event, level, msg, { ...this.ports.telemetryContext, ...data }));
   }
 
   private async loop(): Promise<void> {
@@ -181,8 +190,14 @@ export class BeadsWatcherRuntime<TProject extends BeadsWatcherProject = BeadsWat
         this.debounceTimers.set(project.id, timer);
       });
       this.watchers.set(project.id, watcher);
+      this.log("watcher.attach", "info", undefined, { projectId: project.id, outcome: "attached" });
     } catch (error) {
-      if ((error as { code?: string }).code !== "ENOENT") console.error("[beads-change-watcher] watch failed", project.id, error);
+      const code = (error as { code?: string }).code ?? "UNKNOWN";
+      if (code === "ENOENT" || code === "ENOTDIR") {
+        this.log("watcher.skip", "debug", undefined, { projectId: project.id, outcome: "missing", code });
+      } else {
+        this.log("watcher.attach", "warn", undefined, { projectId: project.id, outcome: "error", code });
+      }
     }
   }
 

@@ -22,12 +22,15 @@ export interface MaterializerHooks {
   afterWritesBeforeCursorAdvance?: (sourceKey: string) => void;
   emitLog?: (entry: MaterializerLogEntry) => void;
   bumpObservabilityEpoch?: (repoSlug: string) => void;
+  serviceName?: string;
+  telemetryContext?: Readonly<Record<string, unknown>>;
 }
 
 export class Materializer {
   private readonly registry: AdapterRegistry = createAdapterRegistry();
   private readonly queues = new Map<string, SourceQueue>();
   private readonly scheduler = new BoundedMaterializerScheduler();
+  private stopped = false;
 
   constructor(
     private readonly db: Database,
@@ -45,13 +48,21 @@ export class Materializer {
   }
 
   trigger(sourceKey: string): void {
+    if (this.stopped) throw new Error("materializer stopped");
     const queue = this.queues.get(sourceKey);
     if (!queue) throw new Error(`unknown source: ${sourceKey}`);
+    this.emitLog("system", "materializer.trigger", "info", undefined, { source_key: sourceKey, outcome: "queued" });
     queue.enqueue(sourceKey, () => this.schedule(sourceKey));
   }
 
   getSchedulerStats(): MaterializerSchedulerStats {
     return this.scheduler.getStats();
+  }
+
+  async stop(): Promise<void> {
+    if (this.stopped) return;
+    this.stopped = true;
+    await Promise.all([...this.queues.values()].map((queue) => queue.stop()));
   }
 
   private schedule(sourceKey: string): Promise<void> {
@@ -82,9 +93,8 @@ export class Materializer {
         cursor: next.cursor,
       }, startedAt);
       this.hooks.afterWritesBeforeCursorAdvance?.(sourceKey);
-      this.db.exec("COMMIT");
-      if (sourceKey.startsWith("obs:")) this.hooks.bumpObservabilityEpoch?.(sourceKey.slice(4));
       this.markSuccess(sourceKey);
+      this.db.exec("COMMIT");
     } catch (error) {
       this.db.exec("ROLLBACK");
       await this.markFailure(sourceKey, error);
@@ -92,13 +102,14 @@ export class Materializer {
       throw error;
     }
 
+    if (sourceKey.startsWith("obs:")) this.hooks.bumpObservabilityEpoch?.(sourceKey.slice(4));
     if (next.hasMore) {
       this.queues.get(sourceKey)?.enqueue(sourceKey, () => this.schedule(sourceKey));
     }
 
     this.publishHint(sourceKey);
     const counts = this.countMaterializedIssueVariants(sourceKey);
-    this.emitLog("system", "materializer.run", "info", undefined, { source_key: sourceKey, duration_ms: Date.now() - startedAt, rows_written: next.rows.length, dependencies_written: next.dependencies?.length ?? 0, rows_with_real_priority: counts.rows_with_real_priority, rows_with_real_type: counts.rows_with_real_type, rows_with_labels: counts.rows_with_labels });
+    this.emitLog("system", "materializer.run", "info", undefined, { source_key: sourceKey, outcome: "success", duration_ms: Date.now() - startedAt, rows_written: next.rows.length, dependencies_written: next.dependencies?.length ?? 0, rows_with_real_priority: counts.rows_with_real_priority, rows_with_real_type: counts.rows_with_real_type, rows_with_labels: counts.rows_with_labels });
   }
 
   async resync(sourceKey: string): Promise<void> {
@@ -122,6 +133,7 @@ export class Materializer {
     if (!hint) return;
     this.emitLog("system", "materializer.publishHint", "info", undefined, {
       source_key: sourceKey,
+      outcome: "published",
       event: hint.event,
       channels: hint.channels,
       ws_registry_set: this.wsRegistry != null,
@@ -199,7 +211,7 @@ export class Materializer {
       event_version: 1,
       resource: {
         service_namespace: "xtrm",
-        service_name: "gitboard",
+        service_name: this.hooks.serviceName ?? "gitboard",
         service_component: "materializer",
         deployment_environment: process.env.NODE_ENV ?? "local",
         repo: this.repoSlugFor(sourceKey),
@@ -251,6 +263,12 @@ export class Materializer {
   }
 
   private emitLog(component: MaterializerLogComponent, event: string, level: MaterializerLogLevel, message?: string, data?: Record<string, unknown>): void {
-    this.hooks.emitLog?.({ component, event, level, message, data });
+    this.hooks.emitLog?.({
+      component,
+      event,
+      level,
+      message,
+      data: { ...this.hooks.telemetryContext, ...data },
+    });
   }
 }

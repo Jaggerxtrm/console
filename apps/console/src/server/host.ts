@@ -1,9 +1,9 @@
 import { Hono } from "hono";
 import { TRUSTED_PEER_ADDRESS_HEADER } from "../../../../packages/core/src/runtime/console-write-policy.ts";
 import { fileURLToPath } from "node:url";
-import { createRuntimeHostDescriptor, type RuntimeHostDescriptor } from "../../../../packages/core/src/runtime/host.ts";
+import { createRuntimeHostDescriptor, type RuntimeHostCapability, type RuntimeHostDescriptor } from "../../../../packages/core/src/runtime/host.ts";
 import { type ConsoleDatabaseBootstrap } from "./database.ts";
-import { redactHomePath, resolveDataDir, type DataDirResolution } from "./data-dir.ts";
+import { resolveDataDir, type DataDirResolution } from "./data-dir.ts";
 import { createHostLogger, type HostLogger } from "./log.ts";
 import { readStaticAsset } from "./static.ts";
 
@@ -38,6 +38,7 @@ export interface ConsoleHostOptions {
   database?: ConsoleDatabaseBootstrap;
   logger?: HostLogger;
   hooks?: ConsoleHostHooks;
+  runtimeCapabilities?: readonly RuntimeHostCapability[];
 }
 
 export interface ConsoleHostRunning {
@@ -130,14 +131,14 @@ export function createConsoleHost(options: ConsoleHostOptions = {}): ConsoleHost
     registry: null,
     materializer: null,
     mountedRoutes: ["/health", "/console", "/gitboard", ...mountedApiRoutes],
-    capabilities: ["http-api", "static-dashboard"],
+    capabilities: ["http-api", "static-dashboard", ...(options.runtimeCapabilities ?? [])],
     staticServiceParity: [],
   });
 
   logger.debug("host.configured", {
     owner: CONSOLE_HOST_OWNER,
     dataDirSource: dataDir.source,
-    consoleDistDir: redactHomePath(consoleDistDir),
+    consoleDistSource: options.consoleDistDir || process.env.CONSOLE_DIST_DIR?.trim() ? "configured" : "default",
     mountedRoutes: descriptor.mountedRoutes,
   });
 
@@ -146,7 +147,7 @@ export function createConsoleHost(options: ConsoleHostOptions = {}): ConsoleHost
       await hooks.stopBackground?.();
     } catch (error) {
       logger.warn("host.background_rollback_failed", {
-        error: error instanceof Error ? error.message : String(error),
+        error_type: error instanceof Error ? error.name : "Error",
       });
     }
   }
@@ -159,10 +160,9 @@ export function createConsoleHost(options: ConsoleHostOptions = {}): ConsoleHost
     database,
     start: async () => {
       database?.ensureDataDir();
-      await hooks.startBackground?.();
-
       let server: Bun.Server<undefined>;
       try {
+        await hooks.startBackground?.();
         server = Bun.serve({
           hostname: options.hostname ?? "127.0.0.1",
           port: options.port ?? 0,

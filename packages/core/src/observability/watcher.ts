@@ -1,6 +1,7 @@
 import { watch, statSync, type FSWatcher } from "node:fs";
 import { dirname, basename } from "node:path";
 import type { RepoEntry } from "./registry.ts";
+import { makeLogEntry, type LogEntry } from "../runtime/logs.ts";
 
 type Logger = Pick<Console, "warn" | "debug">;
 
@@ -8,6 +9,8 @@ export type ObservabilityWatcherOptions = {
   logger?: Logger;
   debounceMs?: number;
   triggerMaterializer?: (reason: string) => void;
+  emitLog?: (entry: LogEntry) => void;
+  telemetryContext?: Readonly<Record<string, unknown>>;
 };
 
 type WatchedRepo = {
@@ -23,28 +26,37 @@ export function createObservabilityWatcher(entries: readonly RepoEntry[], option
   const logger = options.logger ?? console;
   const debounceMs = options.debounceMs ?? DEFAULT_DEBOUNCE_MS;
   const triggerMaterializer = options.triggerMaterializer;
+  const emitLog = options.emitLog ?? (() => {});
+  const context = options.telemetryContext ?? {};
   const watched = new Map<string, WatchedRepo>();
   let stopped = false;
 
   function start(): void {
     if (stopped) return;
+    emit("watcher.start", "info", { outcome: "started", watcher_kind: "observability", repositories: entries.length });
     for (const entry of entries) {
       if (watched.has(entry.repoSlug)) continue;
       try {
         watchRepo(entry);
       } catch (error) {
-        logger.warn(`[observability] watch failed for ${entry.dbPath}: ${stringifyError(error)}`);
+        const code = error && typeof error === "object" && "code" in error ? String((error as { code?: unknown }).code ?? "UNKNOWN") : "UNKNOWN";
+        emit("watcher.attach", "warn", { outcome: "error", watcher_kind: "observability", repo_slug: entry.repoSlug, code });
+        logger.warn(`[observability] watch failed (${code})`);
       }
     }
   }
 
   function stop(): void {
+    if (stopped) return;
+    emit("watcher.stop", "info", { outcome: "stopping", watcher_kind: "observability" });
     stopped = true;
+    const watchedCount = watched.size;
     for (const repo of watched.values()) {
       if (repo.timer) clearTimeout(repo.timer);
       for (const watcher of repo.watchers) watcher.close();
     }
     watched.clear();
+    emit("watcher.cleanup", "info", { outcome: "stopped", watcher_kind: "observability", watched: watchedCount });
   }
 
   function watchRepo(entry: RepoEntry): void {
@@ -69,6 +81,7 @@ export function createObservabilityWatcher(entries: readonly RepoEntry[], option
       timer: null,
       lastMtimeMs: entry.mtimeMs,
     });
+    emit("watcher.attach", "info", { outcome: "attached", watcher_kind: "observability", repo_slug: entry.repoSlug });
   }
 
   function scheduleBump(entry: RepoEntry): void {
@@ -92,9 +105,12 @@ export function createObservabilityWatcher(entries: readonly RepoEntry[], option
       const observed = Math.max(mainMtime, walMtime);
       if (observed <= repo.lastMtimeMs) return;
       repo.lastMtimeMs = observed;
+      emit("watcher.trigger", "info", { outcome: "changed", watcher_kind: "observability", repo_slug: repoSlug });
       triggerMaterializer?.(`obs:${repoSlug}`);
     } catch (error) {
-      logger.debug?.(`[observability] db missing for ${repo.entry.dbPath}: ${stringifyError(error)}`);
+      const code = error && typeof error === "object" && "code" in error ? String((error as { code?: unknown }).code ?? "UNKNOWN") : "UNKNOWN";
+      emit("watcher.skip", "debug", { outcome: "missing", watcher_kind: "observability", repo_slug: repoSlug, code });
+      logger.debug?.(`[observability] db missing (${code})`);
     }
   }
 
@@ -103,8 +119,8 @@ export function createObservabilityWatcher(entries: readonly RepoEntry[], option
   }
 
   return { start, stop };
-}
 
-function stringifyError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  function emit(event: string, level: "debug" | "info" | "warn", data: Record<string, unknown>): void {
+    emitLog(makeLogEntry("watcher", event, level, undefined, { ...context, ...data }));
+  }
 }

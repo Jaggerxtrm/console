@@ -3,6 +3,7 @@ import { Hono, type Context } from "hono";
 import { cors } from "hono/cors";
 import { isTrustedLocalhostRequest, TRUSTED_PEER_ADDRESS_HEADER } from "../../../../../packages/core/src/runtime/console-write-policy.ts";
 import { makeLogEntry } from "../../../../../packages/core/src/runtime/logs.ts";
+import type { BeadsParitySummary } from "../../../../../packages/core/src/runtime/beads-parity.ts";
 import { makeSourceHealth } from "../../../../../packages/core/src/state/source-health.ts";
 import type { HostLogger } from "../log.ts";
 import { createBeadsWriteRouter } from "./beads-write.ts";
@@ -30,7 +31,10 @@ export interface ConsoleApiRouteOptions {
   readonly graphDao?: GraphRouteDao;
   readonly triggerMaterialization?: (projectId?: string | null) => void;
   readonly observabilityParityHarness?: InternalParityHarness | null;
-  readonly beadsParityHarness?: InternalParityHarness | null;
+  readonly beadsParityHarness?: {
+    getParityOkCount(): number;
+    getLatestSummary(): BeadsParitySummary | null;
+  } | null;
   readonly observabilityDao?: ObservabilityMetricsDao;
   readonly githubPublisherOrRegistry?: unknown;
   readonly datasetteDebugEnabled?: boolean;

@@ -57,7 +57,7 @@ function scanRoot(root: string): Omit<RepoEntry, "repoSlug">[] {
     const rootStat = statSync(root);
     if (!rootStat.isDirectory()) return [];
   } catch {
-    console.debug(`[observability] skip unreadable root ${root}`);
+    console.debug("[observability] skip unreadable root");
     return [];
   }
 
@@ -68,7 +68,7 @@ function scanRoot(root: string): Omit<RepoEntry, "repoSlug">[] {
       if (entry.isDirectory()) addRepoCandidate(join(root, entry.name), repos);
     }
   } catch {
-    console.debug(`[observability] skip unreadable root children ${root}`);
+    console.debug("[observability] skip unreadable root children");
   }
 
   return [...repos.values()];
