@@ -10,6 +10,7 @@ package deletion.
 | URL compatibility | Console redirect routes/tests and user-facing migration docs | `/gitboard*` intentionally returns `308` to `/console` |
 | Environment compatibility | Console configuration/runtime tests and deployment docs | Legacy variable names select the same state/config as `XTRM_*`; no legacy implementation is loaded |
 | Local state/config continuity | Compose physical volume name, legacy fold database name, and legacy config lookup | Keeps existing installations readable while Console owns the runtime |
+| Telemetry compatibility | Existing dashboard fixture labels and LogQL selectors | Preserves Grafana/alert continuity until a separate observability migration updates both producers and consumers |
 | Host-local rollback evidence | deploy-monitor artifacts and the completed retirement record | Documents the two controlled observation windows; not a runnable repo path |
 
 Disallowed everywhere: production imports, workspace manifests, build scripts,
