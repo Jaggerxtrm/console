@@ -5,7 +5,8 @@ export type RuntimeHostCapability =
   | "source-health"
   | "github-adapter"
   | "static-dashboard"
-  | "internal-logs";
+  | "internal-logs"
+  | "terminal";
 
 export type StaticServiceRetirementState = "retained" | "retired";
 

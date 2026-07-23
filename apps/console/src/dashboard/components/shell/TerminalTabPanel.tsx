@@ -22,8 +22,11 @@ export function TerminalTabPanel() {
   const resetTerminalOutput = useShellStore((s) => s.resetTerminalOutput);
   const [status, setStatus] = useState("connecting");
   const [error, setError] = useState<string | null>(null);
+  const [adminToken, setAdminToken] = useState("");
+  const [needsAdminToken, setNeedsAdminToken] = useState(false);
   const [connectionKey, setConnectionKey] = useState(0);
   const wsRef = useRef<WebSocket | null>(null);
+  const adminTokenRef = useRef("");
   const pendingSessionIdRef = useRef<string | null>(sessionId);
   const reattachTokenRef = useRef<string | null>(reattachToken);
 
@@ -36,13 +39,35 @@ export function TerminalTabPanel() {
     setError(null);
     setStatus("connecting");
 
-    const ws = new WebSocket(socketUrl);
-    wsRef.current = ws;
+    const abortController = new AbortController();
+    let ws: WebSocket | null = null;
 
-    ws.onopen = () => {
+    void requestTerminalTicket(adminTokenRef.current, abortController.signal).then(async (response) => {
+      if (abortController.signal.aborted) return;
+      if (response.status === 403) {
+        const reason = await readTicketError(response);
+        const adminRequired = reason === "admin-only shell access requires verified admin";
+        setNeedsAdminToken(adminRequired);
+        setStatus(adminRequired ? "authorization_required" : "error");
+        setError(adminRequired ? "admin token required" : reason);
+        return;
+      }
+      if (!response.ok) {
+        setStatus("error");
+        setError("terminal authorization failed");
+        return;
+      }
+
+      setNeedsAdminToken(false);
+      setError(null);
+      const socket = new WebSocket(socketUrl);
+      ws = socket;
+      wsRef.current = socket;
+
+      socket.onopen = () => {
       const activeSessionId = pendingSessionIdRef.current;
       if (activeSessionId && reattachTokenRef.current) {
-        sendTerminalMessage(ws, "attach", activeSessionId, { resume: true, reattachToken: reattachTokenRef.current });
+        sendTerminalMessage(socket, "attach", activeSessionId, { resume: true, reattachToken: reattachTokenRef.current });
         setStatus("attaching");
         return;
       }
@@ -55,11 +80,11 @@ export function TerminalTabPanel() {
       pendingSessionIdRef.current = newSessionId;
       setTerminalSessionId(newSessionId);
       resetTerminalOutput();
-      sendTerminalMessage(ws, "open", newSessionId, { providerKind: "pty", capabilities: ["interactive", "resizable"] });
+      sendTerminalMessage(socket, "open", newSessionId, { providerKind: "pty", capabilities: ["interactive", "resizable"] });
       setStatus("opening");
-    };
+      };
 
-    ws.onmessage = (event) => {
+      socket.onmessage = (event) => {
       const msg = JSON.parse(event.data as string) as TerminalEnvelope;
       if (msg.kind === "status") {
         pendingSessionIdRef.current = msg.sessionId;
@@ -91,7 +116,7 @@ export function TerminalTabPanel() {
           setTerminalSessionId(newSessionId);
           setTerminalReattachToken(null);
           resetTerminalOutput();
-          sendTerminalMessage(ws, "open", newSessionId, { providerKind: "pty", capabilities: ["interactive", "resizable"] });
+          sendTerminalMessage(socket, "open", newSessionId, { providerKind: "pty", capabilities: ["interactive", "resizable"] });
           setStatus("opening");
           setError(null);
           return;
@@ -99,19 +124,25 @@ export function TerminalTabPanel() {
         setStatus("error");
         setError(`${msg.payload.code}: ${msg.payload.message}`);
       }
-    };
+      };
 
-    ws.onerror = () => {
+      socket.onerror = () => {
       setStatus("error");
       setError("terminal websocket failed");
-    };
+      };
 
-    ws.onclose = () => {
+      socket.onclose = () => {
       setStatus((current) => current === "exited" ? current : "disconnected");
-    };
+      };
+    }).catch((cause: unknown) => {
+      if (abortController.signal.aborted) return;
+      setStatus("error");
+      setError(cause instanceof Error ? cause.message : "terminal authorization failed");
+    });
 
     return () => {
-      ws.close();
+      abortController.abort();
+      ws?.close();
       wsRef.current = null;
     };
   }, [appendTerminalOutput, connectionKey, reattachToken, resetTerminalOutput, setTerminalReattachToken, setTerminalSessionId, socketUrl]);
@@ -137,6 +168,12 @@ export function TerminalTabPanel() {
     setConnectionKey((value) => value + 1);
   }, []);
 
+  const handleAdminConnect = useCallback((event: React.FormEvent) => {
+    event.preventDefault();
+    adminTokenRef.current = adminToken;
+    setConnectionKey((value) => value + 1);
+  }, [adminToken]);
+
   const handleClear = useCallback(() => {
     resetTerminalOutput();
   }, [resetTerminalOutput]);
@@ -161,6 +198,19 @@ export function TerminalTabPanel() {
         </div>
       </header>
       {error ? <div className="terminal-panel-error" role="alert">{error}</div> : null}
+      {needsAdminToken ? (
+        <form className="terminal-panel-auth" onSubmit={handleAdminConnect}>
+          <label htmlFor="terminal-admin-token">Admin token</label>
+          <input
+            id="terminal-admin-token"
+            type="password"
+            value={adminToken}
+            autoComplete="off"
+            onChange={(event) => setAdminToken(event.target.value)}
+          />
+          <button type="submit" disabled={!adminToken}>Connect</button>
+        </form>
+      ) : null}
       <TerminalStream
         className="terminal-panel-stream"
         output={output as readonly TerminalStreamChunk[]}
@@ -175,6 +225,26 @@ export function TerminalTabPanel() {
       />
     </section>
   );
+}
+
+function requestTerminalTicket(adminToken: string, signal: AbortSignal): Promise<Response> {
+  return fetch("/api/console/terminal/ticket", {
+    method: "POST",
+    credentials: "same-origin",
+    signal,
+    ...(adminToken ? { headers: { "x-gitboard-shell-token": adminToken } } : {}),
+  });
+}
+
+async function readTicketError(response: Response): Promise<string> {
+  try {
+    const body = await response.json() as { error?: unknown };
+    return typeof body.error === "string" && body.error.length > 0
+      ? body.error
+      : "terminal authorization denied";
+  } catch {
+    return "terminal authorization denied";
+  }
 }
 
 function sendTerminalMessage<TPayload>(ws: WebSocket, kind: string, sessionId: string, payload: TPayload): void {

@@ -333,6 +333,10 @@ Constraints:
 - Production default without admin token remains no-leak/disabled.
 - Preserve verified-admin gate, origin checks, cwd/shell allowlists, rate limits, TTL/idle cleanup, and readonly specialist-feed behavior.
 - Never log shell input/output, tokens, environment secrets, or raw terminal payloads.
+- Browser authentication uses a short-lived, one-time, path-scoped `HttpOnly`
+  cookie issued by a same-origin POST; credentials never enter a WebSocket URL
+  or response body. Direct header authentication remains available to CLI and
+  smoke clients.
 
 Validation:
 
@@ -340,6 +344,32 @@ Validation:
 - hostile-origin 403 smoke
 - no-admin terminal open/write/resize/dispose no-leak proof
 - security-auditor/reviewer gate
+
+Phase 6 verification evidence (2026-07-21): Console owns the exact-path Bun
+upgrade boundary, `TerminalBridge`, shell/terminal routes, PTY helper, structured
+lifecycle telemetry, and shutdown drain. Core keeps the host-neutral provider
+and policy implementation; each host injects its own helper path, so core has no
+runtime path into either app. The temporary Gitboard provider adapter remains
+only to preserve rollback-host parity until Phase 8 deletion.
+
+The browser gate exchanges admin proof for a 30-second one-time `HttpOnly`,
+`SameSite=Strict`, WebSocket-path cookie. Origin and loopback-peer checks run
+before ticket consumption, replays fail, terminal CORS is origin-restricted,
+and client-selected session IDs are excluded from structured telemetry.
+
+```bash
+bunx vitest run packages/core/tests/terminal-policy.test.ts packages/core/tests/terminal-provider-registry.test.ts apps/console/tests/server/terminal apps/console/tests/server/ws apps/gitboard/tests/api/terminal/provider-registry.test.ts apps/gitboard/tests/api/routes/terminal.test.ts apps/gitboard/tests/api/routes/shell.test.ts
+bun run --cwd packages/core lint
+bun run --cwd apps/console typecheck
+bun run --cwd apps/gitboard typecheck
+bun run --cwd apps/console smoke:terminal
+```
+
+Expected terminal-smoke summary: `PASS` with missing/bad-token and hostile
+origin `403`, zero PTY children after denied upgrades, malformed-input
+survival, positive-token PTY open/resize/input/exit, forbidden cwd, environment
+scrub, input rate enforcement, idle cleanup, lifecycle telemetry, and no token,
+terminal payload, environment secret, or fixture path in stdout/stderr/JSONL.
 
 ### Phase 7 — Production cutover
 

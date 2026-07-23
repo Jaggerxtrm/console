@@ -106,7 +106,7 @@ export function shouldRejectShellWebSocket(path: string, status: ShellProviderSt
 }
 
 export function isShellWebSocketPath(path: string): boolean {
-  return path.startsWith("/api/console/shell") || path.startsWith("/api/console/terminal/ws");
+  return path === "/api/console/shell/ws" || path === "/api/console/terminal/ws";
 }
 
 export function isAllowedShellWebSocketOrigin(origin: string | null, host: string | null, env: NodeJS.ProcessEnv = process.env): boolean {
@@ -121,8 +121,7 @@ export function isAllowedShellWebSocketOrigin(origin: string | null, host: strin
       && originUrl.port === hostUrl.port
       && localHosts.has(originUrl.hostname)
       && localHosts.has(hostUrl.hostname);
-  } catch (error) {
-    console.warn("origin check parse failed", { origin, host, error: error instanceof Error ? error.message : String(error) });
+  } catch {
     return false;
   }
 }

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   getProviderPermission,
   getShellProviderStatus,
@@ -88,10 +88,22 @@ describe("terminal shell policy", () => {
     expect(isVerifiedShellAdminRequest(new Headers(), { GITBOARD_SHELL_PROVIDER_ADMIN_TOKEN: "secret" } as NodeJS.ProcessEnv)).toBe(false);
   });
 
+  it("rejects malformed origins without writing attacker-controlled text", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const malformed = "not-a-url-terminal-secret";
+
+    expect(isAllowedShellWebSocketOrigin(malformed, "localhost:3030")).toBe(false);
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
   it("refuses shell websocket paths when policy status is disabled", () => {
     const status = getShellProviderStatus({ NODE_ENV: "production" } as NodeJS.ProcessEnv);
     expect(shouldRejectShellWebSocket("/api/console/shell/ws", status)).toBe(true);
     expect(shouldRejectShellWebSocket("/api/console/terminal/ws", status)).toBe(true);
     expect(shouldRejectShellWebSocket("/api/feed", status)).toBe(false);
+    expect(shouldRejectShellWebSocket("/api/console/shell/status", status)).toBe(false);
+    expect(shouldRejectShellWebSocket("/api/console/shell-evil", status)).toBe(false);
+    expect(shouldRejectShellWebSocket("/api/console/terminal/ws-evil", status)).toBe(false);
   });
 });

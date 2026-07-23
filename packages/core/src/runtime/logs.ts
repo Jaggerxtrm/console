@@ -17,7 +17,8 @@ export type LogComponent =
   | "explore"
   | "cockpit"
   | "logger"
-  | "materializer";
+  | "materializer"
+  | "terminal";
 
 export type LogEntry = {
   ts: string;

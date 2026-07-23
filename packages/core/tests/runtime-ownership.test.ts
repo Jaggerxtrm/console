@@ -2,11 +2,14 @@ import { describe, expect, it } from "vitest";
 import { createGitboardFinalRuntimeMigrationPlan, createGitboardRuntimeOwnershipMap, evaluateGitboardDeprecationReadiness, getReadyRuntimeMigrationSurfaceIds } from "../src/runtime/index.ts";
 
 describe("gitboard runtime ownership map", () => {
-  it("keeps apps/console out of runtime ownership", () => {
+  it("records Console ownership of the migrated terminal boundary before service cutover", () => {
     const ownership = createGitboardRuntimeOwnershipMap();
-    const owners = [ownership.appShellTarget, ...ownership.surfaces].map((surface) => surface.currentOwner);
+    const surfacesById = new Map(ownership.surfaces.map((surface) => [surface.id, surface]));
 
-    expect(owners).not.toContain("apps/console");
+    expect(surfacesById.get("terminal-shell-boundary")?.currentOwner).toBe("apps/console");
+    expect(surfacesById.get("terminal-shell-boundary")?.targetOwner).toBe("apps/console");
+    expect(ownership.appShellTarget.currentOwner).toBe("apps/gitboard");
+    expect(surfacesById.get("service-static-retirement")?.currentOwner).toBe("apps/gitboard");
   });
 
   it("classifies the high-risk app runtime surfaces before extraction", () => {
