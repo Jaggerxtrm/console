@@ -65,7 +65,9 @@ describe("observability verifier", () => {
     expect(result.error_count).toBe(1);
     const router = createInternalVerifyRouter();
     const app = new Hono().route("/api/internal", router);
-    const res = await app.request("http://localhost/api/internal/verify-runtime?since=2026-05-24T00:00:00.000Z&until=2026-05-24T00:10:00.000Z", { headers: { host: "localhost:3000" } });
+    const res = await app.request("http://localhost/api/internal/verify-runtime?since=2026-05-24T00:00:00.000Z&until=2026-05-24T00:10:00.000Z", {
+      headers: { host: "localhost:3000", "x-xtrm-peer-address": "127.0.0.1" },
+    });
     expect(res.status).toBe(200);
     await rm(dir, { recursive: true, force: true });
   });

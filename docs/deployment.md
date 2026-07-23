@@ -110,6 +110,7 @@ No NAT, no public exposure, no extra firewall work for app port even if ufw stay
 | `GITHUB_TOKEN` | `gh auth token` fallback where available | GitHub API auth | Set explicit token for headless service |
 | `SKIP_GITHUB_POLLER` | unset | Disables GitHub poller | Use for manual-only / debugging runs |
 | `LOG_LEVEL` | `info` | Logger verbosity | Raise to `debug` during incident work |
+| `XTRM_INTERNAL_VERIFY_TOKEN` | unset | Strong token (32+ bytes) for non-loopback `/api/internal/verify-runtime` probes; legacy `GITBOARD_INTERNAL_VERIFY_TOKEN` is accepted | Set for authenticated deploy-monitor probes |
 
 ## Scanner behavior
 
