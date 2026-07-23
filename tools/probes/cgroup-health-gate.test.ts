@@ -21,7 +21,7 @@ function baseSnap(over: Partial<Snapshot> = {}): Snapshot {
 
 function baseCfg(over: Partial<GateConfig> = {}): GateConfig {
   return {
-    service: "gitboard.service",
+    service: "console.service",
     anonCeilingMb: 512,
     latencyCeilingS: 5,
     healthUrl: "http://localhost:3030/health",
@@ -36,6 +36,7 @@ function baseCfg(over: Partial<GateConfig> = {}): GateConfig {
 describe("parseConfig — fail closed on invalid numeric env", () => {
   test("defaults: localhost health, no hardcoded feed", () => {
     const cfg = parseConfig({});
+    expect(cfg.service).toBe("console.service");
     expect(cfg.healthUrl).toBe("http://localhost:3030/health");
     expect(cfg.feedUrl).toBeNull();
     expect(cfg.anonCeilingMb).toBe(512);

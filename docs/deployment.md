@@ -1,156 +1,192 @@
-# gitboard deployment
+# Console deployment
 
-Primary deploy path: native Bun process under systemd user service, exposed
-only through Tailscale on host. During the final runtime migration,
-`gitboard.service` is a compatibility alias for the current Bun app entrypoint
-until the core daemon unit replacement and static retirement probes are green.
+Production runs the Bun host in `apps/console` as a systemd user service bound
+to the host Tailscale address. The checked-in template is
+`deploy/systemd/console.service`. Docker/Compose remains a local reproduction
+path.
 
-## What won
+## Production contract
 
-- no container layer
-- no `tailscale serve`
-- no public bind / no ufw rule needed for app port
-- bind app directly to tailnet IP on host
-- Dolt stays local on host
+- `console.service` is the sole production writer and runtime owner.
+- `ExecStart` must reference `apps/console/src/server/index.ts`.
+- `/console`, `/health`, all existing `/api/*`, realtime, and terminal
+  protocols remain unchanged.
+- `/gitboard`, `/gitboard/*`, and old Gitboard asset paths return `308` to
+  `/console`.
+- `XTRM_DATA_DIR` is primary; `GITBOARD_DATA_DIR` remains a compatibility
+  fallback. Cutover does not relocate or reset databases.
+- Never start Console and Gitboard scanners/materializers against the same state
+  database.
 
-Why not `tailscale serve` here:
-- no HTTPS cert opt-in dance
-- one less moving part
-- simpler restart / log path
-- tailnet access still private
+## Install
 
-## Native systemd user service
-
-Create `~/.config/systemd/user/gitboard.service`:
-
-```ini
-[Unit]
-Description=gitboard compatibility wrapper
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-WorkingDirectory=%h/dev/gitboard
-Environment=HOST=100.113.49.52
-Environment=PORT=3030
-Environment=XDG_PROJECTS_DIR=%h/projects
-Environment=DOLT_HOST=127.0.0.1
-Environment=LOG_DIR=%h/.xtrm/logs
-ExecStart=bun --cwd apps/gitboard src/index.ts
-Restart=always
-RestartSec=2
-
-[Install]
-WantedBy=default.target
-```
-
-Adjust paths / tailnet IP for your host. The wrapper intentionally preserves
-`HOST`, `PORT`, `GITBOARD_DATA_DIR`, `XDG_PROJECTS_DIR`, `DOLT_HOST`, and
-`LOG_DIR`; do not change those during runtime ownership migration unless the
-same change passes local/staging smoke and is easy to roll back.
-
-Rollback path: keep this unit and keep the wrapper command unchanged. The core
-daemon replacement may become the target later, but production should stay on
-this compatibility wrapper until `/api/*`, WebSocket/log, terminal, `/console`,
-and `/gitboard` probes all pass.
-
-### First start
-
-1. Enable linger so user service runs without active login session:
-   ```bash
-   loginctl enable-linger <user>
-   ```
-2. Prebuild dashboard on host:
-   ```bash
-   bun install
-   cd apps/gitboard
-   bun run build:dashboard
-   bun run --cwd ../console build
-   ```
-3. Reload and start service:
-   ```bash
-   systemctl --user daemon-reload
-   systemctl --user enable --now gitboard
-   ```
-
-Production restart is manual. Before a restart, capture local/staging evidence:
-`bun run --cwd apps/gitboard smoke:deprecation`, static `/console` and
-`/gitboard` probes, websocket/log probes, and materializer/channel log flow.
-
-### Runbook
+Build from the exact commit that will run:
 
 ```bash
-journalctl --user -u gitboard -n 100
-systemctl --user restart gitboard
-journalctl --user -u gitboard -f
+bun install --frozen-lockfile
+bun run build
+install -Dm644 deploy/systemd/console.service ~/.config/systemd/user/console.service
+install -d -m700 ~/.config/xtrm
+```
+
+Create `~/.config/xtrm/console.env` with mode `0600`. Keep secrets out of
+the unit, repository, shell history, and journal. The unit deliberately does
+not set a data directory: set either `XTRM_DATA_DIR` or the compatibility
+`GITBOARD_DATA_DIR` to the exact directory used by the old service.
+
+```dotenv
+HOST=100.113.49.52
+PORT=3030
+XTRM_DATA_DIR=/home/dawid/.agent-forge
+XDG_PROJECTS_DIR=/home/dawid
+OBSERVABILITY_ROOTS=/home/dawid/dev/*,/home/dawid/projects/*
+DOLT_HOST=127.0.0.1
+LOG_DIR=/home/dawid/.xtrm/logs
+XTRM_INTERNAL_VERIFY_TOKEN=<at-least-32-random-bytes>
+GITBOARD_SPECIALISTS_BIN=/absolute/path/to/specialists
+PATH=/home/dawid/.bun/bin:/absolute/specialists/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin
+```
+
+`XTRM_INTERNAL_VERIFY_TOKEN` authorizes non-loopback deploy-monitor requests
+to `/api/internal/verify-runtime`. The legacy
+`GITBOARD_INTERNAL_VERIFY_TOKEN` name remains accepted for rollback only.
+
+Then validate and load the unit:
+
+```bash
+chmod 600 ~/.config/xtrm/console.env
+systemd-analyze --user verify ~/.config/systemd/user/console.service
+systemctl --user daemon-reload
+```
+
+## Isolated staging
+
+Stage on `3031` with a temporary `XTRM_DATA_DIR`, temporary logs, and
+isolated project roots. Do not point staging at production state or production
+scanner roots.
+
+```bash
+env \
+  NODE_ENV=production \
+  HOST=127.0.0.1 \
+  PORT=3031 \
+  XTRM_DATA_DIR=/tmp/xtrm-console-stage/data \
+  XDG_PROJECTS_DIR=/tmp/xtrm-console-stage/projects \
+  OBSERVABILITY_ROOTS=/tmp/xtrm-console-stage/observability \
+  LOG_DIR=/tmp/xtrm-console-stage/logs \
+  SKIP_GITHUB_POLLER=1 \
+  bun run start:console
+```
+
+Required staging gates:
+
+```bash
+bun run --cwd apps/console smoke:host
+bun run --cwd apps/console smoke:api-parity
+bun run --cwd apps/console smoke:lifecycle
+bun run --cwd apps/console smoke:realtime
+bun run --cwd apps/console smoke:terminal
+bun run tools/retirement/host-retirement-guard.ts --mode strict
+```
+
+## Controlled cutover
+
+The stop/start gap is intentional and must remain under 15 seconds. Capture the
+old service state first, then stop the old writer before starting Console.
+
+```bash
+systemctl --user show gitboard.service \
+  -p ActiveState -p SubState -p NRestarts -p MainPID -p MemoryCurrent -p ExecStart
+systemctl --user stop gitboard.service
+systemctl --user start console.service
+systemctl --user is-active console.service
+systemctl --user disable gitboard.service
+systemctl --user enable console.service
+```
+
+Immediate HOLD conditions: either service has restarted, both services are
+active, `/health` or `/console` fails, repeated API `5xx`, materializer
+freshness stops, same-origin realtime fails, hostile-origin realtime/terminal
+is accepted, terminal data leaks, or the verifier exceeds its bounded interval.
+
+Rollback during the first observation window:
+
+```bash
+systemctl --user stop console.service
+systemctl --user start gitboard.service
+systemctl --user disable console.service
+systemctl --user enable gitboard.service
+```
+
+Keep the disabled old unit and pre-cleanup worktree until both 60-minute
+observation windows pass. Never overlap the services during rollback.
+
+## Observation windows
+
+Each production window records a T+0 artifact check and 12 absolute-time
+samples at T+5 through T+60. Every sample captures:
+
+- service active/substate, restarts, PID, memory, and exact `ExecStart`;
+- `/health`, `/console`, `/gitboard` redirect, representative API status
+  and response shape;
+- source/materializer freshness and scanner discovery misses as a separate
+  known-noise count;
+- warning/error journal lines and structured lifecycle logs;
+- tailnet edge reachability.
+
+At T+0, T+15, T+30, and T+60 also run realtime handshake/replay,
+hostile-origin, unauthenticated terminal no-leak, and authenticated bounded
+verifier probes. The verifier request uses
+`x-xtrm-internal-verify-token`; do not print the token.
+
+Any restart, OOM, health/static failure, repeated API `5xx`, stale
+materializer, websocket failure, hostile-origin acceptance, or terminal leak
+produces immediate HOLD. Security failures or sustained service failures
+trigger rollback.
+
+Store the evidence at
+`.xtrm/deploy-monitor/<bead>-pr<nr>-<sha>.md`. The running service start time
+and entrypoint must be newer than the merged cutover commit before the window
+can begin.
+
+## Operations
+
+```bash
+journalctl --user -u console.service -n 100
+journalctl --user -u console.service -f
+systemctl --user show console.service \
+  -p ActiveState -p SubState -p NRestarts -p MainPID -p MemoryCurrent -p ExecStart
 tail -F ~/.xtrm/logs/$(date +%F).jsonl
 ```
 
-## Tailscale-only access
+Console is reached at `http://<tailnet-ip>:3030/console`. There is no public
+bind, NAT rule, or `tailscale serve` layer.
 
-- install Tailscale on host
-- run `tailscale up` for auth
-- bind `HOST` to host tailnet IP
-- reach Console at `http://<tailnet-ip>:3030/console`
-- reach compatibility Gitboard at `http://<tailnet-ip>:3030/gitboard`
+## Environment
 
-No NAT, no public exposure, no extra firewall work for app port even if ufw stays open on other ports.
+| Variable | Default | Purpose |
+|---|---:|---|
+| `HOST` | `127.0.0.1` in the unit | Set to the host tailnet IP in `console.env` |
+| `PORT` | `3030` | Native service port; Docker uses `3000` |
+| `XTRM_DATA_DIR` | `~/.agent-forge` | `xtrm.sqlite` and legacy fold input |
+| `GITBOARD_DATA_DIR` | unset | Compatibility fallback only |
+| `XDG_PROJECTS_DIR` | `~` in the unit | Scanner root |
+| `OBSERVABILITY_ROOTS` | unset | Comma-separated observability roots |
+| `DOLT_HOST` | `127.0.0.1` | Dolt SQL host |
+| `LOG_DIR` | `~/.xtrm/logs` | Structured JSONL logs |
+| `GITHUB_TOKEN` | `gh auth token` fallback | Headless GitHub API auth |
+| `SKIP_GITHUB_POLLER` | unset | Disable GitHub poller for isolated staging |
+| `XTRM_INTERNAL_VERIFY_TOKEN` | unset | 32+ byte deploy-monitor token |
 
-## Environment variables
+## Docker reproduction
 
-| Var | Default | What it does | When override |
-|---|---:|---|---|
-| `HOST` | `0.0.0.0` in production, `127.0.0.1` in dev | Server bind address | Set to tailnet IP for native deploy |
-| `PORT` | `3030` | HTTP listen port for the native Bun service | Set explicitly in systemd; Docker overrides to `3000` for local reproduction |
-| `GITBOARD_DATA_DIR` | `~/.agent-forge` | Directory containing `xtrm.sqlite` plus legacy `gitboard.sqlite` fold input | Move DBs or isolate per host |
-| `XDG_PROJECTS_DIR` | `~/projects` fallback | Scanner root for repo discovery | Point at alternate repo tree, e.g. nested `~/dev` + `~/projects` layouts |
-| `DOLT_HOST` | `127.0.0.1` on native, `host.docker.internal` when `XDG_PROJECTS_DIR` is set | Dolt SQL host | Override when container / host routing differs |
-| `LOG_DIR` | `~/.xtrm/logs` | JSONL log directory | Override for native host logs |
-| `GITHUB_TOKEN` | `gh auth token` fallback where available | GitHub API auth | Set explicit token for headless service |
-| `SKIP_GITHUB_POLLER` | unset | Disables GitHub poller | Use for manual-only / debugging runs |
-| `LOG_LEVEL` | `info` | Logger verbosity | Raise to `debug` during incident work |
-| `XTRM_INTERNAL_VERIFY_TOKEN` | unset | Strong token (32+ bytes) for non-loopback `/api/internal/verify-runtime` probes; legacy `GITBOARD_INTERNAL_VERIFY_TOKEN` is accepted | Set for authenticated deploy-monitor probes |
-
-## Scanner behavior
-
-- `XDG_PROJECTS_DIR` is scanner root, not single repo path.
-- If unset, scanner falls back to `~/projects` when `HOME` exists, then `/home`.
-- Nested layouts work: both `~/dev` and `~/projects` can be scanned if `XDG_PROJECTS_DIR` points at a parent that contains them.
-- Shared-server repos are supported when `.beads/config.yaml` contains `dolt.shared-server: true` (or nested `dolt:\n  shared-server: true`).
-- In that mode scanner reads `~/.beads/shared-server/dolt-server.port` and uses `metadata.json` `dolt_database` as DB name.
-
-## Docker path status
-
-Kept for local reproduction only.
-
-Docker/Compose intentionally keep `PORT=3000` and map runtime state through
-`GITBOARD_DATA_DIR=/data`. Native systemd remains the primary deployment path
-and uses `PORT=3030` on the tailnet host.
-
-Classification details live in `docs/architecture/console-architecture.md`
-§10.
-
-Known issues:
-- Vite v7 `outDir` resolves under repo root in this setup
-- `host.docker.internal` needs `DOLT_HOST` override in some runtimes
-- custom bridge subnets can lose NAT on shared hosts
-- PTY shells were containerized, which broke the winning deploy path
-
-Use Docker only if you need to reproduce container behavior.
-
-## Compatibility checks
+Compose uses the `console` service and `XTRM_DATA_DIR=/data`. It retains
+the original `gitboard-state` resource key, so Compose resolves the same
+project-scoped volume name used by existing local reproduction deployments.
 
 ```bash
-curl http://<tailnet-ip>:3030/console
-curl http://<tailnet-ip>:3030/gitboard
-curl http://<tailnet-ip>:3030/health
-```
-
-Local static gate:
-
-```bash
-bun run --cwd apps/gitboard build:dashboard
-bun run --cwd apps/console build
-bash apps/gitboard/tests/smoke/p9-console-production-ready.sh
+docker compose build console
+docker compose up -d console
+curl -i http://127.0.0.1:3000/health
+curl -i http://127.0.0.1:3000/gitboard
 ```

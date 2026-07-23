@@ -1,6 +1,6 @@
 services:
-  gitboard:
-    container_name: gitboard
+  console:
+    container_name: console
     build:
       context: .
       dockerfile: Dockerfile
@@ -11,7 +11,7 @@ services:
         required: false
     environment:
       PORT: "3000"
-      GITBOARD_DATA_DIR: /data
+      XTRM_DATA_DIR: /data
       XDG_PROJECTS_DIR: /projects
     volumes:
       - gitboard-state:/data

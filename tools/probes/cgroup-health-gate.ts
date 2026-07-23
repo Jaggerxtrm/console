@@ -105,7 +105,7 @@ export function parseConfig(env: Record<string, string | undefined> = process.en
   if (!(latencyCeilingS > 0)) throw new Error(`invalid GATE_LATENCY_CEILING_S: must be > 0`);
   const feedRaw = env.GATE_FEED_URL;
   return {
-    service: env.GATE_SERVICE ?? "gitboard.service",
+    service: env.GATE_SERVICE ?? "console.service",
     anonCeilingMb,
     latencyCeilingS,
     // Portable default; the old hardcoded host IP was machine-specific.
