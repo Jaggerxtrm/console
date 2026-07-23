@@ -243,6 +243,28 @@ describe("realtime runtime", () => {
     expect((registry as unknown as { channels: Map<string, unknown> }).channels.size).toBe(0);
   });
 
+  it("closes and disconnects every active connection during shutdown", () => {
+    const registry = new RealtimeChannelRegistry();
+    const disconnected: string[] = [];
+    const handler = new RealtimeConnectionHandler(registry, { onDisconnect: (id) => disconnected.push(id) });
+    const first = makeRaw();
+    const second = makeRaw();
+    first.close.mockImplementation(() => { throw new Error("socket already gone"); });
+    const firstId = handler.connect(first);
+    const secondId = handler.connect(second);
+    handler.subscribe(firstId, "system");
+    handler.subscribe(secondId, "github:activity");
+
+    handler.disconnectAll();
+
+    expect(first.close).toHaveBeenCalledWith(1001);
+    expect(second.close).toHaveBeenCalledWith(1001);
+    expect(disconnected).toEqual([firstId, secondId]);
+    expect(handler.connectionCount()).toBe(0);
+    expect(registry.subscriberCount("system")).toBe(0);
+    expect(registry.subscriberCount("github:activity")).toBe(0);
+  });
+
   it("stops replay after backpressure and removes subscriber", () => {
     const registry = new RealtimeChannelRegistry();
     const backpressure: unknown[] = [];

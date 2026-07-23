@@ -297,6 +297,24 @@ Validation:
 - hostile-origin 403 smoke
 - reviewer/security attention because `ChannelRegistry` impact is CRITICAL
 
+Phase 5 verification evidence (2026-07-23): the Console host owns the Bun
+upgrade adapter and uses the host-neutral core registry/connection handler
+directly. The materializer, GitHub poller, and structured logger publish through
+the same registry. Shutdown closes active clients with code `1001`, removes all
+subscriptions, and detaches log publication.
+
+```bash
+bun run --cwd packages/core test -- tests/runtime-realtime.test.ts
+bun run --cwd apps/console test -- tests/server/ws/realtime.test.ts tests/server/ws/host-boundary.test.ts tests/server/github-runtime.test.ts
+bun run --cwd apps/console typecheck
+bun run --cwd apps/console smoke:realtime
+```
+
+Expected realtime-smoke summary: `PASS` with handshake, malformed-input
+survival, subscribe/live delivery, reconnect replay, hostile-origin `403`,
+internal connect/disconnect telemetry, and no fixture secret or absolute-path
+leak in stdout, stderr, or persisted JSONL logs.
+
 ### Phase 6 — Move terminal/shell boundary
 
 Move write-capable terminal host glue without weakening security.

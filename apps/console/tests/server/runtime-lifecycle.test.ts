@@ -74,6 +74,7 @@ function collectingLogger(entries: LogEntry[]): HostLogger {
     emit: (entry) => entries.push(entry),
     getRing: () => entries,
     getLogDiskDir: () => "",
+    setRealtimePublisher: () => {},
     flush: async () => {},
   };
 }
