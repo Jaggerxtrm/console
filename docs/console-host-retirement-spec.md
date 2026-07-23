@@ -179,6 +179,19 @@ Validation:
 
 ### Phase 3 — Move GitHub, specialists, observability, and Explore adapters
 
+The compatibility-route parity gate is executable in
+`apps/console/tests/server/phase2-api-parity.test.ts` and
+`apps/console/tests/server/phase3-api-parity.test.ts`. The suites compare the
+Gitboard compatibility host and Console owner over isolated, identically
+seeded databases. They cover read envelopes, pagination and 404 behavior,
+persisted Beads and GitHub writes, specialists freshness/filtering, Explore and
+observability read models, bounded internal verification, parity redaction, and
+hostile write/internal requests. `bun run --cwd apps/console smoke:api-parity`
+then launches both real entrypoints with separate temporary state, home and log
+directories and verifies their mounted routes, mutations and bounded verifier
+behavior without touching production state. Realtime and terminal protocols
+remain in their dedicated Phase 5-6 gates.
+
 Move remaining production API namespaces.
 
 Surfaces:

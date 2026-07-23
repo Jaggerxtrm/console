@@ -11,6 +11,7 @@
     "start": "vite preview --config vite.config.ts --host 127.0.0.1 --port 4174",
     "serve:host": "bun run src/server/index.ts",
     "smoke:host": "bun run tests/smoke/console-host-smoke.ts",
+    "smoke:api-parity": "bun run tests/smoke/api-host-parity.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "tsc --noEmit",
