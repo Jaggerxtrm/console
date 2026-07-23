@@ -48,4 +48,16 @@ describe("Console observability ownership", () => {
     });
     expect(body).not.toHaveProperty("coverage");
   });
+
+  it("reads materialized metrics from the main xtrm database through the production factory", async () => {
+    const app = new Hono();
+    app.route("/api/console/observability", createObservabilityRouter(undefined, db));
+
+    const response = await app.request("http://localhost/api/console/observability/summary?range=all");
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      reviewerOutcomes: { pass: 1 },
+      slowestJobs: [{ jobId: "job-1" }],
+    });
+  });
 });

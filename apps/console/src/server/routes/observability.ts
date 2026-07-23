@@ -13,7 +13,8 @@ let defaultDao: ObservabilityMetricsDao | null = null;
 
 export function createObservabilityRouter(dao?: ObservabilityMetricsDao, xtrmDb?: Database | null): Hono {
   const router = new Hono();
-  const resolvedDao = xtrmDb ? createMetricsDao(singleDbPool(xtrmDb)) : (dao ?? getDefaultDao());
+  const resolvedDao = dao
+    ?? (xtrmDb && hasMaterializedMetrics(xtrmDb) ? createMetricsDao(singleDbPool(xtrmDb)) : getDefaultDao());
 
   router.get("/summary", (c) => {
     const summary = resolvedDao.summary(parseRange(c.req.query("range")));
@@ -46,12 +47,20 @@ function getDefaultDao(): ObservabilityMetricsDao {
 function singleDbPool(db: Database) {
   return {
     withAttached<T>(fn: (database: Database, attached: ReadonlyArray<{ alias: string; slug: string }>) => T): T {
-      return fn(db, [{ alias: "xtrm", slug: "xtrm" }]);
+      return fn(db, [{ alias: "main", slug: "xtrm" }]);
     },
     getCoverage(): ObservabilityCoverage {
       return { attached: ["xtrm"], skipped: [], totalDiscovered: 1 };
     },
   };
+}
+
+function hasMaterializedMetrics(db: Database): boolean {
+  for (const table of ["specialist_jobs", "specialist_job_metrics", "specialist_results"]) {
+    const row = db.query("SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND name = ?").get(table) as { present?: number } | null;
+    if (row?.present !== 1) return false;
+  }
+  return true;
 }
 
 function parseRange(value: string | undefined): TimeRange {
