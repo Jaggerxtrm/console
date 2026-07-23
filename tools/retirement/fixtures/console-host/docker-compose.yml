@@ -1,0 +1,21 @@
+services:
+  console:
+    container_name: console
+    build:
+      context: .
+      dockerfile: Dockerfile
+    network_mode: host
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      PORT: "3000"
+      XTRM_DATA_DIR: /data
+      XDG_PROJECTS_DIR: /projects
+    volumes:
+      - console-state:/data
+      - ${HOME}/projects:/projects:ro
+
+volumes:
+  console-state:

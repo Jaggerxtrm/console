@@ -1,0 +1,11 @@
+{
+  "deprecatedHost": "apps/gitboard",
+  "generatedAt": "2026-07-22T01:04:13.618Z",
+  "note": "Known production references to the deprecated host. Regenerate (shrinks over phases) with --update-baseline.",
+  "fingerprints": [
+    "build-script::justfile::cd apps/gitboard && bun run dev &",
+    "container::Dockerfile::CMD [\"bun\", \"apps/gitboard/src/index.ts\"]",
+    "container::Dockerfile::RUN cd apps/gitboard && bun run build:dashboard",
+    "service-definition::docs/deployment.md::ExecStart=bun --cwd apps/gitboard src/index.ts"
+  ]
+}
