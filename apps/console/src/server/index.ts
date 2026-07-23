@@ -7,6 +7,7 @@ import { createHostLogger } from "./log.ts";
 import { createGithubRuntime } from "./github/runtime.ts";
 import { createConsoleRuntime } from "./runtime-lifecycle.ts";
 import { CONSOLE_API_ROUTE_PREFIXES, createConsoleApiRouter } from "./routes/index.ts";
+import { createConsoleRealtime } from "./ws/realtime.ts";
 
 const logger = createHostLogger();
 const dataDir = resolveDataDir();
@@ -16,8 +17,9 @@ const hostname = process.env.HOST?.trim() || "127.0.0.1";
 database.ensureDataDir();
 const writerLease = acquireRuntimeWriterLease(database.storeDbPath, { owner: CONSOLE_HOST_OWNER });
 const databaseHandle = database.open();
-const githubRuntime = createGithubRuntime({ db: databaseHandle.db, logger });
-const consoleRuntime = createConsoleRuntime({ db: databaseHandle.db, logger });
+const realtime = createConsoleRealtime({ logger });
+const githubRuntime = createGithubRuntime({ db: databaseHandle.db, logger, publisher: realtime.registry });
+const consoleRuntime = createConsoleRuntime({ db: databaseHandle.db, logger, publisher: realtime.registry });
 const apiRouter = createConsoleApiRouter({
   db: databaseHandle.db,
   logger,
@@ -34,12 +36,14 @@ const host = createConsoleHost({
   dataDir,
   database,
   logger,
-  runtimeCapabilities: ["materializer", "source-health"],
+  runtimeCapabilities: ["materializer", "source-health", "websocket"],
   hooks: {
     mountRoutes: (app) => {
       app.route("/", apiRouter);
       return CONSOLE_API_ROUTE_PREFIXES;
     },
+    handleWebSocketUpgrade: realtime.handleUpgrade,
+    websocket: realtime.websocket,
     startBackground: async () => {
       await consoleRuntime.start();
       await githubRuntime.start();
@@ -53,6 +57,11 @@ const host = createConsoleHost({
       }
       try {
         await consoleRuntime.stop();
+      } catch (error) {
+        errors.push(error);
+      }
+      try {
+        realtime.stop();
       } catch (error) {
         errors.push(error);
       }

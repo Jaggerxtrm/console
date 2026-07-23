@@ -98,4 +98,23 @@ describe("Console GitHub background runtime", () => {
 
     expect(createPoller).not.toHaveBeenCalled();
   });
+
+  it("passes the Console realtime publisher into the GitHub poller", async () => {
+    const publisher = { publish: vi.fn() };
+    const createPoller = vi.fn(() => ({ start: vi.fn(), stop: vi.fn(), backfill: vi.fn(async () => {}) }));
+    const runtime = createGithubRuntime({
+      db: {} as never,
+      env: {},
+      logger: createHostLogger({ sink: () => {}, diskEnabled: false }),
+      publisher,
+      getToken: () => "token",
+      getUsername: async () => "alice",
+      discover: vi.fn(async () => []),
+      createPoller,
+    });
+
+    await runtime.start();
+
+    expect(createPoller).toHaveBeenCalledWith({}, "token", expect.objectContaining({ registry: publisher }));
+  });
 });

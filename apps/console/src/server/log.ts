@@ -22,6 +22,7 @@ export interface HostLogger {
   emit(entry: LogEntry): void;
   getRing(): LogEntry[];
   getLogDiskDir(): string;
+  setRealtimePublisher(publisher: ((entry: LogEntry) => void) | null): void;
   flush(): Promise<void>;
 }
 
@@ -73,6 +74,7 @@ export function createHostLogger(options: CreateHostLoggerOptions = {}): HostLog
     emit: (entry) => runtime.emit(entry),
     getRing: () => runtime.getRing(),
     getLogDiskDir: () => runtime.getLogDiskDir(),
+    setRealtimePublisher: (publisher) => runtime.setRealtimePublisher(publisher),
     flush: () => runtime.flush(),
   };
 }

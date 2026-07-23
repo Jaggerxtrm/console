@@ -6,6 +6,7 @@ import { type ConsoleDatabaseBootstrap } from "./database.ts";
 import { resolveDataDir, type DataDirResolution } from "./data-dir.ts";
 import { createHostLogger, type HostLogger } from "./log.ts";
 import { readStaticAsset } from "./static.ts";
+import type { ConsoleWebSocketData } from "./ws/realtime.ts";
 
 export const CONSOLE_HOST_OWNER = "apps/console" as const;
 
@@ -21,9 +22,13 @@ export interface ConsoleHostHooks {
   /** Mount API routers onto the Hono app; return mounted route prefixes. */
   mountRoutes?: (app: Hono) => readonly string[] | void;
   /** Attach the realtime upgrade handler once the HTTP listener is bound. */
-  attachWebSocket?: (server: Bun.Server<undefined>) => void;
+  attachWebSocket?: (server: Bun.Server<ConsoleWebSocketData>) => void;
+  /** Handle a realtime WebSocket upgrade before normal Hono routing. */
+  handleWebSocketUpgrade?: (request: Request, server: Bun.Server<ConsoleWebSocketData>, peerAddress?: string) => Response | undefined | Promise<Response | undefined>;
+  /** Bun WebSocket callbacks installed when the listener is created. */
+  websocket?: Bun.WebSocketHandler<ConsoleWebSocketData>;
   /** Attach the terminal bridge once the HTTP listener is bound. */
-  attachTerminal?: (server: Bun.Server<undefined>) => void;
+  attachTerminal?: (server: Bun.Server<ConsoleWebSocketData>) => void;
   /** Start background workers (materializer/scanner) before serving. */
   startBackground?: () => void | Promise<void>;
   /** Stop background workers before the listener is released. */
@@ -45,7 +50,7 @@ export interface ConsoleHostRunning {
   readonly port: number;
   readonly hostname: string;
   readonly url: string;
-  readonly server: Bun.Server<undefined>;
+  readonly server: Bun.Server<ConsoleWebSocketData>;
   stop(): Promise<void>;
 }
 
@@ -160,14 +165,21 @@ export function createConsoleHost(options: ConsoleHostOptions = {}): ConsoleHost
     database,
     start: async () => {
       database?.ensureDataDir();
-      let server: Bun.Server<undefined>;
+      let server: Bun.Server<ConsoleWebSocketData>;
       try {
         await hooks.startBackground?.();
-        server = Bun.serve({
+        server = Bun.serve<ConsoleWebSocketData>({
           hostname: options.hostname ?? "127.0.0.1",
           port: options.port ?? 0,
           idleTimeout: 30,
-          fetch: (request, bunServer) => app.fetch(withTrustedPeerAddress(request, bunServer.requestIP(request)?.address)),
+          fetch: async (request, bunServer) => {
+            const peerAddress = bunServer.requestIP(request)?.address;
+            if (request.headers.get("upgrade") === "websocket" && hooks.handleWebSocketUpgrade) {
+              return await hooks.handleWebSocketUpgrade(request, bunServer, peerAddress);
+            }
+            return app.fetch(withTrustedPeerAddress(request, peerAddress));
+          },
+          websocket: hooks.websocket ?? { message() {} },
         });
       } catch (error) {
         await rollbackBackground();

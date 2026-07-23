@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { makeLogEntry } from "../../../../../packages/core/src/runtime/logs.ts";
 import type {
+  GithubActivityPublisher,
   GithubAdapterLogEntry,
   GithubPollerOptions,
 } from "../../../../../packages/core/src/github/index.ts";
@@ -21,6 +22,7 @@ export interface GithubRuntimePoller {
 export interface GithubRuntimeOptions {
   readonly db: Database;
   readonly logger: HostLogger;
+  readonly publisher?: GithubActivityPublisher;
   readonly env?: NodeJS.ProcessEnv;
   readonly getToken?: () => string;
   readonly getUsername?: (token: string) => Promise<string>;
@@ -62,6 +64,7 @@ export function createGithubRuntime(options: GithubRuntimeOptions) {
       if (stopped) return;
       poller = pollerFactory(options.db, token, {
         ...options.pollerOptions,
+        registry: options.pollerOptions?.registry ?? options.publisher,
         logger: options.pollerOptions?.logger ?? { emit: emitGithubLog },
       });
       if (env.GITBOARD_STARTUP_BACKFILL === "1") {

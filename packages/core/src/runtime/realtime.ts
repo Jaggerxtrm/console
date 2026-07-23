@@ -238,6 +238,15 @@ export class RealtimeConnectionHandler {
     this.options.onDisconnect?.(connectionId);
   }
 
+  disconnectAll(closeCode = 1001): void {
+    for (const [connectionId, connection] of [...this.connections]) {
+      try {
+        connection.raw.close(closeCode);
+      } catch {}
+      this.disconnect(connectionId);
+    }
+  }
+
   handleMessage(connectionId: string, raw: string): void {
     const message = parseClientMessage(raw);
     if (!message) return;
