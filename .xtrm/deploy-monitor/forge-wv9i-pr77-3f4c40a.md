@@ -6,10 +6,15 @@
 - Schedule: T+5 through T+60, 12 samples at five-minute absolute intervals
 - Service: console.service
 - ExecStart: /home/dawid/dev/console/.worktrees/production-console-cleanup/apps/console/src/server/index.ts
-- State: /home/dawid/.agent-forge (unchanged)
-- Cutover gap: 2898 ms
+- State database directory: /home/dawid/.agent-forge (unchanged)
+- Cutover gap: 2898 ms, measured from stop initiation through the first healthy
+  tailnet response; PID changed from 1244490 to 4121667 with the old service
+  inactive before the new writer started.
 - T+0: exact merge artifact; owner apps/console; health/console 200; /gitboard/* 308; API/feed/sources 200; verifier 200 in 75 ms with bounded memory; realtime handshake/replay PASS; hostile realtime 403; terminal no-token/hostile 403; NRestarts=0.
 - Known noise: watcher.skip ENOENT discovery misses are counted separately.
+- Edge-probe warning: no separate external edge-probe configuration exists, so
+  that optional check was skipped. The native tailnet endpoint
+  `http://100.113.49.52:3030` was probed successfully at every sample.
 
 ## Samples
 - T+5m OK @ 2026-07-23T09:43:14Z: active=active/running restarts=0 pid=4121667 memory=132952064 oom=0/0; old=inactive; health=apps/console console=200 redirect=308; projects=200/21 sources=200/37(active=36 missing=1 latest=2026-07-23 09:38:15) feed=200/1 terminal=200; materializer=21 latest=2026-07-23T09:38:23.533Z; journal_errors=0 structured_errors=0 unexpected_warnings=0 scanner_noise=70
