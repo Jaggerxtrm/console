@@ -25,6 +25,8 @@ import { createInternalParityRouter as createGitboardInternalParityRouter } from
 import { createInternalVerifyRouter as createGitboardInternalVerifyRouter } from "../../../gitboard/src/api/routes/internal-verify.ts";
 import { createObservabilityRouter as createGitboardObservabilityRouter } from "../../../gitboard/src/api/routes/observability.ts";
 import { createSpecialistsRouter as createGitboardSpecialistsRouter } from "../../../gitboard/src/api/routes/specialists.ts";
+import { flush as flushGitboardLogger, setDiskEnabled as setGitboardLogDiskEnabled } from "../../../gitboard/src/core/logger.ts";
+import type { ParitySummary } from "../../../../packages/core/src/observability/parity.ts";
 
 type XtrmDatabase = ReturnType<typeof createXtrmDatabase>;
 
@@ -37,9 +39,12 @@ beforeEach(() => {
   delete process.env.GITHUB_TOKEN;
   vi.useFakeTimers();
   vi.setSystemTime(new Date("2026-07-23T12:00:00.000Z"));
+  setGitboardLogDiskEnabled(false);
 });
 
 afterEach(async () => {
+  await flushGitboardLogger();
+  setGitboardLogDiskEnabled(true);
   vi.useRealTimers();
   vi.restoreAllMocks();
   if (originalAdminToken === undefined) delete process.env.CONSOLE_WRITE_ADMIN_TOKEN;
@@ -57,7 +62,6 @@ describe("Phase 3 old/new host API parity", () => {
     const newApp = githubApp(createConsoleGithubRouter(newFixture.db, undefined, { emit: () => {} }));
 
     for (const path of [
-      "/api/github/events?limit=1&offset=0",
       "/api/github/events/event-1",
       "/api/github/events/missing",
       "/api/github/commits/sha-1",
@@ -69,6 +73,13 @@ describe("Phase 3 old/new host API parity", () => {
       "/api/github/issues/owner/repo/2",
       "/api/github/releases?repo=owner/repo&limit=1&offset=0",
     ]) await expectSameResponse(oldApp, newApp, path);
+
+    const eventsPage = await expectSameResponse(oldApp, newApp, "/api/github/events?limit=1&offset=1");
+    expect(eventsPage).toEqual({
+      data: [expect.objectContaining({ id: "event-1" })],
+      limit: 1,
+      offset: 1,
+    });
 
     const createRequest = () => new Request("http://localhost/api/github/repos", {
       method: "POST",
@@ -160,14 +171,20 @@ describe("Phase 3 old/new host API parity", () => {
   });
 
   it("keeps bounded internal verification and redacted parity responses identical", async () => {
+    const secret = "specialist-terminal-secret";
     const verification = { by_component: {}, by_event: {}, error_count: 0, p50_ms: 1, p95_ms: 2, p99_ms: 3, breaches: [] };
+    const paritySummary: ParitySummary = {
+      started_at: "2026-07-23T11:00:00.000Z", finished_at: "2026-07-23T11:00:01.000Z",
+      parity_ok_count: 0, diff_count: 1,
+      checks: { "jobsByBead:bead-1": { live: 1, shadow: 1, diffs: 1 } },
+      diffs: [{
+        check: "jobsByBead", scope: "bead-1", kind: "field_delta", severity: "warn",
+        path: "repo::job-1::bead-1::done::date.lastOutput", live: secret, shadow: "different result",
+      }],
+    };
     const harness = {
-      getParityOkCount: () => 4,
-      getLatestSummary: () => ({
-        started_at: "2026-07-23T11:00:00.000Z", finished_at: "2026-07-23T11:00:01.000Z",
-        parity_ok_count: 4, diff_count: 0,
-        checks: { inFlightJobs: { live: 1, shadow: 1, diffs: 0 } }, diffs: [],
-      }),
+      getParityOkCount: () => 0,
+      getLatestSummary: () => paritySummary,
     };
     const oldApp = new Hono()
       .route("/api/internal", createGitboardInternalVerifyRouter({ verify: async () => verification, emit: () => {} }))
@@ -176,11 +193,27 @@ describe("Phase 3 old/new host API parity", () => {
       .route("/api/internal", createConsoleInternalVerifyRouter({ verify: async () => verification, emit: () => {} }))
       .route("/api/internal", createConsoleInternalParityRouter(() => harness));
 
-    for (const path of [
+    const localHeaders = { host: "localhost", "x-xtrm-peer-address": "127.0.0.1" };
+    await expectSameResponse(
+      oldApp, newApp,
       "/api/internal/verify-runtime?since=2026-07-23T11:00:00.000Z&until=2026-07-23T12:00:00.000Z",
+      localHeaders,
+      200,
+    );
+    for (const path of [
       "/api/internal/verify-runtime?since=invalid&until=2026-07-23T12:00:00.000Z",
-      "/api/internal/parity/observability",
-    ]) await expectSameResponse(oldApp, newApp, path, { host: "localhost", "x-xtrm-peer-address": "127.0.0.1" });
+      "/api/internal/verify-runtime?since=2026-07-23T12:00:00.000Z&until=2026-07-23T11:00:00.000Z",
+      "/api/internal/verify-runtime?since=2026-07-01T00:00:00.000Z&until=2026-07-23T12:00:00.000Z",
+    ]) await expectSameResponse(oldApp, newApp, path, localHeaders, 400);
+
+    const parity = await expectSameResponse(oldApp, newApp, "/api/internal/parity/observability", localHeaders, 200);
+    expect(JSON.stringify(parity)).not.toContain(secret);
+    expect(JSON.stringify(parity)).not.toContain("different result");
+    expect(parity).toMatchObject({
+      latest_summary: {
+        diffs: [{ live: { type: "string", length: secret.length, sha256: expect.stringMatching(/^[a-f0-9]{16}$/) } }],
+      },
+    });
 
     const hostile = await newApp.request("http://localhost/api/internal/parity/observability", {
       headers: { host: "localhost", "x-xtrm-peer-address": "10.0.0.9" },
@@ -194,13 +227,17 @@ async function expectSameResponse(
   newApp: Hono,
   path: string,
   headers: Record<string, string> = { host: "localhost" },
-): Promise<void> {
+  expectedStatus?: number,
+): Promise<unknown> {
   const [oldResponse, newResponse] = await Promise.all([
     oldApp.request(`http://localhost${path}`, { headers }),
     newApp.request(`http://localhost${path}`, { headers }),
   ]);
   expect(newResponse.status, path).toBe(oldResponse.status);
-  expect(await newResponse.json(), path).toEqual(await oldResponse.json());
+  if (expectedStatus !== undefined) expect(newResponse.status, path).toBe(expectedStatus);
+  const [oldBody, newBody] = await Promise.all([oldResponse.json(), newResponse.json()]);
+  expect(newBody, path).toEqual(oldBody);
+  return newBody;
 }
 
 async function createFixture(name: string): Promise<{ root: string; db: XtrmDatabase }> {
@@ -212,6 +249,11 @@ async function createFixture(name: string): Promise<{ root: string; db: XtrmData
     id: "event-1", type: "PushEvent", repo: "owner/repo", branch: "main", actor: "alice", action: null,
     title: "commit", body: null, url: "https://github.com/owner/repo", additions: 1, deletions: 0,
     changed_files: 1, commit_count: 1, created_at: "2026-07-22T10:00:00Z",
+  });
+  insertEvent(db, {
+    id: "event-2", type: "IssuesEvent", repo: "owner/repo", branch: null, actor: "bob", action: "opened",
+    title: "issue", body: null, url: "https://github.com/owner/repo/issues/2", additions: null, deletions: null,
+    changed_files: null, commit_count: null, created_at: "2026-07-22T11:00:00Z",
   });
   insertCommit(db, {
     sha: "sha-1", repo: "owner/repo", branch: "main", author: "alice", message: "commit",
