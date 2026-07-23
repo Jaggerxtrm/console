@@ -1102,8 +1102,8 @@ Test plan:
 - Approval-state tests for agent-authored dashboard writes.
 - Regression tests proving existing Console Bead Inspector and Operations
   routes still render after observability shell additions.
-- Build/typecheck gates for `apps/console`; `apps/gitboard` remains reference
-  until Console is the deployed service.
+- Build/typecheck gates for `apps/console`; Console is the deployed service and
+  sole frontend/runtime owner.
 
 Deferred implementation beads (create only when Slice A finishes the
 contract):

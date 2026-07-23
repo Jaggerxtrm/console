@@ -26,7 +26,8 @@ describe("Console production deployment contract", () => {
     expect(dockerfile).toContain("RUN bun install --frozen-lockfile");
     expect(dockerfile).toContain("COPY --from=builder /app/node_modules /app/node_modules");
     expect(compose).toContain("XTRM_DATA_DIR: /data");
-    expect(compose).toContain("- gitboard-state:/data");
+    expect(compose).toContain("- console-state:/data");
+    expect(compose).toContain("name: gitboard-state");
     expect(`${dockerfile}\n${compose}`).not.toContain("apps/gitboard");
   });
 });

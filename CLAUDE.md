@@ -5,16 +5,14 @@
 Bun monorepo for the **xtrm** agent orchestration + GitHub-activity stack.
 
 - `apps/console` — production Bun/Hono host and Console frontend at `/console`.
-- `apps/gitboard` — rollback-only compatibility package pending final deletion.
 - `packages/{core, api-client, html-preview, ui}` — shared TypeScript libs.
 
-Runtime: Bun + TypeScript; tests via Vitest. Deploys as `console.service` on the host tailnet address. Never run Console and Gitboard writers against the same state database.
+Runtime: Bun + TypeScript; tests via Vitest. Deploys as `console.service` on the host tailnet address. Only one Console writer may own a state database.
 
 ## Project map
 
 - `apps/console/src/server/` — production API, realtime, terminal, and lifecycle host
 - `apps/console/src/dashboard/` — frontend UI
-- `apps/gitboard/` — temporary rollback reference only
 - `packages/core/` — shared materializer / domain primitives
 - `packages/api-client/` — typed client for `/api/*`
 - `.xtrm/` — agent workflow config (instructions, hooks, MCP, settings)

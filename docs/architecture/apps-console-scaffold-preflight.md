@@ -1,11 +1,11 @@
 # apps/console Scaffold Preflight
 
-Status: completed scaffold boundary reference.
+Status: archived historical scaffold reference.
 
-`apps/console` now exists as a frontend app and is served by the backend at
-`/console`. This document remains as the boundary reference for future Console
-frontend changes: do not move backend/API/materializer ownership into
-`apps/console`.
+This document records the constraints used when `apps/console` was first
+scaffolded. It is not an operational guide: Console now owns the frontend,
+backend, APIs, and runtime lifecycle. Paths and commands below intentionally
+describe the retired source baseline.
 
 ## Source Baseline
 

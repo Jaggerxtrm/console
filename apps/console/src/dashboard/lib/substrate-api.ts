@@ -1,5 +1,5 @@
 // Substrate API client (forge-5w9.2).
-// Calls the existing Gitboard service /api/substrate/* surface.
+// Calls the Console host /api/substrate/* surface.
 // Same-origin by default; env override supports split-host setups during development.
 
 import type {

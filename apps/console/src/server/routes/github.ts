@@ -34,10 +34,7 @@ export type GithubRouteLogger = {
 };
 export type GithubRouteLogSink = GithubRouteLogger | ((entry: LogEntry) => void);
 
-/**
- * The publisher/registry argument is retained for Gitboard callers. HTTP
- * routes do not publish realtime events; the poller owns that responsibility.
- */
+/** HTTP routes do not publish realtime events; the poller owns that responsibility. */
 export function createGithubRouter(
   db: Database,
   publisherOrRegistry?: unknown,

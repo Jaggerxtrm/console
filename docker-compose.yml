@@ -14,8 +14,10 @@ services:
       XTRM_DATA_DIR: /data
       XDG_PROJECTS_DIR: /projects
     volumes:
-      - gitboard-state:/data
+      - console-state:/data
       - ${HOME}/projects:/projects:ro
 
 volumes:
-  gitboard-state:
+  console-state:
+    # Preserve the existing physical volume while retiring the old service key.
+    name: gitboard-state

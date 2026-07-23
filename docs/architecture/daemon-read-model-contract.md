@@ -1,7 +1,7 @@
 ---
 version: 1
-updated: 2026-07-04
-synced_at: ffe1e17
+updated: 2026-07-23
+synced_at: b569390
 ---
 
 # Daemon Read Model Contract
@@ -34,7 +34,7 @@ Core now owns the source lifecycle policy helpers used by app adapters:
 - `buildBeadsSourceHealthEvent`
 - `buildSourceHealthChangedPayload`
 
-`apps/gitboard` remains the compatibility shell for:
+`apps/console` owns the runtime adapters for:
 - `ProjectScanner` traversal
 - `UnifiedScanner` scan/SQL orchestration
 - `BeadsChangeWatcher` watch/poll/publish loop
@@ -52,7 +52,7 @@ adapters:
 - `makeLogEntry`
 - logger runtime ring, subscriptions, level filtering, disk retention/write queue, and optional publisher hook
 
-`apps/gitboard` remains the compatibility shell for websocket upgrade handling,
+`apps/console` owns websocket upgrade handling,
 `ChannelRegistry` replay buffers, `WsHandler` connection lifecycle, logger env
 configuration and ChannelRegistry adaptation, request logging, and internal log
 HTTP DTOs.
@@ -68,17 +68,17 @@ Core now owns the terminal shell safety policy contracts used by app adapters:
 - shell provider env parsing and enabled/disabled decision helpers
 - shell websocket path/origin and admin-token verification helpers
 
-`apps/gitboard` remains the compatibility shell for Bun websocket upgrades,
+`apps/console` owns Bun websocket upgrades,
 `TerminalBridge` connection/session state, local PTY spawning, specialist-feed
 process wiring, route DTOs, timers, and cleanup.
 
 This slice does not change read-model ownership or daemon bridge readiness; it
 only removes app ownership of pure terminal/shell policy decisions.
 
-### forge-3dm4.8 final cleanup gate (blocked, gate-required)
+### Host cleanup gate (completed)
 
-Final wrapper retirement is blocked until bridge readiness is true. The current
-probe is:
+Host wrapper retirement completed independently of bridge-table retirement.
+The bridge-readiness probe remains:
 
 ```json
 {
@@ -92,9 +92,9 @@ probe is:
 }
 ```
 
-No bridge table, route DTO adapter, `createApp`/`startServer` wrapper,
-`gitboard.service` alias, `/console`, `/gitboard`, WebSocket, terminal, or
-internal-log compatibility surface is retired by this slice.
+No bridge table or daemon read-model contract was retired by the host migration.
+Console owns route DTO adapters, `/console`, WebSockets, terminal, and internal
+logs; `/gitboard` remains only as a permanent redirect.
 
 ## Console Surfaces (implemented-now / target-state / gate-required)
 
@@ -111,7 +111,7 @@ internal-log compatibility surface is retired by this slice.
 `forge-3dm4` makes the remaining read-model extraction explicit: substrate,
 specialists, graph, and source-health query services move into
 `packages/core/src/state` before their app SQL/query wrappers are retired.
-`apps/gitboard` keeps the public routes mounted while route modules adapt HTTP
+`apps/console` keeps the public routes mounted while route modules adapt HTTP
 parameters and DTOs to core-owned services.
 
 Every read-model slice must add route-to-core parity before wrapper retirement.
@@ -156,23 +156,20 @@ part of Beads/Specialists bridge retirement.
 Specialists observability, and source-health bridge state stay in place until
 the missing daemon-served contracts above are available and parity-tested.
 
-For `forge-3dm4`, wrapper retirement also requires the runtime smoke gates in
-`docs/architecture/gitboard-runtime-deprecation.md`: isolated deprecation
-smoke, GitHub poller-enabled smoke or classified credential unavailability, and
-manual production restart smoke evidence.
+Host retirement passed its isolated, parity, security, and production
+observation gates. Those results do not alter this daemon bridge gate.
 
 ## Current State (implemented-now)
 
 | Contract | Core owner | App wrapper | Bridge state still retained |
 |---|---|---|---|
-| `feed.rollups` | `packages/core/src/state/feed-read-model.ts` owns row selection, severity/redaction normalization, drilldown pointers, and opaque cursor encoding by `(t_unix_ms, seq, id)` | `apps/gitboard/src/api/routes/feed.ts` parses HTTP query parameters and returns the existing `{ rows, cursor }` DTO | `xtrm_forensic_events`, `xtrm_evidence_refs`, `substrate_issues`, and `github_events` remain the bridge/durable adapter inputs until daemon-native rollups are served |
-| `source-health.freshness` | `packages/core/src/state/source-health.ts` owns the canonical health vocabulary, helper, and freshness mapping; `packages/core/src/runtime/source-lifecycle.ts` defines discovery/health service contracts | `apps/gitboard/src/types/source-health.ts` is a compatibility re-export; app scanner/watcher implementations and source route projection still own runtime reads | `sources`, `materialization_state`, scanner attach/skip logs, and existing degraded-but-readable DTOs remain retained until source lifecycle services move behind parity tests |
+| `feed.rollups` | `packages/core/src/state/feed-read-model.ts` owns row selection, severity/redaction normalization, drilldown pointers, and opaque cursor encoding by `(t_unix_ms, seq, id)` | `apps/console/src/server/routes/feed.ts` parses HTTP query parameters and returns the existing `{ rows, cursor }` DTO | `xtrm_forensic_events`, `xtrm_evidence_refs`, `substrate_issues`, and `github_events` remain the bridge/durable adapter inputs until daemon-native rollups are served |
+| `source-health.freshness` | `packages/core/src/state/source-health.ts` owns the canonical health vocabulary, helper, and freshness mapping; `packages/core/src/runtime/source-lifecycle.ts` defines discovery/health service contracts | Console scanner/watcher implementations and source route projection own runtime reads | `sources`, `materialization_state`, scanner attach/skip logs, and existing degraded-but-readable DTOs remain retained until source lifecycle services move behind parity tests |
 
 ## Non-Retirable Until Daemon Served (blocked)
 
-These bridge surfaces remain non-retirable during the final `apps/gitboard`
-host migration unless `evaluateBridgeRetirementReadiness` returns ready for
-every contract:
+These bridge surfaces remain non-retirable until
+`evaluateBridgeRetirementReadiness` returns ready for every contract:
 
 - Beads/Substrate projection tables backing issue graph, graph joins, and feed
   drilldowns;

@@ -43,7 +43,6 @@ describe("console host descriptor", () => {
     const host = createConsoleHost({ consoleDistDir: distDir, logger: silentLogger() });
 
     expect(host.descriptor.owner).toBe(CONSOLE_HOST_OWNER);
-    expect(host.descriptor.compatibilityHost).toBeUndefined();
     expect(host.descriptor.capabilities).toContain("http-api");
     expect(host.descriptor.capabilities).toContain("static-dashboard");
     expect(host.descriptor.mountedRoutes).toContain("/health");

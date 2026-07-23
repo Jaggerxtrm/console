@@ -10,12 +10,7 @@ export type RuntimeHostCapability =
 
 export type StaticServiceRetirementState = "retained" | "retired";
 
-/**
- * Explicit owner of a runtime host descriptor. `apps/console` is the target
- * production host; `apps/gitboard` is the legacy compatibility host retained
- * only for migration reporting until cutover completes.
- */
-export type RuntimeHostOwner = "apps/console" | "apps/gitboard" | "packages/core";
+export type RuntimeHostOwner = "apps/console" | "packages/core";
 
 export interface StaticServiceRouteParity {
   route: string;
@@ -26,12 +21,6 @@ export interface StaticServiceRouteParity {
 
 export interface RuntimeHostDescriptor<TDatabase = unknown, TRegistry = unknown, TMaterializer = unknown> {
   owner: RuntimeHostOwner;
-  /**
-   * Legacy compatibility metadata only. Canonical descriptors omit this; it is
-   * populated solely by the temporary Gitboard-prefixed aliases so migration
-   * reporting can still identify the retained compatibility host until Phase 8.
-   */
-  compatibilityHost?: "apps/gitboard";
   storeDb: TDatabase;
   stateDb: TDatabase | null;
   registry: TRegistry;
@@ -43,7 +32,6 @@ export interface RuntimeHostDescriptor<TDatabase = unknown, TRegistry = unknown,
 
 export interface RuntimeLifecyclePlan {
   owner: RuntimeHostOwner;
-  compatibilityHost?: "apps/gitboard";
   capabilities: readonly RuntimeHostCapability[];
   mountedRoutes: readonly string[];
   hasStateDatabase: boolean;
@@ -53,7 +41,6 @@ export interface RuntimeLifecyclePlan {
 
 export interface RuntimeLifecycleOptions {
   owner: RuntimeHostOwner;
-  compatibilityHost?: "apps/gitboard";
   hasStateDatabase: boolean;
   isDatasetteDebugEnabled?: boolean;
   isParityEnabled?: boolean;
@@ -83,7 +70,6 @@ export interface RuntimeLifecycle<TDatabase, TRegistry, TMaterializer, TScanner,
 
 export interface RuntimeHostDescriptorOptions<TDatabase, TRegistry, TMaterializer> {
   owner: RuntimeHostOwner;
-  compatibilityHost?: "apps/gitboard";
   storeDb: TDatabase;
   stateDb?: TDatabase | null;
   registry: TRegistry;
@@ -98,7 +84,6 @@ export function createRuntimeHostDescriptor<TDatabase, TRegistry, TMaterializer>
 ): RuntimeHostDescriptor<TDatabase, TRegistry, TMaterializer> {
   return {
     owner: options.owner,
-    ...(options.compatibilityHost ? { compatibilityHost: options.compatibilityHost } : {}),
     storeDb: options.storeDb,
     stateDb: options.stateDb ?? null,
     registry: options.registry,
@@ -114,7 +99,6 @@ export function createRuntimeLifecyclePlan(options: RuntimeLifecycleOptions): Ru
 
   return {
     owner: options.owner,
-    ...(options.compatibilityHost ? { compatibilityHost: options.compatibilityHost } : {}),
     hasStateDatabase: options.hasStateDatabase,
     isDatasetteDebugEnabled,
     isParityEnabled: options.isParityEnabled ?? false,
@@ -151,27 +135,27 @@ export function createStaticServiceParityTable(): readonly StaticServiceRoutePar
   return [
     {
       route: "/console",
-      state: "retained",
-      parityProof: "production smoke must prove first-viewport Console assets load with HTTP 200 before app-host static serving can move",
-      blockers: ["daemon static asset host not deployed", "systemd gitboard.service still starts apps/gitboard/src/index.ts"],
+      state: "retired",
+      parityProof: "console.service serves the production Console bundle and passed both cutover observation windows",
+      blockers: [],
     },
     {
       route: "/gitboard",
-      state: "retained",
-      parityProof: "production smoke must prove legacy Gitboard bundle loads with HTTP 200 before compatibility shell removal",
-      blockers: ["legacy bundle remains public rollback path", "no replacement route has same deployment proof"],
+      state: "retired",
+      parityProof: "legacy paths permanently redirect to /console and no legacy asset bundle is served",
+      blockers: [],
     },
     {
       route: "/health",
-      state: "retained",
-      parityProof: "systemd and deploy monitor require health HTTP 200 during restart windows",
-      blockers: ["service health check still targets app host", "daemon health descriptor not wired to production service"],
+      state: "retired",
+      parityProof: "console.service owns /health and production monitoring targets the Console host",
+      blockers: [],
     },
     {
       route: "runtime-descriptor",
-      state: "retained",
-      parityProof: "runtimeHost descriptor records mounted routes and capabilities for bridge-era verification",
-      blockers: ["final wrapper cleanup gate not satisfied", "bridge retirement readiness still depends on static/socket/API probes"],
+      state: "retired",
+      parityProof: "the host-neutral runtime descriptor records Console-owned routes and capabilities",
+      blockers: [],
     },
   ];
 }
@@ -196,7 +180,6 @@ export function createRuntimeLifecycle<TDatabase, TRegistry, TMaterializer, TSca
     beadsParityHarness,
     runtimeHost: createRuntimeHostDescriptor({
       owner: plan.owner,
-      compatibilityHost: plan.compatibilityHost,
       storeDb: factory.storeDb,
       stateDb: factory.stateDb,
       registry: factory.registry,
@@ -211,43 +194,3 @@ export function createRuntimeLifecycle<TDatabase, TRegistry, TMaterializer, TSca
 export function runtimeHostHasCapability(host: RuntimeHostDescriptor, capability: RuntimeHostCapability): boolean {
   return host.capabilities.includes(capability);
 }
-
-// Temporary Gitboard-prefixed compatibility aliases. The host-neutral names
-// above are canonical and require an explicit owner; these aliases keep
-// apps/gitboard callers source-compatible until that host is retired (Phase 8),
-// injecting the legacy owner and compatibilityHost on their behalf, then they
-// are deleted wholesale.
-export type GitboardRuntimeLifecycleOptions = Omit<RuntimeLifecycleOptions, "owner" | "compatibilityHost"> & {
-  owner?: RuntimeHostOwner;
-};
-export type GitboardRuntimeLifecyclePlan = RuntimeLifecyclePlan;
-export type GitboardRuntimeLifecycleFactory<
-  TDatabase,
-  TRegistry,
-  TMaterializer,
-  TScanner,
-  TBeadsWatcher,
-  TObservabilityWatcher,
-  TBeadsParityHarness,
-  TObservabilityParityHarness,
-> = RuntimeLifecycleFactory<TDatabase, TRegistry, TMaterializer, TScanner, TBeadsWatcher, TObservabilityWatcher, TBeadsParityHarness, TObservabilityParityHarness>;
-export type GitboardRuntimeLifecycle<
-  TDatabase,
-  TRegistry,
-  TMaterializer,
-  TScanner,
-  TBeadsWatcher,
-  TObservabilityWatcher,
-  TBeadsParityHarness,
-  TObservabilityParityHarness,
-> = RuntimeLifecycle<TDatabase, TRegistry, TMaterializer, TScanner, TBeadsWatcher, TObservabilityWatcher, TBeadsParityHarness, TObservabilityParityHarness>;
-
-export function createGitboardRuntimeLifecyclePlan(options: GitboardRuntimeLifecycleOptions): RuntimeLifecyclePlan {
-  return createRuntimeLifecyclePlan({
-    ...options,
-    owner: options.owner ?? "apps/gitboard",
-    compatibilityHost: "apps/gitboard",
-  });
-}
-
-export const createGitboardRuntimeLifecycle = createRuntimeLifecycle;

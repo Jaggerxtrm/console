@@ -1,5 +1,5 @@
 // Shim: maps bun:sqlite -> node:sqlite for Vitest workers (Node runtime).
-// Mirrors apps/gitboard/tests/__mocks__/bun-sqlite.ts pattern.
+// Provides the Bun SQLite surface inside Vitest's Node workers.
 // Uses createRequire to bypass Vite's static module analysis.
 import { createRequire } from "module";
 

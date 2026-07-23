@@ -1,7 +1,7 @@
 {
   "name": "@xtrm/console",
   "version": "0.2.0",
-  "description": "xtrm Console frontend",
+  "description": "xtrm Console production host and frontend",
   "type": "module",
   "scripts": {
     "dev": "vite --config vite.config.ts",
@@ -11,7 +11,7 @@
     "start": "vite preview --config vite.config.ts --host 127.0.0.1 --port 4174",
     "serve:host": "bun run src/server/index.ts",
     "smoke:host": "bun run tests/smoke/console-host-smoke.ts",
-    "smoke:api-parity": "bun run tests/smoke/api-host-parity.ts",
+    "smoke:api-contract": "bun run tests/smoke/api-host-contract.ts",
     "smoke:lifecycle": "bun run tests/smoke/phase4-lifecycle-telemetry.ts",
     "smoke:realtime": "node --experimental-strip-types tests/smoke/phase5-realtime.ts",
     "smoke:terminal": "node --experimental-strip-types tests/smoke/phase6-terminal.ts",

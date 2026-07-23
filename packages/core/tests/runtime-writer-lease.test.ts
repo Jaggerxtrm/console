@@ -17,11 +17,11 @@ describe("runtime writer lease", () => {
     const dbPath = join(root, "xtrm.sqlite");
     const first = acquireRuntimeWriterLease(dbPath, { owner: "apps/console" });
 
-    expect(() => acquireRuntimeWriterLease(dbPath, { owner: "apps/gitboard" })).toThrow(/active runtime writer/i);
+    expect(() => acquireRuntimeWriterLease(dbPath, { owner: "second-console" })).toThrow(/active runtime writer/i);
 
     first.release();
-    const second = acquireRuntimeWriterLease(dbPath, { owner: "apps/gitboard" });
-    expect(second.owner).toBe("apps/gitboard");
+    const second = acquireRuntimeWriterLease(dbPath, { owner: "replacement-console" });
+    expect(second.owner).toBe("replacement-console");
     second.release();
   });
 
@@ -33,7 +33,7 @@ describe("runtime writer lease", () => {
     first.release();
 
     expect(() => {
-      const replacement = acquireRuntimeWriterLease(dbPath, { owner: "apps/gitboard" });
+      const replacement = acquireRuntimeWriterLease(dbPath, { owner: "replacement-console" });
       replacement.release();
     }).not.toThrow();
   });

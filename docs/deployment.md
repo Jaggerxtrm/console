@@ -82,44 +82,30 @@ Required staging gates:
 
 ```bash
 bun run --cwd apps/console smoke:host
-bun run --cwd apps/console smoke:api-parity
+bun run --cwd apps/console smoke:api-contract
 bun run --cwd apps/console smoke:lifecycle
 bun run --cwd apps/console smoke:realtime
 bun run --cwd apps/console smoke:terminal
 bun run tools/retirement/host-retirement-guard.ts --mode strict
 ```
 
-## Controlled cutover
+## Cleanup deployment
 
-The stop/start gap is intentional and must remain under 15 seconds. Capture the
-old service state first, then stop the old writer before starting Console.
+Production already runs `console.service`. Deploy the final package-removal
+commit by building it in a fresh worktree, stopping Console, atomically updating
+the production worktree, and starting Console again. The stop/start gap must
+remain under 15 seconds and no second writer may touch production state.
 
-```bash
-systemctl --user show gitboard.service \
-  -p ActiveState -p SubState -p NRestarts -p MainPID -p MemoryCurrent -p ExecStart
-systemctl --user stop gitboard.service
-systemctl --user start console.service
-systemctl --user is-active console.service
-systemctl --user disable gitboard.service
-systemctl --user enable console.service
-```
+During the one-time cleanup observation window, the disabled old unit and its
+pre-cleanup worktree may remain host-local as emergency rollback evidence. They
+must never run concurrently with Console. After the second 60-minute PASS,
+remove that unit, all drop-ins, and the rollback worktree; there is no supported
+legacy service after this point.
 
-Immediate HOLD conditions: either service has restarted, both services are
-active, `/health` or `/console` fails, repeated API `5xx`, materializer
-freshness stops, same-origin realtime fails, hostile-origin realtime/terminal
-is accepted, terminal data leaks, or the verifier exceeds its bounded interval.
-
-Rollback during the first observation window:
-
-```bash
-systemctl --user stop console.service
-systemctl --user start gitboard.service
-systemctl --user disable console.service
-systemctl --user enable gitboard.service
-```
-
-Keep the disabled old unit and pre-cleanup worktree until both 60-minute
-observation windows pass. Never overlap the services during rollback.
+Immediate HOLD conditions: any restart, `/health` or `/console` failure,
+repeated API `5xx`, stale materializer, same-origin realtime failure,
+hostile-origin realtime/terminal acceptance, terminal leak, or unbounded
+verifier behavior.
 
 ## Observation windows
 
@@ -180,9 +166,9 @@ bind, NAT rule, or `tailscale serve` layer.
 
 ## Docker reproduction
 
-Compose uses the `console` service and `XTRM_DATA_DIR=/data`. It retains
-the original `gitboard-state` resource key, so Compose resolves the same
-project-scoped volume name used by existing local reproduction deployments.
+Compose uses the `console` service and `XTRM_DATA_DIR=/data`. Its logical volume
+key is `console-state`, while the explicit physical name remains
+`gitboard-state` so existing local reproduction data is reused.
 
 ```bash
 docker compose build console

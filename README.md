@@ -3,8 +3,6 @@
 Agent orchestration + issue tracking monorepo. `apps/console` owns the Bun
 production host, HTTP API, WebSockets, terminal boundary, lifecycle runtime,
 and Console frontend. `packages/core` owns reusable runtime and state logic.
-`apps/gitboard` is retained only as a temporary rollback package until the
-post-cutover cleanup window passes.
 
 ## Current run modes
 
@@ -27,8 +25,8 @@ systemctl --user daemon-reload
 systemctl --user enable --now console
 ```
 
-Rollback during the observation window: stop `console.service`, then re-enable
-the preserved `gitboard.service`. Never run both against production state.
+`console.service` is the sole supported service and the sole writer for its
+state database.
 
 ### 2) Docker / Compose  
 Kept in tree, but experimental / not primary deploy.
@@ -65,7 +63,6 @@ The API defaults to `:3030`; the Vite dashboard dev server proxies `/api` and
 ```
 omniforge/
 ├── apps/
-│   ├── gitboard/          # Temporary rollback package pending deletion
 │   └── console/           # Production host and xtrm Console frontend
 ├── packages/
 │   ├── core/              # @omniforge/core - shared utilities and types
