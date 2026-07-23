@@ -1,0 +1,12 @@
+# Executor Result
+
+Implemented the requested dashboard change.
+
+- Added the shared activity pane.
+- Preserved `sp feed` traceability.
+
+```json
+{"status":"complete","bead":"forge-70el.6"}
+```
+
+See https://example.com/executor-log

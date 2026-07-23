@@ -1,0 +1,10 @@
+## Reviewer Verdict
+
+| Gate | Status | Evidence |
+| --- | --- | --- |
+| Feed | pass | terminal history visible |
+| Result | pass | markdown rendered |
+
+> No blocking findings.
+
+Contact [review](mailto:review@example.com).
