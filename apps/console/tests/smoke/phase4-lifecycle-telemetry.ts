@@ -99,15 +99,6 @@ async function main(): Promise<void> {
     assert(contenderExit !== null && contenderExit !== 0, "second Console writer was not rejected");
     const contenderStderr = await contender.stderr;
     assert(contenderStderr.includes("active runtime writer"), "writer rejection did not identify the active lease");
-    const legacyContender = spawnLegacyHost(await reservePort(), environment);
-    spawnedHosts.push(legacyContender);
-    const legacyExit = await Promise.race([
-      legacyContender.process.exited,
-      Bun.sleep(5_000).then(() => null),
-    ]);
-    assert(legacyExit !== null && legacyExit !== 0, "legacy Gitboard writer was not rejected");
-    assert((await legacyContender.stderr).includes("active runtime writer"), "legacy writer rejection did not identify the active lease");
-
     await waitForMaterialization(host);
     const refresh = await fetch(`${host.baseUrl}/api/sources/refresh`, {
       method: "POST",
@@ -153,7 +144,6 @@ async function main(): Promise<void> {
       lifecycleEvents: REQUIRED_EVENTS.length,
       scannerDiscoveryNoise: discoveryNoise,
       secondWriterRejected: true,
-      legacyWriterRejected: true,
       crashLeaseReleased: true,
       persistedIssue: "phase4-healthy.1",
     }, null, 2));
@@ -170,25 +160,6 @@ function spawnHost(port: number, env: Record<string, string | undefined>): Runni
   const process = Bun.spawn(["bun", "src/server/index.ts"], {
     cwd: join(REPO_ROOT, "apps/console"),
     env: { ...env, PORT: String(port) },
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  return {
-    baseUrl: `http://127.0.0.1:${port}`,
-    process,
-    stdout: new Response(process.stdout).text(),
-    stderr: new Response(process.stderr).text(),
-  };
-}
-
-function spawnLegacyHost(port: number, env: Record<string, string | undefined>): RunningHost {
-  const process = Bun.spawn(["bun", "src/index.ts"], {
-    cwd: join(REPO_ROOT, "apps/gitboard"),
-    env: {
-      ...env,
-      PORT: String(port),
-      LOG_DIR: join(env.XTRM_DATA_DIR ?? tmpdir(), "legacy-contender-logs"),
-    },
     stdout: "pipe",
     stderr: "pipe",
   });

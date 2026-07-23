@@ -13,19 +13,12 @@ import {
   upsertRepo,
 } from "../../../../packages/core/src/github/index.ts";
 import type { SpecialistJob } from "../../src/types/specialists.ts";
-import { createGithubRouter as createConsoleGithubRouter } from "../../src/server/routes/github.ts";
-import { createExploreAgentopsRouter as createConsoleExploreAgentopsRouter } from "../../src/server/routes/explore-agentops.ts";
-import { createInternalParityRouter as createConsoleInternalParityRouter } from "../../src/server/routes/internal-parity.ts";
-import { createInternalVerifyRouter as createConsoleInternalVerifyRouter } from "../../src/server/routes/internal-verify.ts";
-import { createObservabilityRouter as createConsoleObservabilityRouter } from "../../src/server/routes/observability.ts";
-import { createSpecialistsRouter as createConsoleSpecialistsRouter, type SpecialistsDao } from "../../src/server/routes/specialists.ts";
-import { createGithubRouter as createGitboardGithubRouter } from "../../../gitboard/src/api/routes/github.ts";
-import { createExploreAgentopsRouter as createGitboardExploreAgentopsRouter } from "../../../gitboard/src/api/routes/explore-agentops.ts";
-import { createInternalParityRouter as createGitboardInternalParityRouter } from "../../../gitboard/src/api/routes/internal-parity.ts";
-import { createInternalVerifyRouter as createGitboardInternalVerifyRouter } from "../../../gitboard/src/api/routes/internal-verify.ts";
-import { createObservabilityRouter as createGitboardObservabilityRouter } from "../../../gitboard/src/api/routes/observability.ts";
-import { createSpecialistsRouter as createGitboardSpecialistsRouter } from "../../../gitboard/src/api/routes/specialists.ts";
-import { flush as flushGitboardLogger, setDiskEnabled as setGitboardLogDiskEnabled } from "../../../gitboard/src/core/logger.ts";
+import { createGithubRouter } from "../../src/server/routes/github.ts";
+import { createExploreAgentopsRouter } from "../../src/server/routes/explore-agentops.ts";
+import { createInternalParityRouter } from "../../src/server/routes/internal-parity.ts";
+import { createInternalVerifyRouter } from "../../src/server/routes/internal-verify.ts";
+import { createObservabilityRouter } from "../../src/server/routes/observability.ts";
+import { createSpecialistsRouter, type SpecialistsDao } from "../../src/server/routes/specialists.ts";
 import type { ParitySummary } from "../../../../packages/core/src/observability/parity.ts";
 
 type XtrmDatabase = ReturnType<typeof createXtrmDatabase>;
@@ -39,12 +32,9 @@ beforeEach(() => {
   delete process.env.GITHUB_TOKEN;
   vi.useFakeTimers();
   vi.setSystemTime(new Date("2026-07-23T12:00:00.000Z"));
-  setGitboardLogDiskEnabled(false);
 });
 
 afterEach(async () => {
-  await flushGitboardLogger();
-  setGitboardLogDiskEnabled(true);
   vi.useRealTimers();
   vi.restoreAllMocks();
   if (originalAdminToken === undefined) delete process.env.CONSOLE_WRITE_ADMIN_TOKEN;
@@ -54,12 +44,10 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
-describe("Phase 3 old/new host API parity", () => {
-  it("keeps GitHub reads, pagination, 404s, writes, and persisted state identical", async () => {
-    const oldFixture = await createFixture("github-old");
-    const newFixture = await createFixture("github-new");
-    const oldApp = githubApp(createGitboardGithubRouter(oldFixture.db, {} as never));
-    const newApp = githubApp(createConsoleGithubRouter(newFixture.db, undefined, { emit: () => {} }));
+describe("Phase 3 Console API contract", () => {
+  it("preserves GitHub reads, pagination, 404s, writes, and persisted state", async () => {
+    const fixture = await createFixture("github");
+    const app = githubApp(createGithubRouter(fixture.db, undefined, { emit: () => {} }));
 
     for (const path of [
       "/api/github/events/event-1",
@@ -72,9 +60,9 @@ describe("Phase 3 old/new host API parity", () => {
       "/api/github/issues?limit=1&offset=0",
       "/api/github/issues/owner/repo/2",
       "/api/github/releases?repo=owner/repo&limit=1&offset=0",
-    ]) await expectSameResponse(oldApp, newApp, path);
+    ]) await expectJsonResponse(app, path, path.includes("missing") ? 404 : 200);
 
-    const eventsPage = await expectSameResponse(oldApp, newApp, "/api/github/events?limit=1&offset=1");
+    const eventsPage = await expectJsonResponse(app, "/api/github/events?limit=1&offset=1", 200);
     expect(eventsPage).toEqual({
       data: [expect.objectContaining({ id: "event-1" })],
       limit: 1,
@@ -86,64 +74,58 @@ describe("Phase 3 old/new host API parity", () => {
       headers: { host: "localhost", "content-type": "application/json", "x-console-write-token": "parity-secret" },
       body: JSON.stringify({ full_name: "owner/new-repo", display_name: "New repo", group_name: "console" }),
     });
-    const [oldCreate, newCreate] = await Promise.all([oldApp.fetch(createRequest()), newApp.fetch(createRequest())]);
-    expect(newCreate.status).toBe(oldCreate.status);
-    expect(await newCreate.json()).toEqual(await oldCreate.json());
+    const create = await app.fetch(createRequest());
+    expect(create.status).toBe(201);
+    expect(await create.json()).toMatchObject({ full_name: "owner/new-repo", display_name: "New repo" });
 
     const updateRequest = () => new Request("http://localhost/api/github/repos/owner%2Fnew-repo", {
       method: "PUT",
       headers: { host: "localhost", "content-type": "application/json", "x-console-write-token": "parity-secret" },
       body: JSON.stringify({ display_name: "Renamed", color: "#123456" }),
     });
-    const [oldUpdate, newUpdate] = await Promise.all([oldApp.fetch(updateRequest()), newApp.fetch(updateRequest())]);
-    expect(newUpdate.status).toBe(oldUpdate.status);
-    expect(await newUpdate.json()).toEqual(await oldUpdate.json());
+    const update = await app.fetch(updateRequest());
+    expect(update.status).toBe(200);
+    expect(await update.json()).toMatchObject({ full_name: "owner/new-repo", display_name: "Renamed", color: "#123456" });
 
     const persisted = (db: XtrmDatabase) => db.query(
       "SELECT full_name, display_name, tracked, group_name, color FROM github_repos WHERE full_name = 'owner/new-repo'",
     ).get();
-    expect(persisted(newFixture.db)).toEqual(persisted(oldFixture.db));
-    expect(persisted(newFixture.db)).toEqual({
+    expect(persisted(fixture.db)).toEqual({
       full_name: "owner/new-repo", display_name: "Renamed", tracked: 1, group_name: "console", color: "#123456",
     });
 
-    const denied = await newApp.request("http://localhost/api/github/repos", {
+    const denied = await app.request("http://localhost/api/github/repos", {
       method: "POST",
       headers: { host: "localhost", origin: "https://attacker.example", "content-type": "application/json" },
       body: JSON.stringify({ full_name: "owner/denied" }),
     });
     expect(denied.status).toBe(403);
 
-    oldFixture.db.close();
-    newFixture.db.close();
+    fixture.db.close();
   });
 
-  it("keeps specialists read envelopes, filtering, freshness, and 404s identical", async () => {
-    const oldApp = specialistsApp(createGitboardSpecialistsRouter(specialistsDao(), specialistOptions()));
-    const newApp = specialistsApp(createConsoleSpecialistsRouter(specialistsDao(), specialistOptions()));
+  it("preserves specialists read envelopes, filtering, freshness, and 404s", async () => {
+    const app = specialistsApp(createSpecialistsRouter(specialistsDao(), specialistOptions()));
 
     for (const path of [
       "/api/specialists/jobs?bead_id=bead-1",
-      "/api/specialists/jobs",
       "/api/specialists/jobs/in-flight?repo_slug=repo-a&limit=5",
       "/api/specialists/chains/chain-1",
       "/api/specialists/chains/missing",
-    ]) await expectSameResponse(oldApp, newApp, path);
+    ]) await expectJsonResponse(app, path, path.endsWith("/missing") ? 404 : 200);
 
-    const [oldProtected, newProtected] = await Promise.all([
-      oldApp.request("http://localhost/api/specialists/jobs/job-1/result"),
-      newApp.request("http://localhost/api/specialists/jobs/job-1/result"),
-    ]);
-    expect(newProtected.status).toBe(oldProtected.status);
-    expect(newProtected.status).toBe(403);
-    expect(await newProtected.json()).toEqual(await oldProtected.json());
+    const missingBeadId = await app.request("http://localhost/api/specialists/jobs");
+    expect(missingBeadId.status).toBe(400);
+    expect(await missingBeadId.json()).toEqual({ error: "Missing bead_id" });
+
+    const protectedResponse = await app.request("http://localhost/api/specialists/jobs/job-1/result");
+    expect(protectedResponse.status).toBe(403);
+    expect(await protectedResponse.json()).toMatchObject({ error: expect.any(String) });
   });
 
-  it("keeps observability and Explore read models identical on isolated durable state", async () => {
-    const oldFixture = await createFixture("read-model-old");
-    const newFixture = await createFixture("read-model-new");
-    seedSpecialistJob(oldFixture.db);
-    seedSpecialistJob(newFixture.db);
+  it("preserves observability and Explore read models on isolated durable state", async () => {
+    const fixture = await createFixture("read-model");
+    seedSpecialistJob(fixture.db);
     const metricsDao = {
       summary: () => ({
         totalJobs: 1, completedJobs: 1, failedJobs: 0, activeJobs: 0,
@@ -153,24 +135,20 @@ describe("Phase 3 old/new host API parity", () => {
       }),
       coverage: () => ({ attached: ["repo-a"], skipped: [], totalDiscovered: 1 }),
     } as never;
-    const oldApp = new Hono()
-      .route("/api/console/observability", createGitboardObservabilityRouter(metricsDao))
-      .route("/api/console/explore", createGitboardExploreAgentopsRouter(oldFixture.db, { now: Date.parse("2026-07-23T12:00:00.000Z"), emit: () => {} }));
-    const newApp = new Hono()
-      .route("/api/console/observability", createConsoleObservabilityRouter(metricsDao))
-      .route("/api/console/explore", createConsoleExploreAgentopsRouter(newFixture.db, { now: Date.parse("2026-07-23T12:00:00.000Z"), emit: () => {} }));
+    const app = new Hono()
+      .route("/api/console/observability", createObservabilityRouter(metricsDao))
+      .route("/api/console/explore", createExploreAgentopsRouter(fixture.db, { now: Date.parse("2026-07-23T12:00:00.000Z"), emit: () => {} }));
 
     for (const path of [
       "/api/console/observability/summary?range=30d",
       "/api/console/explore/agentops?range=30d&repo_slug=repo-a&status=error",
       "/api/console/explore/agentops?range=7d&repo_slug=missing",
-    ]) await expectSameResponse(oldApp, newApp, path);
+    ]) await expectJsonResponse(app, path, 200);
 
-    oldFixture.db.close();
-    newFixture.db.close();
+    fixture.db.close();
   });
 
-  it("keeps bounded internal verification and redacted parity responses identical", async () => {
+  it("preserves bounded internal verification and redacted parity responses", async () => {
     const secret = "specialist-terminal-secret";
     const verification = { by_component: {}, by_event: {}, error_count: 0, p50_ms: 1, p95_ms: 2, p99_ms: 3, breaches: [] };
     const paritySummary: ParitySummary = {
@@ -186,27 +164,24 @@ describe("Phase 3 old/new host API parity", () => {
       getParityOkCount: () => 0,
       getLatestSummary: () => paritySummary,
     };
-    const oldApp = new Hono()
-      .route("/api/internal", createGitboardInternalVerifyRouter({ verify: async () => verification, emit: () => {} }))
-      .route("/api/internal", createGitboardInternalParityRouter(() => harness));
-    const newApp = new Hono()
-      .route("/api/internal", createConsoleInternalVerifyRouter({ verify: async () => verification, emit: () => {} }))
-      .route("/api/internal", createConsoleInternalParityRouter(() => harness));
+    const app = new Hono()
+      .route("/api/internal", createInternalVerifyRouter({ verify: async () => verification, emit: () => {} }))
+      .route("/api/internal", createInternalParityRouter(() => harness));
 
     const localHeaders = { host: "localhost", "x-xtrm-peer-address": "127.0.0.1" };
-    await expectSameResponse(
-      oldApp, newApp,
+    await expectJsonResponse(
+      app,
       "/api/internal/verify-runtime?since=2026-07-23T11:00:00.000Z&until=2026-07-23T12:00:00.000Z",
-      localHeaders,
       200,
+      localHeaders,
     );
     for (const path of [
       "/api/internal/verify-runtime?since=invalid&until=2026-07-23T12:00:00.000Z",
       "/api/internal/verify-runtime?since=2026-07-23T12:00:00.000Z&until=2026-07-23T11:00:00.000Z",
       "/api/internal/verify-runtime?since=2026-07-01T00:00:00.000Z&until=2026-07-23T12:00:00.000Z",
-    ]) await expectSameResponse(oldApp, newApp, path, localHeaders, 400);
+    ]) await expectJsonResponse(app, path, 400, localHeaders);
 
-    const parity = await expectSameResponse(oldApp, newApp, "/api/internal/parity/observability", localHeaders, 200);
+    const parity = await expectJsonResponse(app, "/api/internal/parity/observability", 200, localHeaders);
     expect(JSON.stringify(parity)).not.toContain(secret);
     expect(JSON.stringify(parity)).not.toContain("different result");
     expect(parity).toMatchObject({
@@ -215,29 +190,22 @@ describe("Phase 3 old/new host API parity", () => {
       },
     });
 
-    const hostile = await newApp.request("http://localhost/api/internal/parity/observability", {
+    const hostile = await app.request("http://localhost/api/internal/parity/observability", {
       headers: { host: "localhost", "x-xtrm-peer-address": "10.0.0.9" },
     });
     expect(hostile.status).toBe(403);
   });
 });
 
-async function expectSameResponse(
-  oldApp: Hono,
-  newApp: Hono,
+async function expectJsonResponse(
+  app: Hono,
   path: string,
+  expectedStatus: number,
   headers: Record<string, string> = { host: "localhost" },
-  expectedStatus?: number,
 ): Promise<unknown> {
-  const [oldResponse, newResponse] = await Promise.all([
-    oldApp.request(`http://localhost${path}`, { headers }),
-    newApp.request(`http://localhost${path}`, { headers }),
-  ]);
-  expect(newResponse.status, path).toBe(oldResponse.status);
-  if (expectedStatus !== undefined) expect(newResponse.status, path).toBe(expectedStatus);
-  const [oldBody, newBody] = await Promise.all([oldResponse.json(), newResponse.json()]);
-  expect(newBody, path).toEqual(oldBody);
-  return newBody;
+  const response = await app.request(`http://localhost${path}`, { headers });
+  expect(response.status, path).toBe(expectedStatus);
+  return await response.json();
 }
 
 async function createFixture(name: string): Promise<{ root: string; db: XtrmDatabase }> {

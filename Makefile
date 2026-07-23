@@ -6,7 +6,7 @@ TOKEN        := $(shell gh auth token 2>/dev/null)
 
 # ── Lifecycle ───────────────────────────────────────────────────────────────────
 
-## Start XTRM server (gitboard + beadboard)
+## Start the XTRM Console host
 up:
 	GITHUB_TOKEN=$(TOKEN) $(COMPOSE) up -d
 
@@ -46,8 +46,8 @@ shell:
 ## Check health endpoints
 health:
 	@echo "XTRM: $$(curl -s http://localhost:3000/health 2>/dev/null || echo 'FAILED')"
-	@echo "Gitboard: http://localhost:3000/gitboard"
-	@echo "Beadboard: http://localhost:3000/beadboard"
+	@echo "Console: http://localhost:3000/console"
+	@echo "Legacy redirect: http://localhost:3000/gitboard"
 
 # ── Cleanup ─────────────────────────────────────────────────────────────────────
 
@@ -70,7 +70,7 @@ token:
 
 ## Show this help
 help:
-	@echo "XTRM - Unified gitboard + beadboard server"
+	@echo "XTRM Console"
 	@echo ""
 	@echo "Usage: make [target]"
 	@echo ""

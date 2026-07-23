@@ -26,11 +26,6 @@ e4494c9598b9
 # bv (beads viewer) local config and caches
 .bv/
 .playwright-mcp/
-# bd worktree
-.xtrm/worktrees/gitboard-xt-pi-5zrh/
-# bd worktree
-.xtrm/worktrees/gitboard-xt-claude-1ers/
-
 # Smoke test scratch dirs
 .tmp-*/
 
@@ -40,10 +35,8 @@ logs/
 .beads-credential-key
 
 # Local test/browser output
-apps/gitboard/test-results/
-apps/gitboard/design-mocks/debug-*.png
-apps/gitboard/design-mocks/live-design-preview.png
-apps/gitboard/design-mocks/static-complete-preview.png
+apps/console/test-results/
+apps/console/design-mocks/debug-*.png
 
 # Python caches from local skills
 __pycache__/

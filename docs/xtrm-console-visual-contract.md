@@ -317,4 +317,4 @@ Before marking any console UI work done:
 - [ ] No iframe embedding is used for module composition.
 - [ ] Expanded details use the same section rhythm.
 - [ ] Kanban, if present, is secondary and visually subordinate to the feed.
-- [ ] `/console` remains the product frontend; `/gitboard` remains compatibility until a dedicated runtime rename replaces it.
+- [ ] `/console` remains the product frontend; `/gitboard*` permanently redirects to it.

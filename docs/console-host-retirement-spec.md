@@ -1,6 +1,6 @@
 # Console Host Retirement Spec
 
-**Status:** draft for later bead decomposition
+**Status:** completed historical plan; use `docs/deployment.md` for current operations
 **Created:** 2026-07-05
 **Scope:** finish the real migration off the deprecated `apps/gitboard` production host.
 
@@ -43,7 +43,7 @@ The migration is complete only when all are true:
 - Do not delete durable GitHub adapter state.
 - Do not weaken terminal/shell security gates.
 
-## Current State
+## State At Plan Creation
 
 - Production service currently runs `apps/gitboard/src/index.ts`.
 - `apps/console` is primarily the Vite frontend app.

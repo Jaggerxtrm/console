@@ -4,18 +4,12 @@ import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { Hono } from "hono";
 import { createXtrmDatabase } from "../../../../packages/core/src/state/database.ts";
-import { createBeadsWriteRouter as createConsoleBeadsWriteRouter } from "../../src/server/routes/beads-write.ts";
-import { createFeedRouter as createConsoleFeedRouter } from "../../src/server/routes/feed.ts";
-import { createGraphRouter as createConsoleGraphRouter, createXtrmGraphRoute } from "../../src/server/routes/graph.ts";
-import { createInternalSubstrateRouter as createConsoleInternalSubstrateRouter } from "../../src/server/routes/internal-substrate.ts";
-import { createSourcesRouter as createConsoleSourcesRouter } from "../../src/server/routes/sources.ts";
-import { createSubstrateRouter as createConsoleSubstrateRouter } from "../../src/server/routes/substrate.ts";
-import { createBeadsWriteRouter as createGitboardBeadsWriteRouter } from "../../../gitboard/src/api/routes/beads-write.ts";
-import { createFeedRouter as createGitboardFeedRouter } from "../../../gitboard/src/api/routes/feed.ts";
-import { createGraphRouter as createGitboardGraphRouter } from "../../../gitboard/src/api/routes/graph.ts";
-import { createInternalSubstrateRouter as createGitboardInternalSubstrateRouter } from "../../../gitboard/src/api/routes/internal-substrate.ts";
-import { createSourcesRouter as createGitboardSourcesRouter } from "../../../gitboard/src/api/routes/sources.ts";
-import { createSubstrateRouter as createGitboardSubstrateRouter } from "../../../gitboard/src/api/routes/substrate.ts";
+import { createBeadsWriteRouter } from "../../src/server/routes/beads-write.ts";
+import { createFeedRouter } from "../../src/server/routes/feed.ts";
+import { createGraphRouter, createXtrmGraphRoute } from "../../src/server/routes/graph.ts";
+import { createInternalSubstrateRouter } from "../../src/server/routes/internal-substrate.ts";
+import { createSourcesRouter } from "../../src/server/routes/sources.ts";
+import { createSubstrateRouter } from "../../src/server/routes/substrate.ts";
 
 const roots: string[] = [];
 
@@ -30,13 +24,11 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
-describe("Phase 2 old/new host parity", () => {
-  it("keeps read DTOs and persisted Beads mutations identical", async () => {
+describe("Phase 2 Console API contract", () => {
+  it("preserves read DTOs and persisted Beads mutations", async () => {
     process.env.CONSOLE_WRITE_ADMIN_TOKEN = "phase2-secret";
-    const oldFixture = await createFixture("old");
-    const newFixture = await createFixture("new");
-    const oldApp = buildOldApp(oldFixture.db);
-    const newApp = buildNewApp(newFixture.db);
+    const fixture = await createFixture("contract");
+    const app = buildApp(fixture.db);
 
     for (const path of [
       "/api/substrate/projects",
@@ -46,14 +38,10 @@ describe("Phase 2 old/new host parity", () => {
       "/api/sources",
       "/api/internal/substrate/schema",
     ]) {
-      const [oldResponse, newResponse] = await Promise.all([
-        oldApp.request(`http://localhost${path}`, { headers: { host: "localhost" } }),
-        newApp.request(`http://localhost${path}`, { headers: { host: "localhost" } }),
-      ]);
-      expect(oldResponse.status, path).toBe(200);
-      expect(newResponse.status, path).toBe(oldResponse.status);
-      expect(normalizeFixturePaths(await newResponse.json(), newFixture.root), path)
-        .toEqual(normalizeFixturePaths(await oldResponse.json(), oldFixture.root));
+      const response = await app.request(`http://localhost${path}`, { headers: { host: "localhost" } });
+      expect(response.status, path).toBe(200);
+      const body = normalizeFixturePaths(await response.json(), fixture.root);
+      expect(body, path).toEqual(expect.any(Object));
     }
 
     const request = () => new Request("http://localhost/api/substrate/projects/repo-a/issues", {
@@ -65,13 +53,9 @@ describe("Phase 2 old/new host parity", () => {
       },
       body: JSON.stringify({ title: "Persisted parity issue", priority: 1 }),
     });
-    const [oldWrite, newWrite] = await Promise.all([oldApp.fetch(request()), newApp.fetch(request())]);
-    expect(oldWrite.status).toBe(200);
-    expect(newWrite.status).toBe(oldWrite.status);
-    const oldWriteBody = await oldWrite.json();
-    const newWriteBody = await newWrite.json();
-    expect(newWriteBody).toEqual(oldWriteBody);
-    expect(newWriteBody).toMatchObject({
+    const write = await app.fetch(request());
+    expect(write.status).toBe(200);
+    expect(await write.json()).toMatchObject({
       issue: {
         id: "repo-a-new",
         title: "Persisted parity issue",
@@ -82,19 +66,16 @@ describe("Phase 2 old/new host parity", () => {
       },
     });
 
-    const oldRow = oldFixture.db.query("SELECT title, priority FROM substrate_issues WHERE repo_slug = 'repo-a' AND issue_id = 'repo-a-new'").get();
-    const newRow = newFixture.db.query("SELECT title, priority FROM substrate_issues WHERE repo_slug = 'repo-a' AND issue_id = 'repo-a-new'").get();
-    expect(newRow).toEqual(oldRow);
-    expect(newRow).toEqual({ title: "Persisted parity issue", priority: 1 });
+    const row = fixture.db.query("SELECT title, priority FROM substrate_issues WHERE repo_slug = 'repo-a' AND issue_id = 'repo-a-new'").get();
+    expect(row).toEqual({ title: "Persisted parity issue", priority: 1 });
 
-    oldFixture.db.close();
-    newFixture.db.close();
+    fixture.db.close();
   });
 
   it("keeps write authorization fail-closed for hostile and missing-origin requests", async () => {
     process.env.CONSOLE_WRITE_ADMIN_TOKEN = "phase2-secret";
     const fixture = await createFixture("auth");
-    const app = buildNewApp(fixture.db);
+    const app = buildApp(fixture.db);
     const body = JSON.stringify({ title: "Denied" });
 
     const hostile = await app.request("http://localhost/api/substrate/projects/repo-a/issues", {
@@ -147,25 +128,14 @@ function normalizeFixturePaths(value: unknown, root: string): unknown {
   );
 }
 
-function buildOldApp(db: ReturnType<typeof createXtrmDatabase>): Hono {
+function buildApp(db: ReturnType<typeof createXtrmDatabase>): Hono {
   const app = new Hono();
-  app.route("/api/substrate", createGitboardSubstrateRouter(db));
-  app.route("/api/substrate", createGitboardBeadsWriteRouter(db, writeOptions(db)));
-  app.route("/api/feed", createGitboardFeedRouter(db));
-  app.route("/api/console/graph", createGitboardGraphRouter(createXtrmGraphRoute(db)));
-  app.route("/api/sources", createGitboardSourcesRouter(db));
-  app.route("/api/internal", createGitboardInternalSubstrateRouter(db));
-  return app;
-}
-
-function buildNewApp(db: ReturnType<typeof createXtrmDatabase>): Hono {
-  const app = new Hono();
-  app.route("/api/substrate", createConsoleSubstrateRouter(db));
-  app.route("/api/substrate", createConsoleBeadsWriteRouter(db, writeOptions(db)));
-  app.route("/api/feed", createConsoleFeedRouter(db));
-  app.route("/api/console/graph", createConsoleGraphRouter(createXtrmGraphRoute(db)));
-  app.route("/api/sources", createConsoleSourcesRouter(db));
-  app.route("/api/internal", createConsoleInternalSubstrateRouter(db));
+  app.route("/api/substrate", createSubstrateRouter(db));
+  app.route("/api/substrate", createBeadsWriteRouter(db, writeOptions(db)));
+  app.route("/api/feed", createFeedRouter(db));
+  app.route("/api/console/graph", createGraphRouter(createXtrmGraphRoute(db)));
+  app.route("/api/sources", createSourcesRouter(db));
+  app.route("/api/internal", createInternalSubstrateRouter(db));
   return app;
 }
 

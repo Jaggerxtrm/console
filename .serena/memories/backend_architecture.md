@@ -9,13 +9,13 @@
 The canonical full backend reference is `docs/backend.md`.
 
 ## Scope
-Covers Gitboard native Bun service startup, Hono app composition, static serving, API routes, SQLite store, GitHub pipeline, Beads/Dolt/JSONL sources, watcher/realtime channels, specialist observability, graph DAO, terminal bridge, caching, degradation, production ops, and diagnostics.
+Covers the Console native Bun service, Hono app composition, static serving, API routes, SQLite state, GitHub pipeline, Beads/Dolt/JSONL sources, watcher/realtime channels, specialist observability, graph read models, terminal bridge, caching, degradation, production ops, and diagnostics.
 
 ## Key Backend Areas
-- Entry: `apps/gitboard/src/index.ts`
-- App composition: `apps/gitboard/src/api/server.ts`
-- WebSocket hub: `apps/gitboard/src/api/ws/*`
-- Beads API/watchers: `apps/beadboard/src/api/routes/beads.ts`, `apps/beadboard/src/core/beads-change-watcher.ts`
-- Graph: `apps/gitboard/src/api/routes/graph.ts`, `apps/gitboard/src/core/graph-dao.ts`
-- Specialists: `apps/gitboard/src/api/routes/specialists.ts`, `apps/gitboard/src/server/observability/*`
-- Terminal: `apps/gitboard/src/api/terminal/*`, `apps/gitboard/src/core/local-pty-provider.ts`
+- Entry: `apps/console/src/server/index.ts`
+- App composition: `apps/console/src/server/host.ts`
+- WebSocket hub: `apps/console/src/server/ws/*`
+- Beads API/watchers: `apps/console/src/server/routes/*`, `packages/core/src/runtime/*`
+- Graph: `apps/console/src/server/routes/graph.ts`, `packages/core/src/state/read-models/graph.ts`
+- Specialists: `apps/console/src/server/routes/specialists.ts`, `apps/console/src/server/observability/*`
+- Terminal: `apps/console/src/server/terminal/*`, `packages/core/src/terminal/*`

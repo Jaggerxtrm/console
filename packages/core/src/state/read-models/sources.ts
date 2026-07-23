@@ -3,7 +3,7 @@
 // (pin / unpin) against the durable `sources` and `materialization_state`
 // tables.
 //
-// `apps/gitboard` is responsible for the mutating route gating (admin token,
+// `apps/console` is responsible for the mutating route gating (admin token,
 // origin/host checks, allowed kinds); the helpers here operate on already-
 // validated arguments and never authorize the caller.
 

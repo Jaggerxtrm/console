@@ -4,7 +4,7 @@
 // plus source-health derivation from `materialization_state`.
 //
 // The scanner-driven graph path (ProjectScanner + DoltClient + JSONL fallback)
-// is owned by `apps/gitboard`'s source-lifecycle and is intentionally not
+// is owned by `apps/console`'s source lifecycle and is intentionally not
 // re-implemented here. Callers decide which path to take and call
 // `readXtrmGraphSnapshot` to materialize the joined payload.
 //

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createGitboardRuntimeLifecycle, createGitboardRuntimeLifecyclePlan, createRuntimeHostDescriptor, createRuntimeLifecycle, createRuntimeLifecyclePlan, runtimeHostHasCapability } from "../src/runtime/index.ts";
+import { createRuntimeHostDescriptor, createRuntimeLifecycle, createRuntimeLifecyclePlan, runtimeHostHasCapability } from "../src/runtime/index.ts";
 
 describe("runtime host descriptor", () => {
   it("captures host capabilities without owning app implementations", () => {
@@ -20,8 +20,6 @@ describe("runtime host descriptor", () => {
       registry: "registry",
       materializer: "materializer",
     });
-    // Canonical descriptors carry no hardcoded compatibility host literal.
-    expect(host.compatibilityHost).toBeUndefined();
     expect(runtimeHostHasCapability(host, "materializer")).toBe(true);
     expect(runtimeHostHasCapability(host, "github-adapter")).toBe(false);
     expect(host.mountedRoutes).toEqual(["/api/feed", "/api/substrate"]);
@@ -43,19 +41,17 @@ describe("runtime host descriptor", () => {
     });
 
     expect(plan.owner).toBe("apps/console");
-    expect(plan.compatibilityHost).toBeUndefined();
     expect(lifecycle.runtimeHost.owner).toBe("apps/console");
-    // Canonical Console ownership never silently carries the legacy literal.
-    expect(lifecycle.runtimeHost.compatibilityHost).toBeUndefined();
   });
 
-  it("proves Gitboard ownership and legacy literal through the temporary aliases", () => {
-    const plan = createGitboardRuntimeLifecyclePlan({
+  it("creates the complete Console lifecycle when durable state is available", () => {
+    const plan = createRuntimeLifecyclePlan({
+      owner: "apps/console",
       hasStateDatabase: true,
       isDatasetteDebugEnabled: true,
       isParityEnabled: true,
     });
-    const lifecycle = createGitboardRuntimeLifecycle(plan, {
+    const lifecycle = createRuntimeLifecycle(plan, {
       storeDb: "store",
       stateDb: "state",
       registry: "registry",
@@ -67,12 +63,8 @@ describe("runtime host descriptor", () => {
       createObservabilityParityHarness: (db, options) => ({ db, options, harness: "observability" }),
     });
 
-    // The alias injects the legacy owner and compatibility host for callers
-    // that predate the host-neutral contract.
-    expect(plan.owner).toBe("apps/gitboard");
-    expect(plan.compatibilityHost).toBe("apps/gitboard");
-    expect(lifecycle.runtimeHost.owner).toBe("apps/gitboard");
-    expect(lifecycle.runtimeHost.compatibilityHost).toBe("apps/gitboard");
+    expect(plan.owner).toBe("apps/console");
+    expect(lifecycle.runtimeHost.owner).toBe("apps/console");
     expect(plan.mountedRoutes).toContain("/explore/sql");
     expect(lifecycle.materializer).toEqual({ db: "store", registry: "registry" });
     expect(lifecycle.scanner).toEqual({ db: "store", options: { parityEnabled: true } });
@@ -80,16 +72,16 @@ describe("runtime host descriptor", () => {
     expect(lifecycle.runtimeHost.mountedRoutes).toContain("/api/sources");
     expect(lifecycle.runtimeHost.capabilities).toContain("source-health");
     expect(lifecycle.runtimeHost.staticServiceParity).toEqual([
-      expect.objectContaining({ route: "/console", state: "retained" }),
-      expect.objectContaining({ route: "/gitboard", state: "retained" }),
-      expect.objectContaining({ route: "/health", state: "retained" }),
-      expect.objectContaining({ route: "runtime-descriptor", state: "retained" }),
+      expect.objectContaining({ route: "/console", state: "retired", blockers: [] }),
+      expect.objectContaining({ route: "/gitboard", state: "retired", blockers: [] }),
+      expect.objectContaining({ route: "/health", state: "retired", blockers: [] }),
+      expect.objectContaining({ route: "runtime-descriptor", state: "retired", blockers: [] }),
     ]);
   });
 
   it("keeps degraded readable mode when state database is absent", () => {
-    const plan = createGitboardRuntimeLifecyclePlan({ hasStateDatabase: false });
-    const lifecycle = createGitboardRuntimeLifecycle(plan, {
+    const plan = createRuntimeLifecyclePlan({ owner: "apps/console", hasStateDatabase: false });
+    const lifecycle = createRuntimeLifecycle(plan, {
       storeDb: "store",
       stateDb: null,
       registry: "registry",
