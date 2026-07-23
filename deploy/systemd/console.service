@@ -1,0 +1,24 @@
+[Unit]
+Description=xtrm Console (native Bun, tailnet-only)
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/dev/console
+ExecStart=%h/.bun/bin/bun %h/dev/console/apps/console/src/server/index.ts
+Environment=NODE_ENV=production
+Environment=HOST=127.0.0.1
+Environment=PORT=3030
+Environment=XDG_PROJECTS_DIR=%h
+Environment=DOLT_HOST=127.0.0.1
+Environment=LOG_DIR=%h/.xtrm/logs
+EnvironmentFile=-%h/.config/xtrm/console.env
+Restart=always
+RestartSec=3
+MemoryMax=2G
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

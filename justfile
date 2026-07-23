@@ -1,28 +1,20 @@
-# Podman commands for gitboard + beadboard
+# Podman commands for Console
 
 # Build all images
 build:
     podman-compose build
 
-# Build gitboard only
-build-gitboard:
-    podman-compose build gitboard
-
-# Build beadboard only
-build-beadboard:
-    podman-compose build beadboard
+# Build Console only
+build-console:
+    podman-compose build console
 
 # Start all services
 up:
     podman-compose up -d
 
-# Start gitboard only
-up-gitboard:
-    podman-compose up -d gitboard
-
-# Start beadboard only
-up-beadboard:
-    podman-compose up -d beadboard
+# Start Console only
+up-console:
+    podman-compose up -d console
 
 # Stop all services
 down:
@@ -32,13 +24,9 @@ down:
 logs:
     podman-compose logs -f
 
-# View gitboard logs
-logs-gitboard:
-    podman-compose logs -f gitboard
-
-# View beadboard logs
-logs-beadboard:
-    podman-compose logs -f beadboard
+# View Console logs
+logs-console:
+    podman-compose logs -f console
 
 # Restart all services
 restart:
@@ -46,8 +34,7 @@ restart:
 
 # Check health
 health:
-    curl -s http://localhost:3000/health && echo " - gitboard"
-    curl -s http://localhost:3001/health && echo " - beadboard"
+    curl -s http://localhost:3000/health && echo " - console"
 
 # Pull latest images
 pull:
@@ -62,6 +49,4 @@ rebuild: clean build up
 
 # Development mode (with hot reload)
 dev:
-    cd apps/gitboard && bun run dev &
-    cd apps/beadboard && bun run dev &
-    wait
+    cd apps/console && bun run dev

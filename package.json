@@ -9,6 +9,7 @@
   ],
   "scripts": {
     "dev": "bun run --filter './apps/*' dev",
+    "start:console": "bun run apps/console/src/server/index.ts",
     "dev:datasette": "bun run tools/datasette/dev-datasette.ts",
     "dev:dashboard": "bun run --filter './apps/*' dev:dashboard",
     "build": "bun run build:packages && bun run build:apps",

@@ -110,6 +110,7 @@ const IGNORED_EXTENSIONS = new Set([
 const SERVICE_DEFINITION_EXTENSIONS = new Set([".service", ".md", ".ini", ".conf"]);
 const CONTAINER_FILE_NAMES = new Set([
   "dockerfile", "containerfile", "compose.yml", "compose.yaml",
+  "docker-compose.yml", "docker-compose.yaml", "podman-compose.yml", "podman-compose.yaml",
 ]);
 const BUILD_SCRIPT_NAMES = new Set(["justfile", "makefile"]);
 const BUILD_SCRIPT_EXTENSIONS = new Set([".sh", ".bash", ".mk"]);
@@ -143,11 +144,15 @@ function isGitboardImportSpecifier(specifier: string): boolean {
   );
 }
 
+function containsDeprecatedHostReference(value: string): boolean {
+  return value.includes(PATH_MARKER) || value.includes(DEPRECATED_HOST_PACKAGE);
+}
+
 function scanServiceDefinition(file: string, content: string): GuardFinding[] {
   const findings: GuardFinding[] = [];
   content.split("\n").forEach((rawLine, index) => {
     if (!EXEC_START_RE.test(rawLine)) return;
-    if (!rawLine.includes(PATH_MARKER)) return;
+    if (!containsDeprecatedHostReference(rawLine)) return;
     findings.push(makeFinding("service-definition", file, index + 1, rawLine));
   });
   return findings;
@@ -156,7 +161,7 @@ function scanServiceDefinition(file: string, content: string): GuardFinding[] {
 function scanContainerFile(file: string, content: string): GuardFinding[] {
   const findings: GuardFinding[] = [];
   content.split("\n").forEach((rawLine, index) => {
-    if (!rawLine.includes(PATH_MARKER)) return;
+    if (!containsDeprecatedHostReference(rawLine)) return;
     findings.push(makeFinding("container", file, index + 1, rawLine));
   });
   return findings;
@@ -165,7 +170,7 @@ function scanContainerFile(file: string, content: string): GuardFinding[] {
 function scanBuildScript(file: string, content: string): GuardFinding[] {
   const findings: GuardFinding[] = [];
   content.split("\n").forEach((rawLine, index) => {
-    if (!rawLine.includes(PATH_MARKER)) return;
+    if (!containsDeprecatedHostReference(rawLine)) return;
     findings.push(makeFinding("build-script", file, index + 1, rawLine));
   });
   return findings;
@@ -182,7 +187,7 @@ function scanWorkspaceManifest(file: string, content: string): GuardFinding[] {
   const findings: GuardFinding[] = [];
   const lines = content.split("\n");
   for (const [name, value] of Object.entries(scripts)) {
-    if (typeof value !== "string" || !value.includes(PATH_MARKER)) continue;
+    if (typeof value !== "string" || !containsDeprecatedHostReference(value)) continue;
     const lineNumber = lines.findIndex((l) => l.includes(`"${name}"`)) + 1;
     findings.push(makeFinding("workspace-manifest", file, lineNumber || 1, `"${name}": "${value}"`));
   }

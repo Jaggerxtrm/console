@@ -1,7 +1,6 @@
 /**
- * Phase 0 guard validation: proves the host-retirement guard fails against
- * the current production state and passes against the intended console-host
- * fixture. Run with: bun test tools/retirement/host-retirement-guard.test.ts
+ * Host-retirement validation: the current production configuration and the
+ * intended Console-host fixture must both pass strict ownership checks.
  */
 import { describe, expect, test } from "bun:test";
 import { evaluate, scanTree, DEPRECATED_HOST_PATH, GUARD_MAX_FILE_BYTES } from "./host-retirement-guard";
@@ -13,16 +12,12 @@ const REPO_ROOT = join(import.meta.dir, "..", "..");
 const FIXTURE_ROOT = join(import.meta.dir, "fixtures", "console-host");
 
 describe("host-retirement-guard", () => {
-  test("strict mode FAILS against current repo (ExecStart references apps/gitboard)", () => {
+  test("strict mode PASSES against the Console-owned production configuration", () => {
     const report = evaluate({ mode: "strict", root: REPO_ROOT });
-    expect(report.pass).toBe(false);
-    expect(report.verdict).toBe("FAIL");
-    expect(report.findings.length).toBeGreaterThan(0);
-
-    const categories = new Set(report.findings.map((f) => f.category));
-    expect(categories.has("container")).toBe(true);
-    expect(categories.has("service-definition")).toBe(true);
-    expect(categories.has("build-script")).toBe(true);
+    expect(report.pass).toBe(true);
+    expect(report.verdict).toBe("PASS");
+    expect(report.findings).toHaveLength(0);
+    expect(report.scannedFiles).toBeGreaterThan(0);
   });
 
   test("console-host mode PASSES against intended fixture", () => {
@@ -91,12 +86,34 @@ describe("host-retirement-guard", () => {
     }
   });
 
-  test("strict mode detects all known production surfaces", () => {
+  test("detects package-name references and docker-compose production paths", () => {
+    const root = mkdtempSync(join(tmpdir(), "console-host-retirement-package-name-"));
+    try {
+      mkdirSync(join(root, "systemd"), { recursive: true });
+      writeFileSync(join(root, "docker-compose.yml"), "command: bun run --filter @xtrm/gitboard start\n");
+      writeFileSync(join(root, "justfile"), "serve: bun run --filter @xtrm/gitboard start\n");
+      writeFileSync(join(root, "systemd", "console.service"), "ExecStart=/usr/bin/bun run --filter @xtrm/gitboard start\n");
+      writeFileSync(join(root, "package.json"), JSON.stringify({
+        scripts: { serve: "bun run --filter @xtrm/gitboard start" },
+      }));
+
+      const { findings } = scanTree(root);
+      expect(new Set(findings.map((finding) => finding.category))).toEqual(new Set([
+        "container",
+        "build-script",
+        "service-definition",
+        "workspace-manifest",
+      ]));
+      expect(findings.map((finding) => finding.file)).toContain("docker-compose.yml");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("strict mode has retired every formerly known production surface", () => {
     const report = evaluate({ mode: "strict", root: REPO_ROOT });
-    const files = report.findings.map((f) => f.file);
-    expect(files).toContain("Dockerfile");
-    expect(files).toContain("docs/deployment.md");
-    expect(files).toContain("justfile");
+    expect(report.findings).toHaveLength(0);
+    expect(report.reason).toContain("No production references");
   });
 
   test("DEPRECATED_HOST_PATH is apps/gitboard", () => {

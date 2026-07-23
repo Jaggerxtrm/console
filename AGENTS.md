@@ -4,16 +4,17 @@
 
 Bun monorepo for the **xtrm** agent orchestration + GitHub-activity stack.
 
-- `apps/gitboard` (`@xtrm/gitboard`) — primary backend / materializer; serves the dashboard built with Vite.
-- `apps/console` — `console` frontend (served at `/console`).
+- `apps/console` — production Bun/Hono host and Console frontend at `/console`.
+- `apps/gitboard` — rollback-only compatibility package pending final deletion.
 - `packages/{core, api-client, html-preview, ui}` — shared TypeScript libs.
 
-Runtime: Bun + TypeScript; tests via Vitest. Deploys as a `gitboard.service` systemd user unit.
+Runtime: Bun + TypeScript; tests via Vitest. Deploys as `console.service` on the host tailnet address. Never run Console and Gitboard writers against the same state database.
 
 ## Project map
 
-- `apps/gitboard/src/` — API routes, materializer, core domain logic
-- `apps/console/` — frontend UI
+- `apps/console/src/server/` — production API, realtime, terminal, and lifecycle host
+- `apps/console/src/dashboard/` — frontend UI
+- `apps/gitboard/` — temporary rollback reference only
 - `packages/core/` — shared materializer / domain primitives
 - `packages/api-client/` — typed client for `/api/*`
 - `.xtrm/` — agent workflow config (instructions, hooks, MCP, settings)
@@ -23,8 +24,8 @@ Runtime: Bun + TypeScript; tests via Vitest. Deploys as a `gitboard.service` sys
 
 - `bun install` — install workspace deps
 - `bun run build` — full build (packages then apps)
-- `bun run --filter @xtrm/gitboard test` — gitboard tests (Vitest)
-- `bun run --filter @xtrm/gitboard lint` — gitboard typecheck
+- `bun run --filter @xtrm/console test` — Console tests (Vitest)
+- `bun run --filter @xtrm/console lint` — Console typecheck
 
 ---
 
@@ -105,7 +106,7 @@ Fix failures before committing.
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **console** (6986 symbols, 17119 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **console** (8331 symbols, 20714 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > Index stale? Run `node .gitnexus/run.cjs analyze` from the project root — it auto-selects an available runner. No `.gitnexus/run.cjs` yet? `npx gitnexus analyze` (npm 11 crash → `npm i -g gitnexus`; #1939).
 
