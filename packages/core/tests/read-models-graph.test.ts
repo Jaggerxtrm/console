@@ -17,8 +17,18 @@ describe("graph read model (xtrm path)", () => {
     expect(result.freshness).toBe("degraded");
     expect(result.sourceHealth?.status).toBe("degraded");
     expect(result.sourceHealth?.message).toContain("missing");
+    expect(result.graph.project).toContain("missing");
+    expect(result.sourceHealth?.metadata?.project).toBe(result.graph.project);
     expect(result.graph.nodes).toEqual([]);
     expect(result.graph.edges).toEqual([]);
+  });
+
+  itWithBunSqlite("derives the project name from the parent of a .beads path", async () => {
+    const { Database } = await import("bun:sqlite");
+    const db = createGraphDb(Database);
+    db.query("UPDATE sources SET path = '/tmp/repo-a/.beads' WHERE source_key = 'beads:gitboard'").run();
+    const source = resolveXtrmGraphSource(db, "gitboard");
+    expect(source?.projectName).toBe("repo-a");
   });
 
   itWithBunSqlite("joins issues, edges, and live specialists while preserving opaque IDs", async () => {

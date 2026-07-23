@@ -1,7 +1,6 @@
 import { createReadStream } from "node:fs";
 import { readFileSync } from "node:fs";
 import { readdir } from "node:fs/promises";
-import { createInterface } from "node:readline";
 import { join } from "node:path";
 
 export type ThresholdSeverity = "low" | "medium" | "high";
@@ -63,6 +62,10 @@ export type VerifierOptions = {
   readonly dir?: string;
   readonly thresholdsPath?: string;
   readonly onMetrics?: (metrics: VerifierMetrics) => void;
+  readonly maxFiles?: number;
+  readonly maxLines?: number;
+  readonly maxBytes?: number;
+  readonly maxLineBytes?: number;
 };
 
 type SummaryAccumulator = {
@@ -75,6 +78,10 @@ type SummaryAccumulator = {
 type MutableMetrics = Omit<VerifierMetrics, "duration_ms">;
 
 const MAX_DURATION_SAMPLES = 4096;
+const DEFAULT_MAX_FILES = 8;
+const DEFAULT_MAX_LINES = 500_000;
+const DEFAULT_MAX_BYTES = 128 * 1024 * 1024;
+const DEFAULT_MAX_LINE_BYTES = 256 * 1024;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_THRESHOLDS: readonly Threshold[] = [
   { component: "materializer", event: "run", p95_ms: 2000, severity: "high" },
@@ -121,14 +128,23 @@ export class Verifier {
       return;
     }
 
+    const budget = {
+      bytes: 0,
+      lines: 0,
+      maxBytes: this.options.maxBytes ?? DEFAULT_MAX_BYTES,
+      maxLines: this.options.maxLines ?? DEFAULT_MAX_LINES,
+      maxLineBytes: this.options.maxLineBytes ?? DEFAULT_MAX_LINE_BYTES,
+    };
+    const maxFiles = this.options.maxFiles ?? DEFAULT_MAX_FILES;
     for (const name of names.filter((value) => value.endsWith(".jsonl")).sort()) {
       metrics.files_seen += 1;
       if (!fileIntersectsInterval(name, sinceMs, untilMs)) {
         metrics.files_pruned += 1;
         continue;
       }
+      if (metrics.files_opened >= maxFiles || budget.bytes >= budget.maxBytes || budget.lines >= budget.maxLines) break;
       metrics.files_opened += 1;
-      await readLogFile(join(dir, name), sinceMs, untilMs, accumulator, metrics);
+      await readLogFile(join(dir, name), sinceMs, untilMs, accumulator, metrics, budget);
     }
   }
 }
@@ -155,34 +171,82 @@ export function createVerifier(options: VerifierOptions = {}): Verifier {
   return new Verifier(options);
 }
 
-async function readLogFile(path: string, sinceMs: number, untilMs: number, accumulator: SummaryAccumulator, metrics: MutableMetrics): Promise<void> {
-  const input = createReadStream(path, { encoding: "utf8" });
-  const lines = createInterface({ input, crlfDelay: Infinity });
+async function readLogFile(
+  path: string,
+  sinceMs: number,
+  untilMs: number,
+  accumulator: SummaryAccumulator,
+  metrics: MutableMetrics,
+  budget: { bytes: number; lines: number; maxBytes: number; maxLines: number; maxLineBytes: number },
+): Promise<void> {
+  const input = createReadStream(path);
+  const decoder = new TextDecoder();
+  let pending = "";
+  let discardingLongLine = false;
   try {
-    for await (const line of lines) {
-      metrics.lines_scanned += 1;
-      if (!line.trim()) continue;
-      let value: unknown;
-      try {
-        value = JSON.parse(line);
-      } catch {
-        metrics.malformed_lines += 1;
-        continue;
+    for await (const rawChunk of input) {
+      const chunk = Buffer.isBuffer(rawChunk) ? rawChunk : Buffer.from(rawChunk);
+      if (budget.bytes + chunk.byteLength > budget.maxBytes) break;
+      budget.bytes += chunk.byteLength;
+      let text = decoder.decode(chunk, { stream: true });
+      if (discardingLongLine) {
+        const newline = text.indexOf("\n");
+        if (newline < 0) continue;
+        text = text.slice(newline + 1);
+        discardingLongLine = false;
       }
-      if (!isRecord(value)) {
-        metrics.malformed_lines += 1;
-        continue;
+      text = pending + text;
+      let start = 0;
+      for (let newline = text.indexOf("\n", start); newline >= 0; newline = text.indexOf("\n", start)) {
+        if (!consumeLogLine(text.slice(start, newline).replace(/\r$/, ""), sinceMs, untilMs, accumulator, metrics, budget)) return;
+        start = newline + 1;
       }
-      const ts = typeof value.ts === "string" ? Date.parse(value.ts) : Number.NaN;
-      if (Number.isNaN(ts) || ts < sinceMs || ts > untilMs) continue;
-      addEntry(accumulator, value);
+      pending = text.slice(start);
+      if (Buffer.byteLength(pending) > budget.maxLineBytes) {
+        pending = "";
+        discardingLongLine = true;
+        metrics.malformed_lines += 1;
+      }
     }
+    pending += decoder.decode();
+    if (pending && !discardingLongLine) consumeLogLine(pending.replace(/\r$/, ""), sinceMs, untilMs, accumulator, metrics, budget);
   } catch {
     metrics.file_errors += 1;
   } finally {
-    lines.close();
     input.destroy();
   }
+}
+
+function consumeLogLine(
+  line: string,
+  sinceMs: number,
+  untilMs: number,
+  accumulator: SummaryAccumulator,
+  metrics: MutableMetrics,
+  budget: { lines: number; maxLines: number; maxLineBytes: number },
+): boolean {
+  if (budget.lines >= budget.maxLines) return false;
+  budget.lines += 1;
+  metrics.lines_scanned += 1;
+  if (!line.trim()) return true;
+  if (Buffer.byteLength(line) > budget.maxLineBytes) {
+    metrics.malformed_lines += 1;
+    return true;
+  }
+  let value: unknown;
+  try {
+    value = JSON.parse(line);
+  } catch {
+    metrics.malformed_lines += 1;
+    return true;
+  }
+  if (!isRecord(value)) {
+    metrics.malformed_lines += 1;
+    return true;
+  }
+  const ts = typeof value.ts === "string" ? Date.parse(value.ts) : Number.NaN;
+  if (!Number.isNaN(ts) && ts >= sinceMs && ts <= untilMs) addEntry(accumulator, value);
+  return true;
 }
 
 function createAccumulator(): SummaryAccumulator {

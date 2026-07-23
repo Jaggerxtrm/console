@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import { Hono } from "hono";
+import { isLocalhost, isLoopbackAddress, isTrustedLocalhostRequest, TRUSTED_PEER_ADDRESS_HEADER } from "../../../../packages/core/src/runtime/console-write-policy.ts";
 import { cors } from "hono/cors";
 import type { Database } from "bun:sqlite";
 import { createGitboardRuntimeLifecycle, createGitboardRuntimeLifecyclePlan, type RuntimeHostDescriptor } from "../../../../packages/core/src/runtime/index.ts";
@@ -197,10 +198,10 @@ export function createApp(db: Database, xtrmDb?: Database): {
   app.route("/api/internal", createInternalLogsRouter());
   app.route("/api/internal", createInternalSubstrateRouter(xtrmDb ?? null));
   app.route("/api/internal", createInternalVerifyRouter());
-  app.route("/api/internal", createInternalParityRouter());
+  app.route("/api/internal", createInternalParityRouter(() => currentObservabilityParityHarness));
   if (datasetteDebugEnabled) app.route("/explore/sql", createExploreSqlRouter());
   app.get("/api/internal/parity/beads", (c) => {
-    if (!String(c.req.header("host") ?? "").startsWith("localhost") && !String(c.req.header("host") ?? "").startsWith("127.0.0.1") && !String(c.req.header("host") ?? "").startsWith("[::1]")) return c.json({ error: "forbidden" }, 403);
+    if (!isTrustedLocalhostRequest(c.req.url, c.req.header("host") ?? "", c.req.header(TRUSTED_PEER_ADDRESS_HEADER))) return c.json({ error: "forbidden" }, 403);
     return c.json({ parity_ok_count: currentBeadsParityHarness?.getParityOkCount() ?? 0, latest_summary: currentBeadsParityHarness?.getLatestSummary() ?? null });
   });
 
@@ -259,7 +260,12 @@ export function startServer(xtrmDb: Database, options: ServerOptions = {}): void
   const server = Bun.serve({
     port,
     hostname,
-    fetch(req, server) {
+    fetch(rawRequest, server) {
+      const peerAddress = server.requestIP(rawRequest)?.address;
+      if (peerAddress && isLocalhost(rawRequest.headers.get("host") ?? "") && !isLoopbackAddress(peerAddress)) {
+        return new Response(JSON.stringify({ error: "loopback host denied" }), { status: 403, headers: { "Content-Type": "application/json" } });
+      }
+      const req = rawRequest;
       if (req.headers.get("upgrade") === "websocket") {
         const path = new URL(req.url).pathname;
         if (isShellWebSocketPath(path)) {
@@ -282,7 +288,7 @@ export function startServer(xtrmDb: Database, options: ServerOptions = {}): void
         }
         return undefined;
       }
-      return app.fetch(req);
+      return app.fetch(withTrustedPeerAddress(rawRequest, peerAddress));
     },
     websocket: {
       backpressureLimit: 1024 * 1024,
@@ -335,6 +341,13 @@ export function startServer(xtrmDb: Database, options: ServerOptions = {}): void
   console.log(`[xtrm] Server running at http://${hostname}:${port}`);
   console.log(`[xtrm] - Gitboard: http://${hostname}:${port}/gitboard`);
   console.log(`[xtrm] - Console: http://${hostname}:${port}/console`);
+}
+
+function withTrustedPeerAddress(request: Request, peerAddress?: string): Request {
+  const headers = new Headers(request.headers);
+  headers.delete(TRUSTED_PEER_ADDRESS_HEADER);
+  if (peerAddress) headers.set(TRUSTED_PEER_ADDRESS_HEADER, peerAddress);
+  return new Request(request, { headers });
 }
 
 export function isAllowedRealtimeWebSocketOrigin(url: string, origin: string | null, host: string | null, requestToken: string | null, env: NodeJS.ProcessEnv = process.env): boolean {

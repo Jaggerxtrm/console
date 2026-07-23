@@ -88,6 +88,7 @@ function isControlRequestAllowed(request: { url: string; header: (name: string) 
     request.header("origin") ?? null,
     request.header("x-console-write-token") ?? request.header("x-gitboard-sources-admin-token") ?? null,
     process.env,
+    request.header("x-xtrm-peer-address"),
   );
 }
 

@@ -20,19 +20,11 @@ export interface BeadIssue {
   updated_at: Timestamp;
   closed_at?: Timestamp;
   close_reason?: string;
-  
-  // Dependencies
   dependencies: BeadDependency[];
   parent_id?: ID;
   related_ids: ID[];
-  
-  // PR Linking
   linkedPrs: LinkedPr[];
-  
-  // Agent tracking
   agentSessions: AgentSession[];
-  
-  // Labels
   labels: string[];
 }
 
@@ -75,7 +67,6 @@ export interface Memory {
   issue_id?: ID;
 }
 
-// GitHub types (shared from gitboard)
 export interface GithubEvent {
   id: ID;
   type: string;

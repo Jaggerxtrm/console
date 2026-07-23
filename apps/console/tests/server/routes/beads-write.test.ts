@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createXtrmDatabase } from "../../../src/core/xtrm-store.ts";
-import { createBeadsWriteRouter } from "../../../src/api/routes/beads-write.ts";
+import { createXtrmDatabase } from "../../../../../packages/core/src/state/database.ts";
+import { createBeadsWriteRouter } from "../../../src/server/routes/beads-write.ts";
 import { mkdtempSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { rmSync } from "node:fs";
-import type { BeadIssue } from "../../../src/types/beads.ts";
+import type { BeadIssue } from "../../../../../packages/core/src/types/beads.ts";
 
 const originalPrimaryToken = process.env.CONSOLE_WRITE_ADMIN_TOKEN;
 const originalLegacyToken = process.env.GITBOARD_SOURCES_ADMIN_TOKEN;
@@ -44,7 +44,7 @@ describe("beads write routes", () => {
 
   it("creates issue with correct bd args and cwd", async () => {
     const db = createDb(tmpDir);
-    const runBdCommand = vi.fn(async () => ({
+    const runBdCommand = vi.fn(async (_repoPath: string, _command: string[], _op: string) => ({
       stdout: JSON.stringify({ issue: makeIssue({ id: "forge-123", title: "Alpha" }) }),
       stderr: "",
       exitCode: 0,
@@ -61,7 +61,7 @@ describe("beads write routes", () => {
     expect(runBdCommand).toHaveBeenCalledWith(join(tmpDir, "demo"), [
       "-C", join(tmpDir, "demo"),
       "--json", "--actor", "console", "--dolt-auto-commit", "on",
-      "create", "Alpha",
+      "create", "--title", "Alpha",
       "--description", "Desc",
       "--priority", "1",
       "--type", "task",
@@ -70,6 +70,34 @@ describe("beads write routes", () => {
       "--label", "api",
     ], "create");
     expect(await response.json()).toEqual({ issue: makeIssue({ id: "forge-123", title: "Alpha" }) });
+    db.close();
+  });
+
+  it("passes user text after explicit option boundaries", async () => {
+    const db = createDb(tmpDir);
+    const runBdCommand = vi.fn(async (_repoPath: string, _command: string[], _op: string) => ({
+      stdout: JSON.stringify({ issue: makeIssue({ id: "forge-123" }) }),
+      stderr: "",
+      exitCode: 0,
+    }));
+    const app = createBeadsWriteRouter(db, { runBdCommand });
+    const headers = { "Content-Type": "application/json", host: "localhost", "x-console-write-token": "primary-secret" };
+
+    await app.fetch(new Request("http://localhost/projects/demo/issues", {
+      method: "POST", headers, body: JSON.stringify({ title: "--graph=/tmp/owned" }),
+    }));
+    await app.fetch(new Request("http://localhost/projects/demo/issues/forge-123/comments", {
+      method: "POST", headers, body: JSON.stringify({ text: "--file=/etc/passwd" }),
+    }));
+    await app.fetch(new Request("http://localhost/projects/demo/issues/forge-123/notes", {
+      method: "POST", headers, body: JSON.stringify({ text: "--file=/etc/shadow" }),
+    }));
+
+    expect(runBdCommand.mock.calls.map((call) => call[1])).toEqual([
+      ["-C", join(tmpDir, "demo"), "--json", "--actor", "console", "--dolt-auto-commit", "on", "create", "--title", "--graph=/tmp/owned"],
+      ["-C", join(tmpDir, "demo"), "--json", "--actor", "console", "--dolt-auto-commit", "on", "comment", "forge-123", "--", "--file=/etc/passwd"],
+      ["-C", join(tmpDir, "demo"), "--json", "--actor", "console", "--dolt-auto-commit", "on", "note", "forge-123", "--", "--file=/etc/shadow"],
+    ]);
     db.close();
   });
 
@@ -218,8 +246,8 @@ describe("beads write routes", () => {
     expect(runBdCommand.mock.calls.map((call) => call[1])).toEqual([
       ["-C", join(tmpDir, "demo"), "--json", "--actor", "console", "--dolt-auto-commit", "on", "close", "forge-123", "--reason", "done"],
       ["-C", join(tmpDir, "demo"), "--json", "--actor", "console", "--dolt-auto-commit", "on", "reopen", "forge-123"],
-      ["-C", join(tmpDir, "demo"), "--json", "--actor", "console", "--dolt-auto-commit", "on", "comment", "forge-123", "ship it"],
-      ["-C", join(tmpDir, "demo"), "--json", "--actor", "console", "--dolt-auto-commit", "on", "note", "forge-123", "kept note"],
+      ["-C", join(tmpDir, "demo"), "--json", "--actor", "console", "--dolt-auto-commit", "on", "comment", "forge-123", "--", "ship it"],
+      ["-C", join(tmpDir, "demo"), "--json", "--actor", "console", "--dolt-auto-commit", "on", "note", "forge-123", "--", "kept note"],
       ["-C", join(tmpDir, "demo"), "--json", "--actor", "console", "--dolt-auto-commit", "on", "dep", "add", "forge-123", "forge-456"],
       ["-C", join(tmpDir, "demo"), "--json", "--actor", "console", "--dolt-auto-commit", "on", "priority", "forge-123", "1"],
       ["-C", join(tmpDir, "demo"), "--json", "--actor", "console", "--dolt-auto-commit", "on", "delete", "forge-123"],

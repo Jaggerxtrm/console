@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
-import { createSourcesRouter } from "../../../src/api/routes/sources.ts";
-import { createXtrmDatabase } from "../../../src/core/xtrm-store.ts";
+import { createSourcesRouter } from "../../../src/server/routes/sources.ts";
+import { createXtrmDatabase } from "../../../../../packages/core/src/state/database.ts";
 import { listSources } from "../../../../../packages/core/src/state/index.ts";
 
 describe("sources routes", () => {
@@ -124,6 +124,23 @@ describe("sources routes", () => {
     db.close();
   });
 
+  it("keeps refresh cooldown state isolated per router instance", async () => {
+    const db = createXtrmDatabase(dbPath);
+    const scanner = { refresh: async () => [] };
+    const firstRouter = createSourcesRouter(db, scanner);
+    const secondRouter = createSourcesRouter(db, scanner);
+    const request = () => new Request("http://localhost/refresh", {
+      method: "POST",
+      headers: { host: "localhost", "x-gitboard-sources-admin-token": "secret" },
+    });
+
+    expect((await firstRouter.fetch(request())).status).toBe(200);
+    expect((await firstRouter.fetch(request())).status).toBe(429);
+    expect((await secondRouter.fetch(request())).status).toBe(200);
+
+    db.close();
+  });
+
   it("rejects unknown origin and spoofed requests", async () => {
     const db = createXtrmDatabase(dbPath);
     const app = createSourcesRouter(db);
@@ -134,6 +151,13 @@ describe("sources routes", () => {
       body: JSON.stringify({ path: "/repo", kind: "unknown" }),
     }));
     expect(badKind.status).toBe(400);
+
+    const readOnlyKind = await app.fetch(new Request("http://localhost/pin", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", host: "localhost", "x-gitboard-sources-admin-token": "secret" },
+      body: JSON.stringify({ path: "owner/repo", kind: "github" }),
+    }));
+    expect(readOnlyKind.status).toBe(400);
 
     const missingToken = await app.fetch(new Request("http://localhost/pin", {
       method: "POST",

@@ -7,7 +7,9 @@ import { createDatabaseBootstrap } from "../../src/server/database.ts";
 import { redactHomePath, resolveDataDir } from "../../src/server/data-dir.ts";
 import { CONSOLE_HOST_OWNER, createConsoleHost } from "../../src/server/host.ts";
 import { createHostLogger } from "../../src/server/log.ts";
+import { CONSOLE_PHASE2_ROUTE_PREFIXES, createConsoleApiRouter } from "../../src/server/routes/index.ts";
 import { readStaticAsset, MAX_STATIC_ASSET_BYTES } from "../../src/server/static.ts";
+import { createXtrmDatabase } from "../../../../packages/core/src/state/database.ts";
 
 const tempDirs: string[] = [];
 
@@ -147,6 +149,40 @@ describe("console host lifecycle hook contract", () => {
 
     expect(host.descriptor.mountedRoutes).toContain("/api/console/feed");
     expect(host.descriptor.capabilities).toContain("http-api");
+  });
+
+  it("mounts the Phase 2 API router through the production host seam", async () => {
+    const distDir = makeDistDir({ "index.html": INDEX_HTML });
+    const stateDir = mkdtempSync(join(tmpdir(), "console-host-phase2-state-"));
+    tempDirs.push(stateDir);
+    const db = createXtrmDatabase(join(stateDir, "xtrm.sqlite"));
+    const logger = silentLogger();
+    const api = createConsoleApiRouter({ db, logger });
+    const host = createConsoleHost({
+      consoleDistDir: distDir,
+      logger,
+      hooks: {
+        mountRoutes: (app) => {
+          app.route("/", api);
+          return CONSOLE_PHASE2_ROUTE_PREFIXES;
+        },
+      },
+    });
+
+    try {
+      expect(host.descriptor.mountedRoutes).toEqual(expect.arrayContaining([...CONSOLE_PHASE2_ROUTE_PREFIXES]));
+      for (const path of ["/api/feed", "/api/sources", "/api/internal/substrate/schema", "/api/internal/parity/beads"]) {
+        const response = await host.app.request(`http://localhost${path}`, { headers: { host: "localhost" } });
+        expect(response.status, path).toBe(200);
+        await expect(response.json(), path).resolves.toBeTypeOf("object");
+      }
+      for (const path of ["/api/internal/dolt-health", "/api/internal/substrate/schema", "/api/internal/parity/beads", "/api/internal/parity/observability", "/api/internal/verify-runtime"]) {
+        const response = await host.app.request(`http://localhost${path}`, { headers: { host: "localhost.attacker.example" } });
+        expect(response.status, path).toBe(403);
+      }
+    } finally {
+      db.close();
+    }
   });
 });
 
@@ -349,6 +385,42 @@ describe("console host shutdown cleanup", () => {
 
     await expect(host.start()).rejects.toThrow("port-in-use");
     expect(callOrder).toEqual(["startBackground", "stopBackground"]);
+  });
+
+  it("rejects localhost authorization spoofing from a remote Bun socket peer", async () => {
+    let fetchHandler: ((request: Request, server: unknown) => Response | Promise<Response>) | undefined;
+    const fakeServer = {
+      port: 9876,
+      hostname: "127.0.0.1",
+      stop: () => {},
+      requestIP: () => ({ address: "203.0.113.20", port: 443, family: "IPv4" }),
+    };
+    vi.stubGlobal("Bun", {
+      serve: (options: { fetch: typeof fetchHandler }) => {
+        fetchHandler = options.fetch;
+        return fakeServer;
+      },
+    });
+    const distDir = makeDistDir({ "index.html": INDEX_HTML });
+    const host = createConsoleHost({
+      consoleDistDir: distDir,
+      logger: silentLogger(),
+      hooks: {
+        mountRoutes: (app) => {
+          app.route("/", createConsoleApiRouter({ db: null, logger: silentLogger() }));
+          return [...CONSOLE_PHASE2_ROUTE_PREFIXES];
+        },
+      },
+    });
+    const running = await host.start();
+    try {
+      const response = await fetchHandler!(new Request("http://localhost/api/internal/verify-runtime", {
+        headers: { host: "localhost", origin: "http://localhost", "x-xtrm-peer-address": "127.0.0.1" },
+      }), fakeServer);
+      expect(response.status).toBe(403);
+    } finally {
+      await running.stop();
+    }
   });
 });
 

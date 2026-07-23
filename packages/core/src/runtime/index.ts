@@ -1,4 +1,5 @@
 export * from "./host.ts";
+export * from "./console-write-policy.ts";
 export * from "./logs.ts";
 export * from "./ownership.ts";
 export * from "./realtime.ts";

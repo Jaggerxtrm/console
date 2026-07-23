@@ -3,14 +3,30 @@ import { createDatabaseBootstrap } from "./database.ts";
 import { redactHomePath, resolveDataDir } from "./data-dir.ts";
 import { CONSOLE_HOST_OWNER, createConsoleHost } from "./host.ts";
 import { createHostLogger } from "./log.ts";
+import { CONSOLE_PHASE2_ROUTE_PREFIXES, createConsoleApiRouter } from "./routes/index.ts";
 
 const logger = createHostLogger();
 const dataDir = resolveDataDir();
 const database = createDatabaseBootstrap(dataDir, createXtrmDatabase);
 const port = Number(process.env.PORT ?? 3000);
 const hostname = process.env.HOST?.trim() || "127.0.0.1";
+database.ensureDataDir();
+const databaseHandle = database.open();
+const apiRouter = createConsoleApiRouter({ db: databaseHandle.db, logger });
 
-const host = createConsoleHost({ port, hostname, dataDir, database, logger });
+const host = createConsoleHost({
+  port,
+  hostname,
+  dataDir,
+  database,
+  logger,
+  hooks: {
+    mountRoutes: (app) => {
+      app.route("/", apiRouter);
+      return CONSOLE_PHASE2_ROUTE_PREFIXES;
+    },
+  },
+});
 
 logger.info("host.starting", {
   owner: CONSOLE_HOST_OWNER,
@@ -40,12 +56,15 @@ async function shutdown(signal: string): Promise<void> {
   try {
     await running.stop();
     logger.info("host.shutdown", { signal });
+    await logger.flush();
+    databaseHandle.close();
     process.exit(0);
   } catch (error) {
     logger.error("host.shutdown_failed", {
       signal,
       error: error instanceof Error ? error.message : String(error),
     });
+    databaseHandle.close();
     process.exit(1);
   }
 }
