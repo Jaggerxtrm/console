@@ -5,4 +5,4 @@ export {
   filterRepos,
   type DiscoveredRepo,
   type DiscoverOptions,
-} from "../../../console/src/server/github/discover.ts";
+} from "../../../../../packages/core/src/github/index.ts";
