@@ -3,6 +3,6 @@ dolt:
   auto-start: true
   shared-server: true
 
-sync.remote: "http://159.195.49.110:50051/dawid/gitboard"
+# sync.remote: "http://159.195.49.110:50051/dawid/gitboard"
 
 export.git-add: false
