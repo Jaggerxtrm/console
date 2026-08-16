@@ -56,3 +56,6 @@ __pycache__/
 tools/probes/pcprobe
 # isolated repro temp fixtures (disk-backed)
 .repro-tmp/
+
+# Beads / Dolt files (added by bd init)
+*.gate.lock*
