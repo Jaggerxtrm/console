@@ -93,7 +93,7 @@ export function Programme() {
       <div className="pd-content" key={view}>
         {view === "overview" ? <OverviewView snapshot={snapshot} /> : null}
         {view === "revenue" ? <RevenueView snapshot={snapshot} /> : null}
-        {view === "graph" ? <ProgrammeGraphShell graph={snapshot.graph} snapshot={snapshot} /> : null}
+        {view === "graph" ? <ProgrammeGraphShell graph={snapshot.graph} snapshot={snapshot} changesEntityKeys={changedKeys.size > 0 ? changedKeys : undefined} /> : null}
         {view === "statejournal" ? <StateJournalView snapshot={snapshot} /> : null}
         {view === "identity" ? <IdentityView snapshot={snapshot} /> : null}
         {view === "workstreams" ? <WorkstreamsView snapshot={snapshot} changedKeys={changedKeys} /> : null}
@@ -124,11 +124,15 @@ function viewToPath(view: ProgrammeView): string {
 
 // ── Shared UI ────────────────────────────────────────────────────────────────
 
-const GITHUB_BASE = "https://github.com/mercuryintelligence/program/blob/master";
+const GITHUB_BASE = "https://github.com/mercuryintelligence/program";
 const JIRA_BASE = "https://mercuryintel.atlassian.net/browse";
 
-function ghUrl(path: string): string {
-  return `${GITHUB_BASE}/${path}`;
+/** Canonical source link pinned to the snapshot SHA. Falls back to the branch
+ * ref only when the snapshot was built without a resolved SHA — the link still
+ * resolves to the exact snapshot ref, never to a moving `master` head. */
+function ghUrl(path: string, snapshot?: ProgrammeSnapshot | null): string {
+  const ref = snapshot?.programme?.sha ?? snapshot?.programme?.branch ?? "master";
+  return `${GITHUB_BASE}/blob/${encodeURIComponent(ref)}/${path}`;
 }
 
 function Badge({ value }: { value: unknown }) {
@@ -200,8 +204,8 @@ function SectionHd({ title, sub }: { title: string; sub?: string }) {
   );
 }
 
-function SourceLink({ path, label = "Source" }: { path: string; label?: string }) {
-  return <a className="pd-link" href={ghUrl(path)} target="_blank" rel="noreferrer">{label}</a>;
+function SourceLink({ path, snapshot, label = "Source" }: { path: string; snapshot?: ProgrammeSnapshot | null; label?: string }) {
+  return <a className="pd-link" href={ghUrl(path, snapshot)} target="_blank" rel="noreferrer">{label}</a>;
 }
 
 /** Δ chip — factual marker that an entity changed in the last visit. */
@@ -304,7 +308,7 @@ function RevenueView({ snapshot }: { snapshot: ProgrammeSnapshot }) {
               <td>{w.title}</td>
               <td><Badge value={w.status} /></td>
               <td><JiraRefs refs={w.jira_refs} /></td>
-              <td><SourceLink path={w.path} /></td>
+              <td><SourceLink path={w.path} snapshot={snapshot} /></td>
             </tr>
           ))}
         </Table>
@@ -333,7 +337,7 @@ function StateJournalView({ snapshot }: { snapshot: ProgrammeSnapshot }) {
               <td>{s.actor_id ?? "—"}</td>
               <td>{s.assignment_id ?? "—"}</td>
               <td>{fmtDate(s.updated_at)}</td>
-              <td><SourceLink path={s.path} /></td>
+              <td><SourceLink path={s.path} snapshot={snapshot} /></td>
             </tr>
           ))}
         </Table>
@@ -348,7 +352,7 @@ function StateJournalView({ snapshot }: { snapshot: ProgrammeSnapshot }) {
               <td><Badge value={j.classification ?? j.authority_class} /></td>
               <td>{j.evidence_cutoff ?? "—"}</td>
               <td>{j.publication ?? "—"}</td>
-              <td><SourceLink path={j.path} label="Journal" /></td>
+              <td><SourceLink path={j.path} snapshot={snapshot} label="Journal" /></td>
             </tr>
           ))}
         </Table>
@@ -425,7 +429,7 @@ function WorkstreamsView({ snapshot, changedKeys }: { snapshot: ProgrammeSnapsho
             <td>{w.has_plan ? <Badge value="PLAN" /> : "—"}</td>
             <td><JiraRefs refs={w.jira_refs} /></td>
             <td>{fmtDate(w.updated_at)}</td>
-            <td><SourceLink path={w.path} /></td>
+            <td><SourceLink path={w.path} snapshot={snapshot} /></td>
           </tr>
         ))}
       </Table>
@@ -453,7 +457,7 @@ function AssignmentsView({ snapshot, changedKeys }: { snapshot: ProgrammeSnapsho
               <td><Badge value={a.status} /></td>
               <td>{String(a.workstream ?? "—")}</td>
               <td><JiraRefs refs={a.jira_refs} /></td>
-              <td><SourceLink path={a.path} /></td>
+              <td><SourceLink path={a.path} snapshot={snapshot} /></td>
             </tr>
           ))}
         </Table>
@@ -477,6 +481,9 @@ const FACETS: Array<{ key: FacetKey; label: string }> = [
 ];
 
 interface ExploreRow {
+  /** Collision-safe entity key (graph node id). Never kind+display_id. */
+  entity_key: string;
+  /** Display id (may be shared across collisions). */
   id: string;
   kind: string;
   title: string;
@@ -490,6 +497,15 @@ interface ExploreRow {
   source: string;
 }
 
+/** Graph-node-aware key for a collection record. Collision-free records map
+ * to their graph node id; collision duplicates (e.g. EXP-005) keep the
+ * path-qualified graph id so each row is uniquely addressed. */
+function exploreKey(record: { id: string; graph_id?: string; path?: string }, snapshot: ProgrammeSnapshot): string {
+  if (record.graph_id && record.graph_id !== record.id) return record.graph_id;
+  const node = snapshot.graph.nodes.find((n) => n.id === record.id);
+  return node?.id ?? (record.path ? `${record.id}::${record.path}` : record.id);
+}
+
 function authorityOf(value: unknown): string {
   if (!value) return "—";
   if (typeof value === "string") return value;
@@ -499,14 +515,17 @@ function authorityOf(value: unknown): string {
 
 function exploreRows(snapshot: ProgrammeSnapshot): ExploreRow[] {
   const rows: ExploreRow[] = [];
-  for (const w of snapshot.workstreams ?? []) rows.push({ id: w.id, kind: "workstream", title: w.title, status: w.status, workstream: w.id, owner: "—", repository: "mercuryintelligence/program", jira: w.jira_refs.join(","), authority: "canonical", evidence: "derived_from_checkout", source: w.state_path ?? w.path });
-  for (const a of snapshot.assignments ?? []) rows.push({ id: a.id, kind: "assignment", title: a.title, status: a.status, workstream: String(a.workstream ?? "—"), owner: String(a.metadata?.["owner"] ?? "—"), repository: "mercuryintelligence/program", jira: a.jira_refs.join(","), authority: authorityOf(a.authority), evidence: "derived_from_checkout", source: a.path });
-  for (const r of snapshot.research ?? []) rows.push({ id: r.id, kind: "research", title: r.title, status: r.status, workstream: "—", owner: String(r.metadata?.["owner"] ?? "—"), repository: "mercuryintelligence/program", jira: r.jira_refs.join(","), authority: authorityOf(r.authority), evidence: "derived_from_checkout", source: r.path });
-  for (const d of snapshot.decisions ?? []) rows.push({ id: d.id, kind: "decision", title: d.title, status: d.status, workstream: "—", owner: String(d.metadata?.["owner"] ?? "—"), repository: "mercuryintelligence/program", jira: d.jira_refs.join(","), authority: authorityOf(d.authority), evidence: "canonical", source: d.path });
-  for (const p of snapshot.proposals ?? []) rows.push({ id: p.id, kind: "proposal", title: p.title, status: p.status, workstream: "—", owner: String(p.metadata?.["owner"] ?? "—"), repository: "mercuryintelligence/program", jira: p.jira_refs.join(","), authority: authorityOf(p.authority), evidence: "non_authoritative", source: p.path });
-  for (const s of snapshot.state_records ?? []) rows.push({ id: s.id, kind: "state", title: s.title, status: s.status, workstream: "—", owner: s.actor_id ?? "—", repository: "mercuryintelligence/program", jira: "", authority: "operational", evidence: "machine_recorded", source: s.path });
-  for (const j of snapshot.journals ?? []) rows.push({ id: j.id, kind: "journal", title: j.title, status: j.classification ?? j.authority_class, workstream: "—", owner: "—", repository: "mercuryintelligence/program", jira: j.refs.join(","), authority: j.authority_class, evidence: "dated_history", source: j.path });
-  for (const pub of snapshot.publication_facts ?? []) rows.push({ id: pub.id, kind: "publication", title: pub.title, status: "RECORDED", workstream: "—", owner: pub.assignment_id ?? "—", repository: "mercuryintelligence/program", jira: "", authority: "wrapper_recorded", evidence: pub.evidence_class, source: pub.source_path });
+  const push = (rec: Omit<ExploreRow, "entity_key"> & { path?: string; graph_id?: string }) => {
+    rows.push({ ...rec, entity_key: exploreKey(rec, snapshot) });
+  };
+  for (const w of snapshot.workstreams ?? []) push({ id: w.id, kind: "workstream", title: w.title, status: w.status, workstream: w.id, owner: "—", repository: "mercuryintelligence/program", jira: w.jira_refs.join(","), authority: "canonical", evidence: "derived_from_checkout", source: w.state_path ?? w.path, path: w.path, graph_id: w.graph_id });
+  for (const a of snapshot.assignments ?? []) push({ id: a.id, kind: "assignment", title: a.title, status: a.status, workstream: String(a.workstream ?? "—"), owner: String(a.metadata?.["owner"] ?? "—"), repository: "mercuryintelligence/program", jira: a.jira_refs.join(","), authority: authorityOf(a.authority), evidence: "derived_from_checkout", source: a.path, path: a.path, graph_id: a.graph_id });
+  for (const r of snapshot.research ?? []) push({ id: r.id, kind: "research", title: r.title, status: r.status, workstream: "—", owner: String(r.metadata?.["owner"] ?? "—"), repository: "mercuryintelligence/program", jira: r.jira_refs.join(","), authority: authorityOf(r.authority), evidence: "derived_from_checkout", source: r.path, path: r.path, graph_id: r.graph_id });
+  for (const d of snapshot.decisions ?? []) push({ id: d.id, kind: "decision", title: d.title, status: d.status, workstream: "—", owner: String(d.metadata?.["owner"] ?? "—"), repository: "mercuryintelligence/program", jira: d.jira_refs.join(","), authority: authorityOf(d.authority), evidence: "canonical", source: d.path, path: d.path, graph_id: d.graph_id });
+  for (const p of snapshot.proposals ?? []) push({ id: p.id, kind: "proposal", title: p.title, status: p.status, workstream: "—", owner: String(p.metadata?.["owner"] ?? "—"), repository: "mercuryintelligence/program", jira: p.jira_refs.join(","), authority: authorityOf(p.authority), evidence: "non_authoritative", source: p.path, path: p.path, graph_id: p.graph_id });
+  for (const s of snapshot.state_records ?? []) push({ id: s.id, kind: "state", title: s.title, status: s.status, workstream: "—", owner: s.actor_id ?? "—", repository: "mercuryintelligence/program", jira: "", authority: "operational", evidence: "machine_recorded", source: s.path, path: s.path });
+  for (const j of snapshot.journals ?? []) push({ id: j.id, kind: "journal", title: j.title, status: j.classification ?? j.authority_class, workstream: "—", owner: "—", repository: "mercuryintelligence/program", jira: j.refs.join(","), authority: j.authority_class, evidence: "dated_history", source: j.path, path: j.path });
+  for (const pub of snapshot.publication_facts ?? []) push({ id: pub.id, kind: "publication", title: pub.title, status: "RECORDED", workstream: "—", owner: pub.assignment_id ?? "—", repository: "mercuryintelligence/program", jira: "", authority: "wrapper_recorded", evidence: pub.evidence_class, source: pub.source_path, path: pub.source_path });
   return rows;
 }
 
@@ -569,7 +588,7 @@ function ExploreView({ snapshot }: { snapshot: ProgrammeSnapshot }) {
           <thead><tr>{["ID", "Kind", "Title", "State", "Workstream", "Owner", "Repository", "Jira", "Authority", "Evidence"].map((h) => <th key={h}>{h}</th>)}</tr></thead>
           <tbody>
             {filtered.slice(0, 300).map((r) => (
-              <tr key={`${r.kind}:${r.id}`}>
+              <tr key={r.entity_key}>
                 <td className="pd-mono">{r.id}</td>
                 <td>{r.kind}</td>
                 <td>{r.title}</td>
@@ -617,7 +636,7 @@ function AgentsView({ snapshot }: { snapshot: ProgrammeSnapshot }) {
   return (
     <div className="pd-agent-grid">
       {items.map((a) => (
-        <a key={a.id} className="pd-agent" href={ghUrl(a.path)} target="_blank" rel="noreferrer">
+        <a key={a.id} className="pd-agent" href={ghUrl(a.path, snapshot)} target="_blank" rel="noreferrer">
           <div className="pd-agent-id">{a.id}</div>
           <div className="pd-agent-title">{a.title}</div>
           <div className="pd-sub">{a.role} · {fmtDate(a.updated_at)}</div>
@@ -635,7 +654,7 @@ function KnowledgeView({ snapshot }: { snapshot: ProgrammeSnapshot }) {
       <td><Badge value={x.status} /></td>
       <td>{String(x.authority ?? "—")}</td>
       <td><JiraRefs refs={x.jira_refs} /></td>
-      <td><SourceLink path={x.path} /></td>
+      <td><SourceLink path={x.path} snapshot={snapshot} /></td>
     </tr>
   ));
   return (
