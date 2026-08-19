@@ -37,13 +37,13 @@ export const BEADS_TABS: { id: BeadsTab; label: string }[] = [
   { id: "memories",  label: "Memories" },
 ];
 
+// Specialists and Operations remain valid deep-link routes for compatibility,
+// but the primary console navigation converges their runtime views into Observability.
 export const CONSOLE_TABS: { id: ConsoleTab; label: string }[] = [
   { id: "feed",          label: "Issues" },
   { id: "graph",         label: "Graph" },
-  { id: "specialists",   label: "Specialists" },
-  { id: "operations",    label: "Operations" },
-  { id: "explore",       label: "Explore" },
   { id: "observability", label: "Observability" },
+  { id: "explore",       label: "Explore" },
   { id: "triage",        label: "Triage" },
   { id: "memories",      label: "Memories" },
 ];
