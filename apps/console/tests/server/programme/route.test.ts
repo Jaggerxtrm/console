@@ -138,3 +138,57 @@ describe("GET /api/programme", () => {
     expect(body.error).toContain("Programme source incomplete");
   });
 });
+
+describe("GET /api/programme/changes and /revisions", () => {
+  it("returns an empty change set on first observation (no previous revision)", async () => {
+    const res = await app.request("/changes");
+    expect(res.status).toBe(200);
+    const body = await res.json() as { previous_sha: string | null; entities: unknown[] };
+    expect(body.previous_sha).toBeNull();
+    expect(body.entities).toEqual([]);
+  });
+
+  it("reports a deterministic change set after a second build and includes it in the summary", async () => {
+    const base = fixtureSource();
+    let flip = false;
+    const evolving: ProgrammeSource = {
+      ...base,
+      read: async (path) => {
+        if (path === "assignments/EXP-013-education-student-derivative-pilot.yaml" && flip) {
+          return (await base.read(path) ?? "").replace(/status:\s*ready/i, "status: closed");
+        }
+        return base.read(path);
+      },
+    };
+    const evolvingApp = createProgrammeRouter({ source: evolving, cacheTtlMs: 60_000 });
+    const first = await evolvingApp.request("/");
+    const firstBody = await first.json() as ProgrammeSnapshotResponse;
+    expect(firstBody.changes_summary).toBeNull();
+    flip = true;
+    const second = await evolvingApp.request("/?refresh=true");
+    const secondBody = await second.json() as ProgrammeSnapshotResponse;
+    expect(secondBody.changes_summary).not.toBeNull();
+    expect(secondBody.changes_summary!.changed_entities).toBeGreaterThan(0);
+    const changeRes = await evolvingApp.request("/changes");
+    expect(changeRes.status).toBe(200);
+    const changeBody = await changeRes.json() as { entities: Array<{ entity_key: string; field_changes: unknown[] }> };
+    expect(changeBody.entities.length).toBe(secondBody.changes_summary!.changed_entities);
+    const exp013 = changeBody.entities.find((e) => e.entity_key === "EXP-013");
+    expect(exp013).toBeDefined();
+    expect(exp013!.field_changes.some((f) => (f as { field: string }).field === "status")).toBe(true);
+  });
+
+  it("revisions endpoint requires a path and fails closed when disabled", async () => {
+    const missing = await app.request("/revisions");
+    expect(missing.status).toBe(400);
+    const disabled = createProgrammeRouter({ source: fixtureSource(), enabled: false });
+    const res = await disabled.request("/revisions?path=NOW.md");
+    expect(res.status).toBe(404);
+  });
+
+  it("changes endpoint fails closed when disabled", async () => {
+    const disabled = createProgrammeRouter({ source: fixtureSource(), enabled: false });
+    const res = await disabled.request("/changes");
+    expect(res.status).toBe(404);
+  });
+});
