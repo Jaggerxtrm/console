@@ -10,7 +10,7 @@
 // These helpers centralize the mapping so Explore, the drawer, the graph,
 // the context buffer and the diff/change surfaces agree on identity.
 
-import type { ProgrammeNode, ProgrammeSnapshot } from "../../../../types/programme.ts";
+import type { ProgrammeSnapshot } from "../../../../types/programme.ts";
 
 /** Kinds whose canonical id already includes the colon prefix and must not be
  * split when deriving the human display id. */
@@ -73,17 +73,10 @@ export function resolveRecord(snapshot: ProgrammeSnapshot, rec: { id: string; ki
   }
   // Record not in graph (e.g. a journal/state with no node): path-qualified.
   const path = rec.path ?? "";
-  return { key: rec.path ? recordKey(rec.id, rec.path) : rec.id, displayId: rec.id.split(":")[0], kind: rec.kind, path: rec.path ?? null };
-}
-
-/** All graph nodes matching a display id (collision-aware). For a collision
- * hub this returns the hub plus every path-qualified duplicate node. */
-export function nodesForDisplayId(snapshot: ProgrammeSnapshot, displayId: string): ProgrammeNode[] {
-  const nodes: ProgrammeNode[] = [];
-  for (const n of snapshot.graph.nodes) {
-    if (n.id === displayId) nodes.push(n);
-    else if (n.id.startsWith(`${displayId}:`) || n.id.startsWith(`${displayId}::`)) nodes.push(n);
-  }
-  const seen = new Set<string>();
-  return nodes.filter((n) => (seen.has(n.id) ? false : (seen.add(n.id), true)));
+  return {
+    key: rec.path ? recordKey(rec.id, rec.path) : rec.id,
+    displayId: displayIdOf({ id: rec.id, kind: rec.kind, source_path: path }),
+    kind: rec.kind,
+    path: rec.path ?? null,
+  };
 }

@@ -308,8 +308,8 @@ export function ProgrammeGraphView({
         </div>
         <div className="pg-toolbar-right">
           <div className="pg2-mode" role="group" aria-label="View mode">
-            <button type="button" className={!allProgramme ? "pg-filter is-active" : "pg-filter"} onClick={() => setAllProgramme(false)}>Focus</button>
-            <button type="button" className={allProgramme ? "pg-filter is-active" : "pg-filter"} onClick={() => setAllProgramme(true)}>All programme</button>
+            <button type="button" className={!allProgramme ? "pg-filter is-active" : "pg-filter"} onClick={() => { setAllProgramme(false); }}>Focus</button>
+            <button type="button" className={allProgramme ? "pg-filter is-active" : "pg-filter"} onClick={() => { setFocusedId(null); setAllProgramme(true); }}>All programme</button>
           </div>
           <div className="pg2-mode" role="group" aria-label="Reference mode">
             <button type="button" className={mode === "strong" ? "pg-filter is-active" : "pg-filter"} onClick={() => setMode("strong")}>Structural</button>

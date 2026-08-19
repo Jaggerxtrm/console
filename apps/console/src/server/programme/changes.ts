@@ -122,7 +122,7 @@ export function buildChangeSet(previous: ProgrammeSnapshot | null, current: Prog
       relation_changes: relationChanges,
       status_trail: statusTrail,
       previous_revision_sha: previousRevisionSha,
-      current_revision_sha: curSha ?? previousRevisionSha,
+      current_revision_sha: curSha,
     };
     if (entity.field_changes.length === 0 && entity.relation_changes.length === 0 && !prevNode) {
       // New node with no observable fields/relations (e.g. a bare referenced
@@ -161,7 +161,7 @@ export function buildChangeSet(previous: ProgrammeSnapshot | null, current: Prog
       relation_changes: relationChanges,
       status_trail: statusTrail,
       previous_revision_sha: prevSha,
-      current_revision_sha: curSha ?? prevSha,
+      current_revision_sha: curSha,
     });
   }
 

@@ -141,4 +141,15 @@ describe("ContextBuffer", () => {
     fireEvent.click(screen.getByRole("button", { name: "Compact" }));
     expect(entry?.className).toContain("pg-buffer-entry-compact");
   });
+
+  it("addNode derives the collision-safe display id from the node source_path", () => {
+    const store = useProgrammeContext.getState();
+    const node = SNAPSHOT.graph.nodes[0];
+    store.addNode(SNAPSHOT, node, { source_view: "graph" });
+    const entry = useProgrammeContext.getState().entries[0];
+    expect(entry.entity_key).toBe("assignment:assignments/EXP-005-website-ia.yaml");
+    // Regression: display_id must be EXP-005 (path-derived), never "assignment"
+    // (the pre-colon segment of a path-qualified graph id).
+    expect(entry.display_id).toBe("EXP-005");
+  });
 });

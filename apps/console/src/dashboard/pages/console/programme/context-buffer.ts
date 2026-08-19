@@ -102,7 +102,7 @@ export const useProgrammeContext = create<ContextBufferState>((set, get) => ({
   addNode: (snapshot, node, options = {}) => {
     const entry: Omit<ContextEntry, "captured_at"> = {
       entity_key: node.id,
-      display_id: displayIdOf({ id: node.id, kind: node.kind }),
+      display_id: displayIdOf({ id: node.id, kind: node.kind, source_path: node.source_path }),
       kind: node.kind,
       title: node.title,
       path: node.source_path ?? null,
