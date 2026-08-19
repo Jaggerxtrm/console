@@ -38,6 +38,21 @@ function asObservable(source: ProgrammeSource): ObservableProgrammeSource {
   return source as ObservableProgrammeSource;
 }
 
+/** Restrict browser reads of private programme data to the Console origin.
+ * Requests without Origin are governed separately by the deployment/network
+ * boundary; this function exists specifically to prevent cross-origin browser
+ * exfiltration when the route is enabled. */
+export function isAllowedProgrammeOrigin(origin: string | null, host: string | null): boolean {
+  if (!origin || !host) return false;
+  try {
+    const parsed = new URL(origin);
+    const protocolOk = parsed.protocol === "http:" || parsed.protocol === "https:";
+    return protocolOk && parsed.host.toLowerCase() === host.trim().toLowerCase();
+  } catch {
+    return false;
+  }
+}
+
 export function createProgrammeRouter(options: ProgrammeRouteOptions = {}): Hono {
   const app = new Hono();
   const logger = options.logger;
@@ -82,10 +97,12 @@ export function createProgrammeRouter(options: ProgrammeRouteOptions = {}): Hono
   }
 
   function withFailure(error: unknown, now: number): CacheEntry {
+    // With no prior good snapshot, propagate to the route so callers receive
+    // snapshot:null. An empty synthetic snapshot would be ambiguous with a real
+    // programme containing zero work.
+    if (!cache) throw error;
     const message = error instanceof Error ? error.message : String(error);
-    const next: CacheEntry = cache
-      ? { ...cache, lastError: message, lastErrorAt: now }
-      : { snapshot: emptySnapshot(), builtAt: now, lastError: message, lastErrorAt: now };
+    const next: CacheEntry = { ...cache, lastError: message, lastErrorAt: now };
     cache = next;
     return next;
   }
@@ -171,38 +188,4 @@ export function createProgrammeRouter(options: ProgrammeRouteOptions = {}): Hono
   });
 
   return app;
-}
-
-function emptySnapshot(): ProgrammeSnapshot {
-  return {
-    schema_version: 3,
-    generated_at: new Date().toISOString(),
-    programme: { repository: "mercuryintelligence/program", branch: "master", sha: null, short_sha: null },
-    now: { title: "", evidence_cutoff: null, path: "NOW.md" },
-    business: {},
-    workstreams: [],
-    assignments: [],
-    research: [],
-    decisions: [],
-    proposals: [],
-    agents: [],
-    jira_refs: [],
-    operator_input_refs: [],
-    activity: [],
-    graph: { nodes: [], edges: [], metadata_fields: [], identity_collisions: [] },
-    identity_collisions: [],
-    evidence_boundary: {},
-    state_records: [],
-    journals: [],
-    publication_facts: [],
-    state_history_semantics: {
-      current_state_precedence: "",
-      journal_authority: "",
-      publication_separation: "",
-      unsafe_nested_relationship_policy: "",
-      suppressed_unsafe_nested_edges: 0,
-    },
-    provenance: { current: { programme_actor_registry: false, state_actor_assignment_fields: false, wrapper_publication_facts: false, xtrm_mutation_receipts: false }, rules: [], live_receipt_gate: "" },
-    source_health: makeSourceHealth("programme", "degraded", { message: "snapshot unavailable" }),
-  };
 }

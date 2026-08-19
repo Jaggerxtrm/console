@@ -21,7 +21,7 @@ import { createInternalParityRouter, type InternalParityHarness } from "./intern
 import { createInternalSubstrateRouter } from "./internal-substrate.ts";
 import { createInternalVerifyRouter } from "./internal-verify.ts";
 import { createObservabilityRouter, type ObservabilityMetricsDao } from "./observability.ts";
-import { createProgrammeRouter } from "../programme/route.ts";
+import { createProgrammeRouter, isAllowedProgrammeOrigin } from "../programme/route.ts";
 import { createSourcesRouter, type SourceScanner } from "./sources.ts";
 import { createShellRouter } from "./shell.ts";
 import { createSpecialistsConfigRouter } from "./specialists-config.ts";
@@ -80,6 +80,9 @@ export function createConsoleApiRouter(options: ConsoleApiRouteOptions): Hono {
 
   app.use("*", cors({
     origin: (origin, c) => {
+      if (c.req.path.startsWith("/api/programme")) {
+        return isAllowedProgrammeOrigin(origin || null, c.req.header("host") ?? null) ? origin : null;
+      }
       if (!isTerminalPolicyRoute(c.req.path)) return "*";
       return isAllowedShellWebSocketOrigin(origin || null, c.req.header("host") ?? null, env)
         ? origin

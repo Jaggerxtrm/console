@@ -62,10 +62,11 @@ describe("GET /api/programme", () => {
     expect(keys.has("program-coordinator-web\u0001state:web-programme-supervisor\u0001materializes_state")).toBe(true);
   });
 
-  it("reports degraded with an error message when the initial source fails", async () => {
+  it("reports degraded with no synthetic empty snapshot when the initial source fails", async () => {
     const res = await failingApp.request("/");
     expect(res.status).toBe(200);
     const body = await res.json() as ProgrammeSnapshotResponse;
+    expect(body.snapshot).toBeNull();
     expect(body.freshness).toBe("degraded");
     expect(body.source_health.status).toBe("degraded");
     expect(body.error).toContain("simulated GitHub outage");
@@ -131,6 +132,7 @@ describe("GET /api/programme", () => {
     const partialApp = createProgrammeRouter({ source: partial, cacheTtlMs: 60_000 });
     const res = await partialApp.request("/");
     const body = await res.json() as ProgrammeSnapshotResponse;
+    expect(body.snapshot).toBeNull();
     expect(body.freshness).toBe("degraded");
     expect(body.source_health.status).toBe("degraded");
     expect(body.error).toContain("Programme source incomplete");
