@@ -6,8 +6,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
 import { ArrowLeftIcon, XIcon } from "@primer/octicons-react";
-import type { ProgrammeEdge, ProgrammeNode, ProgrammeSnapshot } from "../../../../types/programme.ts";
+import type { ProgrammeEdge, ProgrammeNode, ProgrammeRevisionHistory, ProgrammeSnapshot } from "../../../../types/programme.ts";
 import { useProgrammeDrawer, type ProgrammeDrawerTab } from "./programme-drawer.ts";
+import { fetchRevisionHistory, useProgrammeChanges } from "./useProgrammeChanges.ts";
+import { FieldChanges, RelationChanges, StatusTrail, RevisionHistoryBody } from "./ChangesView.tsx";
 
 const TABS: Array<{ id: ProgrammeDrawerTab; label: string }> = [
   { id: "overview", label: "Overview" },
@@ -15,6 +17,7 @@ const TABS: Array<{ id: ProgrammeDrawerTab; label: string }> = [
   { id: "evidence", label: "Evidence" },
   { id: "github", label: "GitHub" },
   { id: "metadata", label: "Metadata" },
+  { id: "changes", label: "Changes" },
 ];
 
 export function ProgrammeEntityDrawer({ snapshot }: { snapshot: ProgrammeSnapshot | null }) {
@@ -115,6 +118,7 @@ export function ProgrammeEntityDrawer({ snapshot }: { snapshot: ProgrammeSnapsho
           {tab === "evidence" ? <EvidenceTab node={node} snapshot={snapshot} /> : null}
           {tab === "github" ? <GithubTab node={node} snapshot={snapshot} /> : null}
           {tab === "metadata" ? <MetadataTab node={node} /> : null}
+          {tab === "changes" ? <ChangesTab node={node} /> : null}
         </div>
       </aside>
     </div>,
@@ -268,4 +272,47 @@ function formatValue(value: unknown): string {
   if (Array.isArray(value)) return value.join(" · ");
   if (value === null || value === undefined) return "—";
   return String(value);
+}
+
+/** Changes tab — entity change record + FILE-level revision history for the
+ * open node (keyed by node.id = entity_key). Lazy fetch, graceful failure. */
+function ChangesTab({ node }: { node: ProgrammeNode }) {
+  const { changeSet, error } = useProgrammeChanges();
+  const [revisions, setRevisions] = useState<ProgrammeRevisionHistory | null | undefined>(undefined);
+
+  useEffect(() => {
+    if (!node.source_path) return;
+    let cancelled = false;
+    void fetchRevisionHistory(node.source_path).then((h) => { if (!cancelled) setRevisions(h); });
+    return () => { cancelled = true; };
+  }, [node.source_path]);
+
+  const entity = (changeSet?.entities ?? []).find((e) => e.entity_key === node.id) ?? null;
+
+  return (
+    <div className="pd-section">
+      <h4>Changes</h4>
+      {entity ? (
+        <>
+          <div className="pd-note pd-changes-head">
+            changed in last visit ({changeSet?.previous_sha ? `${changeSet.previous_sha.slice(0, 10)} → ${changeSet.current_sha?.slice(0, 10)}` : "first observation — no previous revision"})
+          </div>
+          <FieldChanges fields={entity.field_changes} />
+          <RelationChanges relations={entity.relation_changes} />
+          <StatusTrail trail={entity.status_trail} />
+        </>
+      ) : (
+        <p className="pd-muted">No recorded changes for this entity in the last visit.</p>
+      )}
+      {node.source_path ? (
+        <div className="pd-diff-block">
+          <div className="pd-diff-hd">Revision history — FILE-level for <span className="pd-mono">{node.source_path}</span></div>
+          {revisions === undefined ? <div className="pd-muted">Loading revisions…</div>
+            : revisions === null ? <div className="pd-muted">No revision history available.</div>
+            : <RevisionHistoryBody history={revisions} />}
+        </div>
+      ) : null}
+      {error ? <p className="pd-muted pd-changes-err">{error}</p> : null}
+    </div>
+  );
 }

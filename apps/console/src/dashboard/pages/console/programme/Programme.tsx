@@ -12,11 +12,13 @@ import type {
 import { useProgrammeData } from "../../../hooks/useProgrammeData.ts";
 import { ProgrammeGraphShell } from "./ProgrammeGraph.tsx";
 import { ProgrammeEntityDrawer } from "./ProgrammeEntityDrawer.tsx";
+import { ChangesView } from "./ChangesView.tsx";
+import { useProgrammeChanges } from "./useProgrammeChanges.ts";
 import "./programme.css";
 
 type ProgrammeView =
   | "overview" | "revenue" | "graph" | "statejournal" | "identity"
-  | "workstreams" | "assignments" | "explore" | "jira" | "agents"
+  | "workstreams" | "assignments" | "changes" | "explore" | "jira" | "agents"
   | "knowledge" | "activity" | "sourcehealth";
 
 const VIEWS: Array<{ id: ProgrammeView; label: string }> = [
@@ -27,6 +29,7 @@ const VIEWS: Array<{ id: ProgrammeView; label: string }> = [
   { id: "identity", label: "Identity & Provenance" },
   { id: "workstreams", label: "Workstreams" },
   { id: "assignments", label: "Assignments" },
+  { id: "changes", label: "Changes" },
   { id: "explore", label: "Explore" },
   { id: "jira", label: "Jira references" },
   { id: "agents", label: "Agents" },
@@ -37,6 +40,7 @@ const VIEWS: Array<{ id: ProgrammeView; label: string }> = [
 
 export function Programme() {
   const { data, loading, error, reload } = useProgrammeData();
+  const changes = useProgrammeChanges();
   const [view, setView] = useState<ProgrammeView>(() => viewFromPath(window.location.pathname));
 
   useEffect(() => {
@@ -45,6 +49,7 @@ export function Programme() {
 
   const snapshot = data?.snapshot ?? null;
   const health = data?.source_health ?? null;
+  const changedKeys = useMemo(() => new Set<string>(data?.changes_summary?.changed_entity_keys ?? []), [data?.changes_summary]);
 
   if (error && !snapshot) {
     return (
@@ -91,8 +96,9 @@ export function Programme() {
         {view === "graph" ? <ProgrammeGraphShell graph={snapshot.graph} snapshot={snapshot} /> : null}
         {view === "statejournal" ? <StateJournalView snapshot={snapshot} /> : null}
         {view === "identity" ? <IdentityView snapshot={snapshot} /> : null}
-        {view === "workstreams" ? <WorkstreamsView snapshot={snapshot} /> : null}
-        {view === "assignments" ? <AssignmentsView snapshot={snapshot} /> : null}
+        {view === "workstreams" ? <WorkstreamsView snapshot={snapshot} changedKeys={changedKeys} /> : null}
+        {view === "assignments" ? <AssignmentsView snapshot={snapshot} changedKeys={changedKeys} /> : null}
+        {view === "changes" ? <ChangesView snapshot={snapshot} changeSet={changes.changeSet} loading={changes.loading} error={changes.error} onReload={changes.reload} /> : null}
         {view === "explore" ? <ExploreView snapshot={snapshot} /> : null}
         {view === "jira" ? <JiraView snapshot={snapshot} /> : null}
         {view === "agents" ? <AgentsView snapshot={snapshot} /> : null}
@@ -196,6 +202,12 @@ function SectionHd({ title, sub }: { title: string; sub?: string }) {
 
 function SourceLink({ path, label = "Source" }: { path: string; label?: string }) {
   return <a className="pd-link" href={ghUrl(path)} target="_blank" rel="noreferrer">{label}</a>;
+}
+
+/** Δ chip — factual marker that an entity changed in the last visit. */
+function DeltaChip({ changed }: { changed: boolean }) {
+  if (!changed) return null;
+  return <span className="pd-delta-chip" title="changed in last visit">Δ</span>;
 }
 
 // ── Views ────────────────────────────────────────────────────────────────────
@@ -401,13 +413,13 @@ function IdentityView({ snapshot }: { snapshot: ProgrammeSnapshot }) {
   );
 }
 
-function WorkstreamsView({ snapshot }: { snapshot: ProgrammeSnapshot }) {
+function WorkstreamsView({ snapshot, changedKeys }: { snapshot: ProgrammeSnapshot; changedKeys: Set<string> }) {
   return (
     <Panel title="Workstreams">
       <Table head={["ID", "Workstream", "State", "Plan", "Jira", "Updated", ""]}>
         {(snapshot.workstreams ?? []).map((w) => (
           <tr key={w.id}>
-            <td className="pd-mono">{w.id}</td>
+            <td className="pd-mono"><DeltaChip changed={changedKeys.has(w.graph_id ?? w.id)} /> {w.id}</td>
             <td><div>{w.title}</div><div className="pd-sub">{w.path}</div></td>
             <td><Badge value={w.status} /></td>
             <td>{w.has_plan ? <Badge value="PLAN" /> : "—"}</td>
@@ -421,7 +433,7 @@ function WorkstreamsView({ snapshot }: { snapshot: ProgrammeSnapshot }) {
   );
 }
 
-function AssignmentsView({ snapshot }: { snapshot: ProgrammeSnapshot }) {
+function AssignmentsView({ snapshot, changedKeys }: { snapshot: ProgrammeSnapshot; changedKeys: Set<string> }) {
   const [filter, setFilter] = useState<"ALL" | "OPS" | "EXP">("ALL");
   const items = (snapshot.assignments ?? []).filter((a) => filter === "ALL" || a.kind === filter);
   return (
@@ -435,7 +447,7 @@ function AssignmentsView({ snapshot }: { snapshot: ProgrammeSnapshot }) {
         <Table head={["ID", "Assignment", "Kind", "State", "Workstream", "Jira", ""]}>
           {items.map((a) => (
             <tr key={a.path}>
-              <td className="pd-mono">{a.id}</td>
+              <td className="pd-mono"><DeltaChip changed={changedKeys.has(a.graph_id ?? a.id)} /> {a.id}</td>
               <td><div>{a.title || a.id}</div><div className="pd-sub">{a.path}</div></td>
               <td><Badge value={a.kind} /></td>
               <td><Badge value={a.status} /></td>

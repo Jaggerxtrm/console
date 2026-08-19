@@ -4,7 +4,7 @@
 import { create } from "zustand";
 import type { ProgrammeNode } from "../../../../types/programme.ts";
 
-export type ProgrammeDrawerTab = "overview" | "lineage" | "evidence" | "github" | "metadata";
+export type ProgrammeDrawerTab = "overview" | "lineage" | "evidence" | "github" | "metadata" | "changes";
 
 export interface ProgrammeDrawerTarget {
   nodeId: string;
