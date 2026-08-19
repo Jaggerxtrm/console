@@ -35,7 +35,7 @@ export function createRuntimeObservabilityRouter(options: RuntimeObservabilityRo
   app.get("/overview", async (c) => {
     const eventLimit = clampEventLimit(c.req.query("event_limit"));
     const [topology, journal] = await Promise.all([
-      readJsonSource<Record<string, unknown>>(runner, ["topology", "--json"]),
+      readJsonSource<Record<string, unknown>>(runner, ["topology", "--json"], isTopology),
       readJsonSource<unknown[]>(runner, ["log-tail", String(eventLimit), "--json"], Array.isArray),
     ]);
 
@@ -93,7 +93,7 @@ function createXtmuxRunner(env: NodeJS.ProcessEnv): RuntimeObservabilityRunner {
 async function readJsonSource<T>(
   runner: RuntimeObservabilityRunner,
   args: readonly string[],
-  validate: (value: unknown) => boolean = isObject,
+  validate: (value: unknown) => boolean,
 ): Promise<SourceResult<T>> {
   const startedAt = performance.now();
   try {
@@ -114,6 +114,10 @@ async function readJsonSource<T>(
       },
     };
   }
+}
+
+function isTopology(value: unknown): boolean {
+  return isObject(value) && Array.isArray((value as { sessions?: unknown }).sessions);
 }
 
 function isObject(value: unknown): boolean {
