@@ -1,14 +1,20 @@
-// Programme Graph — native React Flow + Dagre surface for the programme read model.
-// Reuses the Console graph idioms (ReactFlow pane, fit/pan/zoom, structural vs noise
-// edges, NOW strip, orphans, deferred buckets). Strong edges drive dagre layout;
-// weak reference edges are hidden in Structural mode.
+// Programme Graph V2 — native React Flow + Dagre surface for the programme
+// read model (EXP-020). Reuses the Console graph idioms (ReactFlow pane,
+// fit/pan/zoom, structural vs noise edges, NOW strip, orphans, deferred
+// buckets) and adds: focused 2-hop neighborhood (collision-safe, traversed by
+// graph node id), an explicit All programme mode, a full-viewport pane (the
+// entity drawer is an overlay and never resizes the canvas), edge labels only
+// in the focused neighborhood, a selected-node context bar, and Δ change
+// chips (changesEntityKeys comes from the changes slice — never built here).
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { ReactFlow, ReactFlowProvider, Background, Controls, type Edge, type Node } from "@xyflow/react";
 import dagre from "@dagrejs/dagre";
 import "@xyflow/react/dist/style.css";
-import type { ProgrammeEdge, ProgrammeGraph, ProgrammeNode } from "../../../../types/programme.ts";
+import type { ProgrammeEdge, ProgrammeGraph, ProgrammeNode, ProgrammeSnapshot } from "../../../../types/programme.ts";
 import { useProgrammeDrawer } from "./programme-drawer.ts";
+import { useProgrammeContext } from "./context-buffer.ts";
+import { displayIdOf, displayLabel } from "./identity.ts";
 import "./programme.css";
 
 const NODE_W = 240;
@@ -62,13 +68,70 @@ const KIND_COLOR: Record<string, string> = {
 
 const DEFAULT_KINDS = new Set(["workstream", "assignment", "decision", "actor", "state", "journal", "publication", "research", "proposal", "repository", "jira"]);
 
-interface FlowNode extends Node<{ node: ProgrammeNode }, "programme"> {}
+interface FlowNodeData extends Record<string, unknown> {
+  node: ProgrammeNode;
+  focused?: boolean;
+  dimmed?: boolean;
+  changed?: boolean;
+}
+
+interface FlowNode extends Node<FlowNodeData, "programme"> {}
 interface FlowEdge extends Edge<{ edge: ProgrammeEdge }> {}
 
-function buildFlow(graph: ProgrammeGraph, kinds: Set<string>, mode: "strong" | "all"): { nodes: FlowNode[]; edges: FlowEdge[]; width: number; height: number } {
-  const visible = graph.nodes.filter((n) => kinds.has(n.kind));
+interface FocusCtx {
+  /** Focused entity key (collision-safe graph node id). */
+  id: string;
+  /** 2-hop neighborhood node ids (includes the focused node). */
+  nodeIds: Set<string>;
+}
+
+/** 2-hop BFS over graph edges, traversed by graph node id (collision-safe),
+ * respecting the current kind filter for neighbors. The focused node itself
+ * is always kept so the anchor never vanishes mid-focus. */
+function twoHopNeighborhood(graph: ProgrammeGraph, startId: string, kinds: Set<string>): Set<string> {
+  const result = new Set<string>([startId]);
+  const byId = new Map(graph.nodes.map((n) => [n.id, n]));
+  let frontier = [startId];
+  for (let hop = 0; hop < 2; hop++) {
+    const next: string[] = [];
+    for (const id of frontier) {
+      for (const e of graph.edges) {
+        let other: string | null = null;
+        if (e.source === id && e.target !== id) other = e.target;
+        else if (e.target === id && e.source !== id) other = e.source;
+        if (!other || result.has(other)) continue;
+        const n = byId.get(other);
+        if (n && kinds.has(n.kind)) {
+          result.add(other);
+          next.push(other);
+        }
+      }
+    }
+    frontier = next;
+    if (frontier.length === 0) break;
+  }
+  return result;
+}
+
+function buildFlow(
+  graph: ProgrammeGraph,
+  kinds: Set<string>,
+  mode: "strong" | "all",
+  focus: FocusCtx | null,
+  changes: Set<string> | undefined,
+): { nodes: FlowNode[]; edges: FlowEdge[]; width: number; height: number } {
+  const visible = focus
+    ? graph.nodes.filter((n) => focus.nodeIds.has(n.id))
+    : graph.nodes.filter((n) => kinds.has(n.kind));
   const ids = new Set(visible.map((n) => n.id));
-  const visibleEdges = graph.edges.filter((e) => ids.has(e.source) && ids.has(e.target) && (mode === "all" || e.strength === "strong"));
+  // Labels render only in the focused 2-hop neighborhood (requirement 8).
+  const showLabels = focus != null;
+  // Weak edges stay hidden in Structural mode, except edges touching the
+  // focused node — those render as dashed, muted derived context (req 7).
+  const visibleEdges = graph.edges.filter((e) =>
+    ids.has(e.source) && ids.has(e.target) &&
+    (mode === "all" || e.strength === "strong" || (focus != null && (e.source === focus.id || e.target === focus.id))),
+  );
 
   const g = new dagre.graphlib.Graph().setDefaultEdgeLabel(() => ({}));
   g.setGraph({ rankdir: "LR", nodesep: 14, ranksep: 90, marginx: 0, marginy: 0 });
@@ -105,7 +168,12 @@ function buildFlow(graph: ProgrammeGraph, kinds: Set<string>, mode: "strong" | "
       id: n.id,
       type: "programme" as const,
       position: { x: p.x + offX, y: p.y + offY },
-      data: { node: n },
+      data: {
+        node: n,
+        focused: focus?.id === n.id,
+        dimmed: focus != null && focus.id !== n.id,
+        changed: changes?.has(n.id) ?? false,
+      },
       draggable: false,
       selectable: false,
     };
@@ -115,7 +183,7 @@ function buildFlow(graph: ProgrammeGraph, kinds: Set<string>, mode: "strong" | "
     id: `${e.source}::${e.target}::${e.relation}::${i}`,
     source: e.source,
     target: e.target,
-    label: e.relation,
+    label: showLabels ? e.relation : undefined,
     type: "default",
     data: { edge: e },
     style: e.strength === "weak" ? { strokeDasharray: "4 5", opacity: 0.55 } : undefined,
@@ -129,28 +197,68 @@ function buildFlow(graph: ProgrammeGraph, kinds: Set<string>, mode: "strong" | "
   return { nodes, edges, width: maxX - minX + 2 * PAD, height: maxY - minY + 2 * PAD };
 }
 
-function ProgrammeNodeView({ data }: { data: { node: ProgrammeNode } }) {
+function statusBadgeClass(status: string): string {
+  const slug = status.toLowerCase().replace(/[^a-z0-9_-]+/g, "-");
+  return `pd-badge pd-badge-${slug}`;
+}
+
+function ProgrammeNodeView({ data }: { data: FlowNodeData }) {
   const node = data.node;
   const color = KIND_COLOR[node.kind] ?? "var(--text-muted)";
   const title = (node.title ?? node.id).replace(/\s+/g, " ");
   const short = title.length > 34 ? title.slice(0, 33) + "…" : title;
+  const cls = ["pg-node", data.focused ? "pg2-node-focused" : "", data.dimmed ? "pg2-node-dimmed" : ""].filter(Boolean).join(" ");
   return (
-    <div className="pg-node" style={{ width: NODE_W, height: NODE_H }}>
+    <div className={cls} style={{ width: NODE_W, height: NODE_H }}>
       <span className="pg-node-dot" style={{ background: color }} />
       <div className="pg-node-id">{node.id}</div>
       <div className="pg-node-title" title={title}>{short}</div>
+      {data.changed ? <span className="pg2-delta" title="changed since previous snapshot">Δ</span> : null}
       {node.kind === "collision" ? <span className="pg-node-tag">collision</span> : null}
     </div>
   );
 }
 
-export function ProgrammeGraphView({ graph, snapshot }: { graph: ProgrammeGraph; snapshot: unknown }) {
-  void snapshot;
+export function ProgrammeGraphView({
+  graph,
+  snapshot,
+  changesEntityKeys,
+}: {
+  graph: ProgrammeGraph;
+  snapshot: ProgrammeSnapshot;
+  changesEntityKeys?: Set<string>;
+}) {
   const [kinds, setKinds] = useState<Set<string>>(new Set(DEFAULT_KINDS));
   const [mode, setMode] = useState<"strong" | "all">("strong");
+  const [focusedId, setFocusedId] = useState<string | null>(null);
+  const [allProgramme, setAllProgramme] = useState(false);
   const open = useProgrammeDrawer((s) => s.open);
+  const drawerOpen = useProgrammeDrawer((s) => Boolean(s.nodeId));
+  const addNode = useProgrammeContext((s) => s.addNode);
 
-  const flow = useMemo(() => buildFlow(graph, kinds, mode), [graph, kinds, mode]);
+  // All programme mode overrides focus: full graph, no context bar.
+  const focusedNode = useMemo(
+    () => (focusedId && !allProgramme ? graph.nodes.find((n) => n.id === focusedId) ?? null : null),
+    [graph, focusedId, allProgramme],
+  );
+  const focusNodeIds = useMemo(
+    () => (focusedNode ? twoHopNeighborhood(graph, focusedNode.id, kinds) : null),
+    [graph, focusedNode, kinds],
+  );
+
+  const flow = useMemo(
+    () => buildFlow(graph, kinds, mode, focusedNode && focusNodeIds ? { id: focusedNode.id, nodeIds: focusNodeIds } : null, changesEntityKeys),
+    [graph, kinds, mode, focusedNode, focusNodeIds, changesEntityKeys],
+  );
+
+  // Escape clears focus — unless the inspector drawer is open (it owns Escape).
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !drawerOpen) setFocusedId(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [drawerOpen]);
 
   const edgeIds = useMemo(() => new Set(graph.edges.flatMap((e) => [e.source, e.target])), [graph]);
   const orphans = useMemo(() => graph.nodes.filter((n) => !edgeIds.has(n.id) && kinds.has(n.kind)), [graph, edgeIds, kinds]);
@@ -160,12 +268,25 @@ export function ProgrammeGraphView({ graph, snapshot }: { graph: ProgrammeGraph;
   }, [graph, kinds]);
   const deferred = useMemo(() => graph.nodes.filter((n) => kinds.has(n.kind) && n.status && ["CLOSED", "COMPLETED", "SUPERSEDED"].includes(n.status.toUpperCase())), [graph, kinds]);
 
+  const addToContext = (node: ProgrammeNode) => {
+    const visibleIds = focusNodeIds ?? new Set(graph.nodes.filter((n) => kinds.has(n.kind)).map((n) => n.id));
+    const incident = graph.edges.filter((e) =>
+      (e.source === node.id || e.target === node.id) && visibleIds.has(e.source) && visibleIds.has(e.target));
+    addNode(snapshot, node, {
+      source_view: "graph",
+      selectedRelations: incident.filter((e) => e.strength === "strong"),
+      derivedRelations: incident.filter((e) => e.strength === "weak"),
+    });
+  };
+
   if (graph.nodes.length === 0) {
     return <div className="pd-empty">Programme graph is empty — snapshot unavailable.</div>;
   }
 
+  const flowKey = `${flow.nodes.length}:${flow.edges.length}:${mode}:${focusedId ?? "unfocused"}:${allProgramme ? "all" : "focused"}`;
+
   return (
-    <div className="pg-app">
+    <div className="pg-app pg2-fit">
       <div className="pg-toolbar">
         <div className="pg-filters">
           {Object.entries(KIND_LABEL).map(([kind, label]) => (
@@ -186,12 +307,35 @@ export function ProgrammeGraphView({ graph, snapshot }: { graph: ProgrammeGraph;
           ))}
         </div>
         <div className="pg-toolbar-right">
-          <button type="button" className={mode === "strong" ? "pg-filter is-active" : "pg-filter"} onClick={() => setMode("strong")}>Structural</button>
-          <button type="button" className={mode === "all" ? "pg-filter is-active" : "pg-filter"} onClick={() => setMode("all")}>All refs</button>
+          <div className="pg2-mode" role="group" aria-label="View mode">
+            <button type="button" className={!allProgramme ? "pg-filter is-active" : "pg-filter"} onClick={() => setAllProgramme(false)}>Focus</button>
+            <button type="button" className={allProgramme ? "pg-filter is-active" : "pg-filter"} onClick={() => setAllProgramme(true)}>All programme</button>
+          </div>
+          <div className="pg2-mode" role="group" aria-label="Reference mode">
+            <button type="button" className={mode === "strong" ? "pg-filter is-active" : "pg-filter"} onClick={() => setMode("strong")}>Structural</button>
+            <button type="button" className={mode === "all" ? "pg-filter is-active" : "pg-filter"} onClick={() => setMode("all")}>All refs</button>
+          </div>
         </div>
       </div>
+      {focusedNode ? (
+        <div className="pg2-ctxbar" data-testid="pg2-ctxbar">
+          <div className="pg2-ctxbar-main">
+            <span className="pg2-ctxbar-id">{displayIdOf(focusedNode)}</span>
+            <span className="pg2-ctxbar-title">{focusedNode.title}</span>
+            <span className="pg2-ctxbar-kind">{focusedNode.kind}</span>
+            {focusedNode.status ? <span className={statusBadgeClass(focusedNode.status)}>{focusedNode.status}</span> : null}
+            {focusedNode.source_path ? <span className="pg2-ctxbar-path">{displayLabel(focusedNode)}</span> : null}
+          </div>
+          <div className="pg2-ctxbar-actions">
+            <button type="button" className="pg2-btn" onClick={() => open(focusedNode.id)}>Open inspector</button>
+            <button type="button" className="pg2-btn" onClick={() => addToContext(focusedNode)}>Add to context</button>
+            <button type="button" className="pg2-btn" onClick={() => setFocusedId(null)}>Clear focus</button>
+          </div>
+        </div>
+      ) : null}
       <div className="pg-stats">
         {graph.nodes.length} nodes · {graph.edges.length} relations · {graph.identity_collisions.length} identity collisions
+        {focusedNode ? <span className="pg-stats-muted"> · focused 2-hop: {flow.nodes.length} nodes / {flow.edges.length} relations</span> : null}
         <span className="pg-stats-muted"> · Structural hides weak reference edges. Full relations may contain cycles.</span>
       </div>
       {graph.identity_collisions.length > 0 ? (
@@ -207,14 +351,21 @@ export function ProgrammeGraphView({ graph, snapshot }: { graph: ProgrammeGraph;
           </div>
         </section>
       ) : null}
-      <div className="pg-pane" style={{ height: Math.min(flow.height + 24, 720) }}>
+      <div className="pg-pane pg2-pane">
         <ReactFlowProvider>
           <ReactFlow
-            key={`${flow.nodes.length}:${flow.edges.length}:${mode}`}
+            key={flowKey}
             nodes={flow.nodes}
             edges={flow.edges}
             nodeTypes={{ programme: ProgrammeNodeView }}
-            onNodeClick={(_, node) => open((node.data as { node: ProgrammeNode }).node.id)}
+            onNodeClick={(_, node) => {
+              const n = (node.data as FlowNodeData).node;
+              // Clicking the already-focused node opens the inspector; any
+              // other node click focuses it (exiting All programme mode).
+              if (!allProgramme && focusedId === n.id) { open(n.id); return; }
+              setFocusedId(n.id);
+              setAllProgramme(false);
+            }}
             nodesDraggable={false}
             nodesConnectable={false}
             elementsSelectable={false}
@@ -266,6 +417,14 @@ function NodeChip({ node, onOpen }: { node: ProgrammeNode; onOpen: () => void })
   );
 }
 
-export function ProgrammeGraphShell({ graph, snapshot }: { graph: ProgrammeGraph; snapshot: unknown }): ReactNode {
-  return <ProgrammeGraphView graph={graph} snapshot={snapshot} />;
+export function ProgrammeGraphShell({
+  graph,
+  snapshot,
+  changesEntityKeys,
+}: {
+  graph: ProgrammeGraph;
+  snapshot: ProgrammeSnapshot;
+  changesEntityKeys?: Set<string>;
+}): ReactNode {
+  return <ProgrammeGraphView graph={graph} snapshot={snapshot} changesEntityKeys={changesEntityKeys} />;
 }
