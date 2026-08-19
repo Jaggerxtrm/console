@@ -21,6 +21,7 @@ import { createInternalParityRouter, type InternalParityHarness } from "./intern
 import { createInternalSubstrateRouter } from "./internal-substrate.ts";
 import { createInternalVerifyRouter } from "./internal-verify.ts";
 import { createObservabilityRouter, type ObservabilityMetricsDao } from "./observability.ts";
+import { createProgrammeRouter } from "../programme/route.ts";
 import { createSourcesRouter, type SourceScanner } from "./sources.ts";
 import { createShellRouter } from "./shell.ts";
 import { createSpecialistsConfigRouter } from "./specialists-config.ts";
@@ -67,6 +68,7 @@ export const CONSOLE_API_ROUTE_PREFIXES = [
   "/api/console/explore",
   "/api/console/shell",
   "/api/console/terminal",
+  "/api/programme",
 ] as const;
 
 export function createConsoleApiRouter(options: ConsoleApiRouteOptions): Hono {
@@ -130,6 +132,7 @@ export function createConsoleApiRouter(options: ConsoleApiRouteOptions): Hono {
     env: options.env,
     tickets: options.terminalTickets,
   }));
+  app.route("/api/programme", createProgrammeRouter({ logger: options.logger }));
   if (options.datasetteDebugEnabled) {
     const datasette = createExploreSqlRouter({
       ...options.exploreSqlOptions,

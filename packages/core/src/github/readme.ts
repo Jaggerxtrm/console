@@ -20,8 +20,8 @@ const MAX_CACHE_ENTRIES = 200;
 const fileCache = new Map<string, { value: ContentEntry; expires: number }>();
 const dirCache = new Map<string, { value: DirEntry[]; expires: number }>();
 
-function cacheKey(owner: string, repo: string, path: string): string {
-  return `${owner}/${repo}::${path}`;
+function cacheKey(owner: string, repo: string, path: string, ref?: string): string {
+  return `${owner}/${repo}@${ref ?? "default"}::${path}`;
 }
 
 function pruneCache<K, V>(cache: Map<K, V>, maxEntries = MAX_CACHE_ENTRIES): void {
@@ -54,20 +54,25 @@ async function ghFetch(url: string): Promise<Response> {
   }
 }
 
+function contentsUrl(owner: string, repo: string, path: string, ref?: string): string {
+  const base = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}`;
+  return ref ? `${base}?ref=${encodeURIComponent(ref)}` : base;
+}
+
 export async function fetchRepoFile(
   owner: string,
   repo: string,
   path: string,
+  ref?: string,
 ): Promise<ContentEntry | null> {
-  const key = cacheKey(owner, repo, path);
+  const key = cacheKey(owner, repo, path, ref);
   const cached = fileCache.get(key);
   const now = Date.now();
   if (cached && cached.expires > now) return cached.value;
 
-  const url = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}`;
-  const res = await ghFetch(url);
+  const res = await ghFetch(contentsUrl(owner, repo, path, ref));
   if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`GitHub Contents ${res.status} for ${owner}/${repo}/${path}`);
+  if (!res.ok) throw new Error(`GitHub Contents ${res.status} for ${owner}/${repo}/${path}${ref ? `@${ref}` : ""}`);
 
   const json = (await res.json()) as {
     content?: string;
@@ -93,20 +98,20 @@ export async function listRepoDir(
   owner: string,
   repo: string,
   path: string,
+  ref?: string,
 ): Promise<DirEntry[]> {
-  const key = cacheKey(owner, repo, `dir:${path}`);
+  const key = cacheKey(owner, repo, `dir:${path}`, ref);
   const cached = dirCache.get(key);
   const now = Date.now();
   if (cached && cached.expires > now) return cached.value;
 
-  const url = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}`;
-  const res = await ghFetch(url);
+  const res = await ghFetch(contentsUrl(owner, repo, path, ref));
   if (res.status === 404) {
     dirCache.set(key, { value: [], expires: now + TTL_MS });
     pruneCache(dirCache);
     return [];
   }
-  if (!res.ok) throw new Error(`GitHub Contents ${res.status} for ${owner}/${repo}/${path}`);
+  if (!res.ok) throw new Error(`GitHub Contents ${res.status} for ${owner}/${repo}/${path}${ref ? `@${ref}` : ""}`);
 
   const json = (await res.json()) as DirEntry[] | DirEntry;
   const entries = Array.isArray(json) ? json : [json];
