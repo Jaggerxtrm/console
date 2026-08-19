@@ -160,8 +160,9 @@ function makeSessionEntity(session: XtmuxSession): RuntimeEntity {
     kind: "session",
     title: session.name,
     subtitle: `${paneCount} pane${paneCount === 1 ? "" : "s"}${session.attached ? " · attached" : ""}`,
-    state: session.active ? "working" : "idle",
-    tone: session.active ? "active" : "idle",
+    // tmux `active` is focus/selection state, not proof that work is executing.
+    state: "unknown",
+    tone: "unknown",
     sessionId: session.session_id,
     sessionName: session.name,
     attached: session.attached,
@@ -225,7 +226,8 @@ function findSpecialistJob(pane: XtmuxPane, jobs: SpecialistJob[], assigned: Set
   if (candidates.length === 1) return candidates[0]!;
   const role = normalizeRole(pane.agent?.role);
   if (!role) return null;
-  return candidates.find((job) => normalizeRole(job.specialist ?? job.chainKind) === role) ?? null;
+  const roleMatches = candidates.filter((job) => normalizeRole(job.specialist ?? job.chainKind) === role);
+  return roleMatches.length === 1 ? roleMatches[0]! : null;
 }
 
 function flattenPanes(session: XtmuxSession): XtmuxPane[] {
@@ -233,7 +235,8 @@ function flattenPanes(session: XtmuxSession): XtmuxPane[] {
 }
 
 function jobKey(job: SpecialistJob): string {
-  return job.jobId ?? `${job.chainId ?? "no-chain"}:${job.beadId}:${job.specialist ?? job.chainKind ?? "unknown"}:${job.updatedAt}`;
+  const identity = job.jobId ?? `${job.chainId ?? "no-chain"}:${job.beadId}:${job.specialist ?? job.chainKind ?? "unknown"}:${job.updatedAt}`;
+  return `${job.repoSlug}:${identity}`;
 }
 
 function normalizeRole(value: string | null | undefined): string {
