@@ -13,6 +13,7 @@ import { useProgrammeData } from "../../../hooks/useProgrammeData.ts";
 import { ProgrammeGraphShell } from "./ProgrammeGraph.tsx";
 import { ProgrammeEntityDrawer } from "./ProgrammeEntityDrawer.tsx";
 import { ChangesView } from "./ChangesView.tsx";
+import { ContextBuffer } from "./ContextBuffer.tsx";
 import { useProgrammeChanges } from "./useProgrammeChanges.ts";
 import "./programme.css";
 
@@ -106,6 +107,7 @@ export function Programme() {
         {view === "activity" ? <ActivityView snapshot={snapshot} /> : null}
         {view === "sourcehealth" ? <SourceHealthView snapshot={snapshot} response={data} /> : null}
       </div>
+      <ContextBuffer snapshot={snapshot} />
       <ProgrammeEntityDrawer snapshot={snapshot} />
     </div>
   );
