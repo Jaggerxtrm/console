@@ -75,12 +75,13 @@ export function createConsoleApiRouter(options: ConsoleApiRouteOptions): Hono {
   const app = new Hono();
   const graphDao = options.graphDao
     ?? (options.db ? createXtrmGraphRoute(options.db, options.triggerMaterialization) : unavailableGraphDao());
-  const terminalProviders = options.terminalProviders ?? createTerminalProviderRegistry(options.env ?? process.env);
+  const env = options.env ?? process.env;
+  const terminalProviders = options.terminalProviders ?? createTerminalProviderRegistry(env);
 
   app.use("*", cors({
     origin: (origin, c) => {
       if (!isTerminalPolicyRoute(c.req.path)) return "*";
-      return isAllowedShellWebSocketOrigin(origin || null, c.req.header("host") ?? null, options.env)
+      return isAllowedShellWebSocketOrigin(origin || null, c.req.header("host") ?? null, env)
         ? origin
         : null;
     },
@@ -127,12 +128,15 @@ export function createConsoleApiRouter(options: ConsoleApiRouteOptions): Hono {
     app.route("/api/console/observability", createObservabilityRouter(options.observabilityDao, options.db));
   }
   app.route("/api/console/explore", createExploreAgentopsRouter(options.db, { emit: options.logger.emit }));
-  app.route("/api/console/shell", createShellRouter(options.env));
+  app.route("/api/console/shell", createShellRouter(env));
   app.route("/api/console/terminal", createTerminalRouter(terminalProviders, {
-    env: options.env,
+    env,
     tickets: options.terminalTickets,
   }));
-  app.route("/api/programme", createProgrammeRouter({ logger: options.logger }));
+  app.route("/api/programme", createProgrammeRouter({
+    logger: options.logger,
+    enabled: env.MERCURY_PROGRAMME_DASHBOARD_ENABLED === "1",
+  }));
   if (options.datasetteDebugEnabled) {
     const datasette = createExploreSqlRouter({
       ...options.exploreSqlOptions,
@@ -147,7 +151,7 @@ export function createConsoleApiRouter(options: ConsoleApiRouteOptions): Hono {
   app.route("/api/internal", createInternalDoltHealthRouter());
   app.route("/api/internal", createInternalLogsRouter(options.logger));
   app.route("/api/internal", createInternalSubstrateRouter(options.db));
-  app.route("/api/internal", createInternalVerifyRouter({ emit: options.logger.emit, env: options.env }));
+  app.route("/api/internal", createInternalVerifyRouter({ emit: options.logger.emit, env }));
   app.route("/api/internal", createInternalParityRouter(() => options.observabilityParityHarness ?? null));
   app.get("/api/internal/parity/beads", (c) => {
     if (!isTrustedLocalhostRequest(c.req.url, c.req.header("host") ?? "", c.req.header(TRUSTED_PEER_ADDRESS_HEADER))) return c.json({ error: "forbidden" }, 403);

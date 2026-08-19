@@ -16,6 +16,11 @@ export interface ProgrammeRouteOptions {
   readonly source?: ProgrammeSource;
   /** Snapshot TTL before a background refresh is attempted. */
   readonly cacheTtlMs?: number;
+  /**
+   * Application-level exposure gate. Focused tests/default standalone routers
+   * remain enabled; the production composition root must opt in explicitly.
+   */
+  readonly enabled?: boolean;
 }
 
 interface CacheEntry {
@@ -38,6 +43,7 @@ export function createProgrammeRouter(options: ProgrammeRouteOptions = {}): Hono
   const logger = options.logger;
   const source = options.source ?? createGithubProgrammeSource();
   const ttlMs = options.cacheTtlMs ?? DEFAULT_TTL_MS;
+  const enabled = options.enabled ?? true;
 
   const emit = (event: string, level: "info" | "warn" | "error", message: string, fields: Record<string, unknown> = {}) => {
     logger?.emit(makeLogEntry("api", event, level, message, fields));
@@ -136,6 +142,11 @@ export function createProgrammeRouter(options: ProgrammeRouteOptions = {}): Hono
   }
 
   app.get("/", async (c) => {
+    if (!enabled) {
+      emit("programme.dashboard.disabled", "warn", "programme dashboard route is disabled by deployment policy");
+      return c.json({ error: "programme_dashboard_disabled" }, 404);
+    }
+
     const force = c.req.query("refresh") === "true";
     try {
       const { entry, freshness } = await getSnapshot(force);
