@@ -1,143 +1,119 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import type { CSSProperties } from "react";
-import { useObservabilitySummary } from "../../hooks/useObservabilitySummary.ts";
-import { ShellProviderNotice } from "../../components/console/ShellProviderNotice.tsx";
-import type { ShellProviderStatus } from "../../../core/shell-provider-policy.ts";
-import { substrateApi } from "../../lib/beads.ts";
-import type { BeadsConnectionStatus, BeadsProject, BeadsRepairActionsResponse } from "../../../types/beads.ts";
+import { useEffect, useMemo, useState } from "react";
+import { useRuntimeObservability } from "../../hooks/useRuntimeObservability.ts";
+import { RuntimeInspector } from "./runtime-observability/RuntimeInspector.tsx";
+import { RuntimeOperations } from "./runtime-observability/RuntimeOperations.tsx";
+import { RuntimeTopologyGraph } from "./runtime-observability/RuntimeTopologyGraph.tsx";
+import "./runtime-observability/runtime-observability.css";
 
 export function Observability() {
-  const [range, setRange] = useState<"7d" | "30d" | "all">("7d");
-  const data = useObservabilitySummary(range);
-  const tools = data?.toolUsage.totals ?? [];
-  const [status, setStatus] = useState<ShellProviderStatus | null>(null);
-  const [beadsHealth, setBeadsHealth] = useState<BeadsRepairRow[]>([]);
+  const runtime = useRuntimeObservability();
+  const [view, setView] = useState<"graph" | "operations">("graph");
+  const [scope, setScope] = useState<"all" | "active" | "attention">("all");
+  const [query, setQuery] = useState("");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   useEffect(() => {
-    const controller = new AbortController();
-    fetch("/api/console/shell/status", { signal: controller.signal })
-      .then((res) => res.json())
-      .then((payload: ShellProviderStatus) => setStatus(payload))
-      .catch(() => setStatus(null));
-    return () => controller.abort();
-  }, []);
+    if (selectedId && runtime.model.entities.some((entity) => entity.id === selectedId)) return;
+    const next = runtime.model.entities.find((entity) => entity.kind === "pane" && entity.tone === "attention")
+      ?? runtime.model.entities.find((entity) => entity.kind === "pane")
+      ?? runtime.model.entities[0]
+      ?? null;
+    setSelectedId(next?.id ?? null);
+  }, [runtime.model.entities, selectedId]);
 
-  const loadBeadsHealth = useCallback(async () => {
-    const projects = await substrateApi.listProjects();
-    const rows = await Promise.all(projects.map(async (project) => {
-      const [connection, repairs] = await Promise.all([
-        substrateApi.getConnection(project.id).catch(() => null),
-        substrateApi.getRepairActions(project.id).catch(() => null),
-      ]);
-      return { project, connection, repairs };
-    }));
-    setBeadsHealth(rows);
-  }, []);
-
-  useEffect(() => {
-    void loadBeadsHealth().catch(() => setBeadsHealth([]));
-  }, [loadBeadsHealth]);
-
-  return (
-    <section style={shellStyle}>
-      {status ? <ShellProviderNotice status={status} /> : null}
-      <div style={toggleWrapStyle}>
-        {(["7d", "30d", "all"] as const).map((item) => (
-          <button key={item} type="button" onClick={() => setRange(item)} style={range === item ? activeToggleStyle : toggleStyle}>{item}</button>
-        ))}
-      </div>
-
-      <MetricTable title="1. Tokens" columns={["Specialist", "Input", "Output", "Cache create", "Cache read", "Total"]} rows={(data?.tokens.bySpecialist ?? []).map((row) => [row.specialist, row.input, row.output, row.cacheCreation, row.cacheRead, row.total])} />
-      <MetricTable title="2. Cache hit rate" columns={["Specialist", "Hit rate"]} rows={(data?.cacheHitRate.bySpecialist ?? []).map((row) => [row.specialist, pct(row.hitRate)])} />
-      <MetricTable title="3. Per-specialist averages" columns={["Specialist", "Avg tokens", "Avg elapsed ms", "Avg turns", "Avg tools"]} rows={(data?.averages ?? []).map((row) => [row.specialist, row.avgTokens, row.avgElapsedMs, row.avgTurns, row.avgTools])} />
-      <MetricTable title="4. Active runtime" columns={["Specialist", "ms"]} rows={(data?.activeRuntime.bySpecialist ?? []).map((row) => [row.specialist, row.ms])} />
-      <MetricTable title="5. Reliability" columns={["Specialist", "Done", "Error", "Cancelled", "Stale warnings"]} rows={(data?.reliability ?? []).map((row) => [row.specialist, row.done, row.error, row.cancelled, row.staleWarnings])} />
-      <MetricTable title="6. Slowest jobs" columns={["Job", "Specialist", "Bead", "Model", "Elapsed ms", "Turns", "Tools"]} rows={(data?.slowestJobs ?? []).map((row) => [row.jobId, row.specialist, row.beadId, row.model, row.elapsedMs, row.turns, row.tools])} />
-      <MetricTable title="7. Tool usage" columns={["Tool", "Count"]} rows={tools.map((row) => [row.tool, row.count])} />
-      <MetricTable title="8. Reviewer outcomes" columns={["PASS", "PARTIAL", "FAIL", "Unknown"]} rows={data ? [[data.reviewerOutcomes.pass, data.reviewerOutcomes.partial, data.reviewerOutcomes.fail, data.reviewerOutcomes.unknown]] : []} />
-      <MetricTable title="9. Context burn" columns={["Specialist", "Avg final context %"]} rows={(data?.contextBurn ?? []).map((row) => [row.specialist, pct(row.avgFinalContextPct / 100)])} />
-      <MetricTable title="10. Stalls" columns={["Specialist", "Total ms", "Stale warnings"]} rows={(data?.stalls.bySpecialist ?? []).map((row) => [row.specialist, row.totalMs, row.staleWarnings])} />
-      <MetricTable title="11. Chains" columns={["Bucket", "Count"]} rows={(data?.chains.lengthHistogram ?? []).map((row) => [row.bucket, row.count])} />
-      <BeadsRepairPanel rows={beadsHealth} onRescan={loadBeadsHealth} />
-    </section>
+  const selected = useMemo(
+    () => runtime.model.entities.find((entity) => entity.id === selectedId) ?? null,
+    [runtime.model.entities, selectedId],
   );
-}
 
-type BeadsRepairRow = {
-  project: BeadsProject;
-  connection: BeadsConnectionStatus | null;
-  repairs: BeadsRepairActionsResponse | null;
-};
-
-function BeadsRepairPanel({ rows, onRescan }: { rows: BeadsRepairRow[]; onRescan: () => Promise<void> }) {
-  const degraded = rows.filter((row) => row.connection?.degraded || row.connection?.status !== "dolt_connected");
   return (
-    <section style={sectionStyle}>
-      <div style={panelHeaderStyle}>
-        <div style={panelTitleStyle}>12. Beads Dolt repair</div>
-        <button type="button" style={smallButtonStyle} onClick={() => void onRescan()}>Rescan</button>
-      </div>
-      <div style={tableStyle}>
-        <div style={rowStyle}>
-          {["Project", "Status", "Port", "Action", "Command"].map((col, i) => <Cell key={col} value={col} header width={[0.18, 0.16, 0.1, 0.2, 0.36][i]} />)}
+    <section className="runtime-observability">
+      <header className="runtime-observability__header">
+        <div className="runtime-observability__title">
+          <h2>Runtime observability</h2>
+          <span>xtmux runtime facts + Specialists workflow correlation</span>
         </div>
-        {(degraded.length > 0 ? degraded : rows).map((row) => {
-          const action = firstAvailableAction(row.repairs);
-          return (
-            <div key={row.project.id} style={rowStyle}>
-              <Cell value={row.project.name} width={0.18} />
-              <Cell value={row.connection?.status ?? "unknown"} width={0.16} />
-              <Cell value={row.connection?.port ?? "none"} width={0.1} />
-              <Cell value={action?.label ?? "No action"} width={0.2} />
-              <Cell value={action?.command ?? action?.endpoint ?? row.connection?.message ?? row.connection?.note ?? "Healthy"} width={0.36} />
-            </div>
-          );
-        })}
-      </div>
-    </section>
-  );
-}
-
-function firstAvailableAction(repairs: BeadsRepairActionsResponse | null) {
-  return repairs?.actions.find((action) => action.available && action.id !== "rescan_source_health")
-    ?? repairs?.actions.find((action) => action.available)
-    ?? null;
-}
-
-function MetricTable({ title, columns, rows }: { title: string; columns: Array<string>; rows: Array<Array<string | number>> }) {
-  const widths = useMemo(() => columns.map(() => 1 / columns.length), [columns.length]);
-  return (
-    <section style={sectionStyle}>
-      <div style={tableStyle}>
-        <div style={rowStyle}>
-          {columns.map((col, i) => <Cell key={col} value={col} header width={widths[i]} />)}
-        </div>
-        {rows.map((row, index) => (
-          <div key={`${title}-${index}`} style={rowStyle}>
-            {row.map((value, i) => <Cell key={`${title}-${index}-${i}`} value={value} width={widths[i]} />)}
+        <div className="runtime-observability__toolbar">
+          <div className="runtime-segmented" aria-label="Observability view">
+            <button type="button" className={view === "graph" ? "is-active" : ""} onClick={() => setView("graph")}>Graph</button>
+            <button type="button" className={view === "operations" ? "is-active" : ""} onClick={() => setView("operations")}>Operations</button>
           </div>
+          <button type="button" className="runtime-refresh-button" onClick={() => void runtime.refresh()}>
+            {runtime.loading ? "Refreshing…" : "Refresh"}
+          </button>
+        </div>
+      </header>
+
+      <div className="runtime-observability__statusbar">
+        <RuntimeStat label="sessions" value={runtime.model.counts.sessions} />
+        <RuntimeStat label="panes" value={runtime.model.counts.panes} />
+        <RuntimeStat label="agents" value={runtime.model.counts.agents} />
+        <RuntimeStat label="specialists" value={runtime.model.counts.specialists} />
+        <RuntimeStat label="need attention" value={runtime.model.counts.attention} attention={runtime.model.counts.attention > 0} />
+        <RuntimeStat label="stale" value={runtime.model.counts.stale} attention={runtime.model.counts.stale > 0} />
+        <span className="runtime-status-spacer" />
+        <SourceHealth label="topology" health={runtime.overview?.source_health.topology} />
+        <SourceHealth label="journal" health={runtime.overview?.source_health.journal} />
+        <span className={`runtime-source-health ${runtime.specialistsError ? "is-degraded" : "is-ok"}`} title={runtime.specialistsError ?? "Specialists projection available"}>specialists</span>
+      </div>
+
+      {runtime.error ? <div className="runtime-error-banner">Partial data: {runtime.error}</div> : null}
+
+      <div className="runtime-observability__filters">
+        <input
+          className="runtime-search"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Filter session, pane, bead, role, branch…"
+          aria-label="Filter runtime observability"
+        />
+        {(["all", "active", "attention"] as const).map((item) => (
+          <button
+            type="button"
+            key={item}
+            className={`runtime-filter-button${scope === item ? " is-active" : ""}`}
+            onClick={() => setScope(item)}
+          >
+            {item === "all" ? "All" : item === "active" ? "Active" : "Needs attention"}
+          </button>
         ))}
+      </div>
+
+      <div className="runtime-observability__workbench">
+        <main className="runtime-observability__main">
+          {view === "graph" ? (
+            <RuntimeTopologyGraph
+              model={runtime.model}
+              selectedId={selectedId}
+              query={query}
+              scope={scope}
+              onSelect={setSelectedId}
+            />
+          ) : (
+            <RuntimeOperations
+              model={runtime.model}
+              selectedId={selectedId}
+              query={query}
+              scope={scope}
+              onSelect={setSelectedId}
+            />
+          )}
+        </main>
+        <RuntimeInspector model={runtime.model} entity={selected} />
       </div>
     </section>
   );
 }
 
-function Cell({ value, header = false, width = 1 }: { value: string | number; header?: boolean; width?: number }) {
-  const mono = isNumeric(value);
-  return <div style={{ ...cellStyle, width: `${width * 100}%`, fontWeight: header ? 600 : 400, fontFamily: mono ? "JetBrains Mono, monospace" : "Inter, sans-serif" }}>{String(value)}</div>;
+function RuntimeStat({ label, value, attention = false }: { label: string; value: number; attention?: boolean }) {
+  return <span className={`runtime-stat${attention ? " runtime-stat--attention" : ""}`}><strong>{value}</strong>{label}</span>;
 }
 
-function pct(value: number) { return `${Math.round(value * 100)}%`; }
-function isNumeric(value: string | number) { return typeof value === "number" || /^\d/.test(String(value)); }
-
-const shellStyle: CSSProperties = { background: "var(--surface-primary)", color: "var(--text-primary)", fontFamily: "Inter, sans-serif" };
-const toggleWrapStyle: CSSProperties = { display: "flex", gap: 8, marginBottom: 12 };
-const toggleStyle: CSSProperties = { background: "transparent", color: "var(--text-muted)", border: "none", borderBottom: "1px solid transparent", padding: "4px 0", fontFamily: "JetBrains Mono, monospace" };
-const activeToggleStyle: CSSProperties = { ...toggleStyle, color: "var(--text-primary)", borderBottomColor: "var(--accent)" };
-const sectionStyle: CSSProperties = { borderTop: "1px solid var(--border-subtle)", paddingTop: 12, marginTop: 12 };
-const tableStyle: CSSProperties = { display: "grid", gap: 0, border: "1px solid var(--border-subtle)", marginTop: 8 };
-const rowStyle: CSSProperties = { display: "flex" };
-const cellStyle: CSSProperties = { padding: "6px 8px", borderRight: "1px solid var(--border-subtle)", borderBottom: "1px solid var(--border-subtle)", fontSize: 12, minWidth: 0 };
-const panelHeaderStyle: CSSProperties = { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 };
-const panelTitleStyle: CSSProperties = { fontSize: 13, fontWeight: 600 };
-const smallButtonStyle: CSSProperties = { background: "transparent", color: "var(--text-primary)", border: "1px solid var(--border-subtle)", padding: "4px 8px", fontSize: 12 };
+function SourceHealth({ label, health }: {
+  label: string;
+  health: { status: "ok" | "degraded"; latency_ms: number; error?: string } | undefined;
+}) {
+  const state = health?.status ?? "degraded";
+  const title = health ? `${label}: ${health.status} · ${health.latency_ms}ms${health.error ? ` · ${health.error}` : ""}` : `${label}: waiting for data`;
+  return <span className={`runtime-source-health ${state === "ok" ? "is-ok" : "is-degraded"}`} title={title}>{label}</span>;
+}
