@@ -114,6 +114,10 @@ export function createGithubProgrammeSource(options?: {
         const commits = await fetchCommits(owner, repo, ref, 1, path);
         return commits[0]?.commit?.committer?.date ?? null;
       }),
+      recentCommitsForPath: async (path, n = 10) => observe(async () => {
+        const commits = await fetchCommits(owner, repo, ref, n, path);
+        return commits.map((commit) => toActivity(owner, repo, commit));
+      }),
     };
 
     source.pin = async () => {

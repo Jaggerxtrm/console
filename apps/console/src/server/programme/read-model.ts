@@ -44,6 +44,8 @@ export interface ProgrammeSource {
   listDir: DirLister;
   /** Fetch N most recent commits for the activity view. */
   recentCommits: (n: number) => Promise<ProgrammeActivity[]>;
+  /** Fetch recent commits touching one path (for per-entity revision history). */
+  recentCommitsForPath?: (path: string, n?: number) => Promise<ProgrammeActivity[]>;
   timestamp?: TimestampProvider;
   repository: string;
   branch: string;
@@ -69,6 +71,7 @@ export function createMapProgrammeSource(files: Map<string, string>, options: { 
     read,
     listDir,
     recentCommits: async () => options.activity ?? [],
+    recentCommitsForPath: async (path, n = 10) => (options.activity ?? []).slice(0, n).filter((c) => (c.url ?? "").includes(path) || path.length === 0),
     repository: options.repository ?? "mercuryintelligence/program",
     branch: options.branch ?? "master",
   };

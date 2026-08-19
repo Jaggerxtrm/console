@@ -8,6 +8,7 @@ import { makeSourceHealth, type SourceHealth } from "../../../../../packages/cor
 import type { ProgrammeSnapshot, ProgrammeSnapshotResponse, ProgrammeSourceHealth } from "../../types/programme.ts";
 import type { HostLogger } from "../log.ts";
 import { assertNoDanglingEdges, buildProgrammeSnapshot, enrichProgrammeSnapshot } from "./read-model.ts";
+import { buildChangeSet, buildRevisionHistory, summaryFrom } from "./changes.ts";
 import { createGithubProgrammeSource, type ObservableProgrammeSource } from "./source.ts";
 import type { ProgrammeSource } from "./read-model.ts";
 
@@ -65,6 +66,7 @@ export function createProgrammeRouter(options: ProgrammeRouteOptions = {}): Hono
   };
 
   let cache: CacheEntry | null = null;
+  let previous: ProgrammeSnapshot | null = null;
   let inflight: Promise<CacheEntry> | null = null;
 
   async function build(): Promise<CacheEntry> {
@@ -85,6 +87,7 @@ export function createProgrammeRouter(options: ProgrammeRouteOptions = {}): Hono
     enriched.provenance.current.programme_actor_registry = enriched.agents.length > 0;
     assertNoDanglingEdges(enriched.graph);
     const entry: CacheEntry = { snapshot: enriched, builtAt: startedAt, lastError: null, lastErrorAt: null };
+    previous = cache?.snapshot ?? null;
     emit("programme.snapshot.built", "info", "programme snapshot built", {
       ms: Date.now() - startedAt,
       programmeSha: enriched.programme.sha,
@@ -167,11 +170,13 @@ export function createProgrammeRouter(options: ProgrammeRouteOptions = {}): Hono
     const force = c.req.query("refresh") === "true";
     try {
       const { entry, freshness } = await getSnapshot(force);
+      const changeSet = previous ? buildChangeSet(previous, entry.snapshot) : null;
       const response: ProgrammeSnapshotResponse = {
         snapshot: entry.snapshot,
         freshness,
         source_health: sourceHealth(entry, freshness),
         error: entry.lastError,
+        changes_summary: changeSet ? summaryFrom(changeSet) : null,
       };
       return c.json(response);
     } catch (error) {
@@ -184,6 +189,44 @@ export function createProgrammeRouter(options: ProgrammeRouteOptions = {}): Hono
         error: message,
       };
       return c.json(degraded, 200);
+    }
+  });
+
+  app.get("/changes", async (c) => {
+    if (!enabled) return c.json({ error: "programme_dashboard_disabled" }, 404);
+    try {
+      const { entry, freshness } = await getSnapshot(false);
+      void freshness;
+      if (!previous) {
+        return c.json({ previous_sha: null, current_sha: entry.snapshot.programme.sha ?? null, generated_at: entry.snapshot.generated_at, entities: [], relation_count: 0 });
+      }
+      const changeSet = buildChangeSet(previous, entry.snapshot);
+      return c.json(changeSet);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return c.json({ error: message, previous_sha: null, current_sha: null, generated_at: "", entities: [], relation_count: 0 }, 200);
+    }
+  });
+
+  app.get("/revisions", async (c) => {
+    if (!enabled) return c.json({ error: "programme_dashboard_disabled" }, 404);
+    const path = c.req.query("path") ?? "";
+    if (!path) return c.json({ error: "path required" }, 400);
+    try {
+      const { entry } = await getSnapshot(false);
+      const observable = asObservable(source);
+      const buildSource = observable.pin ? await observable.pin() : source;
+      const fetchRevisions = async (p: string) => {
+        const fn = buildSource.recentCommitsForPath;
+        if (!fn) return [];
+        const commits = await fn.call(buildSource, p, 10);
+        return commits.map((c2) => ({ sha: c2.sha, date: c2.date, subject: c2.subject, url: c2.url }));
+      };
+      const [history] = await buildRevisionHistory(entry.snapshot, [path], fetchRevisions);
+      return c.json(history ?? { entity_key: path, path, revisions: [], current_revision_sha: null, previous_revision_sha: null });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return c.json({ error: message, entity_key: path, path, revisions: [], current_revision_sha: null, previous_revision_sha: null }, 200);
     }
   });
 

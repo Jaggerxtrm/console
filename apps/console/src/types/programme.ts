@@ -227,4 +227,81 @@ export interface ProgrammeSnapshotResponse {
   freshness: "fresh" | "stale" | "degraded";
   source_health: ProgrammeSourceHealth;
   error?: string | null;
+  /** Present when the router can compare against a previously built snapshot. */
+  changes_summary?: ProgrammeChangesSummary | null;
+}
+
+/** Cheap per-snapshot change summary included in the main response so list/card
+ * views can render Δ chips without a second request. */
+export interface ProgrammeChangesSummary {
+  previous_sha: string | null;
+  current_sha: string | null;
+  changed_entities: number;
+  changed_entity_keys: string[];
+  changed_relations: number;
+}
+
+/** One changed field of an entity between two observed snapshots. */
+export interface ProgrammeFieldChange {
+  field: string;
+  kind: "added" | "removed" | "changed";
+  previous?: unknown;
+  current?: unknown;
+}
+
+/** One relation (edge) difference of an entity between two observed snapshots. */
+export interface ProgrammeRelationChange {
+  source: string;
+  target: string;
+  relation: string;
+  field: string;
+  strength: "strong" | "weak";
+  kind: "added" | "removed";
+}
+
+/** One observed status transition for an entity (from observed snapshots only). */
+export interface ProgrammeStatusTrailEntry {
+  sha: string | null;
+  date: string;
+  status: string | null;
+}
+
+/** Collision-safe per-entity change record. */
+export interface ProgrammeEntityChange {
+  entity_key: string;
+  display_id: string;
+  kind: string;
+  title: string;
+  path: string | null;
+  field_changes: ProgrammeFieldChange[];
+  relation_changes: ProgrammeRelationChange[];
+  status_trail: ProgrammeStatusTrailEntry[];
+  previous_revision_sha: string | null;
+  current_revision_sha: string | null;
+}
+
+/** Deterministic diff between the two most recently observed snapshots. */
+export interface ProgrammeChangeSet {
+  previous_sha: string | null;
+  current_sha: string | null;
+  generated_at: string;
+  entities: ProgrammeEntityChange[];
+  relation_count: number;
+}
+
+/** One git revision touching an entity's canonical source path. */
+export interface ProgrammeRevision {
+  sha: string;
+  date: string;
+  subject: string;
+  url: string;
+}
+
+/** Per-entity revision history (meaningful file-level revisions). */
+export interface ProgrammeRevisionHistory {
+  entity_key: string;
+  path: string;
+  revisions: ProgrammeRevision[];
+  current_revision_sha: string | null;
+  previous_revision_sha: string | null;
 }
