@@ -1,23 +1,25 @@
-// /console/programme — Context Buffer UI (EXP-020).
-// Cross-view, session-only selection memory. Self-contained: the active view
-// is derived from the URL path, which Programme.tsx keeps in sync via
-// history.replaceState, so the buffer can be mounted once next to the entity
-// drawer and stays mounted across all programme views.
+// Programme Context — cross-view, session-only agent context bundle.
 //
-// Entries are addressed by collision-safe `entity_key` (the graph node id —
-// never kind+display_id alone). Selected paths, selection groups and the
-// selected/derived relation split are preserved. Everything is client-side;
-// no server endpoints are involved.
+// The floating tray never becomes programme memory or a second datastore. It
+// contains only the read-model data the operator explicitly selected. Entity
+// identity is collision-safe, selection groups and relation provenance survive
+// deduplication, and copied bundles retain exact source/evidence boundaries.
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ProgrammeSnapshot } from "../../../../types/programme.ts";
 import { resolveRecord } from "./identity.ts";
-import { useProgrammeContext } from "./context-buffer.ts";
-import type { ContextDensity, ContextEntry, ContextRelationRef, ContextSourceView } from "./context-buffer.ts";
+import {
+  contextDraftForNode,
+  useProgrammeContext,
+  type ContextDensity,
+  type ContextEntry,
+  type ContextRelationRef,
+  type ContextSelectionGroup,
+  type ContextSourceView,
+} from "./context-buffer.ts";
 
-const MAX_ADD_PER_CALL = 50;
+const MAX_PICKER_RECORDS = 300;
 
-/** A view record that can be resolved to a collision-safe entity key. */
 interface ViewRecord {
   id: string;
   kind: string;
@@ -25,24 +27,23 @@ interface ViewRecord {
   title: string;
 }
 
-/** Map a capture source to the records it snapshots. `graph` and `diff` add
- * context through their own selection mechanisms — no records here. */
-const VIEW_RECORDS: Record<ContextSourceView, (s: ProgrammeSnapshot) => ViewRecord[]> = {
+const VIEW_RECORDS: Record<ContextSourceView, (snapshot: ProgrammeSnapshot) => ViewRecord[]> = {
   graph: () => [],
   diff: () => [],
-  workstreams: (s) => (s.workstreams ?? []).map((r) => ({ id: r.graph_id ?? r.id, kind: "workstream", path: r.path, title: r.title })),
-  assignments: (s) => (s.assignments ?? []).map((r) => ({ id: r.graph_id ?? r.id, kind: "assignment", path: r.path, title: r.title })),
-  state: (s) => (s.state_records ?? []).map((r) => ({ id: r.id, kind: "state", path: r.path, title: r.title })),
-  journals: (s) => (s.journals ?? []).map((r) => ({ id: r.id, kind: "journal", path: r.path, title: r.title })),
-  adr: (s) => (s.decisions ?? []).map((r) => ({ id: r.graph_id ?? r.id, kind: "decision", path: r.path, title: r.title })),
-  research: (s) => [...(s.research ?? []), ...(s.proposals ?? [])].map((r) => ({ id: r.graph_id ?? r.id, kind: r.kind, path: r.path, title: r.title })),
-  agents: (s) => (s.agents ?? []).map((r) => ({ id: r.graph_id ?? r.id, kind: "actor", path: r.path, title: r.title })),
-  jira: (s) => (s.jira_refs ?? []).map((r) => ({ id: r.key, kind: "jira_ref", path: null, title: `Jira reference ${r.key}` })),
-  explore: (s) => exploreRecords(s),
+  workstreams: (snapshot) => (snapshot.workstreams ?? []).map((record) => ({ id: record.graph_id ?? record.id, kind: "workstream", path: record.path, title: record.title })),
+  assignments: (snapshot) => (snapshot.assignments ?? []).map((record) => ({ id: record.graph_id ?? record.id, kind: "assignment", path: record.path, title: record.title })),
+  state: (snapshot) => (snapshot.state_records ?? []).map((record) => ({ id: record.id, kind: "state", path: record.path, title: record.title })),
+  journals: (snapshot) => (snapshot.journals ?? []).map((record) => ({ id: record.id, kind: "journal", path: record.path, title: record.title })),
+  adr: (snapshot) => (snapshot.decisions ?? []).map((record) => ({ id: record.graph_id ?? record.id, kind: "decision", path: record.path, title: record.title })),
+  research: (snapshot) => [
+    ...(snapshot.research ?? []).map((record) => ({ id: record.graph_id ?? record.id, kind: "research", path: record.path, title: record.title })),
+    ...(snapshot.proposals ?? []).map((record) => ({ id: record.graph_id ?? record.id, kind: "proposal", path: record.path, title: record.title })),
+  ],
+  agents: (snapshot) => (snapshot.agents ?? []).map((record) => ({ id: record.graph_id ?? record.id, kind: "actor", path: record.path, title: record.title })),
+  jira: (snapshot) => (snapshot.jira_refs ?? []).map((record) => ({ id: record.key, kind: "jira", path: null, title: `Jira reference ${record.key}` })),
+  explore: (snapshot) => exploreRecords(snapshot),
 };
 
-/** Programme.tsx view ids → capture sources. Views without a mapping (overview,
- * revenue, identity, activity, sourcehealth) capture nothing. */
 const PATH_VIEWS: Record<string, ContextSourceView[]> = {
   workstreams: ["workstreams"],
   assignments: ["assignments"],
@@ -52,6 +53,7 @@ const PATH_VIEWS: Record<string, ContextSourceView[]> = {
   statejournal: ["state", "journals"],
   knowledge: ["research", "adr"],
   graph: ["graph"],
+  changes: ["diff"],
 };
 
 const DENSITIES: Array<{ id: ContextDensity; label: string }> = [
@@ -60,21 +62,34 @@ const DENSITIES: Array<{ id: ContextDensity; label: string }> = [
   { id: "full", label: "Full" },
 ];
 
-/** Explore-view style aggregation, reduced to identity-resolvable records. */
-function exploreRecords(s: ProgrammeSnapshot): ViewRecord[] {
-  const out: ViewRecord[] = [];
-  for (const w of s.workstreams ?? []) out.push({ id: w.graph_id ?? w.id, kind: "workstream", path: w.path, title: w.title });
-  for (const a of s.assignments ?? []) out.push({ id: a.graph_id ?? a.id, kind: "assignment", path: a.path, title: a.title });
-  for (const r of s.research ?? []) out.push({ id: r.graph_id ?? r.id, kind: "research", path: r.path, title: r.title });
-  for (const d of s.decisions ?? []) out.push({ id: d.graph_id ?? d.id, kind: "decision", path: d.path, title: d.title });
-  for (const p of s.proposals ?? []) out.push({ id: p.graph_id ?? p.id, kind: "proposal", path: p.path, title: p.title });
-  for (const st of s.state_records ?? []) out.push({ id: st.id, kind: "state", path: st.path, title: st.title });
-  for (const j of s.journals ?? []) out.push({ id: j.id, kind: "journal", path: j.path, title: j.title });
-  for (const pub of s.publication_facts ?? []) out.push({ id: pub.id, kind: "publication", path: pub.source_path, title: pub.title });
-  return out;
+export interface ProgrammeContextBundle {
+  schema_version: "mercury.programme.context.v1";
+  generated_at: string;
+  programme: {
+    repository: string;
+    branch: string;
+    sha: string | null;
+    evidence_cutoff: string | null;
+  };
+  objects: ContextEntry[];
+  relations: ContextRelationRef[];
+  groups: ContextSelectionGroup[];
+  evidence_boundary: Record<string, string>;
 }
 
-function currentViewFromPath(): ContextSourceView[] {
+function exploreRecords(snapshot: ProgrammeSnapshot): ViewRecord[] {
+  return [
+    ...VIEW_RECORDS.workstreams(snapshot),
+    ...VIEW_RECORDS.assignments(snapshot),
+    ...VIEW_RECORDS.research(snapshot),
+    ...VIEW_RECORDS.adr(snapshot),
+    ...VIEW_RECORDS.state(snapshot),
+    ...VIEW_RECORDS.journals(snapshot),
+    ...(snapshot.publication_facts ?? []).map((record) => ({ id: record.id, kind: "publication", path: record.source_path, title: record.title })),
+  ];
+}
+
+function currentViewsFromPath(): ContextSourceView[] {
   const path = window.location.pathname;
   for (const [id, views] of Object.entries(PATH_VIEWS)) {
     if (path.includes(`/programme/${id}`)) return views;
@@ -82,194 +97,308 @@ function currentViewFromPath(): ContextSourceView[] {
   return [];
 }
 
-function entryFor(snapshot: ProgrammeSnapshot, rec: ViewRecord, view: ContextSourceView): Omit<ContextEntry, "captured_at"> | null {
-  const keyed = resolveRecord(snapshot, rec);
+function candidateFor(snapshot: ProgrammeSnapshot, record: ViewRecord, view: ContextSourceView): { key: string; label: string; draft: ReturnType<typeof contextDraftForNode> } | null {
+  const keyed = resolveRecord(snapshot, record);
   if (!keyed) return null;
+  const node = snapshot.graph.nodes.find((candidate) => candidate.id === keyed.key);
+  if (!node) return null;
   return {
-    entity_key: keyed.key,
-    display_id: keyed.displayId,
-    kind: keyed.kind,
-    title: rec.title || keyed.displayId,
-    path: keyed.path,
-    source_sha: snapshot.programme.sha ?? null,
-    source_view: view,
-    selected_path: null,
-    group: null,
-    selected_relations: [],
-    derived_relations: [],
+    key: keyed.key,
+    label: `${keyed.displayId} — ${record.title || keyed.displayId}`,
+    draft: contextDraftForNode(snapshot, node, { source_view: view }),
+  };
+}
+
+function candidatesForCurrentView(snapshot: ProgrammeSnapshot) {
+  const out: Array<{ key: string; label: string; draft: ReturnType<typeof contextDraftForNode> }> = [];
+  const seen = new Set<string>();
+  for (const view of currentViewsFromPath()) {
+    for (const record of VIEW_RECORDS[view](snapshot)) {
+      const candidate = candidateFor(snapshot, record, view);
+      if (!candidate || seen.has(candidate.key)) continue;
+      seen.add(candidate.key);
+      out.push(candidate);
+      if (out.length >= MAX_PICKER_RECORDS) return out;
+    }
+  }
+  return out;
+}
+
+/** Test/utility helper: capture the whole supplied view as one explicit
+ * visible-selection group. The normal UI uses the selection picker instead. */
+export function addViewContext(snapshot: ProgrammeSnapshot, view: ContextSourceView): number {
+  const drafts = VIEW_RECORDS[view](snapshot)
+    .map((record) => candidateFor(snapshot, record, view))
+    .filter((value): value is NonNullable<typeof value> => Boolean(value))
+    .slice(0, MAX_PICKER_RECORDS)
+    .map((value) => value.draft);
+  if (drafts.length === 0) return 0;
+  useProgrammeContext.getState().addMany(drafts, { kind: "visible_selection", label: `${view} visible selection` });
+  return drafts.length;
+}
+
+function allRelations(entries: ContextEntry[]): ContextRelationRef[] {
+  const selected = new Map<string, ContextRelationRef>();
+  const derived = new Map<string, ContextRelationRef>();
+  for (const entry of entries) {
+    for (const relation of entry.selected_relations) selected.set(relation.key, { ...relation, selected: true });
+    for (const relation of entry.derived_relations) if (!selected.has(relation.key)) derived.set(relation.key, { ...relation, selected: false });
+  }
+  for (const key of selected.keys()) derived.delete(key);
+  return [...selected.values(), ...derived.values()].sort((a, b) => a.key.localeCompare(b.key));
+}
+
+export function buildContextBundle(
+  snapshot: ProgrammeSnapshot,
+  entries: ContextEntry[],
+  groups: ContextSelectionGroup[],
+): ProgrammeContextBundle {
+  const selectedKeys = new Set(entries.map((entry) => entry.entity_key));
+  const relevantGroups = groups
+    .map((group) => ({
+      ...group,
+      entity_keys: group.entity_keys.filter((key) => selectedKeys.has(key)),
+      relation_keys: group.relation_keys.filter((key) => allRelations(entries).some((relation) => relation.key === key)),
+    }))
+    .filter((group) => group.entity_keys.length > 0 || group.relation_keys.length > 0);
+  return {
+    schema_version: "mercury.programme.context.v1",
+    generated_at: new Date().toISOString(),
+    programme: {
+      repository: snapshot.programme.repository,
+      branch: snapshot.programme.branch,
+      sha: snapshot.programme.sha ?? null,
+      evidence_cutoff: snapshot.now?.evidence_cutoff ?? null,
+    },
+    objects: entries,
+    relations: allRelations(entries),
+    groups: relevantGroups,
     evidence_boundary: snapshot.evidence_boundary ?? {},
   };
 }
 
-function addCaptureGroups(snapshot: ProgrammeSnapshot, groups: Array<{ view: ContextSourceView; records: ViewRecord[] }>): number {
-  const store = useProgrammeContext.getState();
-  const seen = new Set<string>();
-  let added = 0;
-  for (const { view, records } of groups) {
-    for (const rec of records) {
-      if (added >= MAX_ADD_PER_CALL) return added;
-      const entry = entryFor(snapshot, rec, view);
-      if (!entry || seen.has(entry.entity_key)) continue;
-      seen.add(entry.entity_key);
-      store.add(entry);
-      added += 1;
+function sourceRef(entry: ContextEntry): string {
+  const ref = entry.source_sha ?? entry.source_branch ?? "UNKNOWN";
+  return `${entry.source_repository}@${ref}${entry.path ? `/${entry.path}` : ""}`;
+}
+
+function display(value: unknown): string {
+  if (value === null || value === undefined || value === "") return "UNKNOWN";
+  return String(value);
+}
+
+export function serializeContextRefs(bundle: ProgrammeContextBundle): string {
+  return [
+    "MERCURY PROGRAMME REFERENCES",
+    `Snapshot: ${bundle.programme.repository}@${bundle.programme.sha ?? bundle.programme.branch}`,
+    `Evidence cutoff: ${display(bundle.programme.evidence_cutoff)}`,
+    "",
+    ...bundle.objects.flatMap((entry) => [entry.display_id, `  ${sourceRef(entry)}`, `  entity_key: ${entry.entity_key}`]),
+  ].join("\n");
+}
+
+function metadataLines(entry: ContextEntry, density: ContextDensity): string[] {
+  if (density === "compact") return [];
+  const lines = [
+    `  status: ${display(entry.status)}`,
+    `  authority: ${display(entry.authority)}`,
+    `  evidence: ${display(entry.evidence_class)}`,
+    `  freshness: ${display(entry.freshness)}`,
+  ];
+  if (density === "full") {
+    for (const [key, value] of Object.entries(entry.metadata ?? {}).sort(([a], [b]) => a.localeCompare(b))) {
+      const rendered = typeof value === "object" ? JSON.stringify(value) : display(value);
+      lines.push(`  metadata.${key}: ${rendered}`);
     }
   }
-  return added;
+  return lines;
 }
 
-/** Capture the records of one programme view into the context buffer. Returns
- * the number of entries added. `graph` and `diff` return 0 (they add context
- * through their own selection mechanisms). */
-export function addViewContext(snapshot: ProgrammeSnapshot, view: ContextSourceView): number {
-  return addCaptureGroups(snapshot, [{ view, records: VIEW_RECORDS[view]?.(snapshot) ?? [] }]);
+function changeLines(entry: ContextEntry): string[] {
+  const change = entry.change;
+  if (!change) return [];
+  const out = [
+    `  compare: ${display(change.previous_revision_sha)} -> ${display(change.current_revision_sha)}`,
+    `  field_changes: ${change.field_changes.length}`,
+  ];
+  for (const field of change.field_changes) {
+    out.push(`    - ${field.field}: ${field.kind} ${display(field.previous)} -> ${display(field.current)}`);
+  }
+  out.push(`  relation_changes: ${change.relation_changes.length}`);
+  for (const relation of change.relation_changes) {
+    out.push(`    - ${relation.kind} ${relation.source} -> ${relation.target} ${relation.relation} [${relation.strength}] field=${relation.field}`);
+  }
+  return out;
 }
 
-/** UNKNOWN stays UNKNOWN — never invent a value for missing data. */
-function display(value: unknown): string {
-  if (value === null || value === undefined) return "UNKNOWN";
-  const s = String(value);
-  return s.trim() === "" || s === "UNKNOWN" ? "UNKNOWN" : s;
+export function serializeContextBundle(bundle: ProgrammeContextBundle, density: ContextDensity = "standard"): string {
+  const lines = [
+    "MERCURY PROGRAMME CONTEXT",
+    `Snapshot: ${bundle.programme.repository}@${bundle.programme.sha ?? bundle.programme.branch}`,
+    `Generated: ${bundle.generated_at}`,
+    `Evidence cutoff: ${display(bundle.programme.evidence_cutoff)}`,
+    `Objects: ${bundle.objects.length}`,
+    `Relations: ${bundle.relations.length}`,
+    `Selection groups: ${bundle.groups.length}`,
+    "",
+    "Evidence boundary:",
+  ];
+  const boundary = Object.entries(bundle.evidence_boundary);
+  if (boundary.length === 0) lines.push("- UNKNOWN");
+  else for (const [key, value] of boundary) lines.push(`- ${key}: ${display(value)}`);
+
+  if (bundle.groups.length > 0) {
+    lines.push("", "Selection groups:");
+    bundle.groups.forEach((group, index) => {
+      lines.push(`${index + 1}. ${group.label} [${group.kind}]`);
+      lines.push(`   objects: ${group.entity_keys.join(" -> ") || "(none)"}`);
+      if (group.relation_keys.length > 0) lines.push(`   relations: ${group.relation_keys.join(", ")}`);
+    });
+  }
+
+  lines.push("", "Objects:");
+  bundle.objects.forEach((entry, index) => {
+    lines.push(`${index + 1}. ${entry.display_id} — ${entry.title}`);
+    lines.push(`  entity_key: ${entry.entity_key}`);
+    lines.push(`  kind: ${entry.kind}`);
+    lines.push(`  source: ${sourceRef(entry)}`);
+    lines.push(`  evidence_cutoff: ${display(entry.evidence_cutoff)}`);
+    lines.push(...metadataLines(entry, density));
+    lines.push(...changeLines(entry));
+  });
+
+  if (bundle.relations.length > 0) {
+    lines.push("", "Relationships:");
+    for (const relation of bundle.relations) {
+      lines.push(`- ${relation.source} -> ${relation.target}  ${relation.relation} [${relation.selected ? "selected" : "derived"}${relation.strength === "weak" ? ", weak" : ""}] field=${relation.field}`);
+    }
+  }
+
+  lines.push(
+    "",
+    "Instruction:",
+    "Resolve the cited canonical sources before making mutable-state claims. Do not infer unavailable Beads, Jira live state, runtime/deployment state, logical actor, credential principal, execution identity, mutation receipt, content binding, or signature from this bundle. UNKNOWN remains UNKNOWN.",
+  );
+  return lines.join("\n");
 }
 
-function relationLine(entry: ContextEntry, r: ContextRelationRef): string {
-  const outbound = r.source === entry.entity_key;
-  return `${r.source} ${outbound ? "→" : "←"} ${r.target} (${r.relation}/${r.field}) [${r.strength}]`;
+export function estimateContextTokens(text: string): number {
+  return Math.max(1, Math.ceil(text.length / 4));
 }
 
-function refsText(entries: ContextEntry[]): string {
-  return entries
-    .map((e) => (e.path ? `${e.display_id} (${e.path})` : e.display_id))
-    .join("\n");
-}
-
-function contextText(entries: ContextEntry[]): string {
-  return entries.map((e) => {
-    const lines = [
-      e.display_id,
-      `  entity_key: ${e.entity_key}`,
-      `  kind: ${e.kind}`,
-      `  title: ${display(e.title)}`,
-      `  source view: ${e.source_view}`,
-      `  selected path: ${display(e.selected_path)}`,
-      `  group: ${display(e.group)}`,
-      `  source sha: ${display(e.source_sha)}`,
-      "  selected relations:",
-    ];
-    if (e.selected_relations.length === 0) lines.push("    (none)");
-    else for (const r of e.selected_relations) lines.push(`    - ${relationLine(e, r)}`);
-    lines.push("  derived relations:");
-    if (e.derived_relations.length === 0) lines.push("    (none)");
-    else for (const r of e.derived_relations) lines.push(`    - ${relationLine(e, r)}`);
-    lines.push("  evidence boundary:");
-    const boundary = e.evidence_boundary ?? {};
-    if (Object.keys(boundary).length === 0) lines.push("    (none)");
-    else for (const [k, v] of Object.entries(boundary)) lines.push(`    ${k}: ${display(v)}`);
-    return lines.join("\n");
-  }).join("\n\n");
-}
-
-/** navigator.clipboard with a textarea + execCommand fallback. */
 async function writeClipboard(text: string): Promise<void> {
   if (navigator.clipboard?.writeText) {
-    try {
-      await navigator.clipboard.writeText(text);
-      return;
-    } catch {
-      /* fall through to the textarea fallback */
-    }
+    try { await navigator.clipboard.writeText(text); return; } catch { /* fallback below */ }
   }
-  const ta = document.createElement("textarea");
-  ta.value = text;
-  ta.style.position = "fixed";
-  ta.style.opacity = "0";
-  document.body.appendChild(ta);
-  ta.select();
-  try {
-    document.execCommand("copy");
-  } finally {
-    ta.remove();
-  }
-}
-
-function FullDetail({ entry }: { entry: ContextEntry }) {
-  const boundary = entry.evidence_boundary ?? {};
-  return (
-    <div className="pg-buffer-full">
-      <div className="pg-buffer-rel-group">
-        <div className="pg-buffer-rel-group-label">Selected relations</div>
-        {entry.selected_relations.length === 0
-          ? <div className="pg-buffer-muted">none</div>
-          : entry.selected_relations.map((r) => <div key={r.key} className="pg-buffer-rel">{relationLine(entry, r)}</div>)}
-      </div>
-      <div className="pg-buffer-rel-group">
-        <div className="pg-buffer-rel-group-label">Derived relations</div>
-        {entry.derived_relations.length === 0
-          ? <div className="pg-buffer-muted">none</div>
-          : entry.derived_relations.map((r) => <div key={r.key} className="pg-buffer-rel">{relationLine(entry, r)}</div>)}
-      </div>
-      <div className="pg-buffer-rel-group">
-        <div className="pg-buffer-rel-group-label">Evidence boundary</div>
-        {Object.keys(boundary).length === 0
-          ? <div className="pg-buffer-muted">none recorded</div>
-          : Object.entries(boundary).map(([k, v]) => (
-            <div key={k} className="pg-buffer-boundary-row"><span>{k}</span><span>{display(v)}</span></div>
-          ))}
-      </div>
-      <div className="pg-buffer-meta-row">source sha: {display(entry.source_sha)}</div>
-      <div className="pg-buffer-meta-row">captured at: {display(entry.captured_at)}</div>
-    </div>
-  );
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.select();
+  try { document.execCommand("copy"); } finally { textarea.remove(); }
 }
 
 function EntryRow({ entry, density, onRemove }: { entry: ContextEntry; density: ContextDensity; onRemove: (key: string) => void }) {
-  const relCount = entry.selected_relations.length + entry.derived_relations.length;
+  const relationCount = entry.selected_relations.length + entry.derived_relations.length;
   return (
     <li className={`pg-buffer-entry pg-buffer-entry-${density}`} data-entity-key={entry.entity_key}>
       <div className="pg-buffer-entry-hd">
         <span className="pg-buffer-kind-dot" aria-hidden="true" />
         <span className="pg-buffer-entry-id">{entry.display_id}</span>
         <span className="pg-buffer-entry-meta">{entry.kind}</span>
-        <span className="pg-buffer-rel-count">{relCount} rel</span>
+        <span className="pg-buffer-rel-count">{relationCount} rel · {entry.group_ids.length} groups</span>
         <button type="button" className="pg-buffer-remove" title="Remove from context" onClick={() => onRemove(entry.entity_key)}>×</button>
       </div>
       {density !== "compact" ? (
         <>
-          {entry.title ? <div className="pg-buffer-entry-title">{entry.title}</div> : null}
+          <div className="pg-buffer-entry-title">{entry.title}</div>
           <div className="pg-buffer-entry-sub">
             <span>{entry.source_view}</span>
             {entry.path ? <span className="pg-buffer-path">{entry.path}</span> : null}
             <span className="pg-buffer-sha">{display(entry.source_sha)}</span>
           </div>
-          {entry.selected_path ? <div className="pg-buffer-selected-path">selected path: {entry.selected_path}</div> : null}
-          {entry.group ? <span className="pg-buffer-group-tag">{entry.group}</span> : null}
-          {density === "full" ? <FullDetail entry={entry} /> : null}
+          {entry.change ? <div className="pg-buffer-selected-path">ChangeSet preserved · {entry.change.field_changes.length} fields / {entry.change.relation_changes.length} relations</div> : null}
+          {density === "full" ? (
+            <div className="pg-buffer-full">
+              <div className="pg-buffer-meta-row">entity_key: {entry.entity_key}</div>
+              <div className="pg-buffer-meta-row">authority: {display(entry.authority)}</div>
+              <div className="pg-buffer-meta-row">evidence: {display(entry.evidence_class)}</div>
+              <div className="pg-buffer-meta-row">evidence cutoff: {display(entry.evidence_cutoff)}</div>
+            </div>
+          ) : null}
         </>
       ) : null}
     </li>
   );
 }
 
-/** Persistent, cross-view context buffer. Collapsed = a small "Context (N)"
- * tab; expanded = a fixed bottom-right panel. */
-export function ContextBuffer({ snapshot }: { snapshot: ProgrammeSnapshot }) {
-  const entries = useProgrammeContext((s) => s.entries);
-  const density = useProgrammeContext((s) => s.density);
-  const setDensity = useProgrammeContext((s) => s.setDensity);
-  const remove = useProgrammeContext((s) => s.remove);
-  const clear = useProgrammeContext((s) => s.clear);
+function SelectionPicker({ snapshot, onClose }: { snapshot: ProgrammeSnapshot; onClose: () => void }) {
+  const addMany = useProgrammeContext((state) => state.addMany);
+  const [query, setQuery] = useState("");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const candidates = useMemo(() => candidatesForCurrentView(snapshot), [snapshot]);
+  const filtered = candidates.filter((candidate) => candidate.label.toLowerCase().includes(query.toLowerCase()) || candidate.key.toLowerCase().includes(query.toLowerCase()));
 
+  const commit = () => {
+    const drafts = candidates.filter((candidate) => selected.has(candidate.key)).map((candidate) => candidate.draft);
+    if (drafts.length === 0) return;
+    const views = [...new Set(drafts.map((draft) => draft.source_view))];
+    addMany(drafts, { kind: "table_selection", label: `${views.join(" + ")} selection` });
+    onClose();
+  };
+
+  return (
+    <div className="pg-context-picker" role="dialog" aria-label="Select Programme objects for Context">
+      <div className="pg-context-picker-head">
+        <strong>Select objects</strong>
+        <button type="button" className="pg-buffer-btn" onClick={onClose}>×</button>
+      </div>
+      <input className="pd-search" placeholder="Filter objects…" value={query} onChange={(event) => setQuery(event.target.value)} />
+      <div className="pg-context-picker-list">
+        {filtered.map((candidate) => (
+          <label key={candidate.key} className="pg-context-picker-row">
+            <input
+              type="checkbox"
+              checked={selected.has(candidate.key)}
+              onChange={() => setSelected((current) => {
+                const next = new Set(current);
+                if (next.has(candidate.key)) next.delete(candidate.key); else next.add(candidate.key);
+                return next;
+              })}
+            />
+            <span>{candidate.label}</span>
+            <span className="pd-mono pd-muted">{candidate.key}</span>
+          </label>
+        ))}
+        {filtered.length === 0 ? <div className="pd-muted">No selectable objects in this view. Graph and Changes expose dedicated selection actions.</div> : null}
+      </div>
+      <div className="pg-context-picker-actions">
+        <button type="button" className="pg-buffer-btn" onClick={() => setSelected(new Set(filtered.map((candidate) => candidate.key)))} disabled={filtered.length === 0}>Select visible</button>
+        <button type="button" className="pd-button" onClick={commit} disabled={selected.size === 0}>Add selected · {selected.size}</button>
+      </div>
+    </div>
+  );
+}
+
+export function ContextBuffer({ snapshot }: { snapshot: ProgrammeSnapshot }) {
+  const entries = useProgrammeContext((state) => state.entries);
+  const groups = useProgrammeContext((state) => state.groups);
+  const density = useProgrammeContext((state) => state.density);
+  const setDensity = useProgrammeContext((state) => state.setDensity);
+  const remove = useProgrammeContext((state) => state.remove);
+  const clear = useProgrammeContext((state) => state.clear);
   const [open, setOpen] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
   const copyTimer = useRef<number | undefined>(undefined);
+
   useEffect(() => () => { if (copyTimer.current !== undefined) window.clearTimeout(copyTimer.current); }, []);
 
-  const activeViews = currentViewFromPath();
-  const canAdd = activeViews.some((v) => VIEW_RECORDS[v](snapshot).length > 0);
-
-  const capture = () => {
-    addCaptureGroups(snapshot, currentViewFromPath().map((v) => ({ view: v, records: VIEW_RECORDS[v](snapshot) })));
-  };
+  const bundle = useMemo(() => buildContextBundle(snapshot, entries, groups), [snapshot, entries, groups]);
+  const contextText = useMemo(() => serializeContextBundle(bundle, density), [bundle, density]);
+  const tokens = estimateContextTokens(contextText);
+  const selectableCount = candidatesForCurrentView(snapshot).length;
 
   const copy = (text: string, label: string) => {
     if (copyTimer.current !== undefined) window.clearTimeout(copyTimer.current);
@@ -281,40 +410,41 @@ export function ContextBuffer({ snapshot }: { snapshot: ProgrammeSnapshot }) {
   if (!open) {
     return (
       <button type="button" className="pg-buffer-tab" title="Expand context buffer" onClick={() => setOpen(true)}>
-        Context ({entries.length})
+        Context · {entries.length}
       </button>
     );
   }
 
   return (
-    <aside className="pg-buffer" aria-label="Programme context buffer">
-      <header className="pg-buffer-hd">
-        <span className="pg-buffer-title">Context buffer</span>
-        <span className="pg-buffer-count">{entries.length}</span>
-        <button type="button" className="pg-buffer-btn" title="Add current view to context" onClick={capture} disabled={!canAdd}>+</button>
-        <div className="pg-buffer-dens" role="group" aria-label="Display density">
-          {DENSITIES.map((d) => (
-            <button
-              key={d.id}
-              type="button"
-              className={density === d.id ? "pg-buffer-dens-btn is-active" : "pg-buffer-dens-btn"}
-              onClick={() => setDensity(d.id)}
-            >
-              {d.label}
-            </button>
-          ))}
-        </div>
-        <button type="button" className="pg-buffer-btn" title="Copy refs" onClick={() => copy(refsText(entries), "refs")} disabled={entries.length === 0}>Copy refs</button>
-        <button type="button" className="pg-buffer-btn" title="Copy context" onClick={() => copy(contextText(entries), "context")} disabled={entries.length === 0}>Copy context</button>
-        <button type="button" className="pg-buffer-btn" title="Copy JSON" onClick={() => copy(JSON.stringify(entries, null, 2), "json")} disabled={entries.length === 0}>Copy JSON</button>
-        <button type="button" className="pg-buffer-btn" title="Clear all" onClick={clear} disabled={entries.length === 0}>Clear all</button>
-        <button type="button" className="pg-buffer-btn" title="Collapse context buffer" onClick={() => setOpen(false)}>×</button>
-      </header>
-      {copied ? <div className="pg-buffer-copied" role="status">Copied</div> : null}
-      <ul className="pg-buffer-list">
-        {entries.length === 0 ? <li className="pg-buffer-empty">Nothing captured yet. Use “+” to capture the current view.</li> : null}
-        {entries.map((e) => <EntryRow key={e.entity_key} entry={e} density={density} onRemove={remove} />)}
-      </ul>
-    </aside>
+    <>
+      <aside className="pg-buffer" aria-label="Programme context buffer">
+        <header className="pg-buffer-hd">
+          <span className="pg-buffer-title">Context</span>
+          <span className="pg-buffer-count">{entries.length} objects · {bundle.relations.length} relations · {bundle.groups.length} groups · ~{tokens.toLocaleString()} tokens</span>
+          <button type="button" className="pg-buffer-btn" title="Select objects from current view" onClick={() => setPickerOpen(true)} disabled={selectableCount === 0}>+ Context</button>
+          <div className="pg-buffer-dens" role="group" aria-label="Context density">
+            {DENSITIES.map((item) => (
+              <button key={item.id} type="button" className={density === item.id ? "pg-buffer-dens-btn is-active" : "pg-buffer-dens-btn"} onClick={() => setDensity(item.id)}>{item.label}</button>
+            ))}
+          </div>
+          <button type="button" className="pg-buffer-btn" onClick={() => copy(serializeContextRefs(bundle), "refs")} disabled={entries.length === 0}>Copy refs</button>
+          <button type="button" className="pg-buffer-btn" onClick={() => copy(contextText, "context")} disabled={entries.length === 0}>Copy context</button>
+          <button type="button" className="pg-buffer-btn" onClick={() => copy(JSON.stringify(bundle, null, 2), "json")} disabled={entries.length === 0}>Copy JSON</button>
+          <button type="button" className="pg-buffer-btn" onClick={clear} disabled={entries.length === 0}>Clear</button>
+          <button type="button" className="pg-buffer-btn" title="Collapse context buffer" onClick={() => setOpen(false)}>×</button>
+        </header>
+        {copied ? <div className="pg-buffer-copied" role="status">Copied {copied}</div> : null}
+        {groups.length > 0 ? (
+          <div className="pg-buffer-groups">
+            {groups.slice(-6).map((group) => <span key={group.id} className="pg-buffer-group-tag">{group.label} · {group.entity_keys.length}</span>)}
+          </div>
+        ) : null}
+        <ul className="pg-buffer-list">
+          {entries.length === 0 ? <li className="pg-buffer-empty">Nothing selected yet. Use + Context in a list, or Graph/Changes selection actions.</li> : null}
+          {entries.map((entry) => <EntryRow key={entry.entity_key} entry={entry} density={density} onRemove={remove} />)}
+        </ul>
+      </aside>
+      {pickerOpen ? <SelectionPicker snapshot={snapshot} onClose={() => setPickerOpen(false)} /> : null}
+    </>
   );
 }
