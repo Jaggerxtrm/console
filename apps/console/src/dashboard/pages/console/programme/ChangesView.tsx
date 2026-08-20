@@ -1,11 +1,11 @@
-// ChangesView — entity-level diff between the two most recently observed
-// programme snapshots (the "Last visit" change set). Renders per-entity change
-// records: deterministic field changes, added/removed relations (never merged),
-// observed status trails, and FILE-level revision history for canonical source
-// paths. Time-window filters are client-side. Factual counts only — no
-// synthetic completion percentages for assignments or workstreams.
+// ChangesView — exact entity-level Programme comparisons.
+//
+// Last visit is the browser-local exact SHA baseline supplied by
+// useProgrammeChanges. 24h/7d/30d and explicit SHA modes call the server-side
+// /compare endpoint and build the compared snapshots at exact source commits.
+// FILE revision history remains explicitly separate from entity change history.
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type {
   ProgrammeChangeSet,
   ProgrammeEntityChange,
@@ -15,12 +15,12 @@ import type {
   ProgrammeSnapshot,
   ProgrammeStatusTrailEntry,
 } from "../../../../types/programme.ts";
-import { fetchRevisionHistory } from "./useProgrammeChanges.ts";
+import { fetchProgrammeCompare, fetchRevisionHistory, type ProgrammeCompareWindow } from "./useProgrammeChanges.ts";
 import { useProgrammeContext } from "./context-buffer.ts";
 
-type TimeWindow = "last" | "24h" | "7d" | "30d" | "sha";
+type CompareMode = "last" | ProgrammeCompareWindow | "sha";
 
-const WINDOW_LABELS: Array<{ id: TimeWindow; label: string }> = [
+const MODES: Array<{ id: CompareMode; label: string }> = [
   { id: "last", label: "Last visit" },
   { id: "24h", label: "24h" },
   { id: "7d", label: "7d" },
@@ -28,21 +28,15 @@ const WINDOW_LABELS: Array<{ id: TimeWindow; label: string }> = [
   { id: "sha", label: "SHA" },
 ];
 
-const WINDOW_MS: Record<"24h" | "7d" | "30d", number> = {
-  "24h": 24 * 60 * 60 * 1000,
-  "7d": 7 * 24 * 60 * 60 * 1000,
-  "30d": 30 * 24 * 60 * 60 * 1000,
-};
-
 function short(sha: string | null | undefined): string {
   return sha ? sha.slice(0, 10) : "—";
 }
 
 function fmtDate(value: unknown): string {
   if (!value) return "—";
-  const d = new Date(String(value));
-  if (Number.isNaN(d.valueOf())) return String(value);
-  return d.toISOString().slice(0, 10);
+  const date = new Date(String(value));
+  if (Number.isNaN(date.valueOf())) return String(value);
+  return date.toISOString().slice(0, 10);
 }
 
 function fmtValue(value: unknown): string {
@@ -51,12 +45,10 @@ function fmtValue(value: unknown): string {
   return String(value);
 }
 
-/** SHA-prefix match against observed status-trail shas or loaded revisions. */
-function matchesShaPrefix(entity: ProgrammeEntityChange, prefix: string, history: ProgrammeRevisionHistory | undefined): boolean {
-  const q = prefix.toLowerCase();
-  if (entity.status_trail.some((t) => t.sha && t.sha.toLowerCase().startsWith(q))) return true;
-  if (history?.revisions.some((r) => r.sha.toLowerCase().startsWith(q))) return true;
-  return false;
+function modeLabel(mode: CompareMode, shaInput: string): string {
+  if (mode === "last") return "browser last visit";
+  if (mode === "sha") return shaInput.trim() ? `explicit ${shaInput.trim()}` : "explicit SHA";
+  return `${mode} baseline`;
 }
 
 export function ChangesView({
@@ -72,122 +64,156 @@ export function ChangesView({
   error?: string | null;
   onReload?: () => void;
 }) {
-  const addNode = useProgrammeContext((s) => s.addNode);
-  const [timeWindow, setTimeWindow] = useState<TimeWindow>("last");
+  const addChange = useProgrammeContext((state) => state.addChange);
+  const [mode, setMode] = useState<CompareMode>("last");
   const [shaInput, setShaInput] = useState("");
-  const [revisions, setRevisions] = useState<Record<string, ProgrammeRevisionHistory>>({});
+  const [historical, setHistorical] = useState<ProgrammeChangeSet | null>(null);
+  const [compareLoading, setCompareLoading] = useState(false);
+  const [compareError, setCompareError] = useState<string | null>(null);
 
-  const entities = changeSet?.entities ?? [];
-
-  const filtered = useMemo(() => {
-    if (timeWindow === "last") return entities;
-    if (timeWindow === "sha") {
-      const q = shaInput.trim();
-      if (!q) return entities;
-      return entities.filter((e) => matchesShaPrefix(e, q, revisions[e.entity_key]));
+  useEffect(() => {
+    if (mode === "last") {
+      setHistorical(null);
+      setCompareError(null);
     }
-    const cutoff = Date.now() - WINDOW_MS[timeWindow];
-    return entities.filter((e) => e.status_trail.some((t) => t.date && new Date(t.date).valueOf() >= cutoff));
-  }, [timeWindow, shaInput, entities, revisions]);
+  }, [mode, changeSet]);
 
-  const kindCount = new Set(filtered.map((e) => e.kind)).size;
+  const loadWindow = async (window: ProgrammeCompareWindow) => {
+    setMode(window);
+    setCompareLoading(true);
+    setCompareError(null);
+    try {
+      setHistorical(await fetchProgrammeCompare({ window, to: snapshot.programme.sha ?? undefined }));
+    } catch (err) {
+      setHistorical(null);
+      setCompareError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setCompareLoading(false);
+    }
+  };
 
-  if (loading && !changeSet) return <div className="pd-loading">Loading change set…</div>;
-  if (error && !changeSet) {
-    return (
-      <div className="pd-error">
-        <div>{error}</div>
-        {onReload ? <button type="button" className="pd-button" onClick={onReload}>Retry</button> : null}
-      </div>
-    );
-  }
-  if (!changeSet) return <div className="pd-muted">No change set available.</div>;
+  const loadSha = async () => {
+    const ref = shaInput.trim();
+    if (!/^[0-9a-f]{7,40}$/i.test(ref)) {
+      setCompareError("Enter a 7–40 character hexadecimal commit SHA.");
+      return;
+    }
+    setMode("sha");
+    setCompareLoading(true);
+    setCompareError(null);
+    try {
+      setHistorical(await fetchProgrammeCompare({ from: ref, to: snapshot.programme.sha ?? undefined }));
+    } catch (err) {
+      setHistorical(null);
+      setCompareError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setCompareLoading(false);
+    }
+  };
+
+  const active = mode === "last" ? changeSet : historical;
+  const activeLoading = mode === "last" ? loading : compareLoading;
+  const activeError = mode === "last" ? error : compareError;
+  const entities = active?.entities ?? [];
+  const kindCount = new Set(entities.map((entity) => entity.kind)).size;
 
   return (
     <>
       <div className="pd-banner pd-diff-header">
-        {changeSet.previous_sha ? (
-          <>
-            <span className="pd-muted">current vs previous meaningful revision</span>
-            <span className="pd-mono pd-diff-sha" title={`${changeSet.previous_sha} → ${changeSet.current_sha ?? ""}`}>
-              {short(changeSet.previous_sha)} → {short(changeSet.current_sha)}
-            </span>
-          </>
+        <span className="pd-muted">{modeLabel(mode, shaInput)}</span>
+        {active?.previous_sha ? (
+          <span className="pd-mono pd-diff-sha" title={`${active.previous_sha} → ${active.current_sha ?? ""}`}>
+            {short(active.previous_sha)} → {short(active.current_sha)}
+          </span>
         ) : (
-          <span>first observation — no previous revision</span>
+          <span className="pd-muted">no earlier exact baseline observed/resolved</span>
         )}
-        <span className="pd-muted">generated {fmtDate(changeSet.generated_at)}</span>
+        <span className="pd-muted">target {short(active?.current_sha ?? snapshot.programme.sha)}</span>
       </div>
 
       <div className="pd-filterbar">
-        {WINDOW_LABELS.map((w) => (
+        <button
+          type="button"
+          className={mode === "last" ? "pd-filter is-active" : "pd-filter"}
+          onClick={() => setMode("last")}
+        >
+          Last visit
+        </button>
+        {(["24h", "7d", "30d"] as ProgrammeCompareWindow[]).map((window) => (
           <button
-            key={w.id}
+            key={window}
             type="button"
-            className={timeWindow === w.id ? "pd-filter is-active" : "pd-filter"}
-            onClick={() => setTimeWindow(w.id)}
+            className={mode === window ? "pd-filter is-active" : "pd-filter"}
+            onClick={() => void loadWindow(window)}
           >
-            {w.label}
+            {window}
           </button>
         ))}
-        {timeWindow === "sha" ? (
-          <input
-            className="pd-filter-sha"
-            placeholder="SHA prefix…"
-            value={shaInput}
-            onChange={(e) => setShaInput(e.target.value)}
-            aria-label="SHA filter"
-          />
+        <button
+          type="button"
+          className={mode === "sha" ? "pd-filter is-active" : "pd-filter"}
+          onClick={() => setMode("sha")}
+        >
+          SHA
+        </button>
+        {mode === "sha" ? (
+          <>
+            <input
+              className="pd-filter-sha"
+              placeholder="baseline commit SHA…"
+              value={shaInput}
+              onChange={(event) => setShaInput(event.target.value)}
+              onKeyDown={(event) => { if (event.key === "Enter") void loadSha(); }}
+              aria-label="Baseline commit SHA"
+            />
+            <button type="button" className="pd-filter" onClick={() => void loadSha()}>Compare</button>
+          </>
         ) : null}
-        <span className="pd-muted">{filtered.length} / {entities.length} entities</span>
+        {mode === "last" && onReload ? <button type="button" className="pd-filter" onClick={onReload}>Re-read last visit</button> : null}
       </div>
 
-      <div className="pd-muted pd-diff-counts">{filtered.length} entities changed across {kindCount} kinds</div>
+      <div className="pd-muted pd-diff-counts">
+        {activeLoading ? "Resolving exact source snapshots…" : active ? `${entities.length} entities changed across ${kindCount} kinds · ${active.relation_count} relation changes` : "No comparison loaded"}
+      </div>
 
-      {entities.length === 0 ? (
-        <div className="pd-muted">No recorded changes in the last visit.</div>
-      ) : filtered.length === 0 ? (
+      {activeError ? <div className="pd-banner pd-banner-warn">{activeError}</div> : null}
+
+      {!activeLoading && !activeError && !active ? (
+        <div className="pd-muted">No change set available for this baseline.</div>
+      ) : null}
+
+      {!activeLoading && active && entities.length === 0 ? (
         <div className="pd-muted">
-          {timeWindow === "sha" && shaInput.trim() ? <>No entities match {shaInput.trim()}</> : <>No entities match the current filter.</>}
+          {active.previous_sha ? "No entity-level changes between the exact source snapshots." : "No prior exact baseline exists for this comparison yet."}
         </div>
-      ) : (
-        filtered.map((entity) => {
-          const node = snapshot.graph.nodes.find((n) => n.id === entity.entity_key) ?? null;
-          return (
-            <section key={entity.entity_key} className="pd-panel" data-entity-key={entity.entity_key}>
-              <header className="pd-panel-hd">
-                <div>
-                  <div className="pd-panel-title"><span className="pd-mono">{entity.entity_key}</span></div>
-                  <div className="pd-panel-sub">{entity.title || entity.display_id} · {entity.kind}</div>
-                </div>
-                <div className="pd-entity-actions">
-                  <button
-                    type="button"
-                    className="pd-add-ctx"
-                    disabled={!node}
-                    title={node ? "Add to context buffer" : "no graph node for this entity key"}
-                    onClick={() => { if (node) addNode(snapshot, node, { source_view: "diff" }); }}
-                  >
-                    Add to context
-                  </button>
-                </div>
-              </header>
-              <div className="pd-panel-body">
-                <FieldChanges fields={entity.field_changes} />
-                <RelationChanges relations={entity.relation_changes} />
-                <StatusTrail trail={entity.status_trail} />
-                {entity.path ? (
-                  <RevisionsSection
-                    path={entity.path}
-                    history={revisions[entity.entity_key]}
-                    onLoaded={(h) => setRevisions((m) => ({ ...m, [entity.entity_key]: h }))}
-                  />
-                ) : null}
-              </div>
-            </section>
-          );
-        })
-      )}
+      ) : null}
+
+      {!activeLoading && entities.map((entity) => (
+        <section key={entity.entity_key} className="pd-panel" data-entity-key={entity.entity_key}>
+          <header className="pd-panel-hd">
+            <div>
+              <div className="pd-panel-title"><span className="pd-mono">{entity.entity_key}</span></div>
+              <div className="pd-panel-sub">{entity.title || entity.display_id} · {entity.kind}</div>
+            </div>
+            <div className="pd-entity-actions">
+              <button
+                type="button"
+                className="pd-add-ctx"
+                title="Add this exact ChangeSet to Context"
+                onClick={() => addChange(snapshot, entity)}
+              >
+                Add change to context
+              </button>
+            </div>
+          </header>
+          <div className="pd-panel-body">
+            <FieldChanges fields={entity.field_changes} />
+            <RelationChanges relations={entity.relation_changes} />
+            <StatusTrail trail={entity.status_trail} />
+            {entity.path ? <RevisionsSection path={entity.path} entityKey={entity.entity_key} /> : null}
+          </div>
+        </section>
+      ))}
     </>
   );
 }
@@ -199,13 +225,13 @@ export function FieldChanges({ fields }: { fields: ProgrammeFieldChange[] }) {
     <div className="pd-diff-block">
       <div className="pd-diff-hd">Field changes · {fields.length}</div>
       <div className="pd-diff-table">
-        {fields.map((f, i) => (
-          <div key={`${f.field}-${i}`} className="pd-diff-row">
-            <span className="pd-mono pd-diff-field">{f.field}</span>
-            <span className={`pd-diff-kind pd-diff-kind-${f.kind}`}>{f.kind}</span>
-            <span className="pd-diff-prev">{fmtValue(f.previous)}</span>
+        {fields.map((field, index) => (
+          <div key={`${field.field}-${index}`} className="pd-diff-row">
+            <span className="pd-mono pd-diff-field">{field.field}</span>
+            <span className={`pd-diff-kind pd-diff-kind-${field.kind}`}>{field.kind}</span>
+            <span className="pd-diff-prev">{fmtValue(field.previous)}</span>
             <span className="pd-diff-arrow">→</span>
-            <span className="pd-diff-cur">{fmtValue(f.current)}</span>
+            <span className="pd-diff-cur">{fmtValue(field.current)}</span>
           </div>
         ))}
       </div>
@@ -213,43 +239,25 @@ export function FieldChanges({ fields }: { fields: ProgrammeFieldChange[] }) {
   );
 }
 
-/** Added and removed relations rendered as two separate groups, never merged. */
+/** Added and removed relations rendered separately, never semantically merged. */
 export function RelationChanges({ relations }: { relations: ProgrammeRelationChange[] }) {
-  const added = relations.filter((r) => r.kind === "added");
-  const removed = relations.filter((r) => r.kind === "removed");
+  const added = relations.filter((relation) => relation.kind === "added");
+  const removed = relations.filter((relation) => relation.kind === "removed");
   if (added.length === 0 && removed.length === 0) return null;
+  const rows = (items: ProgrammeRelationChange[], prefix: string) => items.map((relation, index) => (
+    <div key={`${prefix}-${relation.source}-${relation.target}-${relation.relation}-${relation.field}-${index}`} className="pd-rel-row">
+      <span className="pd-mono">{relation.source}</span>
+      <span className="pd-rel-arrow">→</span>
+      <span className="pd-rel-name">{relation.relation}</span>
+      <span className="pd-rel-arrow">→</span>
+      <span className="pd-mono">{relation.target}</span>
+      <span className="pd-rel-field">{relation.field} · {relation.strength}</span>
+    </div>
+  ));
   return (
     <div className="pd-diff-block">
-      {added.length > 0 ? (
-        <div className="pd-rel-group pd-rel-added">
-          <div className="pd-diff-hd">Added relations · {added.length}</div>
-          {added.map((r, i) => (
-            <div key={`add-${r.source}-${r.target}-${r.relation}-${r.field}-${i}`} className="pd-rel-row">
-              <span className="pd-mono">{r.source}</span>
-              <span className="pd-rel-arrow">→</span>
-              <span className="pd-rel-name">{r.relation}</span>
-              <span className="pd-rel-arrow">→</span>
-              <span className="pd-mono">{r.target}</span>
-              <span className="pd-rel-field">{r.field}</span>
-            </div>
-          ))}
-        </div>
-      ) : null}
-      {removed.length > 0 ? (
-        <div className="pd-rel-group pd-rel-removed">
-          <div className="pd-diff-hd">Removed relations · {removed.length}</div>
-          {removed.map((r, i) => (
-            <div key={`rem-${r.source}-${r.target}-${r.relation}-${r.field}-${i}`} className="pd-rel-row">
-              <span className="pd-mono">{r.source}</span>
-              <span className="pd-rel-arrow">→</span>
-              <span className="pd-rel-name">{r.relation}</span>
-              <span className="pd-rel-arrow">→</span>
-              <span className="pd-mono">{r.target}</span>
-              <span className="pd-rel-field">{r.field}</span>
-            </div>
-          ))}
-        </div>
-      ) : null}
+      {added.length > 0 ? <div className="pd-rel-group pd-rel-added"><div className="pd-diff-hd">Added relations · {added.length}</div>{rows(added, "add")}</div> : null}
+      {removed.length > 0 ? <div className="pd-rel-group pd-rel-removed"><div className="pd-diff-hd">Removed relations · {removed.length}</div>{rows(removed, "remove")}</div> : null}
     </div>
   );
 }
@@ -261,13 +269,13 @@ export function StatusTrail({ trail }: { trail: ProgrammeStatusTrailEntry[] }) {
     <div className="pd-diff-block">
       <div className="pd-diff-hd">Status trail <span className="pd-trail-label">observed states only</span></div>
       <div className="pd-trail">
-        {trail.map((t, i) => (
-          <div key={`${t.sha ?? ""}-${t.date}-${i}`} className="pd-trail-entry">
+        {trail.map((entry, index) => (
+          <div key={`${entry.sha ?? ""}-${entry.date}-${index}`} className="pd-trail-entry">
             <span className="pd-trail-dot" />
-            <span className="pd-trail-date">{fmtDate(t.date)}</span>
+            <span className="pd-trail-date">{fmtDate(entry.date)}</span>
             <span className="pd-trail-sep">·</span>
-            <span className="pd-trail-status">{t.status ?? "—"}</span>
-            {t.sha ? <><span className="pd-trail-sep">·</span><span className="pd-mono pd-trail-sha">{t.sha.slice(0, 7)}</span></> : null}
+            <span className="pd-trail-status">{entry.status ?? "—"}</span>
+            {entry.sha ? <><span className="pd-trail-sep">·</span><span className="pd-mono pd-trail-sha">{entry.sha.slice(0, 7)}</span></> : null}
           </div>
         ))}
       </div>
@@ -280,18 +288,19 @@ export function RevisionHistoryBody({ history }: { history: ProgrammeRevisionHis
   return (
     <div>
       <div className="pd-rev-current">
-        current vs previous: <span className="pd-mono">{short(history.previous_revision_sha)} → {short(history.current_revision_sha)}</span>
+        source-file commits: <span className="pd-mono">{short(history.previous_revision_sha)} → {short(history.current_revision_sha)}</span>
       </div>
+      <div className="pd-muted">These are commits touching the source file, not automatically entity-level changes.</div>
       {history.revisions.length === 0 ? (
-        <div className="pd-muted">No revisions recorded for this path.</div>
+        <div className="pd-muted">No source-file revisions recorded.</div>
       ) : (
         <div className="pd-rev-list">
-          {history.revisions.map((r) => (
-            <div key={r.sha} className="pd-rev-row">
-              <span className="pd-mono pd-rev-sha">{r.sha.slice(0, 7)}</span>
-              <span className="pd-rev-date">{fmtDate(r.date)}</span>
-              <span className="pd-rev-subject">{r.subject}</span>
-              <a className="pd-link" href={r.url} target="_blank" rel="noreferrer">Open</a>
+          {history.revisions.map((revision) => (
+            <div key={revision.sha} className="pd-rev-row">
+              <span className="pd-mono pd-rev-sha">{revision.sha.slice(0, 7)}</span>
+              <span className="pd-rev-date">{fmtDate(revision.date)}</span>
+              <span className="pd-rev-subject">{revision.subject}</span>
+              <a className="pd-link" href={revision.url} target="_blank" rel="noreferrer">Open</a>
             </div>
           ))}
         </div>
@@ -300,35 +309,26 @@ export function RevisionHistoryBody({ history }: { history: ProgrammeRevisionHis
   );
 }
 
-/** Lazily fetched (on expand) FILE-level revision history for a source path. */
-export function RevisionsSection({
-  path,
-  history,
-  onLoaded,
-}: {
-  path: string;
-  history: ProgrammeRevisionHistory | null | undefined;
-  onLoaded: (history: ProgrammeRevisionHistory) => void;
-}) {
+export function RevisionsSection({ path, entityKey }: { path: string; entityKey: string }) {
   const [open, setOpen] = useState(false);
+  const [history, setHistory] = useState<ProgrammeRevisionHistory | null | undefined>(undefined);
   const started = useRef(false);
 
   useEffect(() => {
-    if (open && history === undefined && !started.current) {
-      started.current = true;
-      void fetchRevisionHistory(path).then((h) => { if (h) onLoaded(h); });
-    }
-  }, [open, history, path, onLoaded]);
+    if (!open || history !== undefined || started.current) return;
+    started.current = true;
+    void fetchRevisionHistory(path, entityKey).then(setHistory);
+  }, [open, history, path, entityKey]);
 
   return (
     <div className="pd-diff-block">
-      <button type="button" className={open ? "pd-rev-toggle is-open" : "pd-rev-toggle"} onClick={() => setOpen((o) => !o)}>
-        Revisions — FILE-level revision history for <span className="pd-mono">{path}</span>
+      <button type="button" className={open ? "pd-rev-toggle is-open" : "pd-rev-toggle"} onClick={() => setOpen((value) => !value)}>
+        Source-file history · <span className="pd-mono">{path}</span>
       </button>
       {open ? (
-        history === undefined ? <div className="pd-muted pd-rev-loading">Loading revisions…</div>
-        : history === null ? <div className="pd-muted">No revision history available.</div>
-        : <RevisionHistoryBody history={history} />
+        history === undefined ? <div className="pd-muted pd-rev-loading">Loading source-file commits…</div>
+          : history === null ? <div className="pd-muted">No source-file history available.</div>
+            : <RevisionHistoryBody history={history} />
       ) : null}
     </div>
   );
