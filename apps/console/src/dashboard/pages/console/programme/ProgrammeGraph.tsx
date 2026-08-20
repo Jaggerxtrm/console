@@ -76,8 +76,7 @@ function relationKey(edge: Pick<ProgrammeEdge, "source" | "target" | "relation" 
 function changeKind(change: ProgrammeEntityChange, currentIds: Set<string>): ChangeKind {
   if (!currentIds.has(change.entity_key)) return "removed";
   const addedFields = change.field_changes.length > 0 && change.field_changes.every((field) => field.kind === "added");
-  const firstObserved = change.status_trail.length <= 1 || !change.previous_revision_sha;
-  return addedFields && firstObserved ? "added" : "changed";
+  return addedFields ? "added" : "changed";
 }
 
 function withChanges(graph: ProgrammeGraph, changeSet: ProgrammeChangeSet | null, mode: GraphMode): VisualGraph {
@@ -133,6 +132,8 @@ function defaultFocusId(graph: ProgrammeGraph, changeSet?: ProgrammeChangeSet | 
   return active?.id ?? graph.nodes[0]?.id ?? null;
 }
 
+/** Strict 2-hop traversal over the currently enabled relation set. Weak refs
+ * do not participate at all until All refs is explicitly enabled. */
 function twoHopNeighborhood(graph: ProgrammeGraph, startId: string, kinds: Set<string>, refMode: RefMode): Set<string> {
   const result = new Set<string>([startId]);
   const byId = new Map(graph.nodes.map((node) => [node.id, node]));
@@ -141,7 +142,7 @@ function twoHopNeighborhood(graph: ProgrammeGraph, startId: string, kinds: Set<s
     const next: string[] = [];
     for (const id of frontier) {
       for (const edge of graph.edges) {
-        if (refMode === "strong" && edge.strength === "weak" && edge.source !== startId && edge.target !== startId) continue;
+        if (refMode === "strong" && edge.strength === "weak") continue;
         const other = edge.source === id ? edge.target : edge.target === id ? edge.source : null;
         if (!other || result.has(other)) continue;
         const node = byId.get(other);
@@ -192,7 +193,7 @@ function buildFlow(
   const visibleEdges = graph.edges.filter((edge) =>
     ids.has(edge.source)
     && ids.has(edge.target)
-    && (refMode === "all" || edge.strength === "strong" || (focus && (edge.source === focus.id || edge.target === focus.id))),
+    && (refMode === "all" || edge.strength === "strong"),
   );
 
   const dagreGraph = new dagre.graphlib.Graph().setDefaultEdgeLabel(() => ({}));
@@ -361,8 +362,7 @@ export function ProgrammeGraphView({
   snapshot: ProgrammeSnapshot;
   changesEntityKeys?: Set<string>;
 }) {
-  const storedChangeSet = useProgrammeChangeStore((state) => state.changeSet);
-  const changeSet = storedChangeSet;
+  const changeSet = useProgrammeChangeStore((state) => state.changeSet);
   const [graphMode, setGraphMode] = useState<GraphMode>("current");
   const [refMode, setRefMode] = useState<RefMode>("strong");
   const [kinds, setKinds] = useState<Set<string>>(new Set(DEFAULT_KINDS));
@@ -428,7 +428,7 @@ export function ProgrammeGraphView({
     if (match) focus(match.id);
   };
 
-  const currentFocusedNode = focusedNode && graph.nodes.find((node) => node.id === focusedNode.id) ?? null;
+  const currentFocusedNode = focusedNode ? (graph.nodes.find((node) => node.id === focusedNode.id) ?? null) : null;
   const incident = currentFocusedNode
     ? graph.edges.filter((edge) => edge.source === currentFocusedNode.id || edge.target === currentFocusedNode.id)
     : [];
@@ -441,7 +441,6 @@ export function ProgrammeGraphView({
   const path = pathStartId && currentFocusedNode && pathStartId !== currentFocusedNode.id
     ? shortestPath(graph, pathStartId, currentFocusedNode.id, refMode)
     : null;
-
   const graphChanges = changeSet?.entities.length ?? changesEntityKeys?.size ?? 0;
 
   return (
@@ -451,14 +450,21 @@ export function ProgrammeGraphView({
           <div className="pg2-mode" role="group" aria-label="Graph mode">
             <button type="button" className={graphMode === "current" ? "pg-filter is-active" : "pg-filter"} onClick={() => setGraphMode("current")}>Current</button>
             <button type="button" className={graphMode === "changes" ? "pg-filter is-active" : "pg-filter"} onClick={() => {
+              const changedGraph = withChanges(graph, changeSet, "changes");
+              const next = defaultFocusId(changedGraph, changeSet, true);
               setGraphMode("changes");
-              const next = defaultFocusId(withChanges(graph, changeSet, "changes"), changeSet, true);
+              setPathStartId(null);
               if (next) focus(next);
             }}>Changes {graphChanges ? `· ${graphChanges}` : ""}</button>
           </div>
           <div className="pg2-mode" role="group" aria-label="View mode">
             <button type="button" className={!allProgramme ? "pg-filter is-active" : "pg-filter"} onClick={restoreFocus}>Focused 2-hop</button>
-            <button type="button" className={allProgramme ? "pg-filter is-active" : "pg-filter"} onClick={() => { setAllProgramme(true); setEntityQuery(null); }}>All programme</button>
+            <button type="button" className={allProgramme ? "pg-filter is-active" : "pg-filter"} onClick={() => {
+              setAllProgramme(true);
+              setFocusedId(null);
+              setPathStartId(null);
+              setEntityQuery(null);
+            }}>All programme</button>
           </div>
           <div className="pg2-mode" role="group" aria-label="Reference mode">
             <button type="button" className={refMode === "strong" ? "pg-filter is-active" : "pg-filter"} onClick={() => setRefMode("strong")}>Structural</button>
