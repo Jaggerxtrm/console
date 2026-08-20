@@ -1,14 +1,7 @@
 // Deterministic per-entity change/revision analysis for the programme read
-// model. Compares two observed snapshots (current vs previous meaningful
-// revision) and produces collision-safe entity change sets, status trails from
-// observed states only, and file-level revision history per entity.
-//
-// Rules:
-//  - identity is always the graph node id (entity_key) — never kind+display_id;
-//  - field changes are deterministic (sorted, added/removed/changed);
-//  - relation changes list added/removed relations separately;
-//  - status trails are built only from observed snapshots, never inferred;
-//  - no synthetic workstream/assignment completion percentages anywhere.
+// model. Compares two exact observed snapshots and produces collision-safe
+// entity change sets, status trails from observed evidence only, and explicitly
+// FILE-level revision history per entity source path.
 
 import type {
   ProgrammeChangeSet,
@@ -20,14 +13,10 @@ import type {
   ProgrammeStatusTrailEntry,
 } from "../../types/programme.ts";
 
-const IGNORED_NODE_FIELDS = new Set(["metadata", "metadata_tree"]);
-const IGNORED_TOP_LEVEL_FIELDS = new Set(["generated_at", "activity"]);
-
-/** Kinds whose canonical id includes the colon prefix and must not be split. */
+const IGNORED_NODE_FIELDS = new Set(["metadata_tree"]);
 const PREFIXED_KINDS = new Set(["state", "journal", "publication", "collision"]);
 
-/** Human display id (collision-safe identity is always entity_key).
- * Path-qualified duplicate records derive the canonical id from the path. */
+/** Human display id (collision-safe identity is always entity_key). */
 export function displayIdOf(id: string, kind: string, path?: string | null): string {
   if (PREFIXED_KINDS.has(kind)) return id;
   if (path) {
@@ -38,9 +27,21 @@ export function displayIdOf(id: string, kind: string, path?: string | null): str
   return idx > 0 ? id.slice(0, idx) : id;
 }
 
+function canonical(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonical);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([key, child]) => [key, canonical(child)]),
+    );
+  }
+  return value;
+}
+
 export function scalarKey(value: unknown): string {
   if (value === null || value === undefined) return "∅";
-  if (typeof value === "object") return JSON.stringify(value);
+  if (typeof value === "object") return JSON.stringify(canonical(value));
   return String(value);
 }
 
@@ -52,66 +53,110 @@ export function diffFields(previous: Record<string, unknown>, current: Record<st
     if (IGNORED_NODE_FIELDS.has(field)) continue;
     const prev = previous[field];
     const cur = current[field];
-    if (!(field in previous)) {
-      out.push({ field, kind: "added", current: cur });
-    } else if (!(field in current)) {
-      out.push({ field, kind: "removed", previous: prev });
-    } else if (scalarKey(prev) !== scalarKey(cur)) {
-      out.push({ field, kind: "changed", previous: prev, current: cur });
-    }
+    if (!(field in previous)) out.push({ field, kind: "added", current: cur });
+    else if (!(field in current)) out.push({ field, kind: "removed", previous: prev });
+    else if (scalarKey(prev) !== scalarKey(cur)) out.push({ field, kind: "changed", previous: prev, current: cur });
   }
   return out;
 }
 
-function nodeFields(node: { status?: string | null; source_path?: string | null; metadata?: Record<string, unknown> }): Record<string, unknown> {
+function nodeFields(node: {
+  kind: string;
+  title: string;
+  status?: string | null;
+  source_path?: string | null;
+  metadata?: Record<string, unknown>;
+}): Record<string, unknown> {
   return {
+    kind: node.kind,
+    title: node.title,
     status: node.status ?? null,
     source_path: node.source_path ?? null,
     ...(node.metadata ?? {}),
   };
 }
 
-function edgeKey(e: { source: string; target: string; relation: string; field: string }): string {
-  return [e.source, e.target, e.relation, e.field].join("\u001f");
+function edgeKey(e: { source: string; target: string; relation: string; field: string; strength?: string }): string {
+  return [e.source, e.target, e.relation, e.field, e.strength ?? "strong"].join("\u001f");
+}
+
+function relationChangeKey(change: ProgrammeRelationChange): string {
+  return [change.kind, change.source, change.target, change.relation, change.field, change.strength].join("\u001f");
+}
+
+/** Only path-fallback when a path names exactly one node in the snapshot.
+ * Shared files such as agents/registry.yaml must never alias one actor to
+ * another simply because they have the same source path. */
+function uniqueNodesByPath(snapshot: ProgrammeSnapshot | null): Map<string, ProgrammeSnapshot["graph"]["nodes"][number]> {
+  const buckets = new Map<string, ProgrammeSnapshot["graph"]["nodes"]>();
+  for (const node of snapshot?.graph.nodes ?? []) {
+    const path = node.source_path ?? "";
+    if (!path) continue;
+    const bucket = buckets.get(path) ?? [];
+    bucket.push(node);
+    buckets.set(path, bucket);
+  }
+  const out = new Map<string, ProgrammeSnapshot["graph"]["nodes"][number]>();
+  for (const [path, nodes] of buckets) if (nodes.length === 1) out.set(path, nodes[0]);
+  return out;
+}
+
+function snapshotEvidenceDate(snapshot: ProgrammeSnapshot): string {
+  const sha = snapshot.programme.sha;
+  const exact = sha ? snapshot.activity.find((item) => item.sha === sha) : null;
+  return exact?.date || snapshot.activity[0]?.date || snapshot.generated_at;
+}
+
+function observedStatus(snapshot: ProgrammeSnapshot, entityKey: string): ProgrammeStatusTrailEntry {
+  const node = snapshot.graph.nodes.find((candidate) => candidate.id === entityKey);
+  return {
+    sha: snapshot.programme.sha ?? null,
+    date: snapshotEvidenceDate(snapshot),
+    status: node?.status ?? null,
+  };
 }
 
 export function buildChangeSet(previous: ProgrammeSnapshot | null, current: ProgrammeSnapshot): ProgrammeChangeSet {
-  const prevSha = previous?.programme?.sha ?? null;
+  const prevSha = previous?.programme.sha ?? null;
   const curSha = current.programme.sha ?? null;
   const prevNodes = new Map(previous?.graph.nodes.map((n) => [n.id, n]) ?? []);
+  const prevUniqueByPath = uniqueNodesByPath(previous);
   const prevEdges = new Set(previous?.graph.edges.map(edgeKey) ?? []);
-  const prevByPath = new Map(previous?.graph.nodes.map((n) => [n.source_path ?? "", n]) ?? []);
+  const currentEdges = new Set(current.graph.edges.map(edgeKey));
 
   const entities: ProgrammeEntityChange[] = [];
   const seen = new Set<string>();
 
   for (const node of current.graph.nodes) {
-    const prevNode = prevNodes.get(node.id) ?? prevByPath.get(node.source_path ?? "");
     const path = node.source_path ?? null;
+    const prevNode = prevNodes.get(node.id) ?? (path ? prevUniqueByPath.get(path) : undefined);
     const fieldChanges = prevNode ? diffFields(nodeFields(prevNode), nodeFields(node)) : diffFields({}, nodeFields(node));
     const relationChanges: ProgrammeRelationChange[] = [];
-    for (const e of current.graph.edges) {
-      if (e.source !== node.id && e.target !== node.id) continue;
-      if (!prevEdges.has(edgeKey(e))) {
-        relationChanges.push({ source: e.source, target: e.target, relation: e.relation, field: e.field, strength: e.strength, kind: "added" });
+
+    for (const edge of current.graph.edges) {
+      if (edge.source !== node.id && edge.target !== node.id) continue;
+      if (!prevEdges.has(edgeKey(edge))) {
+        relationChanges.push({ ...edge, kind: "added" });
       }
     }
-    if (prevNode) {
-      for (const pe of previous?.graph.edges ?? []) {
-        if (pe.source !== node.id && pe.target !== node.id) continue;
-        if (!current.graph.edges.some((e) => edgeKey(e) === edgeKey(pe))) {
-          relationChanges.push({ source: pe.source, target: pe.target, relation: pe.relation, field: pe.field, strength: pe.strength, kind: "removed" });
-        }
+    if (prevNode && previous) {
+      for (const edge of previous.graph.edges) {
+        if (edge.source !== prevNode.id && edge.target !== prevNode.id) continue;
+        if (!currentEdges.has(edgeKey(edge))) relationChanges.push({ ...edge, kind: "removed" });
       }
     }
-    relationChanges.sort((a, b) => a.source.localeCompare(b.source) || a.target.localeCompare(b.target) || a.relation.localeCompare(b.relation));
+    relationChanges.sort((a, b) =>
+      a.source.localeCompare(b.source)
+      || a.target.localeCompare(b.target)
+      || a.relation.localeCompare(b.relation)
+      || a.field.localeCompare(b.field)
+      || a.kind.localeCompare(b.kind),
+    );
+
     const statusTrail: ProgrammeStatusTrailEntry[] = [];
-    for (const snap of [previous, current]) {
-      if (!snap) continue;
-      const n = snap.graph.nodes.find((x) => x.id === node.id);
-      statusTrail.push({ sha: snap.programme.sha ?? null, date: snap.generated_at, status: n?.status ?? null });
-    }
-    const previousRevisionSha = previous?.programme?.sha ?? null;
+    if (previous) statusTrail.push(observedStatus(previous, prevNode?.id ?? node.id));
+    statusTrail.push(observedStatus(current, node.id));
+
     const entity: ProgrammeEntityChange = {
       entity_key: node.id,
       display_id: displayIdOf(node.id, node.kind, path),
@@ -121,36 +166,29 @@ export function buildChangeSet(previous: ProgrammeSnapshot | null, current: Prog
       field_changes: fieldChanges,
       relation_changes: relationChanges,
       status_trail: statusTrail,
-      previous_revision_sha: previousRevisionSha,
+      previous_revision_sha: prevSha,
       current_revision_sha: curSha,
     };
-    if (entity.field_changes.length === 0 && entity.relation_changes.length === 0 && !prevNode) {
-      // New node with no observable fields/relations (e.g. a bare referenced
-      // actor node). Still meaningful as "added".
-      entities.push(entity);
-    } else if (entity.field_changes.length > 0 || entity.relation_changes.length > 0 || !prevNode) {
-      entities.push(entity);
-    }
+
+    if (fieldChanges.length > 0 || relationChanges.length > 0 || !prevNode) entities.push(entity);
     seen.add(node.id);
   }
 
   // Removed nodes (present in previous, absent now).
   for (const prevNode of previous?.graph.nodes ?? []) {
     if (seen.has(prevNode.id)) continue;
-    const node = current.graph.nodes.find((n) => n.id === prevNode.id);
-    if (node) continue;
     const fieldChanges = diffFields(nodeFields(prevNode), {});
     const relationChanges: ProgrammeRelationChange[] = [];
-    for (const pe of previous!.graph.edges) {
-      if (pe.source !== prevNode.id && pe.target !== prevNode.id) continue;
-      if (!current.graph.edges.some((e) => edgeKey(e) === edgeKey(pe))) {
-        relationChanges.push({ source: pe.source, target: pe.target, relation: pe.relation, field: pe.field, strength: pe.strength, kind: "removed" });
-      }
+    for (const edge of previous!.graph.edges) {
+      if (edge.source !== prevNode.id && edge.target !== prevNode.id) continue;
+      if (!currentEdges.has(edgeKey(edge))) relationChanges.push({ ...edge, kind: "removed" });
     }
-    const statusTrail: ProgrammeStatusTrailEntry[] = [
-      { sha: prevSha, date: previous!.generated_at, status: prevNode.status ?? null },
-      { sha: curSha, date: current.generated_at, status: null },
-    ];
+    relationChanges.sort((a, b) =>
+      a.source.localeCompare(b.source)
+      || a.target.localeCompare(b.target)
+      || a.relation.localeCompare(b.relation)
+      || a.field.localeCompare(b.field),
+    );
     entities.push({
       entity_key: prevNode.id,
       display_id: displayIdOf(prevNode.id, prevNode.kind, prevNode.source_path),
@@ -159,20 +197,22 @@ export function buildChangeSet(previous: ProgrammeSnapshot | null, current: Prog
       path: prevNode.source_path ?? null,
       field_changes: fieldChanges,
       relation_changes: relationChanges,
-      status_trail: statusTrail,
+      status_trail: [observedStatus(previous!, prevNode.id), observedStatus(current, prevNode.id)],
       previous_revision_sha: prevSha,
       current_revision_sha: curSha,
     });
   }
 
   entities.sort((a, b) => (a.kind === b.kind ? a.entity_key.localeCompare(b.entity_key) : a.kind.localeCompare(b.kind)));
-  const relationCount = entities.reduce((sum, e) => sum + e.relation_changes.length, 0);
+  const uniqueRelationChanges = new Set<string>();
+  for (const entity of entities) for (const change of entity.relation_changes) uniqueRelationChanges.add(relationChangeKey(change));
+
   return {
     previous_sha: prevSha,
     current_sha: curSha,
     generated_at: current.generated_at,
     entities,
-    relation_count: relationCount,
+    relation_count: uniqueRelationChanges.size,
   };
 }
 
@@ -192,20 +232,21 @@ export function summaryFrom(changeSet: ProgrammeChangeSet): {
   };
 }
 
-/** Build per-entity revision history from the live source. Hermetic sources
- * provide commit lists via `recentCommitsForPath`. */
+/** Build FILE-level revision history for canonical source paths. This endpoint
+ * deliberately does not call file commits "entity changes": a shared source
+ * file may contain unrelated record edits. */
 export async function buildRevisionHistory(
   snapshot: ProgrammeSnapshot,
   paths: string[],
   fetchRevisions: (path: string) => Promise<Array<{ sha: string; date: string; subject: string; url: string }>>,
+  entityKeys: Record<string, string> = {},
 ): Promise<ProgrammeRevisionHistory[]> {
   const out: ProgrammeRevisionHistory[] = [];
-  const unique = [...new Set(paths)].sort();
-  for (const path of unique) {
+  for (const path of [...new Set(paths)].sort()) {
     const revisions = await fetchRevisions(path);
     const node = snapshot.graph.nodes.find((n) => n.source_path === path);
     out.push({
-      entity_key: node?.id ?? path,
+      entity_key: entityKeys[path] ?? node?.id ?? path,
       path,
       revisions,
       current_revision_sha: revisions[0]?.sha ?? null,
