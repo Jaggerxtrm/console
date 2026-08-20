@@ -1,6 +1,6 @@
 // Server-side GitHub source for the Mercury programme read model.
-// The source resolves master once per snapshot build and pins every Contents /
-// history read to that exact SHA. Credentials remain server-side.
+// Every snapshot build resolves one immutable commit and pins all reads/history
+// to that exact SHA. Credentials remain server-side.
 
 import { fetchRepoFile, listRepoDir } from "../../../../../packages/core/src/github/readme.ts";
 import { getGithubToken } from "../../../../../packages/core/src/github/token.ts";
@@ -22,7 +22,11 @@ export type ObservableProgrammeSource = ProgrammeSource & {
   /** Exact immutable SHA used for all reads when the source is pinned. */
   pinnedSha?: string | null;
   /** Resolve the configured branch to one immutable source for a snapshot build. */
-  pin?: () => Promise<ProgrammeSource>;
+  pin?: () => Promise<ObservableProgrammeSource>;
+  /** Resolve an explicit commit/ref to an exact immutable source. */
+  atRef?: (ref: string) => Promise<ObservableProgrammeSource>;
+  /** Resolve the latest programme commit at or before one timestamp. */
+  commitAtOrBefore?: (isoTimestamp: string) => Promise<ProgrammeActivity | null>;
   /** Records transport/list failures even if a higher-level optional walk catches them. */
   sourceError?: () => string | null;
 };
@@ -51,9 +55,16 @@ async function ghFetchJson<T>(url: string): Promise<T> {
   }
 }
 
-async function fetchCommits(owner: string, repo: string, ref: string, perPage: number, path?: string): Promise<CommitEnvelope[]> {
+async function fetchCommits(
+  owner: string,
+  repo: string,
+  ref: string,
+  perPage: number,
+  options: { path?: string; until?: string } = {},
+): Promise<CommitEnvelope[]> {
   const params = new URLSearchParams({ sha: ref, per_page: String(perPage) });
-  if (path) params.set("path", path);
+  if (options.path) params.set("path", options.path);
+  if (options.until) params.set("until", options.until);
   return ghFetchJson<CommitEnvelope[]>(`https://api.github.com/repos/${owner}/${repo}/commits?${params}`);
 }
 
@@ -74,6 +85,13 @@ export function createGithubProgrammeSource(options?: {
   const owner = options?.owner ?? PROGRAMME_OWNER;
   const repo = options?.repo ?? PROGRAMME_REPO;
   const branch = options?.branch ?? PROGRAMME_BRANCH;
+
+  const resolveExact = async (requestedRef: string): Promise<string> => {
+    const commits = await fetchCommits(owner, repo, requestedRef, 1);
+    const exact = commits[0]?.sha;
+    if (!exact) throw new Error(`Unable to resolve ${owner}/${repo}@${requestedRef} to an exact commit`);
+    return exact;
+  };
 
   const makeSource = (pinnedSha: string | null): ObservableProgrammeSource => {
     let lastSourceError: string | null = null;
@@ -111,21 +129,23 @@ export function createGithubProgrammeSource(options?: {
         return commits.map((commit) => toActivity(owner, repo, commit));
       }),
       timestamp: async (path) => observe(async () => {
-        const commits = await fetchCommits(owner, repo, ref, 1, path);
+        const commits = await fetchCommits(owner, repo, ref, 1, { path });
         return commits[0]?.commit?.committer?.date ?? null;
       }),
       recentCommitsForPath: async (path, n = 10) => observe(async () => {
-        const commits = await fetchCommits(owner, repo, ref, n, path);
+        const commits = await fetchCommits(owner, repo, ref, n, { path });
         return commits.map((commit) => toActivity(owner, repo, commit));
+      }),
+      atRef: async (requestedRef) => observe(async () => makeSource(await resolveExact(requestedRef))),
+      commitAtOrBefore: async (isoTimestamp) => observe(async () => {
+        const commits = await fetchCommits(owner, repo, branch, 1, { until: isoTimestamp });
+        return commits[0] ? toActivity(owner, repo, commits[0]) : null;
       }),
     };
 
     source.pin = async () => {
       if (pinnedSha) return source;
-      const commits = await observe(() => fetchCommits(owner, repo, branch, 1));
-      const sha = commits[0]?.sha;
-      if (!sha) throw new Error(`Unable to resolve ${owner}/${repo}@${branch} to an exact commit`);
-      return makeSource(sha);
+      return makeSource(await observe(() => resolveExact(branch)));
     };
 
     return source;
