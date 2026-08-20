@@ -148,11 +148,17 @@ describe("GET /api/programme/changes and /revisions", () => {
     expect(body.entities).toEqual([]);
   });
 
-  it("reports a deterministic change set after a second build and includes it in the summary", async () => {
+  it("reports a deterministic change set only after the exact source SHA advances", async () => {
     const base = fixtureSource();
     let flip = false;
     const evolving: ProgrammeSource = {
       ...base,
+      recentCommits: async () => [{
+        sha: flip ? "def5678" : "abc1234",
+        date: flip ? "2026-08-16T00:00:00Z" : "2026-08-15T00:00:00Z",
+        subject: flip ? "synthetic second commit" : "synthetic first commit",
+        url: `https://example.invalid/commit/${flip ? "def5678" : "abc1234"}`,
+      }],
       read: async (path) => {
         if (path === "assignments/EXP-013-education-student-derivative-pilot.yaml" && flip) {
           return (await base.read(path) ?? "").replace(/status:\s*ready/i, "status: closed");
@@ -161,17 +167,30 @@ describe("GET /api/programme/changes and /revisions", () => {
       },
     };
     const evolvingApp = createProgrammeRouter({ source: evolving, cacheTtlMs: 60_000 });
+
     const first = await evolvingApp.request("/");
     const firstBody = await first.json() as ProgrammeSnapshotResponse;
+    expect(firstBody.snapshot!.programme.sha).toBe("abc1234");
     expect(firstBody.changes_summary).toBeNull();
+
     flip = true;
     const second = await evolvingApp.request("/?refresh=true");
     const secondBody = await second.json() as ProgrammeSnapshotResponse;
+    expect(secondBody.snapshot!.programme.sha).toBe("def5678");
     expect(secondBody.changes_summary).not.toBeNull();
+    expect(secondBody.changes_summary!.previous_sha).toBe("abc1234");
+    expect(secondBody.changes_summary!.current_sha).toBe("def5678");
     expect(secondBody.changes_summary!.changed_entities).toBeGreaterThan(0);
+
     const changeRes = await evolvingApp.request("/changes");
     expect(changeRes.status).toBe(200);
-    const changeBody = await changeRes.json() as { entities: Array<{ entity_key: string; field_changes: unknown[] }> };
+    const changeBody = await changeRes.json() as {
+      previous_sha: string | null;
+      current_sha: string | null;
+      entities: Array<{ entity_key: string; field_changes: unknown[] }>;
+    };
+    expect(changeBody.previous_sha).toBe("abc1234");
+    expect(changeBody.current_sha).toBe("def5678");
     expect(changeBody.entities.length).toBe(secondBody.changes_summary!.changed_entities);
     const exp013 = changeBody.entities.find((e) => e.entity_key === "EXP-013");
     expect(exp013).toBeDefined();
