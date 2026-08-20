@@ -11,6 +11,7 @@ import { ReleaseTimeline } from "../github/ReleaseTimeline.tsx";
 import { ReadmeView, ChangelogView, ReportsView } from "../github/RepoContentPanels.tsx";
 import { BeadsRepoView } from "../beads/BeadsRepoView.tsx";
 import { Graph } from "../../pages/console/Graph.tsx";
+import { Programme } from "../../pages/console/programme/Programme.tsx";
 import { Observability } from "../../pages/console/Observability.tsx";
 import { Specialists } from "../../pages/console/Specialists.tsx";
 import { Operations } from "../../pages/console/Operations.tsx";
@@ -63,6 +64,9 @@ export function MainPane() {
         break;
       case "graph":
         inner = <Graph />;
+        break;
+      case "programme":
+        inner = <Programme />;
         break;
       case "observability":
         inner = <Observability />;

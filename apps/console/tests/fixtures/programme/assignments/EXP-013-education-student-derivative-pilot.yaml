@@ -1,0 +1,6 @@
+id: EXP-013
+kind: experiment
+status: ready
+title: Synthetic successor assignment
+workstream: WS-004
+predecessor: EXP-010

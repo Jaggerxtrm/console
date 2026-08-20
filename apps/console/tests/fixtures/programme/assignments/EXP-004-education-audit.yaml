@@ -1,0 +1,7 @@
+id: EXP-004
+kind: experiment
+status: complete
+title: Synthetic assignment four
+workstream: WS-004
+related_jira:
+  - ISSUE-74

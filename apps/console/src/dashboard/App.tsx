@@ -242,6 +242,7 @@ function routeTab(path: string): TabId | null {
   if (path.includes("/console/operations")) return "operations";
   if (path.includes("/console/explore")) return "explore";
   if (path.includes("/console/observability")) return "observability";
+  if (path.includes("/console/programme")) return "programme";
   if (path.endsWith("/console")) return "feed";
   return null;
 }
