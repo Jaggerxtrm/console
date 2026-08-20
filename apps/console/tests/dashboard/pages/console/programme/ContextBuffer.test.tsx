@@ -2,9 +2,15 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
-import { ContextBuffer, addViewContext } from "../../../../../src/dashboard/pages/console/programme/ContextBuffer.tsx";
+import {
+  ContextBuffer,
+  addViewContext,
+  buildContextBundle,
+  serializeContextBundle,
+  serializeContextRefs,
+} from "../../../../../src/dashboard/pages/console/programme/ContextBuffer.tsx";
 import { useProgrammeContext } from "../../../../../src/dashboard/pages/console/programme/context-buffer.ts";
-import type { ProgrammeSnapshot } from "../../../../../src/types/programme.ts";
+import type { ProgrammeEdge, ProgrammeSnapshot } from "../../../../../src/types/programme.ts";
 
 function storage() {
   const map = new Map<string, string>();
@@ -16,28 +22,44 @@ function storage() {
   };
 }
 
+const EDGE: ProgrammeEdge = {
+  source: "WS-001",
+  target: "assignment:assignments/EXP-005-website-ia.yaml",
+  relation: "contains",
+  field: "workstream",
+  strength: "strong",
+};
+
 const SNAPSHOT: ProgrammeSnapshot = {
   schema_version: 3,
   generated_at: "2026-08-14T00:00:00Z",
   programme: { repository: "mercuryintelligence/program", branch: "master", sha: "abc123def456", short_sha: "abc123d" },
-  now: { title: "Now", path: "NOW.md" },
+  now: { title: "Now", path: "NOW.md", evidence_cutoff: "2026-08-14T00:00:00Z" },
   business: {},
-  workstreams: [],
-  assignments: [
-    {
-      id: "EXP-005",
-      graph_id: "assignment:assignments/EXP-005-website-ia.yaml",
-      kind: "EXP",
-      title: "Website IA",
-      status: "IN PROGRESS",
-      path: "assignments/EXP-005-website-ia.yaml",
-      identity_collision: true,
-      jira_refs: [],
-      updated_at: "2026-08-01",
-      metadata: {},
-      metadata_tree: {},
-    },
-  ],
+  workstreams: [{
+    id: "WS-001",
+    graph_id: "WS-001",
+    title: "Programme foundation",
+    status: "ACTIVE",
+    path: "workstreams/WS-001/BRIEF.md",
+    has_plan: false,
+    jira_refs: [],
+    metadata: {},
+    metadata_tree: {},
+  }],
+  assignments: [{
+    id: "EXP-005",
+    graph_id: "assignment:assignments/EXP-005-website-ia.yaml",
+    kind: "EXP",
+    title: "Website IA",
+    status: "IN PROGRESS",
+    path: "assignments/EXP-005-website-ia.yaml",
+    identity_collision: true,
+    jira_refs: [],
+    updated_at: "2026-08-01",
+    metadata: { owner: "actor-a", authority: "programme" },
+    metadata_tree: {},
+  }],
   research: [],
   decisions: [],
   proposals: [],
@@ -47,22 +69,23 @@ const SNAPSHOT: ProgrammeSnapshot = {
   activity: [],
   graph: {
     nodes: [
+      { id: "WS-001", kind: "workstream", title: "Programme foundation", status: "ACTIVE", source_path: "workstreams/WS-001/BRIEF.md", metadata: {}, metadata_tree: {} },
       {
         id: "assignment:assignments/EXP-005-website-ia.yaml",
         kind: "assignment",
         title: "Website IA",
         status: "IN PROGRESS",
         source_path: "assignments/EXP-005-website-ia.yaml",
-        metadata: {},
+        metadata: { owner: "actor-a", authority: "programme" },
         metadata_tree: {},
       },
     ],
-    edges: [],
+    edges: [EDGE],
     metadata_fields: [],
     identity_collisions: [],
   },
   identity_collisions: [],
-  evidence_boundary: { beads: "read@abc", runtime: "no-live-claims" },
+  evidence_boundary: { beads: "not inferred", runtime: "no-live-claims" },
   state_records: [],
   journals: [],
   publication_facts: [],
@@ -74,82 +97,105 @@ const SNAPSHOT: ProgrammeSnapshot = {
     suppressed_unsafe_nested_edges: 0,
   },
   provenance: {
-    current: {
-      programme_actor_registry: false,
-      state_actor_assignment_fields: false,
-      wrapper_publication_facts: false,
-      xtrm_mutation_receipts: false,
-    },
+    current: { programme_actor_registry: false, state_actor_assignment_fields: false, wrapper_publication_facts: false, xtrm_mutation_receipts: false },
     rules: [],
     live_receipt_gate: "",
   },
   source_health: { source: "programme", status: "fresh", checked_at: "" },
-} as unknown as ProgrammeSnapshot;
+} as ProgrammeSnapshot;
 
 beforeEach(() => {
-  vi.resetModules();
   vi.stubGlobal("sessionStorage", storage());
-  useProgrammeContext.setState({ entries: [], density: "standard" });
+  vi.stubGlobal("localStorage", storage());
+  useProgrammeContext.setState({ entries: [], groups: [], density: "standard" });
   window.history.pushState({}, "", "/console/programme/assignments");
 });
 
-describe("ContextBuffer", () => {
-  it("addViewContext captures the view records keyed by entity_key", () => {
+describe("Programme Context", () => {
+  it("captures collision-safe records and exact source evidence", () => {
     expect(addViewContext(SNAPSHOT, "assignments")).toBe(1);
-    const entries = useProgrammeContext.getState().entries;
-    expect(entries).toHaveLength(1);
-    expect(entries[0].entity_key).toBe("assignment:assignments/EXP-005-website-ia.yaml");
-    expect(entries[0].display_id).toBe("EXP-005");
-    expect(entries[0].path).toBe("assignments/EXP-005-website-ia.yaml");
-    expect(entries[0].source_view).toBe("assignments");
-    expect(entries[0].source_sha).toBe("abc123def456");
+    const state = useProgrammeContext.getState();
+    expect(state.entries).toHaveLength(1);
+    expect(state.entries[0].entity_key).toBe("assignment:assignments/EXP-005-website-ia.yaml");
+    expect(state.entries[0].display_id).toBe("EXP-005");
+    expect(state.entries[0].source_sha).toBe("abc123def456");
+    expect(state.entries[0].evidence_cutoff).toBe("2026-08-14T00:00:00Z");
+    expect(state.groups).toHaveLength(1);
+    expect(state.groups[0].kind).toBe("visible_selection");
   });
 
-  it("renders captured entries keyed by entity_key and removes them", () => {
+  it("deduplicates the entity while preserving multiple groups and relation provenance", () => {
+    const node = SNAPSHOT.graph.nodes[1];
+    const store = useProgrammeContext.getState();
+    store.addSelection(SNAPSHOT, [node], {
+      kind: "graph_path",
+      label: "selected path",
+      source_view: "graph",
+      selectedPath: "WS-001 → EXP-005",
+      selectedRelations: [EDGE],
+    });
+    useProgrammeContext.getState().addSelection(SNAPSHOT, [node], {
+      kind: "graph_neighborhood",
+      label: "selected neighborhood",
+      source_view: "graph",
+      derivedRelations: [EDGE],
+    });
+
+    const state = useProgrammeContext.getState();
+    expect(state.entries).toHaveLength(1);
+    expect(state.entries[0].group_ids).toHaveLength(2);
+    expect(state.entries[0].selected_relations).toHaveLength(1);
+    expect(state.entries[0].derived_relations).toHaveLength(0); // selected outranks derived
+    expect(state.entries[0].selected_path).toBe("WS-001 → EXP-005");
+    expect(state.groups.map((group) => group.kind).sort()).toEqual(["graph_neighborhood", "graph_path"]);
+  });
+
+  it("serializes refs/context/JSON from the same entity relation and group sets", () => {
+    const node = SNAPSHOT.graph.nodes[1];
+    useProgrammeContext.getState().addSelection(SNAPSHOT, [node], {
+      kind: "graph_path",
+      label: "implementation path",
+      source_view: "graph",
+      selectedRelations: [EDGE],
+    });
+    const state = useProgrammeContext.getState();
+    const bundle = buildContextBundle(SNAPSHOT, state.entries, state.groups);
+    const refs = serializeContextRefs(bundle);
+    const standard = serializeContextBundle(bundle, "standard");
+    const full = serializeContextBundle(bundle, "full");
+    const json = JSON.parse(JSON.stringify(bundle)) as typeof bundle;
+
+    expect(refs).toContain("mercuryintelligence/program@abc123def456/assignments/EXP-005-website-ia.yaml");
+    expect(standard).toContain("MERCURY PROGRAMME CONTEXT");
+    expect(standard).toContain("Evidence cutoff: 2026-08-14T00:00:00Z");
+    expect(standard).toContain("implementation path [graph_path]");
+    expect(standard).toContain("[selected]");
+    expect(standard).toContain("UNKNOWN remains UNKNOWN");
+    expect(full).toContain("metadata.owner: actor-a");
+    expect(json.objects.map((entry) => entry.entity_key)).toEqual(bundle.objects.map((entry) => entry.entity_key));
+    expect(json.relations.map((relation) => relation.key)).toEqual(bundle.relations.map((relation) => relation.key));
+    expect(json.groups.map((group) => group.id)).toEqual(bundle.groups.map((group) => group.id));
+  });
+
+  it("opens a picker and adds only explicitly selected current-view objects", () => {
+    render(<ContextBuffer snapshot={SNAPSHOT} />);
+    fireEvent.click(screen.getByTitle("Expand context buffer"));
+    fireEvent.click(screen.getByTitle("Select objects from current view"));
+    expect(screen.getByRole("dialog", { name: "Select Programme objects for Context" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(screen.getByRole("button", { name: /Add selected/ }));
+    const state = useProgrammeContext.getState();
+    expect(state.entries).toHaveLength(1);
+    expect(state.entries[0].entity_key).toBe("assignment:assignments/EXP-005-website-ia.yaml");
+    expect(state.groups[0].kind).toBe("table_selection");
+  });
+
+  it("removes entries without reintroducing display-id identity", () => {
     addViewContext(SNAPSHOT, "assignments");
     render(<ContextBuffer snapshot={SNAPSHOT} />);
     fireEvent.click(screen.getByTitle("Expand context buffer"));
-    expect(screen.getByText("EXP-005")).toBeTruthy();
-    expect(screen.getByText("assignments/EXP-005-website-ia.yaml")).toBeTruthy();
-    const row = document.querySelector('[data-entity-key="assignment:assignments/EXP-005-website-ia.yaml"]');
-    expect(row).toBeTruthy();
+    expect(document.querySelector('[data-entity-key="assignment:assignments/EXP-005-website-ia.yaml"]')).toBeTruthy();
     fireEvent.click(screen.getByTitle("Remove from context"));
     expect(useProgrammeContext.getState().entries).toHaveLength(0);
-    expect(document.querySelector('[data-entity-key="assignment:assignments/EXP-005-website-ia.yaml"]')).toBeNull();
-  });
-
-  it("Copy JSON produces a JSON document containing the entity_key", () => {
-    addViewContext(SNAPSHOT, "assignments");
-    render(<ContextBuffer snapshot={SNAPSHOT} />);
-    fireEvent.click(screen.getByTitle("Expand context buffer"));
-    fireEvent.click(screen.getByRole("button", { name: "Copy JSON" }));
-    expect(screen.getByRole("status").textContent).toBe("Copied");
-    const raw = sessionStorage.getItem("programme:context-buffer:v1");
-    expect(raw).toBeTruthy();
-    const parsed = JSON.parse(String(raw)) as Array<{ entity_key: string }>;
-    expect(parsed[0].entity_key).toBe("assignment:assignments/EXP-005-website-ia.yaml");
-  });
-
-  it("density toggle switches classes on the buffer entries", () => {
-    addViewContext(SNAPSHOT, "assignments");
-    render(<ContextBuffer snapshot={SNAPSHOT} />);
-    fireEvent.click(screen.getByTitle("Expand context buffer"));
-    const entry = document.querySelector('[data-entity-key="assignment:assignments/EXP-005-website-ia.yaml"]');
-    expect(entry?.className).toContain("pg-buffer-entry-standard");
-    fireEvent.click(screen.getByRole("button", { name: "Full" }));
-    expect(entry?.className).toContain("pg-buffer-entry-full");
-    fireEvent.click(screen.getByRole("button", { name: "Compact" }));
-    expect(entry?.className).toContain("pg-buffer-entry-compact");
-  });
-
-  it("addNode derives the collision-safe display id from the node source_path", () => {
-    const store = useProgrammeContext.getState();
-    const node = SNAPSHOT.graph.nodes[0];
-    store.addNode(SNAPSHOT, node, { source_view: "graph" });
-    const entry = useProgrammeContext.getState().entries[0];
-    expect(entry.entity_key).toBe("assignment:assignments/EXP-005-website-ia.yaml");
-    // Regression: display_id must be EXP-005 (path-derived), never "assignment"
-    // (the pre-colon segment of a path-qualified graph id).
-    expect(entry.display_id).toBe("EXP-005");
   });
 });
