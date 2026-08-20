@@ -125,9 +125,16 @@ function fetchOk(body: unknown) {
   return new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
 }
 
-beforeEach(() => {
-  vi.stubGlobal("fetch", vi.fn(async () => fetchOk(revisionHistory)));
+beforeEach(async () => {
+  const { useProgrammeContext } = await import("../../../../../src/dashboard/pages/console/programme/context-buffer.ts");
   window.sessionStorage.clear();
+  useProgrammeContext.setState({ entries: [], groups: [], density: "standard" });
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.startsWith("/api/programme/revisions?")) return fetchOk(revisionHistory);
+    if (url.startsWith("/api/programme/compare?")) return fetchOk(changeSet);
+    throw new Error(`unexpected fetch ${url}`);
+  }));
 });
 
 afterEach(() => {
@@ -135,44 +142,35 @@ afterEach(() => {
 });
 
 describe("ChangesView", () => {
-  it("renders entity rows keyed by entity_key with field diff, grouped relations, no percentages", async () => {
+  it("renders collision-safe entity changes for the browser last-visit baseline with no synthetic percentages", () => {
     render(<ChangesView snapshot={snapshot()} changeSet={changeSet} loading={false} error={null} />);
 
-    // Entity rows are keyed by entity_key (identity, never display id alone).
     expect(document.querySelector('[data-entity-key="assignment:assignments/EXP-005.yaml"]')).toBeTruthy();
     expect(document.querySelector('[data-entity-key="WS-009"]')).toBeTruthy();
 
-    // Current vs previous revision line.
-    expect(screen.getByText("current vs previous meaningful revision")).toBeTruthy();
+    expect(screen.getByText("browser last visit")).toBeTruthy();
+    expect(screen.getByText("aaaa1111 → bbbb2222")).toBeTruthy();
 
-    // Field changes show previous → current.
     expect(screen.getAllByText("proposed").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("accepted").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("changed").length).toBeGreaterThanOrEqual(1);
 
-    // Relations grouped added vs removed — never merged.
     expect(screen.getByText("Added relations · 1")).toBeTruthy();
     expect(screen.getByText("Removed relations · 1")).toBeTruthy();
-
-    // Observed status trail.
     expect(screen.getByText("observed states only")).toBeTruthy();
 
-    // No synthetic percentages anywhere.
     expect(screen.queryByText(/%/)).toBeNull();
     expect(document.body.textContent).not.toMatch(/%\s*$/);
-
-    // Factual count line only.
-    expect(screen.getByText("2 entities changed across 2 kinds")).toBeTruthy();
+    expect(screen.getByText("2 entities changed across 2 kinds · 2 relation changes")).toBeTruthy();
   });
 
-  it("renders an Add to context button per row wired to the context buffer", async () => {
+  it("adds the exact ChangeSet to Context rather than copying only the node", async () => {
     const { useProgrammeContext } = await import("../../../../../src/dashboard/pages/console/programme/context-buffer.ts");
     const { act } = await import("@testing-library/react");
-    const before = useProgrammeContext.getState().entries.length;
 
     render(<ChangesView snapshot={snapshot()} changeSet={changeSet} loading={false} error={null} />);
 
-    const buttons = screen.getAllByRole("button", { name: "Add to context" });
+    const buttons = screen.getAllByRole("button", { name: "Add change to context" });
     expect(buttons).toHaveLength(2);
 
     await act(async () => {
@@ -180,38 +178,47 @@ describe("ChangesView", () => {
     });
 
     const entries = useProgrammeContext.getState().entries;
-    expect(entries.length).toBe(before + 1);
+    expect(entries).toHaveLength(1);
     expect(entries[0].entity_key).toBe("assignment:assignments/EXP-005.yaml");
     expect(entries[0].source_view).toBe("diff");
     expect(entries[0].path).toBe("assignments/EXP-005.yaml");
+    expect(entries[0].change?.entity_key).toBe("assignment:assignments/EXP-005.yaml");
+    expect(entries[0].change?.field_changes).toContainEqual({
+      field: "status",
+      kind: "changed",
+      previous: "proposed",
+      current: "accepted",
+    });
+    expect(useProgrammeContext.getState().groups.some((group) => group.kind === "diff_selection")).toBe(true);
   });
 
-  it("lazily fetches FILE-level revision history on expand and matches explicit SHA filter client-side", async () => {
+  it("lazily fetches source-file history and uses /compare for an explicit SHA baseline", async () => {
     render(<ChangesView snapshot={snapshot()} changeSet={changeSet} loading={false} error={null} />);
 
-    // Revision fetch is lazy — not called before expand.
     expect(vi.mocked(fetch)).not.toHaveBeenCalled();
-    expect(screen.queryByText("Loading revisions…")).toBeNull();
+    expect(screen.queryByText("Loading source-file commits…")).toBeNull();
 
     const { act } = await import("@testing-library/react");
-    const toggle = screen.getAllByText(/Revisions — FILE-level revision history for/)[0];
+    const toggle = screen.getAllByText(/Source-file history/)[0];
     await act(async () => { toggle.click(); });
 
     await vi.waitFor(() => expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1));
-    expect(vi.mocked(fetch).mock.calls[0][0]).toBe("/api/programme/revisions?path=assignments%2FEXP-005.yaml");
+    expect(vi.mocked(fetch).mock.calls[0][0]).toBe(
+      "/api/programme/revisions?path=assignments%2FEXP-005.yaml&entity=assignment%3Aassignments%2FEXP-005.yaml",
+    );
     await vi.waitFor(() => expect(screen.getByText("accept EXP-005")).toBeTruthy());
-    expect(screen.getAllByText(/current vs previous/).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText(/These are commits touching the source file/)).toBeTruthy();
 
-    // Explicit SHA filter matches client-side on status trail shas.
     fireEvent.click(screen.getByRole("button", { name: "SHA" }));
-    const input = screen.getByLabelText("SHA filter");
-    fireEvent.change(input, { target: { value: "aaaa" } });
+    const input = screen.getByLabelText("Baseline commit SHA");
+    fireEvent.change(input, { target: { value: "aaaa1111" } });
+    await act(async () => {
+      screen.getByRole("button", { name: "Compare" }).click();
+    });
 
-    await vi.waitFor(() => expect(screen.queryByText(/No entities match/)).toBeNull());
-    expect(document.querySelector('[data-entity-key="assignment:assignments/EXP-005.yaml"]')).toBeTruthy();
-
-    // A non-matching prefix shows the honest no-match message.
-    fireEvent.change(input, { target: { value: "zzzz" } });
-    await vi.waitFor(() => expect(screen.getByText("No entities match zzzz")).toBeTruthy());
+    await vi.waitFor(() => expect(vi.mocked(fetch)).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(fetch).mock.calls[1][0]).toBe("/api/programme/compare?from=aaaa1111&to=aaaa");
+    await vi.waitFor(() => expect(screen.getByText("explicit aaaa1111")).toBeTruthy());
+    expect(screen.getByText("aaaa1111 → bbbb2222")).toBeTruthy();
   });
 });
