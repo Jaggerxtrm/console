@@ -170,3 +170,9 @@ export interface RuntimeObservabilityModel {
     stale: number;
   };
 }
+
+export interface RuntimeInspectorSnapshot {
+  entity: RuntimeEntity;
+  events: RuntimeTimelineEvent[];
+  capturedAtMs: number;
+}
