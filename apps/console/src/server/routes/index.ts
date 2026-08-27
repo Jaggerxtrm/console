@@ -21,6 +21,7 @@ import { createInternalParityRouter, type InternalParityHarness } from "./intern
 import { createInternalSubstrateRouter } from "./internal-substrate.ts";
 import { createInternalVerifyRouter } from "./internal-verify.ts";
 import { createObservabilityRouter, type ObservabilityMetricsDao } from "./observability.ts";
+import { createRuntimeObservabilityRouter } from "./runtime-observability.ts";
 import { createProgrammeRouter, isAllowedProgrammeOrigin } from "../programme/route.ts";
 import { createSourcesRouter, type SourceScanner } from "./sources.ts";
 import { createShellRouter } from "./shell.ts";
@@ -65,6 +66,7 @@ export const CONSOLE_API_ROUTE_PREFIXES = [
   "/api/specialists/config",
   "/api/console/specialists",
   "/api/console/observability",
+  "/api/console/runtime",
   "/api/console/explore",
   "/api/console/shell",
   "/api/console/terminal",
@@ -130,6 +132,7 @@ export function createConsoleApiRouter(options: ConsoleApiRouteOptions): Hono {
   if (options.db || options.observabilityDao) {
     app.route("/api/console/observability", createObservabilityRouter(options.observabilityDao, options.db));
   }
+  app.route("/api/console/runtime", createRuntimeObservabilityRouter({ env }));
   app.route("/api/console/explore", createExploreAgentopsRouter(options.db, { emit: options.logger.emit }));
   app.route("/api/console/shell", createShellRouter(env));
   app.route("/api/console/terminal", createTerminalRouter(terminalProviders, {
