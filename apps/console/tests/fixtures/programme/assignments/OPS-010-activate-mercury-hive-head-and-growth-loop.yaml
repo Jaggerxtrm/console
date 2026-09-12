@@ -1,0 +1,11 @@
+id: OPS-010
+kind: operation
+status: authorized
+title: Synthetic authority operation
+workstream: WS-009
+decision: ADR-0004
+portfolio_issue: ISSUE-85
+embedded_execution:
+  id: synthetic-child-ops010
+  projection_of: program-coordinator-web
+  parent: operator-dawid

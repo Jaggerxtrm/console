@@ -1,0 +1,10 @@
+{
+  "status": "active",
+  "actor_id": "program-coordinator-host",
+  "assignment_id": "OPS-008",
+  "updated_at": "2026-08-11T12:00:00Z",
+  "last_successful_run": {"run_date":"2026-08-11","assignment_id":"OPS-008","branch":"synthetic/success","pull_request":"https://example.invalid/pr/1","review":"PASS","execution_status":"complete"},
+  "last_accepted_run": {"run_date":"2026-08-11","assignment_id":"OPS-008","branch":"synthetic/accepted","pull_request":"https://example.invalid/pr/2","review":"PASS","execution_status":"accepted"},
+  "last_completed_run": {"run_date":"2026-08-11","assignment_id":"OPS-009","branch":"synthetic/completed","pull_request":"https://example.invalid/pr/3","review":"PASS","execution_status":"complete"},
+  "last_reviewed_run": {"run_date":"2026-08-11","assignment_id":"OPS-009","branch":"synthetic/reviewed","pull_request":"https://example.invalid/pr/4","review":"PASS","execution_status":"reviewed"}
+}

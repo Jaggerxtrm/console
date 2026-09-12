@@ -41,10 +41,10 @@ describe("Console IA restructure", () => {
     useShellStore.setState({ selection: { surface: "console", tab: "graph", repo: null } as never });
     render(<TopBar />);
 
-    expect(screen.getAllByRole("tab")).toHaveLength(10);
+    expect(screen.getAllByRole("tab")).toHaveLength(11);
     expect(screen.getByRole("tab", { name: "GitHub" })).toBeTruthy();
     expect(screen.getByRole("tab", { name: "Console" })).toBeTruthy();
-    for (const label of ["Issues", "Graph", "Specialists", "Observability", "Triage", "Memories", "Operations", "Explore"]) {
+    for (const label of ["Issues", "Graph", "Programme", "Specialists", "Observability", "Triage", "Memories", "Operations", "Explore"]) {
       expect(screen.getByRole("tab", { name: label })).toBeTruthy();
     }
   });

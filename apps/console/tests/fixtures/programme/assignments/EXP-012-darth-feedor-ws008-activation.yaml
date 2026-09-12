@@ -1,0 +1,6 @@
+id: EXP-012
+kind: experiment
+status: active
+title: Synthetic repository-target assignment
+workstream: WS-008
+target_repository: mercuryintelligence/darth-feedor

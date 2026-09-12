@@ -2,7 +2,7 @@ export const SOURCE_HEALTH_STATUSES = ["fresh", "stale", "degraded", "unhealthy"
 
 export type SourceHealthStatus = (typeof SOURCE_HEALTH_STATUSES)[number];
 export type SourceHealthFreshness = Extract<SourceHealthStatus, "fresh" | "stale" | "degraded">;
-export type SourceHealthSource = "graph" | "beads" | "specialists" | "github" | "observability";
+export type SourceHealthSource = "graph" | "beads" | "specialists" | "github" | "observability" | "programme";
 
 export interface SourceHealth {
   source: SourceHealthSource;

@@ -39,13 +39,13 @@
     "ws": "8.21.0"
   },
   "dependencies": {
+    "@dagrejs/dagre": "^1.1.4",
     "@fontsource/geist-mono": "5.2.8",
     "@fontsource/geist-sans": "5.2.5",
     "@primer/octicons-react": "^19.22.0",
     "@radix-ui/react-accordion": "^1.2.12",
     "@radix-ui/react-collapsible": "^1.1.12",
     "@radix-ui/react-tooltip": "^1.2.8",
-    "@dagrejs/dagre": "^1.1.4",
     "@tanstack/react-virtual": "^3.13.21",
     "@xterm/addon-fit": "^0.10.0",
     "@xyflow/react": "^12.10.2",
@@ -54,6 +54,7 @@
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "xterm": "^5.3.0",
+    "yaml": "^2.4.2",
     "zustand": "^5.0.11"
   }
 }

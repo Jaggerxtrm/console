@@ -1,0 +1,6 @@
+id: EXP-011
+kind: experiment
+status: active
+title: Synthetic research assignment
+workstream: WS-001
+owner: hive-research

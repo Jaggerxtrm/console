@@ -1,0 +1,28 @@
+agents:
+  - id: mercury-hive-head
+    role: Synthetic hive head
+    status: active
+    current_projection: program-coordinator-web
+    assignment: OPS-010
+  - id: program-coordinator-web
+    role: Synthetic web coordinator
+    status: active
+    projection_of: mercury-hive-head
+    assignment: OPS-009
+  - id: program-coordinator-host
+    role: Synthetic host coordinator
+    status: active
+    assignment: OPS-008
+  - id: hive-research
+    role: Synthetic research actor
+    status: active
+    assignment: EXP-011
+  - id: operator-dawid
+    role: Synthetic operator actor
+    status: active
+  - id: local-console-integration-agent
+    role: Synthetic integration actor
+    status: active
+  - id: reviewer-agent
+    role: Synthetic reviewer actor
+    status: active

@@ -1,0 +1,5 @@
+id: OPS-008
+kind: operation
+status: complete
+title: Synthetic host operation
+workstream: WS-001

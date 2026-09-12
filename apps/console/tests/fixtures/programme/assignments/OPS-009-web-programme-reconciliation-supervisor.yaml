@@ -1,0 +1,9 @@
+id: OPS-009
+kind: operation
+status: active
+title: Synthetic web operation
+workstream: WS-001
+decision: ADR-0003
+embedded_worker:
+  id: synthetic-child-ops009
+  parent: program-coordinator-web

@@ -1,0 +1,7 @@
+id: EXP-005
+kind: experiment
+status: ready
+title: Synthetic duplicate assignment five A
+workstream: WS-004
+related_jira:
+  - ISSUE-75

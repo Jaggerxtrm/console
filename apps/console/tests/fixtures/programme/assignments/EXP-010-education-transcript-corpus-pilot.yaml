@@ -1,0 +1,5 @@
+id: EXP-010
+kind: experiment
+status: complete
+title: Synthetic predecessor assignment
+workstream: WS-004
