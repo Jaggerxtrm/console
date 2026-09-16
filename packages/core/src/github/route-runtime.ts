@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { fetchRepoFile, listRepoDir } from "./readme.ts";
-import { getGithubToken } from "./token.ts";
+import { githubApiBaseUrl, resolveGithubCredential } from "./token.ts";
 import { getRepos, type GithubPr, type GithubRepo } from "./store.ts";
 
 export type PrDetailPayload = {
@@ -34,11 +34,12 @@ const MAX_PR_DETAIL_CACHE_ENTRIES = 200;
 const prDetailCache = new Map<string, { value: PrDetailPayload; expires: number }>();
 
 export async function githubApi<T>(path: string, signal?: AbortSignal): Promise<T> {
-  const token = getGithubToken();
-  const response = await fetch(`https://api.github.com${path}`, {
+  const credential = await resolveGithubCredential();
+  if (!credential.token) throw new Error("No GitHub token found. Run `gh auth login` or set GITHUB_TOKEN.");
+  const response = await fetch(`${githubApiBaseUrl()}${path}`, {
     signal,
     headers: {
-      Authorization: `Bearer ${token}`,
+      Authorization: `Bearer ${credential.token}`,
       Accept: "application/vnd.github+json",
       "X-GitHub-Api-Version": "2022-11-28",
       "User-Agent": "agent-forge/0.1.0",
@@ -252,4 +253,145 @@ function mapTimeline(result: PromiseSettledResult<TimelineItem[]>, pr: GithubPr)
       url: item.html_url ?? null,
       created_at: item.created_at ?? item.submitted_at ?? pr.updated_at ?? pr.created_at,
     }));
+}
+
+// ---------------------------------------------------------------------------
+// PR checks / mergeability passthrough (XTRM-404)
+// ---------------------------------------------------------------------------
+
+export type PrCheckItem = { name: string; status: string | null; conclusion: string | null; url: string | null; source: "check_run" | "status" };
+export type PrChecksPayload = {
+  state: "success" | "failure" | "pending" | "none";
+  checks: PrCheckItem[];
+  head_sha: string | null;
+  mergeable: boolean | null;
+  mergeable_state: string | null;
+  cached_at?: string;
+};
+
+const prChecksCache = new Map<string, { value: PrChecksPayload; expires: number }>();
+
+export function clearPrChecksCache(): void {
+  prChecksCache.clear();
+}
+
+export class GithubApiStatusError extends Error {
+  constructor(readonly status: number, path: string) {
+    super(`GitHub API error ${status}: ${path}`);
+  }
+}
+
+/** GET that surfaces the HTTP status instead of collapsing it into a throw. */
+export async function githubApiGetResponse(path: string, signal?: AbortSignal): Promise<Response> {
+  const credential = await resolveGithubCredential();
+  if (!credential.token) throw new Error("No GitHub token found. Run `gh auth login` or set GITHUB_TOKEN.");
+  return await fetch(`${githubApiBaseUrl()}${path}`, {
+    signal,
+    headers: {
+      Authorization: `Bearer ${credential.token}`,
+      Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28",
+      "User-Agent": "agent-forge/0.1.0",
+    },
+  });
+}
+
+type LivePullRequest = { head: { sha: string } | null; mergeable: boolean | null; mergeable_state: string | null; state: string };
+type CheckRunsResponse = { total_count: number; check_runs: Array<{ name: string; status: string; conclusion: string | null; html_url: string | null }> };
+type CommitStatusResponse = { state: string; statuses: Array<{ context: string; state: string; target_url: string | null }> };
+
+/**
+ * Aggregate check runs and commit statuses for a PR head, plus live
+ * mergeability. Cached with the same TTL shape as the PR detail payload.
+ */
+export async function getPrChecksPayload(
+  repo: string,
+  number: number,
+  pr: GithubPr,
+  emitCacheEvent?: (event: PrDetailCacheEvent) => void,
+): Promise<PrChecksPayload> {
+  const cacheKey = `checks:${repo}#${number}:${pr.updated_at ?? pr.created_at}`;
+  const cached = prChecksCache.get(cacheKey);
+  const now = Date.now();
+  if (cached && cached.expires > now) {
+    emitCacheEvent?.({ repo, number, hit: true });
+    return { ...cached.value, cached_at: new Date(now).toISOString() };
+  }
+  emitCacheEvent?.({ repo, number, hit: false });
+
+  const live = await fetchLivePullRequest(repo, number);
+  if (!live) throw new GithubApiStatusError(404, `/repos/${repo}/pulls/${number}`);
+  const headSha = live.head?.sha ?? null;
+
+  const [checkRunsResult, statusesResult] = await Promise.allSettled([
+    headSha ? withTimeout("check_runs", (signal) => githubApi<CheckRunsResponse>(`/repos/${repo}/commits/${headSha}/check-runs`, signal)) : Promise.resolve(null),
+    headSha ? withTimeout("statuses", (signal) => githubApi<CommitStatusResponse>(`/repos/${repo}/commits/${headSha}/status`, signal)) : Promise.resolve(null),
+  ]);
+
+  const checks: PrCheckItem[] = [];
+  if (checkRunsResult.status === "fulfilled" && checkRunsResult.value) {
+    for (const run of checkRunsResult.value.check_runs ?? []) {
+      checks.push({ name: run.name, status: run.status, conclusion: run.conclusion, url: run.html_url, source: "check_run" });
+    }
+  }
+  if (statusesResult.status === "fulfilled" && statusesResult.value) {
+    for (const status of statusesResult.value.statuses ?? []) {
+      checks.push({ name: status.context, status: "completed", conclusion: status.state, url: status.target_url, source: "status" });
+    }
+  }
+
+  const payload: PrChecksPayload = {
+    state: aggregateChecksState(checks),
+    checks,
+    head_sha: headSha,
+    mergeable: live.mergeable,
+    mergeable_state: live.mergeable_state,
+  };
+
+  if (checkRunsResult.status === "fulfilled" && statusesResult.status === "fulfilled") {
+    prChecksCache.set(cacheKey, { value: payload, expires: Date.now() + (pr.state === "open" ? OPEN_PR_DETAIL_CACHE_TTL_MS : CLOSED_PR_DETAIL_CACHE_TTL_MS) });
+    prunePrChecksCache();
+  }
+  return payload;
+}
+
+async function fetchLivePullRequest(repo: string, number: number): Promise<LivePullRequest | null> {
+  const response = await githubApiGetResponse(`/repos/${repo}/pulls/${number}`);
+  if (response.status === 404) return null;
+  if (!response.ok) throw new GithubApiStatusError(response.status, `/repos/${repo}/pulls/${number}`);
+  let live = await response.json() as LivePullRequest;
+  if (live.mergeable === null) {
+    // GitHub computes mergeability lazily; one bounded retry.
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    const retry = await githubApiGetResponse(`/repos/${repo}/pulls/${number}`);
+    if (retry.ok) live = await retry.json() as LivePullRequest;
+  }
+  return live;
+}
+
+const FAILURE_CONCLUSIONS = new Set(["failure", "cancelled", "timed_out", "action_required", "error"]);
+const PENDING_CONCLUSIONS = new Set(["pending", "expected"]);
+const PENDING_STATUSES = new Set(["queued", "in_progress", "waiting_pending", "waiting", "pending"]);
+
+export function aggregateChecksState(checks: PrCheckItem[]): "success" | "failure" | "pending" | "none" {
+  if (checks.length === 0) return "none";
+  let pending = false;
+  for (const check of checks) {
+    const conclusion = check.conclusion;
+    if (conclusion && FAILURE_CONCLUSIONS.has(conclusion)) return "failure";
+    if ((conclusion && PENDING_CONCLUSIONS.has(conclusion)) || (check.status && PENDING_STATUSES.has(check.status))) pending = true;
+  }
+  return pending ? "pending" : "success";
+}
+
+function prunePrChecksCache(): void {
+  const now = Date.now();
+  for (const [key, entry] of prChecksCache) {
+    if (entry.expires <= now) prChecksCache.delete(key);
+  }
+  while (prChecksCache.size > MAX_PR_DETAIL_CACHE_ENTRIES) {
+    const oldest = prChecksCache.keys().next().value;
+    if (oldest === undefined) return;
+    prChecksCache.delete(oldest);
+  }
 }

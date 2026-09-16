@@ -65,6 +65,12 @@ function jsonResponse(value: unknown): Response {
 
 function abortingNever(signal?: AbortSignal): Promise<Response> {
   return new Promise((_, reject) => {
+    // Mirror real fetch: an already-aborted signal rejects immediately instead
+    // of hanging forever when fetch issuance lands past the section budget.
+    if (signal?.aborted) {
+      reject(new DOMException("aborted", "AbortError"));
+      return;
+    }
     signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true });
   });
 }
