@@ -10,7 +10,7 @@
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { hasSharedToken, setUserTokenProvider } from "../token.ts";
+import { hasSharedToken, invalidateGithubCredential, setUserTokenProvider } from "../token.ts";
 import { resolveTokenStore, type StoredUserToken, type TokenStore } from "./store.ts";
 import {
   DeviceFlowError,
@@ -140,9 +140,11 @@ function buildGithubAuthService(options: GithubAuthServiceOptions) {
           record = recordFromResponse(body, record!.user);
           await store!.set(record);
           lastError = null;
+          invalidateGithubCredential();
           return record.access_token;
         } catch {
           lastError = { code: "refresh_failed", message: "user token refresh failed; token is expired" };
+          invalidateGithubCredential();
           return null;
         } finally {
           refreshing = null;
@@ -216,6 +218,7 @@ function buildGithubAuthService(options: GithubAuthServiceOptions) {
         record = recordFromResponse(body as Omit<OauthTokenResponse, "access_token"> & { access_token: string }, user);
         await store!.set(record);
         lastError = null;
+        invalidateGithubCredential();
         break;
       }
     }
@@ -234,6 +237,7 @@ function buildGithubAuthService(options: GithubAuthServiceOptions) {
     record = null;
     loaded = true;
     lastError = null;
+    invalidateGithubCredential();
   }
 
   async function status(): Promise<GithubAuthStatus> {
