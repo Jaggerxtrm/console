@@ -3,28 +3,32 @@ import type { Database } from "bun:sqlite";
 import { makeLogEntry, type LogEntry } from "../../../../../packages/core/src/runtime/logs.ts";
 import { isAllowedConsoleWriteRequest, TRUSTED_PEER_ADDRESS_HEADER } from "../../../../../packages/core/src/runtime/console-write-policy.ts";
 import {
+  createGithubAuthService,
   enrichCommitMessages,
   getCommit,
   getCommits,
   getContributions,
   getEvent,
   getEvents,
+  getGithubToken,
   getIssue,
   getIssues,
+  getMarkdownFile,
   getPr,
+  getPrChecksPayload,
+  getPrDetailPayload,
   getPrs,
   getReleases,
   getRepoStats,
   getRepos,
+  getReportFile,
+  getReportSummaries,
   getSummary,
-  getGithubToken,
+  GithubApiStatusError,
   isAllowedMarkdownPath,
   isAllowedReportFilename,
   isKnownGithubRepo,
-  getMarkdownFile,
-  getPrDetailPayload,
-  getReportFile,
-  getReportSummaries,
+  type GithubAuthService,
   updateRepo,
   upsertRepo,
 } from "../../../../../packages/core/src/github/index.ts";
@@ -34,14 +38,21 @@ export type GithubRouteLogger = {
 };
 export type GithubRouteLogSink = GithubRouteLogger | ((entry: LogEntry) => void);
 
+export interface GithubRouterOptions {
+  /** GitHub App user-auth service; defaults to one built from process.env. */
+  readonly auth?: GithubAuthService;
+}
+
 /** HTTP routes do not publish realtime events; the poller owns that responsibility. */
 export function createGithubRouter(
   db: Database,
   publisherOrRegistry?: unknown,
   logger?: GithubRouteLogSink,
+  options: GithubRouterOptions = {},
 ): Hono {
   const app = new Hono();
   const logSink = resolveLogSink(publisherOrRegistry, logger);
+  const auth = options.auth ?? createGithubAuthService();
 
   app.get("/events", (c) => {
     const t0 = performance.now();
@@ -192,6 +203,61 @@ export function createGithubRouter(
     const pr = getPr(db, `${c.req.param("owner")}/${c.req.param("repo")}`, parseInt(c.req.param("number"), 10));
     if (!pr) return c.json({ error: "not found" }, 404);
     return c.json(pr);
+  });
+
+  app.get("/prs/:owner/:repo/:number/checks", async (c) => {
+    const repo = `${c.req.param("owner")}/${c.req.param("repo")}`;
+    const number = parseInt(c.req.param("number"), 10);
+    const pr = getPr(db, repo, number);
+    if (!pr) return c.json({ error: "not found" }, 404);
+    try {
+      const payload = await getPrChecksPayload(
+        repo,
+        number,
+        pr,
+        (event) => emitLog(logSink, "github.pr_checks.cache", event),
+      );
+      return c.json(payload);
+    } catch (error) {
+      if (error instanceof GithubApiStatusError && error.status === 404) return c.json({ error: "not found" }, 404);
+      return c.json({ error: error instanceof Error ? error.message : "fetch failed" }, 502);
+    }
+  });
+
+  app.get("/auth/status", async (c) => c.json(await auth.status()));
+
+  app.post("/auth/device/start", async (c) => {
+    const result = await auth.startDeviceFlow();
+    if (!result.ok) return c.json({ error: result.error.code, message: result.error.message }, result.error.code === "not_configured" ? 400 : 502);
+    return c.json(await auth.status(), 202);
+  });
+
+  app.post("/auth/device/cancel", async (c) => {
+    auth.cancelDeviceFlow();
+    return c.json(await auth.status());
+  });
+
+  app.post("/auth/signout", async (c) => {
+    await auth.signout();
+    return c.json(await auth.status());
+  });
+
+  app.get("/auth/installations", async (c) => {
+    try {
+      return c.json(await auth.installations());
+    } catch (error) {
+      return c.json({ error: error instanceof Error ? error.message : "fetch failed" }, 502);
+    }
+  });
+
+  app.get("/capabilities", async (c) => {
+    const repo = c.req.query("repo");
+    if (!repo || !/^[\w.-]+\/[\w.-]+$/.test(repo)) return c.json({ error: "repo query parameter (owner/repo) is required" }, 400);
+    try {
+      return c.json(await auth.capabilities(repo));
+    } catch (error) {
+      return c.json({ error: error instanceof Error ? error.message : "fetch failed" }, 502);
+    }
   });
 
   app.get("/issues", (c) => {
