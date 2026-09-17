@@ -3,6 +3,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import type { Database } from "bun:sqlite";
+
+let testHome: string | undefined;
 import { createGithubRouter } from "../../../src/server/routes/github.ts";
 import { createDatabase } from "../../../../../packages/core/src/github/database.ts";
 import { upsertPr, upsertRepo } from "../../../../../packages/core/src/github/index.ts";
@@ -112,6 +114,8 @@ beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), "xtrm422-detail-"));
   db = createDatabase(join(dir, "state.db"));
   process.env.GITHUB_TOKEN = "test-token";
+  testHome = mkdtempSync(join(tmpdir(), "xtrm-test-home-"));
+  process.env.HOME = testHome; // isolate from the host credential store
   process.env.XTRM_GITHUB_API_BASE_URL = "https://api.fake";
   upsertRepo(db, { full_name: "owner/repo", display_name: null, tracked: true, group_name: null, last_polled_at: null, color: null });
   seq += 1;
@@ -119,6 +123,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  if (testHome) { rmSync(testHome, { recursive: true, force: true }); delete process.env.HOME; testHome = undefined; } // restore HOME
   delete process.env.GITHUB_TOKEN;
   delete process.env.XTRM_GITHUB_API_BASE_URL;
   db.close();
