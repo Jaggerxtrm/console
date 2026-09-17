@@ -94,7 +94,7 @@ describe("GitHub PR detail route", () => {
     expect(res.status).toBe(200);
     expect(body.comments).toEqual([]);
     expect(body.errors.comments).toContain("timed out");
-    expect(fetchMock).toHaveBeenCalledTimes(6);
+    expect(fetchMock).toHaveBeenCalledTimes(7); // six sections plus the live pulls/:n section
   });
 
   it("caches complete PR detail responses by PR updated timestamp", async () => {
@@ -103,7 +103,7 @@ describe("GitHub PR detail route", () => {
     await routerRequest("/prs/owner/repo/1/detail");
     await routerRequest("/prs/owner/repo/1/detail");
 
-    expect(fetchMock).toHaveBeenCalledTimes(6);
+    expect(fetchMock).toHaveBeenCalledTimes(7); // six sections plus the live pulls/:n section, then the cache
   });
 });
 

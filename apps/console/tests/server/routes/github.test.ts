@@ -167,7 +167,7 @@ describe("Console GitHub routes", () => {
 
     expect(first.status).toBe(200);
     expect(second.status).toBe(200);
-    expect(fetchMock).toHaveBeenCalledTimes(6);
+    expect(fetchMock).toHaveBeenCalledTimes(7); // six sections plus the live pulls/:n section, then the cache
   });
 });
 

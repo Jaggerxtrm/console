@@ -132,6 +132,8 @@ export interface GithubRelease {
 export interface GithubPrComment {
   id: number;
   author: string;
+  author_avatar_url: string | null;
+  author_association: string | null;
   body: string;
   url: string | null;
   created_at: string;
@@ -141,10 +143,27 @@ export interface GithubPrComment {
 export interface GithubPrReview {
   id: number;
   author: string;
+  author_avatar_url: string | null;
+  author_association: string | null;
   state: string;
   body: string | null;
   url: string | null;
+  commit_id: string | null;
   submitted_at: string | null;
+}
+
+export interface GithubPrTimelineEventData {
+  label?: { name: string; color: string | null };
+  assignee?: { login: string; avatar_url: string | null };
+  requested_reviewer?: { login: string; avatar_url: string | null } | null;
+  requested_team?: { slug: string; name: string | null } | null;
+  from?: string | null;
+  to?: string | null;
+  source?: { type: string | null; repo: string | null; number: number | null; title: string | null; url: string | null; state: string | null };
+  before?: string | null;
+  after?: string | null;
+  ref?: string | null;
+  commit_id?: string | null;
 }
 
 export interface GithubPrTimelineEvent {
@@ -155,17 +174,43 @@ export interface GithubPrTimelineEvent {
   commit_id?: string | null;
   state?: string | null;
   url?: string | null;
+  data?: GithubPrTimelineEventData | null;
   created_at: string;
+}
+
+export interface GithubPrLiveDetails {
+  head_ref: string | null;
+  head_sha: string | null;
+  base_ref: string | null;
+  base_sha: string | null;
+  draft: boolean | null;
+  merged_by: { login: string; avatar_url: string | null } | null;
+  author_avatar_url: string | null;
+  assignees: Array<{ login: string; avatar_url: string | null }>;
+  requested_reviewers: Array<{ login: string; avatar_url: string | null }>;
+  requested_teams: Array<{ slug: string; name: string | null }>;
+  milestone: { title: string; url: string | null; due_on: string | null } | null;
+  labels: Array<{ name: string; color: string | null; description: string | null }>;
 }
 
 export interface GithubPrReviewComment {
   id: number;
   author: string;
+  author_avatar_url: string | null;
   body: string;
   path: string | null;
   line: number | null;
   diff_hunk: string | null;
   url: string | null;
+  in_reply_to_id: number | null;
+  pull_request_review_id: number | null;
+  original_line: number | null;
+  start_line: number | null;
+  original_start_line: number | null;
+  side: string | null;
+  commit_id: string | null;
+  original_commit_id: string | null;
+  subject_type: string | null;
   created_at: string;
   updated_at: string | null;
 }
@@ -180,7 +225,7 @@ export interface GithubPrFile {
 }
 
 export interface GithubPrDetail {
-  pr: GithubPr;
+  pr: GithubPr & GithubPrLiveDetails;
   comments: GithubPrComment[];
   reviews: GithubPrReview[];
   review_comments: GithubPrReviewComment[];
@@ -188,6 +233,9 @@ export interface GithubPrDetail {
     sha: string;
     message: string;
     author: string;
+    author_login: string | null;
+    author_avatar_url: string | null;
+    verified: boolean | null;
     url: string | null;
     committed_at: string;
   }>;
