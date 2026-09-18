@@ -208,6 +208,8 @@ export class GithubPoller {
   private repoConcurrency: number;
   private etags = new Map<string, string>();
   private pausedUntil = 0;
+  /** Owners whose issues are ingested: the authenticated account and its organizations. Resolved once per process. */
+  private issueOwners: Set<string> | null = null;
 
   constructor(db: Database, token: string, options: GithubPollerOptions = {}) {
     this.db = db;
@@ -624,11 +626,36 @@ export class GithubPoller {
     this.db.prepare("UPDATE github_repos SET last_polled_at = $last_polled_at WHERE full_name = $repo").run({ $repo: repo, $last_polled_at: polledAt });
   }
 
+  /**
+   * Issue ingestion is limited to repositories the operator owns - their account and
+   * their organizations. Third-party repositories reach this database through event
+   * history, and their issue trackers are somebody else's data: ingesting them grew
+   * the store by tens of thousands of rows and spent API budget for nothing.
+   * Pull requests, releases and events keep their existing scope.
+   */
+  private async ownsIssues(repo: string): Promise<boolean> {
+    if (!this.issueOwners) {
+      const owners = new Set<string>();
+      const user = await this.apiGet<{ login?: string }>("/user", "global", "user");
+      if (user?.login) owners.add(user.login.toLowerCase());
+      const orgs = await this.apiGet<Array<{ login?: string }>>("/user/orgs", "global", "user:orgs");
+      for (const org of orgs ?? []) if (org.login) owners.add(org.login.toLowerCase());
+      // An unreachable identity must not silently widen the scope: with no owners
+      // resolved, nothing is ingested and the next cycle retries.
+      this.issueOwners = owners;
+      this.emitLog("poller", "issues.owner_scope", "info", undefined, { owners: [...owners] });
+    }
+    const owner = repo.split("/")[0]?.toLowerCase() ?? "";
+    return this.issueOwners.has(owner);
+  }
+
   private async pollRepo(repo: GithubRepo): Promise<void> {
     const state = getRepoPollState(this.db, repo.full_name);
     if (!this.isRepoDue(repo, state)) return;
 
-    const issueResult = await this.pollIssues(repo.full_name, state.last_issue_updated_at, state.issue_etag);
+    const issueResult = (await this.ownsIssues(repo.full_name))
+      ? await this.pollIssues(repo.full_name, state.last_issue_updated_at, state.issue_etag)
+      : { watermark: state.last_issue_updated_at, etag: state.issue_etag, successful: true };
     const prResult = await this.pollPullRequests(repo.full_name, state.last_pr_updated_at, state.pr_etag);
     const releaseResult = await this.pollReleases(repo.full_name, state.last_release_published_at, state.release_etag);
     const lastIssueUpdatedAt = issueResult.watermark ?? state.last_issue_updated_at;

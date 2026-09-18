@@ -254,3 +254,40 @@ describe("CONSOLE-1: issue polling with no stored watermark", () => {
     }
   });
 });
+
+describe("issue ingestion scope: owned repositories only", () => {
+  type OwnerApi = GithubPoller & { ownsIssues(repo: string): Promise<boolean> };
+
+  const stubIdentity = (login: string, orgs: string[]) =>
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        const body = url.endsWith("/user") ? { login } : orgs.map((o) => ({ login: o }));
+        return new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+      }),
+    );
+
+  it("accepts the authenticated account and its organizations, and rejects everyone else", async () => {
+    stubIdentity("Jaggerxtrm", ["xtrm-dev", "mercuryintelligence"]);
+    const poller = new GithubPoller({} as never, "test-token", { logger: new CollectingLogger() }) as OwnerApi;
+    try {
+      expect(await poller.ownsIssues("Jaggerxtrm/console")).toBe(true);
+      // Owner comparison is case-insensitive: GitHub preserves case, our rows do not.
+      expect(await poller.ownsIssues("jaggerxtrm/console")).toBe(true);
+      expect(await poller.ownsIssues("xtrm-dev/xtrm")).toBe(true);
+      expect(await poller.ownsIssues("ConardLi/easy-dataset")).toBe(false);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("ingests nothing when the identity cannot be resolved, rather than widening the scope", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 500 })));
+    const poller = new GithubPoller({} as never, "test-token", { logger: new CollectingLogger() }) as OwnerApi;
+    try {
+      expect(await poller.ownsIssues("Jaggerxtrm/console")).toBe(false);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
