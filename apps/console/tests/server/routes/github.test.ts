@@ -13,6 +13,8 @@ import {
 } from "../../../../../packages/core/src/github/index.ts";
 import { createGithubRouter } from "../../../src/server/routes/github.ts";
 
+let testHome: string | undefined;
+
 describe("Console GitHub routes", () => {
   let root: string;
   let db: ReturnType<typeof createXtrmDatabase>;
@@ -44,6 +46,7 @@ describe("Console GitHub routes", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+  if (testHome) { rmSync(testHome, { recursive: true, force: true }); delete process.env.HOME; testHome = undefined; } // restore HOME
     db.close();
     rmSync(root, { recursive: true, force: true });
     if (originalAdminToken === undefined) delete process.env.CONSOLE_WRITE_ADMIN_TOKEN;
@@ -159,6 +162,8 @@ describe("Console GitHub routes", () => {
 
   it("retains complete PR detail caching", async () => {
     process.env.GITHUB_TOKEN = "test-token";
+  testHome = mkdtempSync(join(tmpdir(), "xtrm-test-home-"));
+  process.env.HOME = testHome; // isolate from the host credential store
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(JSON.stringify([]), { status: 200 }));
     const app = createGithubRouter(db);
 
@@ -167,7 +172,7 @@ describe("Console GitHub routes", () => {
 
     expect(first.status).toBe(200);
     expect(second.status).toBe(200);
-    expect(fetchMock).toHaveBeenCalledTimes(6);
+    expect(fetchMock).toHaveBeenCalledTimes(7); // six sections plus the live pulls/:n section, then the cache
   });
 });
 

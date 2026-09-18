@@ -131,7 +131,7 @@ function buildGithubAuthService(options: GithubAuthServiceOptions) {
     await ensureLoaded();
     if (!record) return null;
     if (!isExpired(record) && (record.expires_at === null || Date.parse(record.expires_at) - Date.now() > REFRESH_MARGIN_MS)) return record.access_token;
-    if (!record.refresh_token) return null; // expired and not refreshable
+    if (!record.refresh_token || !clientId) return null; // expired and not refreshable (refresh requires the app client id)
     if (!refreshing) {
       refreshing = (async () => {
         try {

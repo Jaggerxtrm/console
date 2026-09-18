@@ -99,3 +99,32 @@ SQLite, logs, or HTTP responses.
 
 For tests, `XTRM_GITHUB_API_BASE_URL` and `XTRM_GITHUB_OAUTH_BASE_URL` redirect
 the REST and OAuth base URLs at a fake GitHub server.
+
+### PR detail payload field reference
+
+`GET /api/github/prs/:owner/:repo/:number/detail` returns the poller row plus
+live enrichment. All additions are additive; Console v1 reads only the
+original fields. A failed live `pulls/:n` fetch yields null/empty defaults and
+`errors.pr_live` instead of failing the whole payload.
+
+- `pr`: the poller row plus `head_ref`, `head_sha`, `base_ref`, `base_sha`,
+  `draft`, `merged_by: {login, avatar_url}|null`, `author_avatar_url`,
+  `assignees[]`, `requested_reviewers[]` (`{login, avatar_url}`),
+  `requested_teams[]` (`{slug, name}`), `milestone: {title, url, due_on}|null`,
+  `labels[]` (`{name, color, description}`).
+- `comments[]`, `reviews[]`: add `author_avatar_url`, `author_association`;
+  reviews add `commit_id`.
+- `review_comments[]`: add `in_reply_to_id` (thread linkage),
+  `pull_request_review_id`, `original_line`, `start_line`,
+  `original_start_line`, `side`, `commit_id`, `original_commit_id`,
+  `subject_type`, `author_avatar_url`.
+- `commits[]`: add `author_login`, `author_avatar_url`, `verified`
+  (`verification.verified`).
+- `timeline[]`: add `data`, typed per event — `labeled/unlabeled`:
+  `{label{name,color}}`; `assigned/unassigned`: `{assignee}`;
+  `review_requested/review_request_removed`:
+  `{requested_reviewer, requested_team}` (one null); `renamed`: `{from,to}`;
+  `cross-referenced`: `{source{type,repo,number,title,url,state}}` (repo parsed
+  from `repository_url`); `head_ref_force_pushed/base_ref_changed`:
+  `{before,after,ref}`; `merged/closed/reopened/ready_for_review/convert_to_draft`:
+  `{commit_id}`; every other event: `data: null`.

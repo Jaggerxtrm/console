@@ -1,8 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Database } from "bun:sqlite";
+
+let testHome: string | undefined;
 import { createGithubRouter } from "../../../src/server/routes/github.ts";
 import { createDatabase } from "../../../../../packages/core/src/github/database.ts";
 import { upsertPr, upsertRepo } from "../../../../../packages/core/src/github/index.ts";
@@ -15,6 +18,8 @@ beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), "gitboard-github-detail-"));
   db = createDatabase(join(dir, "state.db"));
   process.env.GITHUB_TOKEN = "test-token";
+  testHome = mkdtempSync(join(tmpdir(), "xtrm-test-home-"));
+  process.env.HOME = testHome; // isolate from the host credential store
   process.env.GITBOARD_PR_DETAIL_SECTION_TIMEOUT_MS = "20";
   clearReadmeCache();
   upsertRepo(db, {
@@ -47,6 +52,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   vi.restoreAllMocks();
+  if (testHome) { rmSync(testHome, { recursive: true, force: true }); delete process.env.HOME; testHome = undefined; } // restore HOME
   clearReadmeCache();
   delete process.env.GITHUB_TOKEN;
   delete process.env.GITBOARD_PR_DETAIL_SECTION_TIMEOUT_MS;
@@ -94,7 +100,7 @@ describe("GitHub PR detail route", () => {
     expect(res.status).toBe(200);
     expect(body.comments).toEqual([]);
     expect(body.errors.comments).toContain("timed out");
-    expect(fetchMock).toHaveBeenCalledTimes(6);
+    expect(fetchMock).toHaveBeenCalledTimes(7); // six sections plus the live pulls/:n section
   });
 
   it("caches complete PR detail responses by PR updated timestamp", async () => {
@@ -103,7 +109,7 @@ describe("GitHub PR detail route", () => {
     await routerRequest("/prs/owner/repo/1/detail");
     await routerRequest("/prs/owner/repo/1/detail");
 
-    expect(fetchMock).toHaveBeenCalledTimes(6);
+    expect(fetchMock).toHaveBeenCalledTimes(7); // six sections plus the live pulls/:n section, then the cache
   });
 });
 
