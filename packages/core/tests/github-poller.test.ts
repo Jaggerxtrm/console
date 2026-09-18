@@ -256,67 +256,28 @@ describe("CONSOLE-1: issue polling with no stored watermark", () => {
 });
 
 describe("ingestion scope: owned repositories only", () => {
-  type OwnerApi = GithubPoller & { ownsRepo(repo: string): Promise<boolean> };
+  type ScopeApi = GithubPoller & { ownsRepo(repo: string): boolean; ownedEvents(raw: RawGithubEvent[]): RawGithubEvent[] };
+  const scoped = () =>
+    new GithubPoller({} as never, "test-token", { owners: ["Jaggerxtrm", "xtrm-dev", "mercuryintelligence"], logger: new CollectingLogger() }) as ScopeApi;
 
-  const stubIdentity = (login: string, orgs: string[]) =>
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (url: string) => {
-        const body = url.endsWith("/user") ? { login } : orgs.map((o) => ({ login: o }));
-        return new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
-      }),
-    );
-
-  it("accepts the authenticated account and its organizations, and rejects everyone else", async () => {
-    stubIdentity("Jaggerxtrm", ["xtrm-dev", "mercuryintelligence"]);
-    const poller = new GithubPoller({} as never, "test-token", { logger: new CollectingLogger() }) as OwnerApi;
-    try {
-      expect(await poller.ownsRepo("Jaggerxtrm/console")).toBe(true);
-      // Owner comparison is case-insensitive: GitHub preserves case, our rows do not.
-      expect(await poller.ownsRepo("jaggerxtrm/console")).toBe(true);
-      expect(await poller.ownsRepo("xtrm-dev/xtrm")).toBe(true);
-      expect(await poller.ownsRepo("ConardLi/easy-dataset")).toBe(false);
-    } finally {
-      vi.unstubAllGlobals();
-    }
+  it("accepts the configured owners, case-insensitively, and rejects everyone else", () => {
+    const poller = scoped();
+    expect(poller.ownsRepo("Jaggerxtrm/console")).toBe(true);
+    expect(poller.ownsRepo("jaggerxtrm/console")).toBe(true);
+    expect(poller.ownsRepo("xtrm-dev/xtrm")).toBe(true);
+    expect(poller.ownsRepo("ConardLi/easy-dataset")).toBe(false);
   });
 
-  it("ingests nothing when the identity cannot be resolved, rather than widening the scope", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 500 })));
-    const poller = new GithubPoller({} as never, "test-token", { logger: new CollectingLogger() }) as OwnerApi;
-    try {
-      expect(await poller.ownsRepo("Jaggerxtrm/console")).toBe(false);
-    } finally {
-      vi.unstubAllGlobals();
-    }
+  it("drops feed events from repositories outside the scope", () => {
+    const kept = scoped().ownedEvents([
+      { ...rawPushEvent, id: "foreign-1", repo: { name: "ConardLi/easy-dataset" } },
+      { ...rawPushEvent, id: "ours-1", repo: { name: "xtrm-dev/xtrm" } },
+    ]);
+    expect(kept.map((e) => e.id)).toEqual(["ours-1"]);
   });
-});
 
-describe("event ingestion does not enrol third-party repositories", () => {
-  it("skips an event from a repository the operator does not own", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (url: string) =>
-        new Response(JSON.stringify(url.endsWith("/user") ? { login: "Jaggerxtrm" } : [{ login: "xtrm-dev" }]), { status: 200, headers: { "content-type": "application/json" } }),
-      ),
-    );
-    const seen: string[] = [];
-    const db = {
-      prepare: () => ({ run: () => undefined, get: () => undefined, all: () => [] }),
-      query: () => ({ run: () => undefined, get: () => undefined, all: () => [] }),
-    };
-    const poller = new GithubPoller(db as never, "test-token", {
-      logger: { emit: (e) => seen.push(e.event) },
-      registry: { publish: (_c, event) => seen.push(String(event)) },
-    });
-    try {
-      await poller.ingestEvents([
-        { ...rawPushEvent, id: "foreign-1", repo: { name: "ConardLi/easy-dataset" } },
-      ]);
-      // Nothing about a foreign repository is published or stored.
-      expect(seen.some((e) => e.startsWith("github:"))).toBe(false);
-    } finally {
-      vi.unstubAllGlobals();
-    }
+  it("without configured owners nothing is filtered, which is what embedders and the host contract tests rely on", () => {
+    const poller = new GithubPoller({} as never, "test-token", { logger: new CollectingLogger() }) as ScopeApi;
+    expect(poller.ownsRepo("ConardLi/easy-dataset")).toBe(true);
   });
 });

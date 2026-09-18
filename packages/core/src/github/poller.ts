@@ -48,6 +48,8 @@ export interface RawGithubEvent {
 
 export interface GithubPollerOptions {
   intervalMs?: number;
+  /** Repository owners to ingest (account + organizations). Unset means no filter. */
+  owners?: string[];
   backfillPages?: number;
   registry?: GithubActivityPublisher;
   repoConcurrency?: number;
@@ -208,8 +210,8 @@ export class GithubPoller {
   private repoConcurrency: number;
   private etags = new Map<string, string>();
   private pausedUntil = 0;
-  /** Owners whose issues are ingested: the authenticated account and its organizations. Resolved once per process. */
-  private issueOwners: Set<string> | null = null;
+  /** Owners whose repositories are ingested; null means no ownership filter. */
+  private owners: Set<string> | null;
 
   constructor(db: Database, token: string, options: GithubPollerOptions = {}) {
     this.db = db;
@@ -220,6 +222,7 @@ export class GithubPoller {
     this.logger = options.logger ?? NOOP_GITHUB_ADAPTER_LOGGER;
     this.protocolVersion = options.protocolVersion ?? DEFAULT_PROTOCOL_VERSION;
     this.repoConcurrency = Math.max(1, Math.min(options.repoConcurrency ?? 4, 8));
+    this.owners = options.owners?.length ? new Set(options.owners.map((o) => o.toLowerCase())) : null;
   }
 
   // ---------------------------------------------------------------------------
@@ -627,34 +630,21 @@ export class GithubPoller {
   }
 
   /**
-   * Ingestion is limited to repositories the operator owns - their account and their
-   * organizations. Third-party repositories used to enter through event history (a
-   * star, a fork, a comment elsewhere) and then had their pull requests, releases and
-   * issues polled: tens of thousands of rows of somebody else's data, and API budget
-   * spent for nothing. The identity is resolved once per process from GitHub itself,
-   * so it never drifts from a hand-kept list.
+   * Ingestion scope. `owners` comes from the host, which resolves the authenticated
+   * account and its organizations before it starts the poller; the poller itself makes
+   * no identity call inside the poll path. Left unset (tests, embedders that manage
+   * scope themselves) nothing is filtered, which is the historical behaviour.
    */
-  private async ownsRepo(repo: string): Promise<boolean> {
-    if (!this.issueOwners) {
-      const owners = new Set<string>();
-      const user = await this.apiGet<{ login?: string }>("/user", "global", "user");
-      if (user?.login) owners.add(user.login.toLowerCase());
-      const orgs = await this.apiGet<Array<{ login?: string }>>("/user/orgs", "global", "user:orgs");
-      for (const org of orgs ?? []) if (org.login) owners.add(org.login.toLowerCase());
-      // An unreachable identity must not silently widen the scope: with no owners
-      // resolved, nothing is ingested and the next cycle retries.
-      this.issueOwners = owners;
-      this.emitLog("poller", "ingest.owner_scope", "info", undefined, { owners: [...owners] });
-    }
-    const owner = repo.split("/")[0]?.toLowerCase() ?? "";
-    return this.issueOwners.has(owner);
+  private ownsRepo(repo: string): boolean {
+    if (!this.owners) return true;
+    return this.owners.has(repo.split("/")[0]?.toLowerCase() ?? "");
   }
 
   private async pollRepo(repo: GithubRepo): Promise<void> {
     const state = getRepoPollState(this.db, repo.full_name);
     if (!this.isRepoDue(repo, state)) return;
 
-    const issueResult = (await this.ownsRepo(repo.full_name))
+    const issueResult = this.ownsRepo(repo.full_name)
       ? await this.pollIssues(repo.full_name, state.last_issue_updated_at, state.issue_etag)
       : { watermark: state.last_issue_updated_at, etag: state.issue_etag, successful: true };
     const prResult = await this.pollPullRequests(repo.full_name, state.last_pr_updated_at, state.pr_etag);
@@ -703,14 +693,25 @@ export class GithubPoller {
   // Core ingestion
   // ---------------------------------------------------------------------------
 
+  /**
+   * The user event feed carries activity in other people's repositories (a star, a
+   * fork, a comment). Those must not enrol a repository here, so the feed is filtered
+   * before ingestion. `ingestEvents` itself stays unfiltered: it stores what it is
+   * given, which is what the host contract tests pin.
+   */
+  private ownedEvents(rawEvents: RawGithubEvent[]): RawGithubEvent[] {
+    const kept = rawEvents.filter((raw) => this.ownsRepo(raw.repo?.name ?? ""));
+    const skipped = rawEvents.length - kept.length;
+    if (skipped > 0) this.emitLog("poller", "ingest.foreign_skipped", "debug", undefined, { skipped });
+    return kept;
+  }
+
   async ingestEvents(rawEvents: RawGithubEvent[]): Promise<void> {
     let newEvents = 0;
     let newCommits = 0;
 
     for (const raw of rawEvents) {
       const event = transformEvent(raw);
-      // Activity elsewhere (a star, a fork, a comment) must not enrol that repository.
-      if (!(await this.ownsRepo(event.repo))) continue;
       ensureRepo(this.db, event.repo);
       const isNew = insertEvent(this.db, event);
       let eventToPublish = event;
@@ -861,7 +862,7 @@ export class GithubPoller {
     }
 
     const events = (await response.json()) as RawGithubEvent[];
-    await this.ingestEvents(events);
+    await this.ingestEvents(this.ownedEvents(events));
   }
 
   async backfill(username: string): Promise<void> {
@@ -886,7 +887,7 @@ export class GithubPoller {
       if (events.length === 0) break;
 
       this.emitLog("poller", "backfill.page", "info", undefined, { username, page, count: events.length });
-      await this.ingestEvents(events);
+      await this.ingestEvents(this.ownedEvents(events));
     }
 
     // After events are ingested, repos are known — backfill PRs and issues

@@ -62,7 +62,13 @@ export function createGithubRuntime(options: GithubRuntimeOptions) {
       if (stopped) return;
       await discover(options.db);
       if (stopped) return;
+      // Ingestion scope is decided here, where the identity already is: the
+      // authenticated account plus its organizations. A failed organization read
+      // narrows to the account alone - it never widens to every repository the
+      // event feed happens to mention.
+      const owners = [username, ...(await readOrgLogins(token, options.logger))];
       poller = pollerFactory(options.db, token, {
+        owners,
         ...options.pollerOptions,
         registry: options.pollerOptions?.registry ?? options.publisher,
         logger: options.pollerOptions?.logger ?? { emit: emitGithubLog },
@@ -74,7 +80,7 @@ export function createGithubRuntime(options: GithubRuntimeOptions) {
       }
       poller.start(username);
       currentStatus = { state: "running" };
-      options.logger.info("github.poller_started", { username, startupBackfill: env.GITBOARD_STARTUP_BACKFILL === "1" });
+      options.logger.info("github.poller_started", { username, owners, startupBackfill: env.GITBOARD_STARTUP_BACKFILL === "1" });
     } catch (error) {
       if (stopped) return;
       const reason = errorMessage(error);
@@ -100,6 +106,22 @@ export function createGithubRuntime(options: GithubRuntimeOptions) {
   }
 
   return { start, stop, status: () => currentStatus };
+}
+
+async function readOrgLogins(token: string, logger: { warn: (event: string, data?: Record<string, unknown>) => void }): Promise<string[]> {
+  try {
+    const response = await fetch("https://api.github.com/user/orgs?per_page=100", {
+      headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json", "User-Agent": "xtrm-console" },
+    });
+    if (!response.ok) {
+      logger.warn("github.orgs_unavailable", { status: response.status });
+      return [];
+    }
+    return ((await response.json()) as Array<{ login?: string }>).map((o) => o.login).filter((l): l is string => !!l);
+  } catch (error) {
+    logger.warn("github.orgs_unavailable", { error: errorMessage(error) });
+    return [];
+  }
 }
 
 function errorMessage(error: unknown): string {
