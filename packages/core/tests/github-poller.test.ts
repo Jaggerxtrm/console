@@ -255,8 +255,8 @@ describe("CONSOLE-1: issue polling with no stored watermark", () => {
   });
 });
 
-describe("issue ingestion scope: owned repositories only", () => {
-  type OwnerApi = GithubPoller & { ownsIssues(repo: string): Promise<boolean> };
+describe("ingestion scope: owned repositories only", () => {
+  type OwnerApi = GithubPoller & { ownsRepo(repo: string): Promise<boolean> };
 
   const stubIdentity = (login: string, orgs: string[]) =>
     vi.stubGlobal(
@@ -271,11 +271,11 @@ describe("issue ingestion scope: owned repositories only", () => {
     stubIdentity("Jaggerxtrm", ["xtrm-dev", "mercuryintelligence"]);
     const poller = new GithubPoller({} as never, "test-token", { logger: new CollectingLogger() }) as OwnerApi;
     try {
-      expect(await poller.ownsIssues("Jaggerxtrm/console")).toBe(true);
+      expect(await poller.ownsRepo("Jaggerxtrm/console")).toBe(true);
       // Owner comparison is case-insensitive: GitHub preserves case, our rows do not.
-      expect(await poller.ownsIssues("jaggerxtrm/console")).toBe(true);
-      expect(await poller.ownsIssues("xtrm-dev/xtrm")).toBe(true);
-      expect(await poller.ownsIssues("ConardLi/easy-dataset")).toBe(false);
+      expect(await poller.ownsRepo("jaggerxtrm/console")).toBe(true);
+      expect(await poller.ownsRepo("xtrm-dev/xtrm")).toBe(true);
+      expect(await poller.ownsRepo("ConardLi/easy-dataset")).toBe(false);
     } finally {
       vi.unstubAllGlobals();
     }
@@ -285,7 +285,36 @@ describe("issue ingestion scope: owned repositories only", () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 500 })));
     const poller = new GithubPoller({} as never, "test-token", { logger: new CollectingLogger() }) as OwnerApi;
     try {
-      expect(await poller.ownsIssues("Jaggerxtrm/console")).toBe(false);
+      expect(await poller.ownsRepo("Jaggerxtrm/console")).toBe(false);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
+describe("event ingestion does not enrol third-party repositories", () => {
+  it("skips an event from a repository the operator does not own", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) =>
+        new Response(JSON.stringify(url.endsWith("/user") ? { login: "Jaggerxtrm" } : [{ login: "xtrm-dev" }]), { status: 200, headers: { "content-type": "application/json" } }),
+      ),
+    );
+    const seen: string[] = [];
+    const db = {
+      prepare: () => ({ run: () => undefined, get: () => undefined, all: () => [] }),
+      query: () => ({ run: () => undefined, get: () => undefined, all: () => [] }),
+    };
+    const poller = new GithubPoller(db as never, "test-token", {
+      logger: { emit: (e) => seen.push(e.event) },
+      registry: { publish: (_c, event) => seen.push(String(event)) },
+    });
+    try {
+      await poller.ingestEvents([
+        { ...rawPushEvent, id: "foreign-1", repo: { name: "ConardLi/easy-dataset" } },
+      ]);
+      // Nothing about a foreign repository is published or stored.
+      expect(seen.some((e) => e.startsWith("github:"))).toBe(false);
     } finally {
       vi.unstubAllGlobals();
     }

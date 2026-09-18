@@ -627,13 +627,14 @@ export class GithubPoller {
   }
 
   /**
-   * Issue ingestion is limited to repositories the operator owns - their account and
-   * their organizations. Third-party repositories reach this database through event
-   * history, and their issue trackers are somebody else's data: ingesting them grew
-   * the store by tens of thousands of rows and spent API budget for nothing.
-   * Pull requests, releases and events keep their existing scope.
+   * Ingestion is limited to repositories the operator owns - their account and their
+   * organizations. Third-party repositories used to enter through event history (a
+   * star, a fork, a comment elsewhere) and then had their pull requests, releases and
+   * issues polled: tens of thousands of rows of somebody else's data, and API budget
+   * spent for nothing. The identity is resolved once per process from GitHub itself,
+   * so it never drifts from a hand-kept list.
    */
-  private async ownsIssues(repo: string): Promise<boolean> {
+  private async ownsRepo(repo: string): Promise<boolean> {
     if (!this.issueOwners) {
       const owners = new Set<string>();
       const user = await this.apiGet<{ login?: string }>("/user", "global", "user");
@@ -643,7 +644,7 @@ export class GithubPoller {
       // An unreachable identity must not silently widen the scope: with no owners
       // resolved, nothing is ingested and the next cycle retries.
       this.issueOwners = owners;
-      this.emitLog("poller", "issues.owner_scope", "info", undefined, { owners: [...owners] });
+      this.emitLog("poller", "ingest.owner_scope", "info", undefined, { owners: [...owners] });
     }
     const owner = repo.split("/")[0]?.toLowerCase() ?? "";
     return this.issueOwners.has(owner);
@@ -653,7 +654,7 @@ export class GithubPoller {
     const state = getRepoPollState(this.db, repo.full_name);
     if (!this.isRepoDue(repo, state)) return;
 
-    const issueResult = (await this.ownsIssues(repo.full_name))
+    const issueResult = (await this.ownsRepo(repo.full_name))
       ? await this.pollIssues(repo.full_name, state.last_issue_updated_at, state.issue_etag)
       : { watermark: state.last_issue_updated_at, etag: state.issue_etag, successful: true };
     const prResult = await this.pollPullRequests(repo.full_name, state.last_pr_updated_at, state.pr_etag);
@@ -708,6 +709,8 @@ export class GithubPoller {
 
     for (const raw of rawEvents) {
       const event = transformEvent(raw);
+      // Activity elsewhere (a star, a fork, a comment) must not enrol that repository.
+      if (!(await this.ownsRepo(event.repo))) continue;
       ensureRepo(this.db, event.repo);
       const isNew = insertEvent(this.db, event);
       let eventToPublish = event;
