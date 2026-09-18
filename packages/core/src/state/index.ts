@@ -3,6 +3,7 @@ export * from "./beads-reader.ts";
 export * from "./bridge-retirement.ts";
 export * from "./dolt-client.ts";
 export * from "./feed-read-model.ts";
+export * from "./forensic-retention.ts";
 export * from "./paths.ts";
 export * from "./read-models.ts";
 export * from "./read-models/index.ts";

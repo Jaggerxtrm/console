@@ -10,8 +10,10 @@ import { CONSOLE_API_ROUTE_PREFIXES, createConsoleApiRouter } from "./routes/ind
 import { createConsoleRealtime } from "./ws/realtime.ts";
 import { createConsoleTerminal } from "./terminal/runtime.ts";
 import { createConsoleWebSocketBoundary } from "./ws/boundary.ts";
+import { THINKING_RETENTION_DAYS, pruneForensicEvents } from "../../../../packages/core/src/state/forensic-retention.ts";
 
 const logger = createHostLogger();
+let retentionTimer: ReturnType<typeof setInterval> | null = null;
 const dataDir = resolveDataDir();
 const database = createDatabaseBootstrap(dataDir, createXtrmDatabase);
 const port = Number(process.env.PORT ?? 3000);
@@ -51,10 +53,23 @@ const host = createConsoleHost({
     handleWebSocketUpgrade: websocketBoundary.handleUpgrade,
     websocket: websocketBoundary.websocket,
     startBackground: async () => {
+      // Forensic reasoning text has a retention window; without one the store grew to
+      // 18.5 GB (CONSOLE-1). Sweep at start, then daily while the host runs.
+      const sweep = () => {
+        try {
+          const result = pruneForensicEvents(databaseHandle.db);
+          if (result.thinkingDeleted > 0) logger.info("forensic.retention_swept", { ...result, retentionDays: THINKING_RETENTION_DAYS });
+        } catch (error) {
+          logger.warn("forensic.retention_failed", { error: error instanceof Error ? error.message : String(error) });
+        }
+      };
+      sweep();
+      retentionTimer = setInterval(sweep, 24 * 60 * 60 * 1000);
       await consoleRuntime.start();
       await githubRuntime.start();
     },
     stopBackground: async () => {
+      if (retentionTimer) clearInterval(retentionTimer);
       const errors: unknown[] = [];
       try {
         await githubRuntime.stop();

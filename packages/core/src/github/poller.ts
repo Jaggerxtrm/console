@@ -48,6 +48,8 @@ export interface RawGithubEvent {
 
 export interface GithubPollerOptions {
   intervalMs?: number;
+  /** Repository owners to ingest (account + organizations). Unset means no filter. */
+  owners?: string[];
   backfillPages?: number;
   registry?: GithubActivityPublisher;
   repoConcurrency?: number;
@@ -208,6 +210,8 @@ export class GithubPoller {
   private repoConcurrency: number;
   private etags = new Map<string, string>();
   private pausedUntil = 0;
+  /** Owners whose repositories are ingested; null means no ownership filter. */
+  private owners: Set<string> | null;
 
   constructor(db: Database, token: string, options: GithubPollerOptions = {}) {
     this.db = db;
@@ -218,6 +222,7 @@ export class GithubPoller {
     this.logger = options.logger ?? NOOP_GITHUB_ADAPTER_LOGGER;
     this.protocolVersion = options.protocolVersion ?? DEFAULT_PROTOCOL_VERSION;
     this.repoConcurrency = Math.max(1, Math.min(options.repoConcurrency ?? 4, 8));
+    this.owners = options.owners?.length ? new Set(options.owners.map((o) => o.toLowerCase())) : null;
   }
 
   // ---------------------------------------------------------------------------
@@ -453,7 +458,13 @@ export class GithubPoller {
     const MAX_PAGES = 20;
     for (let page = 1; page <= MAX_PAGES; page++) {
       const endpoint = page === 1 ? "issues" : `issues:page:${page}`;
-      const result = await this.apiGetWithMeta<IssueResponse[]>(`/repos/${repo}/issues?state=all&since=${encodeURIComponent(watermark ?? "1970-01-01T00:00:00Z")}&per_page=100&page=${page}`, repo, endpoint, page === 1 ? persistedEtag : undefined);
+      // No watermark means a full read, so `since` is omitted entirely. GitHub answers
+      // `since=1970-01-01T00:00:00Z` - the old sentinel - with an empty array, which
+      // silently ingested nothing and then persisted that empty response's ETag
+      // (CONSOLE-1). A full read also ignores the persisted ETag, so a poisoned one
+      // cannot 304 the first corrected poll.
+      const query = watermark ? `state=all&since=${encodeURIComponent(watermark)}&per_page=100&page=${page}` : `state=all&per_page=100&page=${page}`;
+      const result = await this.apiGetWithMeta<IssueResponse[]>(`/repos/${repo}/issues?${query}`, repo, endpoint, page === 1 && watermark ? persistedEtag : undefined);
       if (page === 1) latestEtag = result.etag;
       if (result.status === "not_modified") return { watermark: latest, etag: latestEtag, successful: true };
       const items = result.data;
@@ -618,11 +629,24 @@ export class GithubPoller {
     this.db.prepare("UPDATE github_repos SET last_polled_at = $last_polled_at WHERE full_name = $repo").run({ $repo: repo, $last_polled_at: polledAt });
   }
 
+  /**
+   * Ingestion scope. `owners` comes from the host, which resolves the authenticated
+   * account and its organizations before it starts the poller; the poller itself makes
+   * no identity call inside the poll path. Left unset (tests, embedders that manage
+   * scope themselves) nothing is filtered, which is the historical behaviour.
+   */
+  private ownsRepo(repo: string): boolean {
+    if (!this.owners) return true;
+    return this.owners.has(repo.split("/")[0]?.toLowerCase() ?? "");
+  }
+
   private async pollRepo(repo: GithubRepo): Promise<void> {
     const state = getRepoPollState(this.db, repo.full_name);
     if (!this.isRepoDue(repo, state)) return;
 
-    const issueResult = await this.pollIssues(repo.full_name, state.last_issue_updated_at, state.issue_etag);
+    const issueResult = this.ownsRepo(repo.full_name)
+      ? await this.pollIssues(repo.full_name, state.last_issue_updated_at, state.issue_etag)
+      : { watermark: state.last_issue_updated_at, etag: state.issue_etag, successful: true };
     const prResult = await this.pollPullRequests(repo.full_name, state.last_pr_updated_at, state.pr_etag);
     const releaseResult = await this.pollReleases(repo.full_name, state.last_release_published_at, state.release_etag);
     const lastIssueUpdatedAt = issueResult.watermark ?? state.last_issue_updated_at;
@@ -668,6 +692,19 @@ export class GithubPoller {
   // ---------------------------------------------------------------------------
   // Core ingestion
   // ---------------------------------------------------------------------------
+
+  /**
+   * The user event feed carries activity in other people's repositories (a star, a
+   * fork, a comment). Those must not enrol a repository here, so the feed is filtered
+   * before ingestion. `ingestEvents` itself stays unfiltered: it stores what it is
+   * given, which is what the host contract tests pin.
+   */
+  private ownedEvents(rawEvents: RawGithubEvent[]): RawGithubEvent[] {
+    const kept = rawEvents.filter((raw) => this.ownsRepo(raw.repo?.name ?? ""));
+    const skipped = rawEvents.length - kept.length;
+    if (skipped > 0) this.emitLog("poller", "ingest.foreign_skipped", "debug", undefined, { skipped });
+    return kept;
+  }
 
   async ingestEvents(rawEvents: RawGithubEvent[]): Promise<void> {
     let newEvents = 0;
@@ -825,7 +862,7 @@ export class GithubPoller {
     }
 
     const events = (await response.json()) as RawGithubEvent[];
-    await this.ingestEvents(events);
+    await this.ingestEvents(this.ownedEvents(events));
   }
 
   async backfill(username: string): Promise<void> {
@@ -850,7 +887,7 @@ export class GithubPoller {
       if (events.length === 0) break;
 
       this.emitLog("poller", "backfill.page", "info", undefined, { username, page, count: events.length });
-      await this.ingestEvents(events);
+      await this.ingestEvents(this.ownedEvents(events));
     }
 
     // After events are ingested, repos are known — backfill PRs and issues

@@ -85,13 +85,19 @@ export class Materializer {
     try {
       adapter.write(this.db, next);
       this.upsertMaterializationState(sourceKey, JSON.stringify(next.cursor));
-      this.writeMaterializerForensicEvent(sourceKey, "materializer.run.completed", "info", {
+      const written = {
         rows_written: next.rows.length,
         dependencies_written: next.dependencies?.length ?? 0,
         forensic_events_written: next.forensicEvents?.length ?? 0,
         evidence_refs_written: next.evidenceRefs?.length ?? 0,
-        cursor: next.cursor,
-      }, startedAt);
+      };
+      // A run that wrote nothing is the normal idle case and says nothing a reader
+      // can use; recording it produced 2.17M of the 2.84M materializer rows in the
+      // store. The cursor and materialization_state still carry that the run
+      // happened, so liveness is not lost. Failures are always recorded.
+      if (Object.values(written).some((n) => n > 0)) {
+        this.writeMaterializerForensicEvent(sourceKey, "materializer.run.completed", "info", { ...written, cursor: next.cursor }, startedAt);
+      }
       this.hooks.afterWritesBeforeCursorAdvance?.(sourceKey);
       this.markSuccess(sourceKey);
       this.db.exec("COMMIT");

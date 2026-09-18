@@ -199,3 +199,85 @@ describe("core github readme helpers", () => {
     expect(() => clearReadmeCache()).not.toThrow();
   });
 });
+
+describe("CONSOLE-1: issue polling with no stored watermark", () => {
+  type IssuePollApi = GithubPoller & {
+    pollIssues(repo: string, watermark: string | null, persistedEtag?: string | null): Promise<{ watermark: string | null; etag: string | null; successful: boolean }>;
+  };
+
+  const collectUrls = () => {
+    const urls: string[] = [];
+    const headers: Array<string | null> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: { headers?: Record<string, string> }) => {
+        urls.push(url);
+        headers.push(init?.headers?.["If-None-Match"] ?? null);
+        return new Response("[]", { status: 200, headers: { ETag: '"empty"', "content-type": "application/json" } });
+      }),
+    );
+    return { urls, headers };
+  };
+
+  it("omits `since` entirely for a first read: the epoch sentinel makes GitHub return an empty array", async () => {
+    const { urls } = collectUrls();
+    const poller = new GithubPoller({} as never, "test-token", { logger: new CollectingLogger() }) as IssuePollApi;
+    try {
+      await poller.pollIssues("owner/repo", null);
+      expect(urls[0]).toBe("https://api.github.com/repos/owner/repo/issues?state=all&per_page=100&page=1");
+      expect(urls[0]).not.toContain("since=");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("ignores a persisted ETag on a first read, so an ETag stored from an empty response cannot 304 it", async () => {
+    const { headers } = collectUrls();
+    const poller = new GithubPoller({} as never, "test-token", { logger: new CollectingLogger() }) as IssuePollApi;
+    try {
+      await poller.pollIssues("owner/repo", null, '"poisoned-etag"');
+      expect(headers[0]).toBeNull();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("sends the stored watermark and ETag once one exists", async () => {
+    const { urls, headers } = collectUrls();
+    const poller = new GithubPoller({} as never, "test-token", { logger: new CollectingLogger() }) as IssuePollApi;
+    try {
+      await poller.pollIssues("owner/repo", "2026-09-01T00:00:00Z", '"live-etag"');
+      expect(urls[0]).toContain("since=2026-09-01T00%3A00%3A00Z");
+      expect(headers[0]).toBe('"live-etag"');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
+describe("ingestion scope: owned repositories only", () => {
+  type ScopeApi = GithubPoller & { ownsRepo(repo: string): boolean; ownedEvents(raw: RawGithubEvent[]): RawGithubEvent[] };
+  const scoped = () =>
+    new GithubPoller({} as never, "test-token", { owners: ["Jaggerxtrm", "xtrm-dev", "mercuryintelligence"], logger: new CollectingLogger() }) as ScopeApi;
+
+  it("accepts the configured owners, case-insensitively, and rejects everyone else", () => {
+    const poller = scoped();
+    expect(poller.ownsRepo("Jaggerxtrm/console")).toBe(true);
+    expect(poller.ownsRepo("jaggerxtrm/console")).toBe(true);
+    expect(poller.ownsRepo("xtrm-dev/xtrm")).toBe(true);
+    expect(poller.ownsRepo("ConardLi/easy-dataset")).toBe(false);
+  });
+
+  it("drops feed events from repositories outside the scope", () => {
+    const kept = scoped().ownedEvents([
+      { ...rawPushEvent, id: "foreign-1", repo: { name: "ConardLi/easy-dataset" } },
+      { ...rawPushEvent, id: "ours-1", repo: { name: "xtrm-dev/xtrm" } },
+    ]);
+    expect(kept.map((e) => e.id)).toEqual(["ours-1"]);
+  });
+
+  it("without configured owners nothing is filtered, which is what embedders and the host contract tests rely on", () => {
+    const poller = new GithubPoller({} as never, "test-token", { logger: new CollectingLogger() }) as ScopeApi;
+    expect(poller.ownsRepo("ConardLi/easy-dataset")).toBe(true);
+  });
+});
