@@ -453,7 +453,13 @@ export class GithubPoller {
     const MAX_PAGES = 20;
     for (let page = 1; page <= MAX_PAGES; page++) {
       const endpoint = page === 1 ? "issues" : `issues:page:${page}`;
-      const result = await this.apiGetWithMeta<IssueResponse[]>(`/repos/${repo}/issues?state=all&since=${encodeURIComponent(watermark ?? "1970-01-01T00:00:00Z")}&per_page=100&page=${page}`, repo, endpoint, page === 1 ? persistedEtag : undefined);
+      // No watermark means a full read, so `since` is omitted entirely. GitHub answers
+      // `since=1970-01-01T00:00:00Z` - the old sentinel - with an empty array, which
+      // silently ingested nothing and then persisted that empty response's ETag
+      // (CONSOLE-1). A full read also ignores the persisted ETag, so a poisoned one
+      // cannot 304 the first corrected poll.
+      const query = watermark ? `state=all&since=${encodeURIComponent(watermark)}&per_page=100&page=${page}` : `state=all&per_page=100&page=${page}`;
+      const result = await this.apiGetWithMeta<IssueResponse[]>(`/repos/${repo}/issues?${query}`, repo, endpoint, page === 1 && watermark ? persistedEtag : undefined);
       if (page === 1) latestEtag = result.etag;
       if (result.status === "not_modified") return { watermark: latest, etag: latestEtag, successful: true };
       const items = result.data;
