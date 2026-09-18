@@ -8,6 +8,11 @@
 // Only reasoning text is aged out here. Everything else - tool calls, models,
 // jobs, evidence - stays, because it is what provenance reads. A row still
 // referenced by `xtrm_evidence_refs` is never deleted, whatever its age.
+//
+// The reference is `xtrm_evidence_refs.event_source_id` -> `source_event_id`
+// (a string such as `forensic:53823`), NOT the integer primary key `id`. An
+// earlier version of this guard compared against `id`; integer-to-string
+// comparison is never equal in SQLite, so the guard silently protected nothing.
 
 import type { Database } from "bun:sqlite";
 
@@ -38,7 +43,7 @@ export function pruneForensicEvents(db: Database, options: ForensicRetentionOpti
       `DELETE FROM xtrm_forensic_events
        WHERE event_name = 'turn.thinking'
          AND t_unix_ms < ?
-         AND id NOT IN (SELECT event_source_id FROM xtrm_evidence_refs WHERE event_source_id IS NOT NULL)`,
+         AND source_event_id NOT IN (SELECT event_source_id FROM xtrm_evidence_refs WHERE event_source_id IS NOT NULL)`,
     )
     .run(cutoffMs);
 
@@ -52,7 +57,7 @@ export function pruneForensicEvents(db: Database, options: ForensicRetentionOpti
            AND body_json LIKE '%"dependencies_written":0%'
            AND body_json LIKE '%"forensic_events_written":0%'
            AND body_json LIKE '%"evidence_refs_written":0%'
-           AND id NOT IN (SELECT event_source_id FROM xtrm_evidence_refs WHERE event_source_id IS NOT NULL)`,
+           AND source_event_id NOT IN (SELECT event_source_id FROM xtrm_evidence_refs WHERE event_source_id IS NOT NULL)`,
       )
       .run() as { changes: number };
   }

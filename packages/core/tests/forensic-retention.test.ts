@@ -8,10 +8,13 @@ let db: Database;
 
 function seed(): Database {
   const d = new Database(":memory:");
-  d.exec(`CREATE TABLE xtrm_forensic_events (id TEXT PRIMARY KEY, event_family TEXT, event_name TEXT, t_unix_ms INTEGER, body_json TEXT);
+  // Mirrors the real schema: an INTEGER primary key plus the string `source_event_id`
+  // that evidence actually points at. The first version of this fixture used a text
+  // `id` and hid a guard that compared the wrong column (CONSOLE-1).
+  d.exec(`CREATE TABLE xtrm_forensic_events (id INTEGER PRIMARY KEY AUTOINCREMENT, source_event_id TEXT, event_family TEXT, event_name TEXT, t_unix_ms INTEGER, body_json TEXT);
           CREATE TABLE xtrm_evidence_refs (id INTEGER PRIMARY KEY, event_source_id TEXT);`);
-  const add = (id: string, name: string, ageDays: number, body = "{}") =>
-    d.prepare("INSERT INTO xtrm_forensic_events VALUES (?,?,?,?,?)").run(id, name.split(".")[0], name, NOW - ageDays * DAY, body);
+  const add = (sourceEventId: string, name: string, ageDays: number, body = "{}") =>
+    d.prepare("INSERT INTO xtrm_forensic_events (source_event_id, event_family, event_name, t_unix_ms, body_json) VALUES (?,?,?,?,?)").run(sourceEventId, name.split(".")[0], name, NOW - ageDays * DAY, body);
   add("old-thinking", "turn.thinking", 21);
   add("fresh-thinking", "turn.thinking", 19);
   add("cited-thinking", "turn.thinking", 90);
@@ -23,7 +26,7 @@ function seed(): Database {
   return d;
 }
 
-const ids = () => (db.query("select id from xtrm_forensic_events order by id").all() as Array<{ id: string }>).map((r) => r.id);
+const ids = () => (db.query("select source_event_id from xtrm_forensic_events order by source_event_id").all() as Array<{ source_event_id: string }>).map((r) => r.source_event_id);
 
 afterEach(() => {
   try {
