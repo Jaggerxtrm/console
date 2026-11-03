@@ -94,6 +94,17 @@ export function isAllowedMarkdownPath(path: string): boolean {
   return path === "README.md" || path === "CHANGELOG.md";
 }
 
+/**
+ * Repository assets the console serves to the browser: SVG diagrams embedded in PR and issue bodies
+ * (pr-lens writes them to a `pr-lens` branch and links `github.com/<repo>/raw/<ref>/<path>`).
+ * Narrow on purpose: SVG only, no traversal, no absolute paths.
+ */
+export function isAllowedAssetPath(path: string): boolean {
+  if (!path.endsWith(".svg")) return false;
+  if (path.startsWith("/") || path.includes("..") || path.includes("\\")) return false;
+  return /^[\w./-]+\.svg$/.test(path);
+}
+
 export function isAllowedReportFilename(filename: string): boolean {
   return /^[\w.-]+\.md$/.test(filename);
 }
@@ -105,6 +116,11 @@ export function isKnownGithubRepo(db: Database, owner: string, name: string): bo
 
 export async function getMarkdownFile(owner: string, name: string, path: string): Promise<GithubRepoFile> {
   return await fetchRepoFile(owner, name, path);
+}
+
+/** A repository asset at an explicit ref, because diagram branches are not the default branch. */
+export async function getRepoAsset(owner: string, name: string, path: string, ref?: string): Promise<GithubRepoFile | null> {
+  return await fetchRepoFile(owner, name, path, ref);
 }
 
 export async function getReportFile(owner: string, name: string, filename: string): Promise<GithubRepoFile> {
