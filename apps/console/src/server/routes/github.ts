@@ -21,10 +21,12 @@ import {
   getReleases,
   getRepoStats,
   getRepos,
+  getRepoAsset,
   getReportFile,
   getReportSummaries,
   getSummary,
   GithubApiStatusError,
+  isAllowedAssetPath,
   isAllowedMarkdownPath,
   isAllowedReportFilename,
   isKnownGithubRepo,
@@ -42,6 +44,9 @@ export interface GithubRouterOptions {
   /** GitHub App user-auth service; defaults to one built from process.env. */
   readonly auth?: GithubAuthService;
 }
+
+/** A diagram is a few hundred KB at most; anything larger is not a diagram. */
+const MAX_ASSET_BYTES = 1_000_000;
 
 /** HTTP routes do not publish realtime events; the poller owns that responsibility. */
 export function createGithubRouter(
@@ -288,6 +293,34 @@ export function createGithubRouter(
     try {
       const file = await getMarkdownFile(owner, name, path);
       return c.json(file ?? { content: null, sha: null, last_modified: null });
+    } catch (error) {
+      return c.json({ error: error instanceof Error ? error.message : "fetch failed" }, 502);
+    }
+  });
+
+  // SVG diagrams embedded in PR and issue bodies. The browser cannot fetch them from GitHub:
+  // github.com sets its session cookies SameSite=Lax, so a cross-site <img> request arrives
+  // unauthenticated and a private repository answers 404. Serve the bytes with the server token,
+  // from the ref the body names (diagram branches are not the default branch).
+  app.get("/repo/:owner/:name/raw-svg", async (c) => {
+    const owner = c.req.param("owner");
+    const name = c.req.param("name");
+    const path = c.req.query("path");
+    const ref = c.req.query("ref") || undefined;
+    if (!path || !isAllowedAssetPath(path)) return c.json({ error: "invalid path" }, 400);
+    if (!isKnownGithubRepo(db, owner, name)) return c.json({ error: "not found" }, 404);
+    try {
+      const file = await getRepoAsset(owner, name, path, ref);
+      if (!file) return c.json({ error: "not found" }, 404);
+      if (file.content.length > MAX_ASSET_BYTES) return c.json({ error: "asset too large" }, 413);
+      return c.body(file.content, 200, {
+        "content-type": "image/svg+xml; charset=utf-8",
+        "cache-control": "private, max-age=300",
+        "x-content-type-options": "nosniff",
+        // An SVG is an active document when navigated to directly.
+        "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'",
+        etag: `"${file.sha}"`,
+      });
     } catch (error) {
       return c.json({ error: error instanceof Error ? error.message : "fetch failed" }, 502);
     }
