@@ -4,6 +4,7 @@
 
 import { create } from "zustand";
 import { logClientEvent } from "../lib/client-log.ts";
+import type { RuntimeInspectorSnapshot } from "../../types/runtime-observability.ts";
 import type {
   DrawerTab,
   RepoNode,
@@ -73,13 +74,13 @@ export interface ShellState {
   drawerHeight: number;
   drawerTab: DrawerTab;
   drawerSpecialistsScope: SpecialistsScope;
-  sidebar: { open: boolean; beadId: string | null; jobId: string | null; width: number };
+  sidebar: { open: boolean; beadId: string | null; jobId: string | null; runtime: RuntimeInspectorSnapshot | null; width: number };
   terminalSessionId: string | null;
   terminalReattachToken: string | null;
   terminalOutput: string[];
 
   setRepos: (repos: RepoNode[]) => void;
-  setSurface: (surface: Surface) => void;       // switching surface resets tab to default
+  setSurface: (surface: Surface) => void;
   setTab: (tab: TabId) => void;
   setRepo: (repo: string | null) => void;
   toggleSidebar: () => void;
@@ -89,6 +90,7 @@ export interface ShellState {
   setDrawerTab: (tab: DrawerTab) => void;
   setDrawerSpecialistsScope: (scope: SpecialistsScope) => void;
   openSidebar: (target: { beadId: string; jobId?: string } | null) => void;
+  openRuntimeSidebar: (snapshot: RuntimeInspectorSnapshot) => void;
   closeSidebar: (reason?: "escape" | "x_button" | "click_out" | "store_clear") => void;
   setSidebarWidth: (width: number) => void;
   setTerminalSessionId: (sessionId: string | null) => void;
@@ -106,7 +108,7 @@ export const useShellStore = create<ShellState>((set) => ({
   drawerHeight: initialDrawerHeight,
   drawerTab: initialDrawerTab,
   drawerSpecialistsScope: initialDrawerSpecialistsScope,
-  sidebar: { ...initialSidebarState, width: initialSidebarWidth },
+  sidebar: { ...initialSidebarState, runtime: null, width: initialSidebarWidth },
   terminalSessionId: initialTerminalSessionId,
   terminalReattachToken: initialTerminalReattachToken,
   terminalOutput: initialTerminalOutput,
@@ -185,11 +187,12 @@ export const useShellStore = create<ShellState>((set) => ({
   openSidebar: (target) =>
     set((state) => {
       const next = target
-        ? { open: true, beadId: target.beadId, jobId: target.jobId ?? null, width: state.sidebar.width }
-        : { open: false, beadId: state.sidebar.beadId, jobId: state.sidebar.jobId, width: state.sidebar.width };
+        ? { open: true, beadId: target.beadId, jobId: target.jobId ?? null, runtime: null, width: state.sidebar.width }
+        : { ...state.sidebar, open: false, runtime: null };
       if (target) {
-        const isSwap = state.sidebar.open && (state.sidebar.beadId !== next.beadId || state.sidebar.jobId !== next.jobId);
+        const isSwap = state.sidebar.open && (state.sidebar.beadId !== next.beadId || state.sidebar.jobId !== next.jobId || state.sidebar.runtime !== null);
         logClientEvent(isSwap ? "right_sidebar.target_swap" : "right_sidebar.opened", {
+          targetKind: "bead",
           beadId: next.beadId,
           jobId: next.jobId,
           width: next.width,
@@ -197,16 +200,40 @@ export const useShellStore = create<ShellState>((set) => ({
           prevJobId: isSwap ? state.sidebar.jobId : null,
         });
       } else if (state.sidebar.open) {
-        logClientEvent("right_sidebar.closed", { reason: "store_clear", beadId: state.sidebar.beadId, jobId: state.sidebar.jobId });
+        logClientEvent("right_sidebar.closed", { reason: "store_clear", targetKind: state.sidebar.runtime ? "runtime" : "bead", beadId: state.sidebar.beadId, jobId: state.sidebar.jobId });
       }
-      writeJSON(LS.sidebarState, { open: next.open, beadId: next.beadId, jobId: next.jobId });
+      writeJSON(LS.sidebarState, { open: next.open && next.runtime === null, beadId: next.beadId, jobId: next.jobId });
+      return { sidebar: next };
+    }),
+
+  openRuntimeSidebar: (snapshot) =>
+    set((state) => {
+      const next = { open: true, beadId: null, jobId: null, runtime: snapshot, width: state.sidebar.width };
+      const isSwap = state.sidebar.open && (state.sidebar.runtime?.entity.id !== snapshot.entity.id || state.sidebar.beadId !== null);
+      logClientEvent(isSwap ? "right_sidebar.target_swap" : "right_sidebar.opened", {
+        targetKind: "runtime",
+        entityId: snapshot.entity.id,
+        paneId: snapshot.entity.paneId ?? null,
+        sessionId: snapshot.entity.sessionId ?? null,
+        width: next.width,
+      });
+      // Runtime snapshots are live and intentionally not persisted across reloads.
+      writeJSON(LS.sidebarState, { open: false, beadId: null, jobId: null });
       return { sidebar: next };
     }),
 
   closeSidebar: (reason = "store_clear") =>
     set((state) => {
       const next = { ...state.sidebar, open: false };
-      if (state.sidebar.open) logClientEvent("right_sidebar.closed", { reason, beadId: state.sidebar.beadId, jobId: state.sidebar.jobId });
+      if (state.sidebar.open) {
+        logClientEvent("right_sidebar.closed", {
+          reason,
+          targetKind: state.sidebar.runtime ? "runtime" : "bead",
+          beadId: state.sidebar.beadId,
+          jobId: state.sidebar.jobId,
+          entityId: state.sidebar.runtime?.entity.id ?? null,
+        });
+      }
       writeJSON(LS.sidebarState, { open: false, beadId: next.beadId, jobId: next.jobId });
       return { sidebar: next };
     }),
@@ -221,16 +248,10 @@ export const useShellStore = create<ShellState>((set) => ({
       return { sidebar: { ...state.sidebar, width: next } };
     }),
 
-  setTerminalSessionId: (sessionId) =>    set(() => ({ terminalSessionId: sessionId })),
-
-  setTerminalReattachToken: (token) =>
-    set(() => ({ terminalReattachToken: token })),
-
-  appendTerminalOutput: (chunk) =>
-    set((state) => ({ terminalOutput: [...state.terminalOutput, chunk].slice(-2000) })),
-
-  resetTerminalOutput: () =>
-    set(() => ({ terminalOutput: [] })),
+  setTerminalSessionId: (sessionId) => set(() => ({ terminalSessionId: sessionId })),
+  setTerminalReattachToken: (token) => set(() => ({ terminalReattachToken: token })),
+  appendTerminalOutput: (chunk) => set((state) => ({ terminalOutput: [...state.terminalOutput, chunk].slice(-2000) })),
+  resetTerminalOutput: () => set(() => ({ terminalOutput: [] })),
 }));
 
 export const selectSelection = (s: ShellState) => s.selection;

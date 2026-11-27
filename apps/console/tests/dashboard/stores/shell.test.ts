@@ -66,7 +66,7 @@ describe("shell store drawer and sidebar persistence", () => {
     expect(useShellStore.getState().selection).toEqual({ surface: "console", tab: "feed", repo: "owner/with-beads" });
   });
 
-  it("persists sidebar state and width", async () => {
+  it("persists bead sidebar state and width", async () => {
     const { useShellStore } = await import("../../../src/dashboard/stores/shell.ts");
     useShellStore.getState().openSidebar({ beadId: "bead-1", jobId: "job-1" });
     useShellStore.getState().setSidebarWidth(640);
@@ -75,19 +75,44 @@ describe("shell store drawer and sidebar persistence", () => {
 
     vi.resetModules();
     const { useShellStore: rehydrated } = await import("../../../src/dashboard/stores/shell.ts");
-    expect(rehydrated.getState().sidebar).toEqual({ open: false, beadId: "bead-2", jobId: null, width: 640 });
+    expect(rehydrated.getState().sidebar).toEqual({ open: false, beadId: "bead-2", jobId: null, runtime: null, width: 640 });
   });
 
-  it("opens sidebar with target and swaps target in place", async () => {
+  it("opens bead sidebar with target and swaps target in place", async () => {
     const { useShellStore } = await import("../../../src/dashboard/stores/shell.ts");
     useShellStore.getState().openSidebar({ beadId: "bead-1", jobId: "job-1" });
-    expect(useShellStore.getState().sidebar).toEqual({ open: true, beadId: "bead-1", jobId: "job-1", width: 480 });
+    expect(useShellStore.getState().sidebar).toEqual({ open: true, beadId: "bead-1", jobId: "job-1", runtime: null, width: 480 });
 
     useShellStore.getState().openSidebar({ beadId: "bead-2" });
-    expect(useShellStore.getState().sidebar).toEqual({ open: true, beadId: "bead-2", jobId: null, width: 480 });
+    expect(useShellStore.getState().sidebar).toEqual({ open: true, beadId: "bead-2", jobId: null, runtime: null, width: 480 });
 
     useShellStore.getState().openSidebar(null);
-    expect(useShellStore.getState().sidebar).toEqual({ open: false, beadId: "bead-2", jobId: null, width: 480 });
+    expect(useShellStore.getState().sidebar).toEqual({ open: false, beadId: "bead-2", jobId: null, runtime: null, width: 480 });
   });
 
+  it("uses the same sidebar for runtime inspection without persisting a stale runtime snapshot", async () => {
+    const { useShellStore } = await import("../../../src/dashboard/stores/shell.ts");
+    useShellStore.getState().openRuntimeSidebar({
+      entity: {
+        id: "pane:%18",
+        kind: "pane",
+        title: "executor",
+        subtitle: "xtrm-main · %18",
+        state: "working",
+        tone: "active",
+        paneId: "%18",
+        sessionId: "$1",
+      },
+      events: [],
+      capturedAtMs: 123,
+    });
+
+    expect(useShellStore.getState().sidebar.runtime?.entity.id).toBe("pane:%18");
+    expect(useShellStore.getState().sidebar.beadId).toBeNull();
+    expect(useShellStore.getState().sidebar.open).toBe(true);
+
+    vi.resetModules();
+    const { useShellStore: rehydrated } = await import("../../../src/dashboard/stores/shell.ts");
+    expect(rehydrated.getState().sidebar).toEqual({ open: false, beadId: null, jobId: null, runtime: null, width: 480 });
+  });
 });
