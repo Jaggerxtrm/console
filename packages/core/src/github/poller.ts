@@ -10,6 +10,8 @@ import {
   getRepos,
   getRepoPollState,
   upsertRepoPollState,
+  getPrsNeedingEnrichment,
+  updatePrEnrichment,
   type GithubEvent,
   type GithubCommit,
   type GithubPr,
@@ -19,6 +21,7 @@ import {
   type RepoPollState,
 } from "./store.ts";
 import { makeSourceHealth, type SourceHealth, type SourceHealthStatus } from "../state/source-health.ts";
+import { aggregateChecksState, type PrCheckItem } from "./route-runtime.ts";
 import {
   type GithubActivityPublisher,
   type GithubAdapterChannelName,
@@ -53,6 +56,10 @@ export interface GithubPollerOptions {
   backfillPages?: number;
   registry?: GithubActivityPublisher;
   repoConcurrency?: number;
+  /** XTRM-1110: PRs enriched per repo per poll (3 API calls each). Default 8. */
+  prEnrichPerRepo?: number;
+  /** XTRM-1110: closed/merged PRs are enriched only while updated within this many days. Default 14. */
+  prEnrichWindowDays?: number;
   logger?: GithubAdapterLogger;
   protocolVersion?: string;
 }
@@ -208,6 +215,8 @@ export class GithubPoller {
   private logger: GithubAdapterLogger;
   private protocolVersion: string;
   private repoConcurrency: number;
+  private prEnrichPerRepo: number;
+  private prEnrichWindowDays: number;
   private etags = new Map<string, string>();
   private pausedUntil = 0;
   /** Owners whose repositories are ingested; null means no ownership filter. */
@@ -217,6 +226,8 @@ export class GithubPoller {
     this.db = db;
     this.token = token;
     this.intervalMs = options.intervalMs ?? 5 * 60 * 1000;
+    this.prEnrichPerRepo = options.prEnrichPerRepo ?? 8;
+    this.prEnrichWindowDays = options.prEnrichWindowDays ?? 14;
     this.backfillPages = options.backfillPages ?? 3;
     this.registry = options.registry ?? NOOP_GITHUB_ACTIVITY_PUBLISHER;
     this.logger = options.logger ?? NOOP_GITHUB_ADAPTER_LOGGER;
@@ -648,6 +659,7 @@ export class GithubPoller {
       ? await this.pollIssues(repo.full_name, state.last_issue_updated_at, state.issue_etag)
       : { watermark: state.last_issue_updated_at, etag: state.issue_etag, successful: true };
     const prResult = await this.pollPullRequests(repo.full_name, state.last_pr_updated_at, state.pr_etag);
+    await this.enrichPullRequests(repo.full_name);
     const releaseResult = await this.pollReleases(repo.full_name, state.last_release_published_at, state.release_etag);
     const lastIssueUpdatedAt = issueResult.watermark ?? state.last_issue_updated_at;
     const lastPrUpdatedAt = prResult.watermark ?? state.last_pr_updated_at;
@@ -667,6 +679,56 @@ export class GithubPoller {
     if (issueResult.successful && prResult.successful && releaseResult.successful) {
       this.markRepoPolled(repo.full_name, polledAt);
     }
+  }
+
+  /**
+   * XTRM-1110: the /pulls list carries no diff stats, comment count, reviews or checks, so the list
+   * rows served to the console were empty. This pass fills them for a bounded set of PRs per repo
+   * (open, or recently updated, and not yet enriched at their current updated_at): the PR itself,
+   * its reviews, and its head's check runs and commit statuses. It stops as soon as the poller is
+   * rate-limit paused; anything not reached is picked up on the next cycle.
+   */
+  async enrichPullRequests(repo: string): Promise<number> {
+    if (this.prEnrichPerRepo <= 0 || this.pausedUntil > Date.now()) return 0;
+    const since = new Date(Date.now() - this.prEnrichWindowDays * 24 * 60 * 60 * 1000).toISOString();
+    let enriched = 0;
+    for (const pr of getPrsNeedingEnrichment(this.db, repo, since, this.prEnrichPerRepo)) {
+      if (this.pausedUntil > Date.now()) break;
+      const detail = await this.apiGet<{ additions: number; deletions: number; changed_files: number; comments: number; head: { sha: string } | null }>(
+        `/repos/${repo}/pulls/${pr.number}`,
+        repo,
+        `pull:${pr.number}`,
+      );
+      if (!detail) continue;
+      const reviews = await this.apiGet<RawPullReview[]>(`/repos/${repo}/pulls/${pr.number}/reviews?per_page=100`, repo, `pull:${pr.number}:reviews`);
+      const sha = detail.head?.sha ?? null;
+      const checkRuns = sha
+        ? await this.apiGet<{ check_runs: Array<{ name: string; status: string; conclusion: string | null; html_url: string | null }> }>(`/repos/${repo}/commits/${sha}/check-runs?per_page=100`, repo, `commit:${sha}:check-runs`)
+        : null;
+      const statuses = sha
+        ? await this.apiGet<{ statuses: Array<{ context: string; state: string; target_url: string | null }> }>(`/repos/${repo}/commits/${sha}/status`, repo, `commit:${sha}:status`)
+        : null;
+      const checks: PrCheckItem[] = [
+        ...(checkRuns?.check_runs ?? []).map((run) => ({ name: run.name, status: run.status, conclusion: run.conclusion, url: run.html_url, source: "check_run" as const })),
+        ...(statuses?.statuses ?? []).map((st) => ({ name: st.context, status: "completed", conclusion: st.state, url: st.target_url, source: "status" as const })),
+      ];
+      updatePrEnrichment(this.db, {
+        repo,
+        number: pr.number,
+        additions: detail.additions ?? null,
+        deletions: detail.deletions ?? null,
+        changed_files: detail.changed_files ?? null,
+        comment_count: detail.comments ?? null,
+        // A sub-read that returned nothing (304 or error) is null: the store keeps the stored value.
+        review_state: reviews ? aggregateReviewState(reviews) : null,
+        review_count: reviews ? reviews.length : null,
+        check_state: sha && checkRuns && statuses ? aggregateChecksState(checks) : null,
+        enriched_updated_at: pr.updated_at ?? pr.created_at,
+      });
+      enriched++;
+    }
+    if (enriched > 0) this.emitLog("poller", "pr.enriched", "debug", undefined, { repo, enriched });
+    return enriched;
   }
 
   async pollRepos(): Promise<void> {
@@ -935,4 +997,29 @@ function rateLimitFromMetadata(metadata: Record<string, unknown>): { limit: numb
 // Apps that need a one-shot poller CLI must wire their own database factory.
 if (import.meta.main) {
   throw new Error("packages/core/src/github/poller.ts no longer ships a CLI entry point. Wire the poller from your app or daemon entry instead.");
+}
+
+export interface RawPullReview {
+  user: { login: string } | null;
+  state: string;
+  submitted_at?: string | null;
+}
+
+/**
+ * The PR's review decision from its reviews (XTRM-1110), GitHub's rule: each reviewer's latest
+ * APPROVED / CHANGES_REQUESTED / DISMISSED review counts; any outstanding change request wins, then
+ * an approval; reviews that only comment read as "commented"; no reviews at all is "none".
+ */
+export function aggregateReviewState(reviews: RawPullReview[]): "approved" | "changes_requested" | "commented" | "none" {
+  if (reviews.length === 0) return "none";
+  const latest = new Map<string, string>();
+  for (const review of reviews) {
+    const state = review.state.toUpperCase();
+    if (state !== "APPROVED" && state !== "CHANGES_REQUESTED" && state !== "DISMISSED") continue;
+    latest.set(review.user?.login ?? "", state);
+  }
+  const decisions = [...latest.values()];
+  if (decisions.includes("CHANGES_REQUESTED")) return "changes_requested";
+  if (decisions.includes("APPROVED")) return "approved";
+  return "commented";
 }

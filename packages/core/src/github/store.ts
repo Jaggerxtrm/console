@@ -519,6 +519,12 @@ export interface GithubPr {
   updated_at: string | null;
   merged_at: string | null;
   closed_at: string | null;
+  /** XTRM-1110 enrichment: aggregate review decision, review count, head check state. */
+  review_state?: string | null;
+  review_count?: number | null;
+  check_state?: string | null;
+  /** The PR updated_at the enrichment was taken at; null until enriched. */
+  enriched_updated_at?: string | null;
 }
 
 export interface PrFilters {
@@ -530,14 +536,32 @@ export interface PrFilters {
 
 export function upsertPr(db: Database, pr: GithubPr): void {
   db.prepare(
-    `INSERT OR REPLACE INTO github_prs
+    // Upsert, not REPLACE (XTRM-1110): the /pulls list carries no diff stats or comment count, so a
+    // list pass must not erase what the enrichment pass stored. A null keeps the stored value; the
+    // enrichment columns are never touched here.
+    `INSERT INTO github_prs
       (repo, number, title, body, state, author, url,
        additions, deletions, changed_files, comment_count, label_names,
        created_at, updated_at, merged_at, closed_at)
      VALUES
       ($repo, $number, $title, $body, $state, $author, $url,
        $additions, $deletions, $changed_files, $comment_count, $label_names,
-       $created_at, $updated_at, $merged_at, $closed_at)`
+       $created_at, $updated_at, $merged_at, $closed_at)
+     ON CONFLICT(repo, number) DO UPDATE SET
+       title = excluded.title,
+       body = excluded.body,
+       state = excluded.state,
+       author = excluded.author,
+       url = excluded.url,
+       additions = COALESCE(excluded.additions, github_prs.additions),
+       deletions = COALESCE(excluded.deletions, github_prs.deletions),
+       changed_files = COALESCE(excluded.changed_files, github_prs.changed_files),
+       comment_count = COALESCE(excluded.comment_count, github_prs.comment_count),
+       label_names = excluded.label_names,
+       created_at = excluded.created_at,
+       updated_at = excluded.updated_at,
+       merged_at = excluded.merged_at,
+       closed_at = excluded.closed_at`
   ).run({
     $repo: pr.repo,
     $number: pr.number,
@@ -581,6 +605,66 @@ export function getPrs(db: Database, filters: PrFilters = {}): GithubPr[] {
       `SELECT * FROM github_prs ${where} ORDER BY updated_at DESC LIMIT $limit OFFSET $offset`
     )
     .all(params);
+}
+
+/**
+ * PRs whose list row lacks a current enrichment (XTRM-1110): never enriched, or enriched at an older
+ * updated_at. Open PRs always qualify; closed and merged ones only while recently updated. Newest first.
+ */
+export function getPrsNeedingEnrichment(db: Database, repo: string, sinceIso: string, limit: number): GithubPr[] {
+  return db
+    .query<GithubPr, AnyParams>(
+      `SELECT * FROM github_prs
+        WHERE repo = $repo
+          AND (enriched_updated_at IS NULL OR enriched_updated_at != COALESCE(updated_at, created_at))
+          AND (state = 'open' OR COALESCE(updated_at, created_at) >= $since)
+        ORDER BY COALESCE(updated_at, created_at) DESC
+        LIMIT $limit`
+    )
+    .all({ $repo: repo, $since: sinceIso, $limit: limit });
+}
+
+export interface PrEnrichment {
+  repo: string;
+  number: number;
+  additions: number | null;
+  deletions: number | null;
+  changed_files: number | null;
+  comment_count: number | null;
+  review_state: string | null;
+  review_count: number | null;
+  check_state: string | null;
+  enriched_updated_at: string;
+}
+
+/**
+ * Stores one PR's enrichment. A null keeps what is stored: the poller's conditional GETs return no
+ * body on 304 (unchanged), and a failed sub-read must not erase a value it could not re-read.
+ */
+export function updatePrEnrichment(db: Database, e: PrEnrichment): void {
+  db.prepare(
+    `UPDATE github_prs SET
+       additions = COALESCE($additions, additions),
+       deletions = COALESCE($deletions, deletions),
+       changed_files = COALESCE($changed_files, changed_files),
+       comment_count = COALESCE($comment_count, comment_count),
+       review_state = COALESCE($review_state, review_state),
+       review_count = COALESCE($review_count, review_count),
+       check_state = COALESCE($check_state, check_state),
+       enriched_updated_at = $enriched_updated_at
+     WHERE repo = $repo AND number = $number`
+  ).run({
+    $repo: e.repo,
+    $number: e.number,
+    $additions: e.additions,
+    $deletions: e.deletions,
+    $changed_files: e.changed_files,
+    $comment_count: e.comment_count,
+    $review_state: e.review_state,
+    $review_count: e.review_count,
+    $check_state: e.check_state,
+    $enriched_updated_at: e.enriched_updated_at,
+  } as AnyParams);
 }
 
 export function getPr(db: Database, repo: string, number: number): GithubPr | null {

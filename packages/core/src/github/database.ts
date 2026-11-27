@@ -155,6 +155,10 @@ CREATE TABLE IF NOT EXISTS github_prs (
   updated_at      DATETIME,
   merged_at       DATETIME,
   closed_at       DATETIME,
+  review_state    TEXT,
+  review_count    INTEGER,
+  check_state     TEXT,
+  enriched_updated_at TEXT,
   PRIMARY KEY (repo, number)
 );
 
@@ -217,6 +221,12 @@ export function createDatabase(path: string): Database {
     "ALTER TABLE github_prs ADD COLUMN additions INTEGER",
     "ALTER TABLE github_prs ADD COLUMN deletions INTEGER",
     "ALTER TABLE github_prs ADD COLUMN changed_files INTEGER",
+    // XTRM-1110: list rows carry the per-PR summary the poller enriches (review, checks), and the
+    // PR updated_at the enrichment was taken at, so a changed PR is enriched again.
+    "ALTER TABLE github_prs ADD COLUMN review_state TEXT",
+    "ALTER TABLE github_prs ADD COLUMN review_count INTEGER",
+    "ALTER TABLE github_prs ADD COLUMN check_state TEXT",
+    "ALTER TABLE github_prs ADD COLUMN enriched_updated_at TEXT",
     // forge-nwdr: release polling watermark + ETag per repo
     "ALTER TABLE github_repo_poll_state ADD COLUMN last_release_published_at DATETIME",
     "ALTER TABLE github_repo_poll_state ADD COLUMN release_etag TEXT",
