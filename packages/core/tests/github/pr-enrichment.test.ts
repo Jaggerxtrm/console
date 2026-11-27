@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
-import { createDatabase } from "../../src/github/database.ts";
+import { createXtrmDatabase } from "../../src/state/database.ts";
 import { GithubPoller, aggregateReviewState } from "../../src/github/poller.ts";
 import { getPr, getPrs, upsertPr, type GithubPr } from "../../src/github/store.ts";
 
@@ -65,12 +65,13 @@ describe("aggregateReviewState", () => {
 });
 
 describe("PR enrichment (XTRM-1110)", () => {
-  let db: ReturnType<typeof createDatabase>;
+  let db: ReturnType<typeof createXtrmDatabase>;
   let tmpDir: string;
 
   beforeEach(async () => {
     tmpDir = await mkdtemp(join(tmpdir(), "pr-enrichment-test-"));
-    db = createDatabase(join(tmpDir, "state.db"));
+    // The production store initializer (apps/console server index.ts), not the standalone github schema.
+    db = createXtrmDatabase(join(tmpDir, "state.db"));
   });
 
   afterEach(async () => {
@@ -131,21 +132,82 @@ describe("PR enrichment (XTRM-1110)", () => {
     expect(getPrs(db, { repo: REPO }).every((p) => p.enriched_updated_at === null)).toBe(true);
   });
 
-  it("keeps stored review and check state when a re-read returns nothing", async () => {
+  it("keeps stored values and leaves the PR due when a sub-read fails", async () => {
     upsertPr(db, listRow(7));
     mockGithub(prRoutes(7, "abc"));
     const poller = new GithubPoller(db, "t", { intervalMs: 300_000 });
     await poller.enrichPullRequests(REPO);
     vi.restoreAllMocks();
-    // The PR changed; its sub-reads now answer 304 (unchanged).
-    upsertPr(db, listRow(7, { updated_at: new Date().toISOString() }));
+    const later = new Date().toISOString();
+    upsertPr(db, listRow(7, { updated_at: later }));
     mockGithub({
-      [`/repos/${REPO}/pulls/7/reviews`]: { status: 304, body: null },
+      [`/repos/${REPO}/pulls/7/reviews`]: { status: 500, body: {} },
       [`/repos/${REPO}/pulls/7`]: { body: { additions: 121, deletions: 7, changed_files: 4, comments: 3, head: { sha: "abc" } } },
-      [`/repos/${REPO}/commits/abc/check-runs`]: { status: 304, body: null },
-      [`/repos/${REPO}/commits/abc/status`]: { status: 304, body: null },
+      [`/repos/${REPO}/commits/abc/check-runs`]: { status: 502, body: {} },
+      [`/repos/${REPO}/commits/abc/status`]: { body: { statuses: [] } },
     });
+    expect(await poller.enrichPullRequests(REPO)).toBe(0);
+    const row = getPr(db, REPO, 7)!;
+    // The fresh diff is stored; the unread review and check state keep their values.
+    expect(row).toMatchObject({ additions: 121, review_state: "approved", check_state: "pending" });
+    // Not settled at the new updated_at, so the next cycle tries again.
+    expect(row.enriched_updated_at).not.toBe(later);
+  });
+
+  it("stops offering a PR a slot after three failed attempts at the same revision", async () => {
+    upsertPr(db, listRow(9));
+    const calls = mockGithub({ [`/repos/${REPO}/pulls/9`]: { status: 500, body: {} } });
+    const poller = new GithubPoller(db, "t", { intervalMs: 300_000 });
+    for (let i = 0; i < 3; i++) await poller.enrichPullRequests(REPO);
+    const after = calls.length;
     await poller.enrichPullRequests(REPO);
-    expect(getPr(db, REPO, 7)).toMatchObject({ additions: 121, review_state: "approved", check_state: "pending" });
+    expect(calls.length).toBe(after);
+  });
+
+  it("reads a failed legacy commit status as failure, not success", async () => {
+    upsertPr(db, listRow(7));
+    mockGithub({
+      ...prRoutes(7, "abc"),
+      [`/repos/${REPO}/commits/abc/check-runs`]: { body: { check_runs: [] } },
+      [`/repos/${REPO}/commits/abc/status`]: { body: { statuses: [{ context: "ci/legacy", state: "FAILURE", target_url: null }] } },
+    });
+    const poller = new GithubPoller(db, "t", { intervalMs: 300_000 });
+    await poller.enrichPullRequests(REPO);
+    expect(getPr(db, REPO, 7)!.check_state).toBe("failure");
+  });
+
+  it("does not settle a PR when the rate limit pauses the poller after its detail read", async () => {
+    upsertPr(db, listRow(7));
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : (input as Request).url;
+      if (url.endsWith("/pulls/7")) {
+        return new Response(JSON.stringify({ additions: 1, deletions: 1, changed_files: 1, comments: 0, head: { sha: "abc" } }), {
+          status: 200,
+          headers: { "x-ratelimit-remaining": "10", "x-ratelimit-limit": "5000", "x-ratelimit-reset": String(Math.floor(Date.now() / 1000) + 600) },
+        });
+      }
+      return new Response("[]", { status: 200 });
+    });
+    const poller = new GithubPoller(db, "t", { intervalMs: 300_000 });
+    expect(await poller.enrichPullRequests(REPO)).toBe(0);
+    expect(getPr(db, REPO, 7)!.enriched_updated_at).toBeNull();
+  });
+});
+
+describe("production store migration (XTRM-1110)", () => {
+  it("adds the enrichment columns to an existing github_prs table", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "pr-enrichment-migrate-"));
+    const path = join(dir, "state.db");
+    // A store created before this change: github_prs without the four columns.
+    const before = createXtrmDatabase(path);
+    for (const column of ["review_state", "review_count", "check_state", "enriched_updated_at"]) {
+      before.exec(`ALTER TABLE github_prs DROP COLUMN ${column}`);
+    }
+    before.close();
+    const db = createXtrmDatabase(path);
+    const columns = (db.query("PRAGMA table_info(github_prs)").all() as Array<{ name: string }>).map((c) => c.name);
+    expect(columns).toEqual(expect.arrayContaining(["review_state", "review_count", "check_state", "enriched_updated_at"]));
+    db.close();
+    await rm(dir, { recursive: true, force: true });
   });
 });

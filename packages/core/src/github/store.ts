@@ -634,7 +634,8 @@ export interface PrEnrichment {
   review_state: string | null;
   review_count: number | null;
   check_state: string | null;
-  enriched_updated_at: string;
+  /** Set only when every read succeeded; null leaves the PR due for another attempt. */
+  enriched_updated_at: string | null;
 }
 
 /**
@@ -651,7 +652,7 @@ export function updatePrEnrichment(db: Database, e: PrEnrichment): void {
        review_state = COALESCE($review_state, review_state),
        review_count = COALESCE($review_count, review_count),
        check_state = COALESCE($check_state, check_state),
-       enriched_updated_at = $enriched_updated_at
+       enriched_updated_at = COALESCE($enriched_updated_at, enriched_updated_at)
      WHERE repo = $repo AND number = $number`
   ).run({
     $repo: e.repo,

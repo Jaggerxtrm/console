@@ -682,50 +682,95 @@ export class GithubPoller {
   }
 
   /**
+   * XTRM-1110: an unconditional GET for the enrichment pass. It sends no If-None-Match and stores no
+   * ETag, so a read is either fresh data or an error: a 304 cannot pass for "nothing changed" when
+   * the stored row never had the value. It honours the rate-limit pause like every other read.
+   */
+  private async apiGetFresh<T>(path: string): Promise<{ ok: boolean; data: T | null; status: number }> {
+    if (this.pausedUntil > Date.now()) return { ok: false, data: null, status: 0 };
+    let response: Response;
+    try {
+      response = await fetch(`https://api.github.com${path}`, { headers: this.headers });
+    } catch {
+      return { ok: false, data: null, status: 0 };
+    }
+    this.maybePauseForRateLimit(response);
+    if (!response.ok) return { ok: false, data: null, status: response.status };
+    return { ok: true, data: (await response.json()) as T, status: response.status };
+  }
+
+  /** Failed enrichment attempts per PR revision (repo#number@updated_at), so a PR that keeps failing stops taking a slot. */
+  private enrichFailures = new Map<string, number>();
+
+  /**
    * XTRM-1110: the /pulls list carries no diff stats, comment count, reviews or checks, so the list
    * rows served to the console were empty. This pass fills them for a bounded set of PRs per repo
    * (open, or recently updated, and not yet enriched at their current updated_at): the PR itself,
-   * its reviews, and its head's check runs and commit statuses. It stops as soon as the poller is
-   * rate-limit paused; anything not reached is picked up on the next cycle.
+   * its reviews, and its head check runs and commit statuses.
+   *
+   * A PR counts as enriched only when all four reads succeeded. A partial read stores what it got
+   * (a null keeps the stored value) but leaves the PR due, logs a warning, and after three failed
+   * attempts at the same updated_at the PR stops taking a slot until it changes or the process
+   * restarts. The pass stops as soon as the rate limit pauses the poller.
    */
   async enrichPullRequests(repo: string): Promise<number> {
     if (this.prEnrichPerRepo <= 0 || this.pausedUntil > Date.now()) return 0;
     const since = new Date(Date.now() - this.prEnrichWindowDays * 24 * 60 * 60 * 1000).toISOString();
+    const failureKey = (pr: GithubPr) => `${repo}#${pr.number}@${pr.updated_at ?? pr.created_at}`;
+    const due = getPrsNeedingEnrichment(this.db, repo, since, this.prEnrichPerRepo * 3)
+      .filter((pr) => (this.enrichFailures.get(failureKey(pr)) ?? 0) < 3)
+      .slice(0, this.prEnrichPerRepo);
     let enriched = 0;
-    for (const pr of getPrsNeedingEnrichment(this.db, repo, since, this.prEnrichPerRepo)) {
+    for (const pr of due) {
       if (this.pausedUntil > Date.now()) break;
-      const detail = await this.apiGet<{ additions: number; deletions: number; changed_files: number; comments: number; head: { sha: string } | null }>(
+      const detail = await this.apiGetFresh<{ additions: number; deletions: number; changed_files: number; comments: number; head: { sha: string } | null }>(
         `/repos/${repo}/pulls/${pr.number}`,
-        repo,
-        `pull:${pr.number}`,
       );
-      if (!detail) continue;
-      const reviews = await this.apiGet<RawPullReview[]>(`/repos/${repo}/pulls/${pr.number}/reviews?per_page=100`, repo, `pull:${pr.number}:reviews`);
-      const sha = detail.head?.sha ?? null;
-      const checkRuns = sha
-        ? await this.apiGet<{ check_runs: Array<{ name: string; status: string; conclusion: string | null; html_url: string | null }> }>(`/repos/${repo}/commits/${sha}/check-runs?per_page=100`, repo, `commit:${sha}:check-runs`)
-        : null;
-      const statuses = sha
-        ? await this.apiGet<{ statuses: Array<{ context: string; state: string; target_url: string | null }> }>(`/repos/${repo}/commits/${sha}/status`, repo, `commit:${sha}:status`)
-        : null;
+      const sha = detail.data?.head?.sha ?? null;
+      const reviews = detail.ok
+        ? await this.apiGetFresh<RawPullReview[]>(`/repos/${repo}/pulls/${pr.number}/reviews?per_page=100`)
+        : { ok: false, data: null, status: 0 };
+      const noHead = { ok: detail.ok, data: null, status: 0 };
+      const checkRuns = detail.ok && sha
+        ? await this.apiGetFresh<{ check_runs: Array<{ name: string; status: string; conclusion: string | null; html_url: string | null }> }>(`/repos/${repo}/commits/${sha}/check-runs?per_page=100`)
+        : noHead;
+      const statuses = detail.ok && sha
+        ? await this.apiGetFresh<{ statuses: Array<{ context: string; state: string; target_url: string | null }> }>(`/repos/${repo}/commits/${sha}/status`)
+        : noHead;
       const checks: PrCheckItem[] = [
-        ...(checkRuns?.check_runs ?? []).map((run) => ({ name: run.name, status: run.status, conclusion: run.conclusion, url: run.html_url, source: "check_run" as const })),
-        ...(statuses?.statuses ?? []).map((st) => ({ name: st.context, status: "completed", conclusion: st.state, url: st.target_url, source: "status" as const })),
+        ...(checkRuns.data?.check_runs ?? []).map((run) => ({ name: run.name, status: run.status, conclusion: run.conclusion, url: run.html_url, source: "check_run" as const })),
+        ...(statuses.data?.statuses ?? []).map((st) => ({ name: st.context, status: "completed", conclusion: st.state, url: st.target_url, source: "status" as const })),
       ];
+      const complete = detail.ok && reviews.ok && checkRuns.ok && statuses.ok;
       updatePrEnrichment(this.db, {
         repo,
         number: pr.number,
-        additions: detail.additions ?? null,
-        deletions: detail.deletions ?? null,
-        changed_files: detail.changed_files ?? null,
-        comment_count: detail.comments ?? null,
-        // A sub-read that returned nothing (304 or error) is null: the store keeps the stored value.
-        review_state: reviews ? aggregateReviewState(reviews) : null,
-        review_count: reviews ? reviews.length : null,
-        check_state: sha && checkRuns && statuses ? aggregateChecksState(checks) : null,
-        enriched_updated_at: pr.updated_at ?? pr.created_at,
+        additions: detail.data?.additions ?? null,
+        deletions: detail.data?.deletions ?? null,
+        changed_files: detail.data?.changed_files ?? null,
+        comment_count: detail.data?.comments ?? null,
+        review_state: reviews.ok && reviews.data ? aggregateReviewState(reviews.data) : null,
+        review_count: reviews.ok && reviews.data ? reviews.data.length : null,
+        check_state: checkRuns.ok && statuses.ok ? aggregateChecksState(checks) : null,
+        // Only a complete read settles the PR at this updated_at; a partial one stays due.
+        enriched_updated_at: complete ? (pr.updated_at ?? pr.created_at) : null,
       });
-      enriched++;
+      if (complete) {
+        enriched++;
+        this.enrichFailures.delete(failureKey(pr));
+      } else {
+        const attempts = (this.enrichFailures.get(failureKey(pr)) ?? 0) + 1;
+        this.enrichFailures.set(failureKey(pr), attempts);
+        this.emitLog("poller", "pr.enrich_failed", "warn", undefined, {
+          repo,
+          number: pr.number,
+          attempts,
+          detail: detail.status,
+          reviews: reviews.status,
+          checkRuns: checkRuns.status,
+          statuses: statuses.status,
+        });
+      }
     }
     if (enriched > 0) this.emitLog("poller", "pr.enriched", "debug", undefined, { repo, enriched });
     return enriched;
@@ -1013,7 +1058,9 @@ export interface RawPullReview {
 export function aggregateReviewState(reviews: RawPullReview[]): "approved" | "changes_requested" | "commented" | "none" {
   if (reviews.length === 0) return "none";
   const latest = new Map<string, string>();
-  for (const review of reviews) {
+  // Fold in submission order; the API order is not relied on.
+  const ordered = [...reviews].sort((x, y) => (x.submitted_at ?? "").localeCompare(y.submitted_at ?? ""));
+  for (const review of ordered) {
     const state = review.state.toUpperCase();
     if (state !== "APPROVED" && state !== "CHANGES_REQUESTED" && state !== "DISMISSED") continue;
     latest.set(review.user?.login ?? "", state);

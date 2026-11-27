@@ -559,9 +559,12 @@ export function aggregateChecksState(checks: PrCheckItem[]): "success" | "failur
   if (checks.length === 0) return "none";
   let pending = false;
   for (const check of checks) {
-    const conclusion = check.conclusion;
+    // Commit statuses arrive uppercase (FAILURE, ERROR, PENDING); check runs lowercase. Compare one case,
+    // or a failed legacy status reads as success (XTRM-1110 review).
+    const conclusion = check.conclusion?.toLowerCase() ?? null;
+    const status = check.status?.toLowerCase() ?? null;
     if (conclusion && FAILURE_CONCLUSIONS.has(conclusion)) return "failure";
-    if ((conclusion && PENDING_CONCLUSIONS.has(conclusion)) || (check.status && PENDING_STATUSES.has(check.status))) pending = true;
+    if ((conclusion && PENDING_CONCLUSIONS.has(conclusion)) || (status && PENDING_STATUSES.has(status))) pending = true;
   }
   return pending ? "pending" : "success";
 }
