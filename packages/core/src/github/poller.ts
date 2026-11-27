@@ -717,7 +717,11 @@ export class GithubPoller {
     if (this.prEnrichPerRepo <= 0 || this.pausedUntil > Date.now()) return 0;
     const since = new Date(Date.now() - this.prEnrichWindowDays * 24 * 60 * 60 * 1000).toISOString();
     const failureKey = (pr: GithubPr) => `${repo}#${pr.number}@${pr.updated_at ?? pr.created_at}`;
-    const due = getPrsNeedingEnrichment(this.db, repo, since, this.prEnrichPerRepo * 3)
+    // PRs that exhausted their attempts are filtered out after the query, so the window grows by
+    // their number: they can never fill the window and starve healthy PRs.
+    let exhausted = 0;
+    for (const [key, attempts] of this.enrichFailures) if (attempts >= 3 && key.startsWith(`${repo}#`)) exhausted++;
+    const due = getPrsNeedingEnrichment(this.db, repo, since, this.prEnrichPerRepo + exhausted)
       .filter((pr) => (this.enrichFailures.get(failureKey(pr)) ?? 0) < 3)
       .slice(0, this.prEnrichPerRepo);
     let enriched = 0;
@@ -729,8 +733,9 @@ export class GithubPoller {
       const sha = detail.data?.head?.sha ?? null;
       const reviews = detail.ok
         ? await this.apiGetFresh<RawPullReview[]>(`/repos/${repo}/pulls/${pr.number}/reviews?per_page=100`)
-        : { ok: false, data: null, status: 0 };
-      const noHead = { ok: detail.ok, data: null, status: 0 };
+        : { ok: false, data: null, status: -1 };
+      // status -1 marks a read that was not attempted (no detail, or no head to read checks for).
+      const noHead = { ok: detail.ok, data: null, status: -1 };
       const checkRuns = detail.ok && sha
         ? await this.apiGetFresh<{ check_runs: Array<{ name: string; status: string; conclusion: string | null; html_url: string | null }> }>(`/repos/${repo}/commits/${sha}/check-runs?per_page=100`)
         : noHead;
@@ -749,8 +754,8 @@ export class GithubPoller {
         deletions: detail.data?.deletions ?? null,
         changed_files: detail.data?.changed_files ?? null,
         comment_count: detail.data?.comments ?? null,
-        review_state: reviews.ok && reviews.data ? aggregateReviewState(reviews.data) : null,
-        review_count: reviews.ok && reviews.data ? reviews.data.length : null,
+        review_state: reviews.ok && Array.isArray(reviews.data) ? aggregateReviewState(reviews.data) : null,
+        review_count: reviews.ok && Array.isArray(reviews.data) ? reviews.data.length : null,
         check_state: checkRuns.ok && statuses.ok ? aggregateChecksState(checks) : null,
         // Only a complete read settles the PR at this updated_at; a partial one stays due.
         enriched_updated_at: complete ? (pr.updated_at ?? pr.created_at) : null,
@@ -759,8 +764,11 @@ export class GithubPoller {
         enriched++;
         this.enrichFailures.delete(failureKey(pr));
       } else {
-        const attempts = (this.enrichFailures.get(failureKey(pr)) ?? 0) + 1;
-        this.enrichFailures.set(failureKey(pr), attempts);
+        // A pause (status 0), a network drop or a rate-limit answer (403/429) is not the PR failing:
+        // it is not charged, so a low-quota stretch cannot drop healthy PRs for the process lifetime.
+        const transient = [detail, reviews, checkRuns, statuses].some((read) => !read.ok && (read.status === 0 || read.status === 403 || read.status === 429));
+        const attempts = (this.enrichFailures.get(failureKey(pr)) ?? 0) + (transient ? 0 : 1);
+        if (!transient) this.enrichFailures.set(failureKey(pr), attempts);
         this.emitLog("poller", "pr.enrich_failed", "warn", undefined, {
           repo,
           number: pr.number,

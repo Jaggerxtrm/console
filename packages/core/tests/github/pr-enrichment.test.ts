@@ -26,7 +26,9 @@ function mockGithub(routes: Routes) {
     const url = typeof input === "string" ? input : input instanceof URL ? input.href : (input as Request).url;
     const path = url.replace("https://api.github.com", "");
     calls.push(path);
-    const hit = Object.entries(routes).find(([prefix]) => path.startsWith(prefix));
+    // Exact path match (query string ignored): a prefix match would let /pulls/1 answer /pulls/101.
+    const bare = path.split("?")[0];
+    const hit = Object.entries(routes).find(([route]) => bare === route);
     if (!hit) return new Response("{}", { status: 404 });
     return new Response(JSON.stringify(hit[1].body), { status: hit[1].status ?? 200 });
   });
@@ -162,6 +164,39 @@ describe("PR enrichment (XTRM-1110)", () => {
     const after = calls.length;
     await poller.enrichPullRequests(REPO);
     expect(calls.length).toBe(after);
+  });
+
+  it("does not charge a rate-limit pause as a PR failure", async () => {
+    upsertPr(db, listRow(7));
+    const lowQuota = { "x-ratelimit-remaining": "10", "x-ratelimit-limit": "5000", "x-ratelimit-reset": String(Math.floor(Date.now() / 1000) + 1) };
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () =>
+      new Response(JSON.stringify({ additions: 1, deletions: 1, changed_files: 1, comments: 0, head: { sha: "abc" } }), { status: 200, headers: lowQuota }));
+    const poller = new GithubPoller(db, "t", { intervalMs: 300_000 });
+    for (let i = 0; i < 3; i++) {
+      await poller.enrichPullRequests(REPO);
+      (poller as unknown as { pausedUntil: number }).pausedUntil = 0;
+    }
+    vi.restoreAllMocks();
+    mockGithub(prRoutes(7, "abc"));
+    expect(await poller.enrichPullRequests(REPO)).toBe(1);
+  });
+
+  it("does not let exhausted PRs fill the window and starve healthy ones", async () => {
+    const routes: Routes = {};
+    for (let n = 1; n <= 4; n++) {
+      upsertPr(db, listRow(n, { updated_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString() }));
+      Object.assign(routes, prRoutes(n, `s${n}`));
+    }
+    for (let n = 101; n <= 124; n++) {
+      upsertPr(db, listRow(n));
+      routes[`/repos/${REPO}/pulls/${n}`] = { status: 500, body: {} };
+    }
+    mockGithub(routes);
+    const poller = new GithubPoller(db, "t", { intervalMs: 300_000 });
+    let settled = 0;
+    for (let cycle = 0; cycle < 12; cycle++) settled += await poller.enrichPullRequests(REPO);
+    expect(settled).toBe(4);
+    for (let n = 1; n <= 4; n++) expect(getPr(db, REPO, n)!.enriched_updated_at).not.toBeNull();
   });
 
   it("reads a failed legacy commit status as failure, not success", async () => {
