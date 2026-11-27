@@ -324,6 +324,7 @@ export function createXtrmDatabase(path: string): Database {
   db.exec(SCHEMA);
   ensureSpecialistJobsColumns(db);
   ensureSubstrateIssuesColumns(db);
+  ensureGithubPrsColumns(db);
   for (const sql of MIGRATIONS) {
     db.exec(sql);
   }
@@ -353,6 +354,26 @@ function ensureSpecialistJobsColumns(db: Database): void {
     }
     console.log(`xtrm-store: ALTER specialist_jobs ADD COLUMN ${column[0]} ${column[1]} [added]`);
     db.exec(`ALTER TABLE specialist_jobs ADD COLUMN ${column[0]} ${column[1]}`);
+  }
+}
+
+// XTRM-1110: the poller enriches PR list rows (review and check state) and records the PR
+// updated_at the enrichment was taken at. This is the production store (createXtrmDatabase),
+// so the columns must exist here, not only in the standalone github/database.ts schema.
+function ensureGithubPrsColumns(db: Database): void {
+  const columns = new Set((db.query("PRAGMA table_info(github_prs)").all() as Array<{ name: string }>).map((column) => column.name));
+  for (const column of [
+    ["review_state", "TEXT"],
+    ["review_count", "INTEGER"],
+    ["check_state", "TEXT"],
+    ["enriched_updated_at", "TEXT"],
+  ] as const) {
+    if (columns.has(column[0])) {
+      console.log(`xtrm-store: ALTER github_prs ADD COLUMN ${column[0]} ${column[1]} [already-present]`);
+      continue;
+    }
+    console.log(`xtrm-store: ALTER github_prs ADD COLUMN ${column[0]} ${column[1]} [added]`);
+    db.exec(`ALTER TABLE github_prs ADD COLUMN ${column[0]} ${column[1]}`);
   }
 }
 
